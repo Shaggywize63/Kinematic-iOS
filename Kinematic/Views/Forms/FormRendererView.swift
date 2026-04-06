@@ -3,6 +3,10 @@ import SwiftUI
 struct FormRendererView: View {
     let questions: [FormQuestion]
     @StateObject var formState = FormResponseState()
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var network: NetworkMonitor
+    @State private var showSyncToast = false
+    @State private var toastMessage = ""
     
     var body: some View {
         ZStack {
@@ -20,23 +24,42 @@ struct FormRendererView: View {
                     }
                     
                     Button(action: {
-                        submitForm()
+                        Task { await performSubmission() }
                     }) {
-                        Text("Submit Form")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(
-                                LinearGradient(colors: [.kRed, Color(hex: "B31220")], startPoint: .topLeading, endPoint: .bottomTrailing)
-                            )
-                            .foregroundColor(.white)
-                            .cornerRadius(16)
-                            .shadow(color: .kRed.opacity(0.4), radius: 15, x: 0, y: 8)
+                        HStack {
+                            if !network.isConnected {
+                                Image(systemName: "icloud.and.arrow.down.fill")
+                            }
+                            Text(network.isConnected ? "Submit Form" : "Save Offline")
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(
+                            LinearGradient(colors: [.kRed, Color(hex: "B31220")], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
+                        .shadow(color: .kRed.opacity(0.4), radius: 15, x: 0, y: 8)
                     }
                     .padding(.top, 24)
                     .padding(.horizontal)
                 }
                 .padding(.bottom, 60)
+            }
+            
+            // Subtle Offline Toast
+            if showSyncToast {
+                VStack {
+                    Spacer()
+                    Text(toastMessage)
+                        .font(.subheadline.bold())
+                        .padding()
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(20)
+                        .padding(.bottom, 40)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
         }
     }
@@ -148,9 +171,31 @@ struct FormRendererView: View {
         )
     }
     
-    private func submitForm() {
-        print("Submitting Form Payload to API: \(formState.stringValues)")
-        // TODO: Map to form_responses table via API post.
+    private func performSubmission() async {
+        // Collect all responses into a single dictionary
+        var responses: [String: Any] = [:]
+        for (id, val) in formState.stringValues { responses[id] = val }
+        for (id, val) in formState.boolValues { responses[id] = val }
+        
+        let liveSuccess = await KinematicRepository.shared.submitForm(
+            templateId: "default_template",
+            activityId: nil,
+            outletId: nil,
+            outletName: "Store Name",
+            latitude: 19.076,
+            longitude: 72.877,
+            responses: responses,
+            context: modelContext
+        )
+        
+        withAnimation {
+            toastMessage = liveSuccess ? "Form Submitted Successfully!" : "Saved Offline — Syncing later"
+            showSyncToast = true
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation { showSyncToast = false }
+        }
     }
 }
 

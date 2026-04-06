@@ -2,6 +2,9 @@ import SwiftUI
 
 struct MainTabView: View {
     @State private var selectedTab = 0
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var network: NetworkMonitor
+    @State private var isSyncing = false
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -26,13 +29,58 @@ struct MainTabView: View {
                     .overlay(Text("Settings & Profile").foregroundColor(.white))
                     .tag(3)
             }
-            // Hidden standard TabView so we can use a custom Glass one natively floating
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             .ignoresSafeArea()
             
             // Custom Liquid Glass Bottom Navigation Bar
             CustomGlassTabBar(selectedTab: $selectedTab)
+            
+            // Floating Sync Status (Top Right)
+            if isSyncing || !network.isConnected {
+                notificationOverlay
+            }
         }
+        // AUTO-SYNC TRIGGER: Fires when network comes back online
+        .onChange(of: network.isConnected) { oldValue, newValue in
+            if newValue {
+                Task { await triggerSync() }
+            }
+        }
+    }
+    
+    private var notificationOverlay: some View {
+        VStack {
+            HStack {
+                Spacer()
+                HStack(spacing: 8) {
+                    if isSyncing {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.8)
+                        Text("Syncing Data...")
+                    } else if !network.isConnected {
+                        Image(systemName: "wifi.slash")
+                        Text("Offline Mode")
+                    }
+                }
+                .font(.caption.bold())
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+                .cornerRadius(20)
+                .padding(.top, 50)
+                .padding(.trailing, 20)
+            }
+            Spacer()
+        }
+    }
+    
+    private func triggerSync() async {
+        isSyncing = true
+        _ = await KinematicRepository.shared.syncPendingSubmissions(context: modelContext)
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // Visual comfort
+        isSyncing = false
     }
 }
 
