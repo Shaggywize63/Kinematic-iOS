@@ -1,0 +1,32 @@
+{
+  "source": "/Users/sagbharg/Desktop/Kinematic Code/Kinematic-iOS/Kinematic/Kinematic/KinematicApp.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "KINEMATIC",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 317
+        }
+      },
+      {
+        "comment": "",
+        "key": "FIELD FORCE EVOLUTION",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 319
+        }
+      },
+      {
+        "comment": "",
+        "key": "K",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 313
+        }
+      }
+    ]
+  },
+  "version": 1
+}
