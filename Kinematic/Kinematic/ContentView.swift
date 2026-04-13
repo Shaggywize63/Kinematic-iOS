@@ -14,110 +14,27 @@ struct LiquidGlassModifier: ViewModifier {
     var opacity: Double
     func body(content: Content) -> some View {
         content
-            .background(.ultraThinMaterial)
-            .background(Color.white.opacity(opacity))
-            .cornerRadius(cornerRadius)
-            .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(.white.opacity(0.1), lineWidth: 0.5))
-    }
-}
-
-struct VibrantBackgroundView: View {
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            RadialGradient(
-                gradient: Gradient(colors: [Color.red.opacity(0.15), Color.black]),
-                center: .topLeading,
-                startRadius: 50,
-                endRadius: 500
-            ).ignoresSafeArea()
-            
-            RadialGradient(
-                gradient: Gradient(colors: [Color.blue.opacity(0.1), Color.clear]),
-                center: .bottomTrailing,
-                startRadius: 100,
-                endRadius: 600
-            ).ignoresSafeArea()
-        }
-    }
-}
-
-// --- VIEW MODELS ---
-class SOSViewModel: ObservableObject {
-    @Published var countdown = 5
-    func start() {
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { t in
-            if self.countdown > 1 { self.countdown -= 1 } else { t.invalidate() }
-        }
-    }
-}
-
-class HomeViewModel: ObservableObject {
-    @Published var data: MobileHomeResponse?
-    @Published var isLoading = false
-    
-    func refresh() async {
-        await MainActor.run { isLoading = true }
-        let newData = await KinematicRepository.shared.getMobileHome()
-        await MainActor.run { 
-            self.data = newData
-            self.isLoading = false
-        }
-    }
-}
-
-class ActivityFeedViewModel: ObservableObject {
-    @Published var items: [ActivityFeedItem] = []
-    @Published var isLoading = false
-    
-    func refresh() async {
-        await MainActor.run { isLoading = true }
-        let newItems = await KinematicRepository.shared.getFeed()
-        await MainActor.run { 
-            self.items = newItems
-            self.isLoading = false
-        }
-    }
-}
-
-class RoutePlansViewModel: ObservableObject {
-    @Published var plans: [RoutePlan] = []
-    @Published var isLoading = false
-    
-    func refresh() async {
-        await MainActor.run { isLoading = true }
-        let newPlans = await KinematicRepository.shared.fetchMyRoutePlan()
-        await MainActor.run { 
-            self.plans = newPlans
-            self.isLoading = false
-        }
-    }
-}
-
-class AttendanceViewModel: ObservableObject {
-    @Published var today: AttendanceRecord?
-    @Published var isLoading = false
-    @Published var message = ""
-    
-    func refresh() async {
-        let data = await KinematicRepository.shared.getMobileHome()
-        await MainActor.run { self.today = data?.today }
-    }
-    
-    func toggleAttendance(loc: CLLocation) async {
-        await MainActor.run { isLoading = true; message = "" }
-        let isCheckIn = today?.checkinAt == nil || (today?.checkinAt != nil && today?.checkoutAt != nil)
-        let (success, err) = await KinematicRepository.shared.markAttendance(isCheckIn: isCheckIn, lat: loc.coordinate.latitude, lng: loc.coordinate.longitude)
-        
-        await MainActor.run {
-            isLoading = false
-            if success {
-                message = isCheckIn ? "Checked in!" : "Checked out!"
-            } else {
-                message = err ?? "Failed"
-            }
-        }
-        await refresh()
+            // 1. Base Blur Layer matching the corner radius perfectly
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+            // 2. Tint Layer to provide the specific color opacity OVER the blur, not behind it
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(Color(uiColor: .systemBackground).opacity(opacity))
+            )
+            // 3. Crisp Glass Border using an overlay so it sits tight to the edges
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.6), .clear, Color.black.opacity(0.2)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            // 4. Subtle Drop Shadow for floating depth
+            .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -134,156 +51,90 @@ struct ContentView: View {
     }
 }
 
-struct LoginView: View {
-    let onSuccess: () -> Void
-    @State private var email = ""
-    @State private var password = ""
-    @State private var isLoading = false
-    @State private var errorMessage = ""
-    @State private var showPassword = false
-    
-    var body: some View {
-        ZStack {
-            VibrantBackgroundView()
-            
-            ScrollView {
-                VStack(spacing: 0) {
-                    VStack(spacing: 18) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 28).fill(Color.red).frame(width: 88, height: 88)
-                                .shadow(color: .red.opacity(0.3), radius: 28, y: 10)
-                            Text("K").font(.system(size: 40, weight: .black)).foregroundColor(.white)
-                        }
-                        
-                        Text("Kinematic").font(.system(size: 28, weight: .black)).foregroundColor(.white)
-                        Text("FIELD FORCE MANAGEMENT").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(2)
-                    }
-                    .padding(.top, 90)
-                    
-                    Spacer().frame(height: 44)
-                    
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Welcome back").font(.title2).fontWeight(.heavy).foregroundColor(.white)
-                        Text("Sign in to your account").font(.subheadline).foregroundColor(.gray).padding(.bottom, 6)
-                        
-                        HStack {
-                            Image(systemName: "person.fill").foregroundColor(.gray)
-                            TextField("Mobile or Email", text: $email)
-                                .foregroundColor(.white)
-                                .autocapitalization(.none)
-                        }
-                        .padding()
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(12)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), lineWidth: 1))
-                        
-                        HStack {
-                            Image(systemName: "lock.fill").foregroundColor(.gray)
-                            if showPassword {
-                                TextField("App Password", text: $password).foregroundColor(.white)
-                            } else {
-                                SecureField("App Password", text: $password).foregroundColor(.white)
-                            }
-                            Button(action: { showPassword.toggle() }) {
-                                Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill").foregroundColor(.gray)
-                            }
-                        }
-                        .padding()
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(12)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), lineWidth: 1))
-                        
-                        if !errorMessage.isEmpty {
-                            HStack {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red)
-                                Text(errorMessage).font(.caption).foregroundColor(.red)
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.red.opacity(0.15))
-                            .cornerRadius(10)
-                        }
-                        
-                        Spacer().frame(height: 4)
-                        
-                        Button(action: performLogin) {
-                            HStack {
-                                if isLoading {
-                                    ProgressView().tint(.white)
-                                } else {
-                                    Text("Sign In")
-                                    Image(systemName: "arrow.right.to.line")
-                                }
-                            }
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.red)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                        }
-                        .disabled(isLoading || email.isEmpty || password.isEmpty)
-                        .opacity((isLoading || email.isEmpty || password.isEmpty) ? 0.6 : 1.0)
-                    }
-                    .padding(24)
-                    .liquidGlass(cornerRadius: 24, opacity: 0.1)
-                    .padding(.horizontal, 20)
-                    
-                    Spacer().frame(height: 24)
-                    Text("Kinematic v1.0 · Secured").font(.caption2).foregroundColor(.gray)
-                    Spacer().frame(height: 32)
-                }
-            }
-            .ignoresSafeArea(.keyboard)
-        }
-    }
-    
-    private func performLogin() {
-        isLoading = true
-        Task {
-            let phone = email.allSatisfy({ $0.isNumber }) ? email : nil
-            let em = phone == nil ? email : ""
-            let (success, error) = await KinematicRepository.shared.login(email: em, phone: phone, pass: password)
-            await MainActor.run {
-                isLoading = false
-                if success {
-                    onSuccess()
-                } else {
-                    errorMessage = error ?? "Failed to login"
-                }
-            }
-        }
-    }
-}
+
 
 struct MainTabView: View {
-    @State private var selectedTab = 0
-    @State private var showSOS = false
+    @EnvironmentObject var appState: AppState
     
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                TabView(selection: $selectedTab) {
-                    HomeView().tag(0)
-                    AttendanceView().tag(1)
-                    RoutePlansView().tag(2)
-                    ActivityFeedView().tag(3)
-                }
-                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                
-                // Custom Tab Bar (Parity with Android Navigation)
-                HStack(spacing: 0) {
-                    TabBtn(i: "house.fill", l: "Home", s: selectedTab == 0) { selectedTab = 0 }
-                    TabBtn(i: "person.text.rectangle.fill", l: "Attendance", s: selectedTab == 1) { selectedTab = 1 }
-                    TabBtn(i: "map.fill", l: "Route", s: selectedTab == 2) { selectedTab = 2 }
-                    TabBtn(i: "clock.arrow.circlepath", l: "Activity", s: selectedTab == 3) { selectedTab = 3 }
-                }
-                .padding(.top, 12)
-                .padding(.bottom, 30)
-                .background(Color.black.opacity(0.8))
-                .overlay(Rectangle().frame(height: 0.5).foregroundColor(.white.opacity(0.1)), alignment: .top)
+        ZStack(alignment: .bottom) {
+            TabView(selection: $appState.selectedTab) {
+                HomeView().tag(0)
+                AttendanceView().tag(1)
+                RoutePlansView().tag(2)
             }
-            .ignoresSafeArea(edges: .bottom)
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+            .ignoresSafeArea()
+            
+            // Mirror Glass Floating Tab Bar
+            HStack(spacing: 0) {
+                TabBtn(i: "house.fill", l: "Home", s: appState.selectedTab == 0) { 
+                    withAnimation(.spring()) { appState.selectedTab = 0 }
+                }
+                TabBtn(i: "person.text.rectangle.fill", l: "Attendance", s: appState.selectedTab == 1) { 
+                    withAnimation(.spring()) { appState.selectedTab = 1 }
+                }
+                TabBtn(i: "map.fill", l: "Route", s: appState.selectedTab == 2) { 
+                    withAnimation(.spring()) { appState.selectedTab = 2 }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .background(MirrorGlassTabBarShape().fill(.ultraThinMaterial))
+            .overlay {
+                MirrorGlassTabBarShape()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.38),
+                                Color.white.opacity(0.10),
+                                Color.black.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .overlay {
+                MirrorGlassTabBarShape()
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.85),
+                                Color.white.opacity(0.18),
+                                Color.black.opacity(0.14)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .overlay(alignment: .top) {
+                MirrorGlassTabBarShape()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.34),
+                                .clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(height: 30)
+                    .padding(.horizontal, 18)
+                    .blur(radius: 8)
+            }
+            .shadow(color: Color.black.opacity(0.18), radius: 18, x: 0, y: 10)
+            .padding(.horizontal, 25)
+            .padding(.bottom, 25)
+            
+            // Side Menu Overlay
+            SideMenuView(isOpen: $appState.showSideMenu)
+        }
+        .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
+            SecondaryScreenHost(route: route)
         }
     }
 }
@@ -292,43 +143,92 @@ struct TabBtn: View {
     let i: String; let l: String; let s: Bool; let a: () -> Void
     var body: some View {
         Button(action: a) {
-            VStack(spacing: 4) {
-                Image(systemName: i).font(.system(size: 20))
-                Text(l).font(.system(size: 10, weight: .medium))
+            VStack(spacing: 6) {
+                ZStack {
+                    if s {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.42),
+                                        Color.white.opacity(0.08)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(Color.white.opacity(0.35), lineWidth: 0.8)
+                            )
+                            .frame(width: 52, height: 42)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                    Image(systemName: i)
+                        .font(.system(size: 20, weight: s ? .bold : .medium))
+                }
+                Text(l).font(.system(size: 10, weight: s ? .black : .bold))
             }
-            .foregroundColor(s ? .red : .gray)
+            .foregroundColor(s ? Color(uiColor: .label) : Color(uiColor: .label).opacity(0.48))
             .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+    }
+}
+
+struct MirrorGlassTabBarShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        RoundedRectangle(cornerRadius: 32, style: .continuous)
+            .path(in: rect)
     }
 }
 
 struct HomeView: View {
+    @EnvironmentObject var appState: AppState
     @StateObject var vm = HomeViewModel()
-    @EnvironmentObject var locationService: LocationTrackingService
     
     var body: some View {
         ZStack {
             VibrantBackgroundView()
             ScrollView {
-                VStack(spacing: 20) {
-                    // Header (Hello User)
+                VStack(spacing: 24) {
+                    // Modern App Bar Parity
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Hello,").font(.subheadline).foregroundColor(.gray)
-                            Text(Session.currentUser?.name ?? "Field Executive").font(.title2).fontWeight(.black).foregroundColor(.white)
+                            Text("Kinematic").font(.system(size: 28, weight: .black, design: .rounded)).foregroundColor(Color(uiColor: .label))
+                            Text("Field Operations Hub").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
+                        }
+                        Spacer()
+                        Button(action: { withAnimation { appState.showSideMenu = true } }) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.title3)
+                                .foregroundColor(Color(uiColor: .label))
+                                .padding(12)
+                                .background(Color(uiColor: .label).opacity(0.05))
+                                .clipShape(Circle())
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 20)
+    
+                    // Summary Info Row
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Summary").font(.subheadline).foregroundColor(.gray)
+                            Text(Session.currentUser?.name ?? "Field Executive").font(.title2).fontWeight(.black).foregroundColor(Color(uiColor: .label))
                         }
                         Spacer()
                         HStack(spacing: 12) {
                             Button(action: { Task { await vm.refresh() } }) {
-                                Image(systemName: "arrow.clockwise").padding(10).background(Color.white.opacity(0.1)).foregroundColor(.white).clipShape(Circle())
+                                Image(systemName: "arrow.clockwise").padding(10).background(Color(uiColor: .label).opacity(0.05)).foregroundColor(Color(uiColor: .label)).clipShape(Circle())
                             }
-                            Button(action: { AppState.shared.logout() }) {
-                                Image(systemName: "power").padding(10).background(Color.red.opacity(0.8)).foregroundColor(.white).clipShape(Circle())
+                            Button(action: { appState.logout() }) {
+                                Image(systemName: "power").padding(10).background(Color.red.opacity(0.1)).foregroundColor(.red).clipShape(Circle())
                             }
                         }
                     }
                     .padding(.horizontal, 25)
-                    .padding(.top, 60)
                     
                     // Selfie Status Card
                     SelfieStatusCard(record: vm.data?.today)
@@ -336,8 +236,8 @@ struct HomeView: View {
                     
                     // Stats Row
                     HStack(spacing: 12) {
-                        StatTile(label: "Stores", value: "\(vm.data?.routePlan?.flatMap { $0.outlets }.count ?? 0)", icon: "storefront.fill", color: .blue)
-                        StatTile(label: "Visited", value: "\(vm.data?.routePlan?.flatMap { $0.outlets }.filter { $0.status == "visited" }.count ?? 0)", icon: "checkmark.seal.fill", color: .green)
+                        StatTile(label: "Stores", value: "\(vm.totalStoreCount)", icon: "storefront.fill", color: .blue)
+                        StatTile(label: "Visited", value: "\(vm.visitedStoreCount)", icon: "checkmark.seal.fill", color: .green)
                         StatTile(label: "Forms", value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: .purple)
                     }
                     .padding(.horizontal, 20)
@@ -346,13 +246,50 @@ struct HomeView: View {
                     SessionCard(record: vm.data?.today)
                         .padding(.horizontal, 20)
                     
+                    // Broadcast / Announcement Card
+                    if vm.showSubmissionSuccess {
+                        HStack(spacing: 15) {
+                            ZStack {
+                                Circle().fill(Color.green.opacity(0.15)).frame(width: 45, height: 45)
+                                Image(systemName: "checkmark.seal.fill").font(.title3).foregroundColor(.green)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Submission Successful!").font(.headline).foregroundColor(Color(uiColor: .label))
+                                Text("Thank you for your response.").font(.caption).foregroundColor(.gray)
+                            }
+                            Spacer()
+                        }
+                        .padding(20)
+                        .liquidGlass()
+                        .padding(.horizontal, 20)
+                        .transition(.scale.combined(with: .opacity))
+                    } else if let b = vm.data?.broadcast, !(vm.data?.alreadyAnswered ?? b.alreadyAnswered) {
+                        BroadcastCard(broadcast: b) { selectedIndex in
+                            Task { await vm.submitBroadcastAnswer(id: b.id, selectedIndex: selectedIndex) }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    
                     // Route Preview
                     VStack(alignment: .leading, spacing: 15) {
-                        Text("TODAY'S ROUTE").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
+                        HStack {
+                            Text("TODAY'S ROUTE").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
+                            Spacer()
+                            Button(action: { appState.selectedTab = 2 }) {
+                                Text("VIEW ALL").font(.caption2).fontWeight(.bold).foregroundColor(.red)
+                            }
+                        }
                         
-                        if let outlets = vm.data?.routePlan?.flatMap({ $0.outlets }).prefix(3), !outlets.isEmpty {
-                            ForEach(outlets) { outlet in
-                                RoutePreviewRow(outlet: outlet)
+                        let previewOutlets = Array(vm.uniqueOutlets.prefix(3))
+                        
+                        if !previewOutlets.isEmpty {
+                            ForEach(previewOutlets) { outlet in
+                                Button(action: { 
+                                    appState.selectedOutlet = outlet
+                                    appState.selectedTab = 0
+                                }) {
+                                    RoutePreviewRow(outlet: outlet)
+                                }
                             }
                         } else {
                             Text("No stores assigned for today").font(.subheadline).foregroundColor(.gray).padding(.vertical, 10)
@@ -368,31 +305,41 @@ struct HomeView: View {
             .refreshable { await vm.refresh() }
         }
         .onAppear { Task { await vm.refresh() } }
+        .sheet(isPresented: $appState.attendanceVM.showCamera) {
+            ImagePicker(image: $appState.attendanceVM.selfie)
+                .ignoresSafeArea()
+        }
     }
 }
 
 struct SelfieStatusCard: View {
+    @EnvironmentObject var appState: AppState
     let record: AttendanceRecord?
     var isIn: Bool { record?.checkinAt != nil && record?.checkoutAt == nil }
     
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(isIn ? "Shift Active" : "Daily Selfie Required").font(.headline).foregroundColor(.white)
+                Text(isIn ? "Shift Active" : "Daily Selfie Required").font(.headline).foregroundColor(Color(uiColor: .label))
                 if isIn {
                     Text("Ongoing since \(formatTime(record?.checkinAt))").font(.caption).foregroundColor(.gray)
                 }
             }
             Spacer()
-            // Simplified button for now
-            Text(isIn ? "Selfie Out" : "Selfie In")
-                .font(.caption).fontWeight(.bold).foregroundColor(.white)
-                .padding(.horizontal, 15).padding(.vertical, 8)
-                .background(isIn ? Color.red : Color.blue).cornerRadius(20)
+            
+            Button(action: { 
+                appState.attendanceVM.startFlow()
+            }) {
+                Text(isIn ? "Selfie Out" : "Selfie In")
+                    .font(.caption).fontWeight(.bold).foregroundColor(.white)
+                    .padding(.horizontal, 15).padding(.vertical, 8)
+                    .background(isIn ? Color.red : Color.blue)
+                    .cornerRadius(8)
+            }
+            .disabled(appState.attendanceVM.isLoading)
         }
         .padding(18)
-        .background(Color.white.opacity(0.08))
-        .cornerRadius(22)
+        .liquidGlass()
     }
 }
 
@@ -402,7 +349,7 @@ struct StatTile: View {
         VStack(spacing: 12) {
             Image(systemName: icon).foregroundColor(color).font(.headline)
             VStack(spacing: 2) {
-                Text(value).font(.title3).fontWeight(.black).foregroundColor(.white)
+                Text(value).font(.title3).fontWeight(.black).foregroundColor(Color(uiColor: .label))
                 Text(label).font(.system(size: 10)).foregroundColor(.gray).fontWeight(.bold)
             }
         }
@@ -418,12 +365,12 @@ struct SessionCard: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text("Check-In").font(.caption).foregroundColor(.gray)
-                    Text(formatTime(record?.checkinAt)).font(.headline).foregroundColor(.white)
+                    Text(formatTime(record?.checkinAt)).font(.headline).foregroundColor(Color(uiColor: .label))
                 }
                 Spacer()
                 VStack(alignment: .trailing) {
                     Text("Check-Out").font(.caption).foregroundColor(.gray)
-                    Text(formatTime(record?.checkoutAt)).font(.headline).foregroundColor(.white)
+                    Text(formatTime(record?.checkoutAt)).font(.headline).foregroundColor(Color(uiColor: .label))
                 }
             }
             // Progress Bar simulation
@@ -436,6 +383,47 @@ struct SessionCard: View {
     }
 }
 
+struct BroadcastCard: View {
+    let broadcast: BroadcastQuestion
+    let onAnswer: (Int) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "megaphone.fill").font(.caption)
+                    Text("ANNOUNCEMENT").font(.system(size: 10, weight: .bold)).tracking(1)
+                }
+                .foregroundColor(broadcast.isUrgent ? .red : .blue)
+                Spacer()
+                if broadcast.alreadyAnswered {
+                    Text("ANSWERED").font(.system(size: 8, weight: .bold)).padding(4).background(Color.green.opacity(0.2)).foregroundColor(.green).cornerRadius(4)
+                }
+            }
+            
+            Text(broadcast.question)
+                .font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label)).lineLimit(3)
+            
+            if !broadcast.alreadyAnswered {
+                VStack(spacing: 8) {
+                    ForEach(Array(broadcast.options.prefix(3).enumerated()), id: \.element.value) { index, opt in
+                        Button(action: { onAnswer(index) }) {
+                            HStack {
+                                Text(opt.label).font(.caption).foregroundColor(Color(uiColor: .label))
+                                Spacer()
+                                Image(systemName: "circle").font(.caption).foregroundColor(.gray)
+                            }
+                            .padding(10).background(Color(uiColor: .label).opacity(0.05)).cornerRadius(10)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .liquidGlass()
+    }
+}
+
 struct RoutePreviewRow: View {
     let outlet: RouteOutlet
     var body: some View {
@@ -443,9 +431,9 @@ struct RoutePreviewRow: View {
             Image(systemName: outlet.status == "visited" ? "checkmark.circle.fill" : "storefront")
                 .foregroundColor(outlet.status == "visited" ? .green : .gray)
             VStack(alignment: .leading) {
-                Text(outlet.storeName).font(.subheadline).fontWeight(.bold).foregroundColor(.white)
-                if !outlet.activities.isEmpty {
-                    Text("\(outlet.activities.count) tasks assigned").font(.system(size: 10)).foregroundColor(.gray)
+                Text(outlet.storeName ?? "Unknown Store").font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label))
+                if let activities = outlet.activities, !activities.isEmpty {
+                    Text("\(activities.count) tasks assigned").font(.system(size: 10)).foregroundColor(.gray)
                 }
             }
             Spacer()
@@ -467,16 +455,36 @@ func formatTime(_ iso: String?) -> String {
 }
 
 struct RoutePlansView: View {
+    @EnvironmentObject var appState: AppState
     @StateObject var vm = RoutePlansViewModel()
     var body: some View {
         ZStack {
             VibrantBackgroundView()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Today's Route").font(.largeTitle).fontWeight(.black).foregroundColor(.white).padding(.top, 60).padding(.horizontal)
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Button(action: { withAnimation { appState.showSideMenu = true } }) {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.title2)
+                            .foregroundColor(Color(uiColor: .label))
+                            .padding(10)
+                            .background(Color(uiColor: .label).opacity(0.05))
+                            .clipShape(Circle())
+                    }
+                    Text("Today's Route").font(.title3).fontWeight(.bold).foregroundColor(Color(uiColor: .label)).padding(.leading, 8)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                .padding(.bottom, 10)
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Original Large Title (removed top padding to fit new header)
+                        Text("Route Details").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.horizontal)
                     
                     if vm.isLoading && vm.plans.isEmpty {
-                        ProgressView().tint(.white).frame(maxWidth: .infinity).padding(.top, 50)
+                        ProgressView().tint(.red).frame(maxWidth: .infinity).padding(.top, 50)
                     } else if vm.plans.isEmpty {
                         VStack(spacing: 15) {
                             Image(systemName: "calendar.badge.exclamationmark").font(.system(size: 50)).foregroundColor(.gray)
@@ -484,7 +492,7 @@ struct RoutePlansView: View {
                         }.frame(maxWidth: .infinity).padding(.top, 100)
                     } else {
                         ForEach(vm.plans) { plan in
-                            ForEach(plan.outlets) { outlet in
+                            ForEach(plan.outlets ?? []) { outlet in
                                 OutletCard(outlet: outlet)
                             }
                         }
@@ -494,16 +502,18 @@ struct RoutePlansView: View {
             }
             .refreshable { await vm.refresh() }
         }
+        }
         .onAppear { Task { await vm.refresh() } }
     }
 }
 
 struct OutletCard: View {
+    @EnvironmentObject var appState: AppState
     let outlet: RouteOutlet
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(outlet.storeName).font(.headline).foregroundColor(.white)
+                Text(outlet.storeName ?? "Unknown Store").font(.headline).foregroundColor(Color(uiColor: .label))
                 Spacer()
                 if outlet.status == "visited" {
                     Text("COMPLETED").font(.system(size: 8, weight: .bold)).padding(5).background(Color.green.opacity(0.2)).foregroundColor(.green).cornerRadius(5)
@@ -514,12 +524,18 @@ struct OutletCard: View {
             HStack {
                 HStack(spacing: 4) {
                     Image(systemName: "list.clipboard").font(.caption)
-                    Text("\(outlet.activities.count) Tasks").font(.caption).fontWeight(.bold)
+                    Text("\((outlet.activities ?? []).count) Tasks").font(.caption).fontWeight(.bold)
                 }.foregroundColor(.purple)
                 Spacer()
-                Text(outlet.status == "visited" ? "View Details" : "Start Visit")
-                    .font(.caption2).fontWeight(.black).padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(outlet.status == "visited" ? Color.gray.opacity(0.2) : Color.red).foregroundColor(.white).cornerRadius(15)
+                Button(action: {
+                    // Start Visit Action: Navigate to Home showing StoreVisitView
+                    appState.selectedOutlet = outlet
+                    appState.selectedTab = 0
+                }) {
+                    Text(outlet.status == "visited" ? "View Details" : "Start Visit")
+                        .font(.caption2).fontWeight(.black).padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(outlet.status == "visited" ? Color.gray.opacity(0.2) : Color.red).foregroundColor(.white).cornerRadius(15)
+                }
             }
             .padding(.top, 5)
         }
@@ -528,35 +544,112 @@ struct OutletCard: View {
 }
 
 struct AttendanceView: View {
-    @StateObject var vm = AttendanceViewModel()
+    @EnvironmentObject var appState: AppState
+    var vm: AttendanceViewModel { appState.attendanceVM }
     @EnvironmentObject var locationService: LocationTrackingService
+    @State private var currentTime = Date()
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
         ZStack {
             VibrantBackgroundView()
-            ScrollView {
-                VStack(spacing: 25) {
-                    Text("Attendance").font(.largeTitle).fontWeight(.black).foregroundColor(.white).padding(.top, 60).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Button(action: { withAnimation { appState.showSideMenu = true } }) {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.title2)
+                            .foregroundColor(Color(uiColor: .label))
+                            .padding(10)
+                            .background(Color(uiColor: .label).opacity(0.05))
+                            .clipShape(Circle())
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                
+                ScrollView {
+                    VStack(spacing: 25) {
+                        Text("Attendance").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 10).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
                     
-                    // Main Status
-                    VStack(spacing: 20) {
-                        Image(systemName: vm.today?.checkinAt != nil ? "checkmark.shield.fill" : "person.fill.viewfinder")
-                            .font(.system(size: 60)).foregroundColor(vm.today?.checkinAt != nil ? .green : .red)
-                        VStack(spacing: 5) {
-                            Text(vm.today?.checkinAt != nil ? "Currently Active" : "Not Logged In").font(.title3).fontWeight(.bold).foregroundColor(.white)
-                            Text("Your location is being tracked").font(.caption).foregroundColor(.gray)
+                    // Main Status Card
+                    VStack(spacing: 24) {
+                        // Live Clock & Date
+                        VStack(spacing: 4) {
+                            Text(currentTime.formatted(date: .omitted, time: .shortened))
+                                .font(.system(size: 44, weight: .black, design: .rounded))
+                                .foregroundColor(Color(uiColor: .label))
+                            Text(currentTime.formatted(date: .complete, time: .omitted))
+                                .font(.caption).fontWeight(.bold).foregroundColor(.gray).textCase(.uppercase)
+                        }
+                        
+                        // Selfie Preview / Capture
+                        VStack(spacing: 12) {
+                            Button(action: { vm.showCamera = true }) {
+                                ZStack {
+                                    Circle().fill(Color.white.opacity(0.05)).frame(width: 140, height: 140)
+                                    if let img = vm.selfie {
+                                        Image(uiImage: img)
+                                            .resizable().aspectRatio(contentMode: .fill)
+                                            .frame(width: 130, height: 130).clipShape(Circle())
+                                    } else {
+                                        VStack(spacing: 8) {
+                                            Image(systemName: "camera.fill").font(.title).foregroundColor(.red)
+                                            Text("Take Selfie").font(.caption2).fontWeight(.bold).foregroundColor(.gray)
+                                        }
+                                    }
+                                }
+                                .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            }
+                            
+                            // Simulator Fallback Button
+                            if !UIImagePickerController.isSourceTypeAvailable(.camera) {
+                                Button(action: { vm.useMockSelfie() }) {
+                                    Label("Simulator: Use Mock", systemImage: "testtube.2")
+                                        .font(.caption2).fontWeight(.black).padding(.horizontal, 12).padding(.vertical, 6)
+                                        .background(Color.white.opacity(0.1)).foregroundColor(.white).cornerRadius(10)
+                                }
+                            }
+                        }
+                        
+                        // Status Info
+                        VStack(spacing: 8) {
+                            HStack(spacing: 6) {
+                                Circle().fill(vm.today?.checkinAt != nil ? Color.green : Color.red).frame(width: 8, height: 8)
+                                Text(vm.today?.checkinAt != nil ? "Shift: Active" : "Shift: Inactive")
+                                    .font(.headline).foregroundColor(Color(uiColor: .label))
+                            }
+                            
+                            if let loc = locationService.lastLocation {
+                                Text(String(format: "Location: %.4f, %.4f", loc.coordinate.latitude, loc.coordinate.longitude))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.gray)
+                            } else {
+                                Text("Waiting for GPS...").font(.caption2).foregroundColor(.red.opacity(0.8))
+                            }
+                        }
+                        
+                        if !vm.message.isEmpty {
+                            Text(vm.message).font(.caption).foregroundColor(vm.message.contains("Success") || vm.message.contains("Checked") ? .green : .red)
+                                .padding(.horizontal, 12).padding(.vertical, 4).background(Color.white.opacity(0.05)).cornerRadius(8)
                         }
                         
                         Button(action: { 
                             if let loc = locationService.lastLocation { Task { await vm.toggleAttendance(loc: loc) } }
                         }) {
-                            if vm.isLoading {
-                                ProgressView().tint(.white)
-                            } else {
-                                Text(vm.today?.checkinAt != nil ? "CHECK OUT" : "CHECK IN").fontWeight(.black)
+                            HStack {
+                                if vm.isLoading {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Image(systemName: vm.today?.checkinAt != nil ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
+                                    Text(vm.today?.checkinAt != nil ? "CHECK OUT NOW" : "CHECK IN NOW").fontWeight(.black)
+                                }
                             }
                         }
-                        .frame(maxWidth: .infinity).padding().background(vm.today?.checkinAt != nil ? Color.gray.opacity(0.3) : Color.red).foregroundColor(.white).cornerRadius(15)
+                        .frame(maxWidth: .infinity).padding().background(vm.today?.checkinAt != nil ? Color.gray.opacity(0.3) : Color.red).foregroundColor(.white).cornerRadius(18)
+                        .disabled(vm.isLoading || (vm.selfie == nil && vm.today?.checkinAt == nil))
+                        .opacity((vm.selfie == nil && vm.today?.checkinAt == nil) ? 0.5 : 1.0)
                     }
                     .padding(30).liquidGlass().padding(.horizontal, 20)
                     
@@ -564,14 +657,54 @@ struct AttendanceView: View {
                     Text("RECENT HISTORY").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 25)
                     
                     VStack(spacing: 12) {
-                        EmptyHistoryRow() // Placeholder for actual history list
+                        if let t = vm.today {
+                            AttendanceHistoryRow(record: t)
+                        } else {
+                            EmptyHistoryRow()
+                        }
                     }.padding(.horizontal, 20)
                     
                     Spacer().frame(height: 120)
                 }
             }
         }
+    }
+    .onReceive(timer) { _ in currentTime = Date() }
+        .sheet(isPresented: $appState.attendanceVM.showCamera) {
+            ImagePicker(image: $appState.attendanceVM.selfie)
+                .ignoresSafeArea()
+        }
         .onAppear { Task { await vm.refresh() } }
+    }
+}
+
+struct AttendanceHistoryRow: View {
+    let record: AttendanceRecord
+    var body: some View {
+        HStack(spacing: 15) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.1)).frame(width: 50, height: 50)
+                VStack(spacing: -2) {
+                    Text("13").font(.headline).foregroundColor(Color(uiColor: .label))
+                    Text("APR").font(.system(size: 8, weight: .bold)).foregroundColor(.green)
+                }
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Full Shift Completed").font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label))
+                HStack(spacing: 10) {
+                    Label(formatTime(record.checkinAt), systemImage: "clock").font(.caption2).foregroundColor(.gray)
+                    if record.checkoutAt != nil {
+                        Label(formatTime(record.checkoutAt), systemImage: "clock.fill").font(.caption2).foregroundColor(.gray)
+                    }
+                }
+            }
+            Spacer()
+            if let hours = record.totalHours {
+                Text(String(format: "%.1f hrs", hours)).font(.caption).fontWeight(.black).padding(6).background(Color.white.opacity(0.08)).cornerRadius(8)
+            }
+        }
+        .padding().liquidGlass()
     }
 }
 
@@ -586,64 +719,70 @@ struct EmptyHistoryRow: View {
 }
 
 struct ActivityFeedView: View {
+    @EnvironmentObject var appState: AppState
     @StateObject var vm = ActivityFeedViewModel()
+    
     var body: some View {
-        ZStack {
-            VibrantBackgroundView()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Work Feed").font(.largeTitle).fontWeight(.black).foregroundColor(.white).padding(.top, 60).padding(.horizontal)
-                    
-                    if vm.isLoading && vm.items.isEmpty {
-                        ProgressView().tint(.white).frame(maxWidth: .infinity).padding(.top, 50)
-                    } else if vm.items.isEmpty {
-                        VStack(spacing: 15) {
-                            Image(systemName: "bubble.left.and.exclamationmark.bubble.right").font(.system(size: 50)).foregroundColor(.gray)
-                            Text("No recent activity found").foregroundColor(.gray)
-                        }.frame(maxWidth: .infinity).padding(.top, 100)
-                    } else {
-                        ForEach(vm.items) { item in
-                            ActivityRow(item: item)
+        if appState.selectedOutlet != nil {
+            StoreVisitView()
+        } else {
+            ZStack {
+                VibrantBackgroundView()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("Work Feed").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 60).padding(.horizontal)
+                        
+                        if vm.isLoading && vm.items.isEmpty {
+                            ProgressView().tint(.red).frame(maxWidth: .infinity).padding(.top, 50)
+                        } else if vm.items.isEmpty {
+                            VStack(spacing: 15) {
+                                Image(systemName: "bubble.left.and.exclamationmark.bubble.right").font(.system(size: 50)).foregroundColor(.gray)
+                                Text("No recent activity found").foregroundColor(.gray)
+                            }.frame(maxWidth: .infinity).padding(.top, 100)
+                        } else {
+                            ForEach(vm.items) { item in
+                                ActivityRow(item: item)
+                            }
                         }
+                        Spacer().frame(height: 120)
                     }
-                    Spacer().frame(height: 120)
+                }
+                .refreshable { await vm.refresh() }
+            }
+            .onAppear { Task { await vm.refresh() } }
+        }
+    }
+    
+    struct ActivityRow: View {
+        let item: ActivityFeedItem
+        var body: some View {
+            HStack(spacing: 15) {
+                Image(systemName: "doc.plaintext.fill").foregroundColor(.purple).font(.title3).padding(12).background(Color.purple.opacity(0.1)).clipShape(Circle())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.outletName ?? "General Submission").font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label))
+                    Text(formatTime(item.submittedAt)).font(.caption2).foregroundColor(.gray)
+                }
+                Spacer()
+                if item.isConverted {
+                    Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.caption)
                 }
             }
-            .refreshable { await vm.refresh() }
+            .padding(15).liquidGlass().padding(.horizontal, 20)
         }
-        .onAppear { Task { await vm.refresh() } }
     }
 }
 
-struct ActivityRow: View {
-    let item: ActivityFeedItem
-    var body: some View {
-        HStack(spacing: 15) {
-            Image(systemName: "doc.plaintext.fill").foregroundColor(.purple).font(.title3).padding(12).background(Color.purple.opacity(0.1)).clipShape(Circle())
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.outletName ?? "General Submission").font(.subheadline).fontWeight(.bold).foregroundColor(.white)
-                Text(formatTime(item.submittedAt)).font(.caption2).foregroundColor(.gray)
+    struct SOSView: View {
+        @Environment(\.dismiss) var d; @StateObject var vm = SOSViewModel()
+        var body: some View {
+            ZStack {
+                Color.red.ignoresSafeArea()
+                VStack(spacing: 40) {
+                    Text("EMERGENCY SOS").font(.largeTitle.bold()).foregroundColor(.white)
+                    Text("\(vm.countdown)").font(.system(size: 120, weight: .bold)).foregroundColor(.white)
+                    Button("CANCEL") { d() }.padding().background(.white.opacity(0.2)).cornerRadius(12).foregroundColor(.white)
+                }
             }
-            Spacer()
-            if item.isConverted { 
-                Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.caption)
-            }
+            .onAppear { vm.start() }
         }
-        .padding(15).liquidGlass().padding(.horizontal, 20)
     }
-}
-
-struct SOSView: View {
-    @Environment(\.dismiss) var d; @StateObject var vm = SOSViewModel()
-    var body: some View {
-        ZStack {
-            Color.red.ignoresSafeArea()
-            VStack(spacing: 40) {
-                Text("EMERGENCY SOS").font(.largeTitle.bold()).foregroundColor(.white)
-                Text("\(vm.countdown)").font(.system(size: 120, weight: .bold)).foregroundColor(.white)
-                Button("CANCEL") { d() }.padding().background(.white.opacity(0.2)).cornerRadius(12).foregroundColor(.white)
-            }
-        }
-        .onAppear { vm.start() }
-    }
-}

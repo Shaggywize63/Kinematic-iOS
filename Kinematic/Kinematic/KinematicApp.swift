@@ -4,22 +4,57 @@ import CoreLocation
 
 // --- MODELS ---
 struct User: Codable, Identifiable {
-    let id, name, role: String
+    let id: String
+    let name: String
+    let role: String
     let email: String?
     let mobile: String?
-    let organizationName: String?
+    let orgId: String?
+    
     enum CodingKeys: String, CodingKey {
         case id, name, email, role, mobile
-        case organizationName = "org_id"
+        case orgId = "org_id"
     }
 }
 
 // --- APP STATE ---
+enum SecondaryRoute: String, Identifiable {
+    case profile, broadcast, learning, settings
+    var id: String { rawValue }
+}
+
+enum AppTheme: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+}
+
 class AppState: ObservableObject {
-    @Published var isAuthenticated = Session.isAuthenticated
-    @Published var isSplashScreenActive = true
-    
     static let shared = AppState()
+    @Published var isAuthenticated = Session.isAuthenticated
+    @Published var selectedTab: Int = 0
+    @Published var selectedOutlet: RouteOutlet? = nil
+    @Published var attendanceVM = AttendanceViewModel()
+    
+    // --- Shared Home Data (Parity with Android AppViewModel) ---
+    @Published var summary: AnalyticsSummary? = nil
+    @Published var quote: MotivationQuote? = nil
+    
+    // --- Navigation & UI ---
+    @Published var showSideMenu = false
+    @Published var activeSecondaryRoute: SecondaryRoute? = nil
+    @Published var theme: AppTheme = .dark {
+        didSet { UserDefaults.standard.set(theme.rawValue, forKey: "app_theme") }
+    }
+    
+    // --- Visit Management ---
+    @Published var activeVisitId: String? = nil
+    @Published var activeVisitOutletId: String? = nil
+    
+    init() {
+        // Load persisted theme or default to dark
+        let savedTheme = UserDefaults.standard.string(forKey: "app_theme") ?? AppTheme.dark.rawValue
+        self.theme = AppTheme(rawValue: savedTheme) ?? .dark
+    }
     
     func checkAuth() {
         self.isAuthenticated = Session.isAuthenticated
@@ -28,6 +63,9 @@ class AppState: ObservableObject {
     func logout() {
         Session.logout()
         self.isAuthenticated = false
+        self.selectedTab = 0
+        self.showSideMenu = false
+        self.activeSecondaryRoute = nil
     }
 }
 
@@ -52,10 +90,12 @@ struct ApiResponse<T: Codable>: Codable {
     let success: Bool
     let data: T?
     let error: String?
+    let message: String?
 }
 
 struct AttendanceRecord: Codable {
-    let id, date: String
+    let id: String?
+    let date: String?
     let status: String?
     let checkinAt: String?
     let checkoutAt: String?
@@ -73,6 +113,11 @@ struct AttendanceRecord: Codable {
     }
 }
 
+struct UploadResponse: Codable {
+    let url: String
+    let path: String?
+}
+
 struct AnalyticsSummary: Codable {
     let tffCount: Int
     enum CodingKeys: String, CodingKey {
@@ -85,16 +130,46 @@ struct MotivationQuote: Codable {
     let author: String?
 }
 
+struct BroadcastOption: Codable {
+    let label: String
+    let value: String
+}
+
+struct BroadcastQuestion: Codable, Identifiable {
+    let id: String
+    let question: String
+    let isUrgent: Bool
+    var alreadyAnswered: Bool
+    let options: [BroadcastOption]
+    let createdAt: String?
+    let deadlineAt: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, question, options
+        case isUrgent = "is_urgent"
+        case alreadyAnswered = "already_answered"
+        case createdAt = "created_at"
+        case deadlineAt = "deadline_at"
+    }
+}
+
+struct SubmitAnswerRequest: Codable {
+    let selected: Int
+}
+
 struct MobileHomeResponse: Codable {
     let today: AttendanceRecord?
     let summary: AnalyticsSummary?
     let routePlan: [RoutePlan]?
     let unreadCount: Int?
     let quote: MotivationQuote?
+    var alreadyAnswered: Bool?
+    var broadcast: BroadcastQuestion?
     
     enum CodingKeys: String, CodingKey {
-        case today, summary, quote, unreadCount
-        case routePlan = "route_plans"
+        case today, summary, quote, unreadCount, broadcast
+        case alreadyAnswered = "already_answered"
+        case routePlan = "routePlan"
     }
 }
 
@@ -111,27 +186,140 @@ struct ActivityFeedItem: Codable, Identifiable {
     }
 }
 
+// ── LEARNING MODELS (Parity with Android) ─────────────────
+struct LearningProgress: Codable {
+    let isCompleted: Bool?
+    let progressPct: Int?
+    let lastAccessed: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case isCompleted = "is_completed"
+        case progressPct = "progress_pct"
+        case lastAccessed = "last_accessed"
+    }
+}
+
+struct LearningMaterial: Codable, Identifiable {
+    let id: String
+    let title: String
+    let category: String?
+    let type: String? // video, pdf, image, link
+    let fileUrl: String?
+    let description: String?
+    let isMandatory: Bool?
+    let thumbnailUrl: String?
+    let myProgress: LearningProgress?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, title, category, type, description
+        case fileUrl = "file_url"
+        case isMandatory = "is_mandatory"
+        case thumbnailUrl = "thumbnail_url"
+        case myProgress = "my_progress"
+    }
+}
+
+// ── FORMS MODELS (Parity with Android) ─────────────────────
+struct FormTemplate: Codable {
+    let id: String
+    let activityId: String
+    let name: String
+    let description: String?
+    let requiresPhoto: Bool
+    let requiresGps: Bool
+    let fields: [FormField]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, fields
+        case activityId = "activity_id"
+        case requiresPhoto = "requires_photo"
+        case requiresGps = "requires_gps"
+    }
+}
+
+struct FormField: Codable, Identifiable {
+    let id: String
+    let label: String
+    let fieldKey: String
+    let fieldType: String // text, number, select, signature, section, etc.
+    let placeholder: String?
+    let isRequired: Bool
+    let options: [FormOption]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, label, options
+        case fieldKey = "field_key"
+        case fieldType = "field_type"
+        case placeholder = "placeholder"
+        case isRequired = "is_required"
+    }
+}
+
+struct FormOption: Codable {
+    let label: String
+    let value: String
+}
+
+struct FormSubmissionRequest: Codable {
+    let templateId: String
+    let activityId: String?
+    let outletId: String?
+    let submittedAt: String
+    let responses: [FormResponse]
+    
+    enum CodingKeys: String, CodingKey {
+        case responses
+        case templateId = "template_id"
+        case activityId = "activity_id"
+        case outletId = "outlet_id"
+        case submittedAt = "submitted_at"
+    }
+}
+
+struct FormResponse: Codable {
+    let fieldId: String
+    let value: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case value
+        case fieldId = "field_id"
+    }
+}
+
 struct RoutePlan: Codable, Identifiable {
-    let id, date, status: String
-    var outlets: [RouteOutlet]
+    let id: String?
+    let planDate: String?
+    let status: String?
+    var outlets: [RouteOutlet]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, status, outlets
+        case planDate = "plan_date"
+    }
 }
 
 struct RouteOutlet: Codable, Identifiable {
-    let id, storeId, storeName: String
+    let rawId: String?
+    let storeId: String?
+    let storeName: String?
     let address: String?
-    let status: String
-    var activities: [RouteActivity]
+    let status: String?
+    var activities: [RouteActivity]?
+    
+    var id: String { rawId ?? storeId ?? UUID().uuidString }
+    
     enum CodingKeys: String, CodingKey {
-        case id, status, activities, address
+        case status, activities, address
+        case rawId = "id"
         case storeId = "store_id"
         case storeName = "store_name"
     }
 }
 
 struct RouteActivity: Codable, Identifiable {
-    let id, title: String
-    let description: String?
-    let type, status: String
+    let id: String?
+    let name: String?
+    let status: String?
 }
 
 // --- SERVICES ---
@@ -176,12 +364,18 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        #if !targetEnvironment(simulator)
-        locationManager.allowsBackgroundLocationUpdates = true
-        #endif
+        
+        // Defer background update activation to prevent launch-time crashes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            #if !targetEnvironment(simulator)
+            // CRITICAL: This requires 'location' in UIBackgroundModes in project settings/Info.plist
+            self.locationManager.allowsBackgroundLocationUpdates = true
+            #endif
+        }
     }
     func requestPermissions() { locationManager.requestWhenInUseAuthorization() }
     func startTracking() { locationManager.startUpdatingLocation() }
+    func stopTracking() { locationManager.stopUpdatingLocation() }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         self.lastLocation = locations.last
     }
@@ -191,94 +385,301 @@ class KinematicRepository {
     static let shared = KinematicRepository()
     private let baseURL = "https://kinematic-production.up.railway.app/api/v1"
     
+    func logVisit(outletId: String, lat: Double, lng: Double) async -> String? {
+        if Session.isDemoMode { return "demo-visit-id" }
+        do {
+            let payload: [String: Any] = [
+                "visit_outlet_id": outletId,
+                "latitude": lat,
+                "longitude": lng,
+                "rating": "good",
+                "remarks": "Visit started"
+            ]
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            
+            // Using a generic [String: Any] response dictionary for flexibility with the visit log ID
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/visits",
+                method: "POST",
+                body: body
+            )
+            return res?.data?["id"]
+        } catch {
+            print("❌ LOG_VISIT_ERROR: \(error)")
+            return nil
+        }
+    }
+    
+    // --- New Deep Diagnostic Helper ---
+    private func performRequest<T: Codable>(
+        _ path: String,
+        method: String = "GET",
+        body: Data? = nil,
+        queryItems: [URLQueryItem]? = nil
+    ) async throws -> ApiResponse<T>? {
+        var urlComponents = URLComponents(string: "\(baseURL)\(path)")
+        if let queryItems = queryItems {
+            urlComponents?.queryItems = queryItems
+        }
+        
+        guard let url = urlComponents?.url else {
+            print("🚩 ERROR: Invalid URL for path \(path)")
+            return nil
+        }
+        
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+        
+        // --- PROD SYNC: Inject X-Org-Id if available ---
+        if let orgId = Session.currentUser?.orgId {
+            req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
+        }
+        
+        if let body = body {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+        }
+        
+        print("🚀 API_START: \(method) \(url.absoluteString)")
+        if let orgId = req.value(forHTTPHeaderField: "X-Org-Id") {
+            print("🔑 ORG_ID: \(orgId)")
+        }
+        
+        let (data, response) = try await URLSession.shared.data(for: req)
+        
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        print("📡 API_END: Status \(statusCode) for \(path)")
+        
+        if statusCode == 401 {
+            print("⚠️ AUTH_ERROR: Unauthorized (401). Triggering Auto-Logout.")
+            await MainActor.run { 
+                Session.logout()
+                AppState.shared.checkAuth()
+            }
+        }
+        
+        do {
+            let decoder = JSONDecoder()
+            let result = try decoder.decode(ApiResponse<T>.self, from: data)
+            if !result.success {
+                print("🚨 API_LOGIC_ERROR: \(result.error ?? result.message ?? "Unknown error")")
+            }
+            return result
+        } catch {
+            if let rawJson = String(data: data, encoding: .utf8) {
+                print("❌ DECODE_ERROR at \(path): \(error)")
+                print("📦 RAW_JSON: \(rawJson)")
+            }
+            throw error
+        }
+    }
+    
+    func getFormTemplates(activityId: String) async -> FormTemplate? {
+        if Session.isDemoMode { return nil }
+        print("LOADING_TEMPLATE_FOR_ACTIVITY: \(activityId)")
+        
+        do {
+            let res: ApiResponse<[FormTemplate]>? = try await performRequest(
+                "/forms/templates",
+                queryItems: [URLQueryItem(name: "activity_id", value: activityId)]
+            )
+            return res?.data?.first
+        } catch {
+            return nil
+        }
+    }
+    
+    func submitForm(request: FormSubmissionRequest) async -> Bool {
+        if Session.isDemoMode { return true }
+        do {
+            let body = try? JSONEncoder().encode(request)
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/forms/submit",
+                method: "POST",
+                body: body
+            )
+            return res?.success ?? false
+        } catch {
+            return false
+        }
+    }
+    
+    // --- BROADCAST ---
+    func getBroadcastHistory() async -> [BroadcastQuestion] {
+        if Session.isDemoMode { return [] }
+        do {
+            let res: ApiResponse<[BroadcastQuestion]>? = try await performRequest("/analytics/broadcasts")
+            return res?.data ?? []
+        } catch {
+            return []
+        }
+    }
+    
+    func sendBroadcastAnswer(id: String, selectedIndex: Int) async -> Bool {
+        if Session.isDemoMode { return true }
+        do {
+            let payload = SubmitAnswerRequest(selected: selectedIndex)
+            let body = try? JSONEncoder().encode(payload)
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/analytics/broadcasts/\(id)/answer",
+                method: "POST",
+                body: body
+            )
+            return res?.success ?? false
+        } catch {
+            return false
+        }
+    }
+    
+    // --- LEARNING HUB ---
+    func getLearningMaterials() async -> [LearningMaterial] {
+        if Session.isDemoMode { return [] }
+        do {
+            let res: ApiResponse<[LearningMaterial]>? = try await performRequest("/analytics/learning")
+            return res?.data ?? []
+        } catch {
+            return []
+        }
+    }
+    
     func login(email: String, phone: String?, pass: String) async -> (Bool, String?) {
-        // --- DEMO MODE INTERCEPTION ---
         if email.lowercased() == "demo@kinematic.com" {
             await MainActor.run {
                 Session.isDemoMode = true
                 Session.sharedToken = "demo-token-123"
-                Session.currentUser = User(id: "demo-id", name: "Demo Executive", role: "Field Executive", email: "demo@kinematic.com", mobile: "9999999999", organizationName: "Kinematic Demo")
+                Session.currentUser = User(id: "demo-id", name: "Demo Executive", role: "Field Executive", email: "demo@kinematic.com", mobile: "9999999999", orgId: "Kinematic Demo")
                 AppState.shared.checkAuth()
             }
             return (true, nil)
         }
         
         guard let url = URL(string: "\(baseURL)/auth/login") else { return (false, "Invalid URL") }
+        let identifier = (phone != nil && !phone!.isEmpty) ? phone! : email
+        let payload: [String: String] = ["email": identifier, "password": pass]
+        
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(payload)
         
-        var payload: [String: String] = ["password": pass]
-        if !email.isEmpty { payload["email"] = email }
-        if let p = phone, !p.isEmpty { payload["mobile"] = p }
-        
-        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        print("🚀 API_LOGIN_START: \(url.absoluteString) for \(identifier)")
         
         do {
-            let (data, _) = try await URLSession.shared.data(for: req)
-            let result = try JSONDecoder().decode(LoginResponseModel.self, from: data)
-            if result.success, let t = result.data?.accessToken {
-                await MainActor.run { 
-                    Session.sharedToken = t
-                    Session.currentUser = result.data?.user
-                    AppState.shared.checkAuth()
+            let (data, response) = try await URLSession.shared.data(for: req)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            print("📡 API_LOGIN_END: Status \(statusCode)")
+            
+            do {
+                let result = try JSONDecoder().decode(LoginResponseModel.self, from: data)
+                if result.success, let t = result.data?.accessToken {
+                    await MainActor.run { 
+                        Session.sharedToken = t
+                        Session.currentUser = result.data?.user
+                        AppState.shared.checkAuth()
+                    }
+                    return (true, nil)
                 }
-                return (true, nil)
+                return (false, result.error ?? "Login rejected")
+            } catch {
+                if let rawJson = String(data: data, encoding: .utf8) {
+                    print("❌ LOGIN_DECODE_ERROR: \(error)")
+                    print("📦 RAW_JSON: \(rawJson)")
+                }
+                return (false, error.localizedDescription)
             }
-            return (false, result.error ?? "Login failed")
         } catch {
             return (false, error.localizedDescription)
         }
     }
     
-    func markAttendance(isCheckIn: Bool, lat: Double, lng: Double) async -> (Bool, String?) {
-        if Session.isDemoMode { return (true, nil) }
+    func uploadImage(image: UIImage, type: String) async -> String? {
+        if Session.isDemoMode { return "https://demo.kinematic.com/selfie.jpg" }
         
-        let endpoint = isCheckIn ? "checkin" : "checkout"
-        guard let url = URL(string: "\(baseURL)/attendance/\(endpoint)") else { return (false, "Invalid URL") }
+        let url = URL(string: "\(baseURL)/upload/\(type)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+        if let orgId = Session.currentUser?.orgId { request.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
         
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         
-        let payload: [String: Any] = ["latitude": lat, "longitude": lng]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        guard let imageData = image.jpegData(compressionQuality: 0.5) else { return nil }
+        
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"selfie.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        print("🚀 UPLOAD_START: \(url.absoluteString)")
         
         do {
-            let (data, _) = try await URLSession.shared.data(for: req)
-            let result = try JSONDecoder().decode(ApiResponse<AttendanceRecord>.self, from: data)
-            if result.success { return (true, nil) }
-            return (false, result.error ?? "Failed to mark attendance")
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let res = try JSONDecoder().decode(ApiResponse<UploadResponse>.self, from: data)
+            return res.data?.url
+        } catch {
+            print("❌ UPLOAD_ERROR: \(error)")
+            return nil
+        }
+    }
+    
+    func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil) async -> (Bool, String?) {
+        if Session.isDemoMode { return (true, nil) }
+        let endpoint = isCheckIn ? "/attendance/checkin" : "/attendance/checkout"
+        
+        do {
+            var payload: [String: Any] = ["latitude": lat, "longitude": lng]
+            if let selfie = selfieUrl { payload["selfie_url"] = selfie }
+            if let battery = battery { payload["battery_percentage"] = battery }
+            
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<AttendanceRecord>? = try await performRequest(
+                endpoint,
+                method: "POST",
+                body: body
+            )
+            if res?.success == true { return (true, nil) }
+            return (false, res?.error ?? res?.message ?? "Failed to mark attendance")
         } catch {
             return (false, error.localizedDescription)
+        }
+    }
+    
+    func logSecurityViolation(type: String, action: String, lat: Double?, lng: Double?) async {
+        if Session.isDemoMode { return }
+        do {
+            let payload: [String: Any?] = ["type": type, "action": action, "lat": lat, "lng": lng]
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            _ = try await performRequest(
+                "/security/alert",
+                method: "POST",
+                body: body
+            ) as ApiResponse<[String: String]>?
+        } catch {
+            print("❌ SECURITY_LOG_ERROR: \(error)")
         }
     }
     
     func getMobileHome() async -> MobileHomeResponse? {
         if Session.isDemoMode { return mockMobileHome() }
-        
-        guard let url = URL(string: "\(baseURL)/analytics/mobile-home") else { return nil }
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, _) = try await URLSession.shared.data(for: req)
-            return try JSONDecoder().decode(MobileHomeResponse.self, from: data)
+            let res: ApiResponse<MobileHomeResponse>? = try await performRequest("/analytics/mobile-home")
+            return res?.data
         } catch {
-            print("Home fetch error: \(error)")
             return nil
         }
     }
     
     func getFeed() async -> [ActivityFeedItem] {
         if Session.isDemoMode { return mockFeed() }
-        
-        guard let url = URL(string: "\(baseURL)/feed") else { return [] }
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, _) = try await URLSession.shared.data(for: req)
-            return (try? JSONDecoder().decode([ActivityFeedItem].self, from: data)) ?? []
+            let res: ApiResponse<[ActivityFeedItem]>? = try await performRequest("/feed")
+            return res?.data ?? []
         } catch {
             return []
         }
@@ -286,15 +687,26 @@ class KinematicRepository {
     
     func fetchMyRoutePlan() async -> [RoutePlan] {
         if Session.isDemoMode { return mockRoute() }
-        
         let date = ISO8601DateFormatter().string(from: Date()).prefix(10)
-        guard let url = URL(string: "\(baseURL)/route-plan/me?date=\(date)") else { return [] }
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
-        let (data, _) = (try? await URLSession.shared.data(for: req)) ?? (Data(), URLResponse())
-        return (try? JSONDecoder().decode([RoutePlan].self, from: data)) ?? []
+        print("🔍 FETCH_ROUTE_PLAN_START: Date=\(date)")
+        do {
+            let res: ApiResponse<[RoutePlan]>? = try await performRequest(
+                "/route-plan/me",
+                queryItems: [URLQueryItem(name: "date", value: String(date))]
+            )
+            
+            if let data = res?.data {
+                print("✅ FETCH_ROUTE_PLAN_SUCCESS: Found \(data.count) plans")
+                return data
+            } else {
+                print("⚠️ FETCH_ROUTE_PLAN_EMPTY: Success but no data. Message: \(res?.message ?? "N/A")")
+                return []
+            }
+        } catch {
+            print("❌ FETCH_ROUTE_PLAN_ERROR: \(error)")
+            return []
+        }
     }
-    
     // --- MOCK DATA PROVIDER ---
     private func mockMobileHome() -> MobileHomeResponse {
         return MobileHomeResponse(
@@ -302,7 +714,9 @@ class KinematicRepository {
             summary: AnalyticsSummary(tffCount: 12),
             routePlan: mockRoute(),
             unreadCount: 5,
-            quote: MotivationQuote(quote: "Success is not final; failure is not fatal: it is the courage to continue that counts.", author: "Winston Churchill")
+            quote: MotivationQuote(quote: "Success is not final; failure is not fatal: it is the courage to continue that counts.", author: "Winston Churchill"),
+            alreadyAnswered: false,
+            broadcast: nil
         )
     }
     
@@ -318,18 +732,18 @@ class KinematicRepository {
     
     private func mockRoute() -> [RoutePlan] {
         let outlets = [
-            RouteOutlet(id: "o1", storeId: "s1", storeName: "Global Mart", address: "123 Outer Ring Rd", status: "visited", activities: [
-                RouteActivity(id: "a1", title: "Shelf Stocking", description: "Check beverage section", type: "stock", status: "completed")
+            RouteOutlet(rawId: "o1", storeId: "s1", storeName: "Global Mart", address: "123 Outer Ring Rd", status: "visited", activities: [
+                RouteActivity(id: "a1", name: "Shelf Stocking", status: "completed")
             ]),
-            RouteOutlet(id: "o2", storeId: "s2", storeName: "Metro Corner", address: "456 Inner Circle", status: "pending", activities: [
-                RouteActivity(id: "a2", title: "Merchandising", description: "Put up new posters", type: "promo", status: "pending"),
-                RouteActivity(id: "a3", title: "Price Audit", description: "Verify yogurt prices", type: "audit", status: "pending")
+            RouteOutlet(rawId: "o2", storeId: "s2", storeName: "Metro Corner", address: "456 Inner Circle", status: "pending", activities: [
+                RouteActivity(id: "a2", name: "Merchandising", status: "pending"),
+                RouteActivity(id: "a3", name: "Price Audit", status: "pending")
             ]),
-            RouteOutlet(id: "o3", storeId: "s3", storeName: "City Supermarket", address: "Market St, Plaza", status: "pending", activities: [
-                RouteActivity(id: "a4", title: "Inventory", description: "Full warehouse check", type: "stock", status: "pending")
+            RouteOutlet(rawId: "o3", storeId: "s3", storeName: "City Supermarket", address: "Market St, Plaza", status: "pending", activities: [
+                RouteActivity(id: "a4", name: "Inventory", status: "pending")
             ])
         ]
-        return [RoutePlan(id: "p1", date: "2024-04-08", status: "active", outlets: outlets)]
+        return [RoutePlan(id: "p1", planDate: "2024-04-08", status: "active", outlets: outlets)]
     }
 }
 
@@ -337,27 +751,34 @@ class KinematicRepository {
 struct KinematicApp: App {
     @StateObject private var locationService = LocationTrackingService.shared
     @StateObject private var appState = AppState.shared
+    @State private var isSplashScreenActive = true
     
     var body: some Scene {
         WindowGroup {
             ZStack {
-                if appState.isSplashScreenActive {
+                if isSplashScreenActive {
                     SplashScreenView()
+                        .transition(.opacity)
                 } else {
                     ContentView()
                         .environmentObject(locationService)
                         .environmentObject(appState)
                 }
             }
-            .preferredColorScheme(.dark)
-            .onAppear {
+            .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
+            .task {
                 locationService.requestPermissions()
-                if Session.isAuthenticated { locationService.startTracking() }
                 
-                // Show splash for 3 seconds
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    withAnimation(.spring()) {
-                        appState.isSplashScreenActive = false
+                // Android Parity: Load status and resume tracking if needed
+                if Session.isAuthenticated {
+                    await appState.attendanceVM.refresh()
+                }
+                
+                // Securely dismiss splash after 3 seconds
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await MainActor.run {
+                    withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                        isSplashScreenActive = false
                     }
                 }
             }
@@ -366,28 +787,51 @@ struct KinematicApp: App {
 }
 
 struct SplashScreenView: View {
-    @State private var animate = false
+    @State private var startAnimation = false
+    
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 20) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 30).fill(Color.red).frame(width: 120, height: 120)
-                        .shadow(color: .red.opacity(0.4), radius: 20)
-                        .scaleEffect(animate ? 1.0 : 0.8)
-                    Text("K").font(.system(size: 60, weight: .black)).foregroundColor(.white)
-                        .offset(y: animate ? 0 : 20)
-                }
+            Color(uiColor: .systemBackground)
+                .ignoresSafeArea()
+            
+            // Atmospheric Glow
+            RadialGradient(
+                gradient: Gradient(colors: [Color.red.opacity(0.12), Color.clear]),
+                center: .center,
+                startRadius: 0,
+                endRadius: 300
+            )
+            .ignoresSafeArea()
+            
+            VStack(spacing: 12) {
+                Text("Kinematic")
+                    .font(.system(size: 44, weight: .black, design: .rounded))
+                    .foregroundColor(Color(uiColor: .label))
+                    .tracking(4)
+                    .scaleEffect(startAnimation ? 1.0 : 0.95)
+                    .opacity(startAnimation ? 1.0 : 0)
                 
-                Text("KINEMATIC").font(.system(size: 32, weight: .black)).foregroundColor(.white).tracking(6)
-                    .opacity(animate ? 1 : 0)
-                Text("FIELD FORCE EVOLUTION").font(.caption2).fontWeight(.black).foregroundColor(.gray).tracking(4)
-                    .opacity(animate ? 1 : 0)
+                Text("Your 1 stop solution for manpower management")
+                    .font(.system(size: 16, weight: .medium, design: .default))
+                    .foregroundColor(Color(uiColor: .secondaryLabel))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                    .opacity(startAnimation ? 0.8 : 0)
+                    .offset(y: startAnimation ? 0 : 10)
+            }
+            
+            VStack {
+                Spacer()
+                Text("SECURED BY KINEMATIC SHIELD")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color(uiColor: .tertiaryLabel))
+                    .tracking(2)
+                    .padding(.bottom, 50)
             }
         }
         .onAppear {
-            withAnimation(.interpolatingSpring(stiffness: 50, damping: 5).repeatForever(autoreverses: true)) {
-                animate = true
+            withAnimation(.easeOut(duration: 1.2)) {
+                startAnimation = true
             }
         }
     }
