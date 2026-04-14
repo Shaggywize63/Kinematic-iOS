@@ -442,16 +442,46 @@ struct RoutePreviewRow: View {
     }
 }
 
-func formatTime(_ iso: String?) -> String {
-    guard let iso = iso else { return "--:--" }
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if let date = formatter.date(from: iso) {
-        let df = DateFormatter()
-        df.dateFormat = "hh:mm a"
-        return df.string(from: date)
+func formatTime(_ rawValue: String?) -> String {
+    guard let rawValue else { return "--:--" }
+    let cleaned = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    if cleaned.isEmpty { return "--:--" }
+
+    let outputFormatter = DateFormatter()
+    outputFormatter.dateFormat = "hh:mm a"
+
+    let isoFormatter = ISO8601DateFormatter()
+    isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = isoFormatter.date(from: cleaned) {
+        return outputFormatter.string(from: date)
     }
-    return iso.contains("T") ? String(iso.suffix(8).prefix(5)) : iso
+
+    isoFormatter.formatOptions = [.withInternetDateTime]
+    if let date = isoFormatter.date(from: cleaned) {
+        return outputFormatter.string(from: date)
+    }
+
+    let knownFormats = [
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+        "yyyy-MM-dd'T'HH:mm:ssZ"
+    ]
+    for format in knownFormats {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = format
+        if let date = formatter.date(from: cleaned) {
+            return outputFormatter.string(from: date)
+        }
+    }
+
+    if let epoch = Double(cleaned) {
+        let normalizedEpoch = epoch > 10_000_000_000 ? epoch / 1000 : epoch
+        return outputFormatter.string(from: Date(timeIntervalSince1970: normalizedEpoch))
+    }
+
+    return cleaned
 }
 
 struct RoutePlansView: View {

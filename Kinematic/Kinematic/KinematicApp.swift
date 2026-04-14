@@ -109,6 +109,8 @@ struct AttendanceRecord: Codable {
         case checkoutAt = "checkout_at"
         case checkInAt = "check_in_at"
         case checkOutAt = "check_out_at"
+        case checkInTime = "check_in_time"
+        case checkOutTime = "check_out_time"
         case totalHours = "total_hours"
         case totalHrs = "total_hrs"
         case checkinSelfieUrl = "checkin_selfie_url"
@@ -139,19 +141,63 @@ struct AttendanceRecord: Codable {
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(String.self, forKey: .id)
-        date = try container.decodeIfPresent(String.self, forKey: .date)
-        status = try container.decodeIfPresent(String.self, forKey: .status)
-        checkinAt = try container.decodeIfPresent(String.self, forKey: .checkinAt)
-            ?? container.decodeIfPresent(String.self, forKey: .checkInAt)
-        checkoutAt = try container.decodeIfPresent(String.self, forKey: .checkoutAt)
-            ?? container.decodeIfPresent(String.self, forKey: .checkOutAt)
-        totalHours = try container.decodeIfPresent(Double.self, forKey: .totalHours)
-            ?? container.decodeIfPresent(Double.self, forKey: .totalHrs)
-        checkinSelfieUrl = try container.decodeIfPresent(String.self, forKey: .checkinSelfieUrl)
-            ?? container.decodeIfPresent(String.self, forKey: .checkInSelfieUrl)
-        checkoutSelfieUrl = try container.decodeIfPresent(String.self, forKey: .checkoutSelfieUrl)
-            ?? container.decodeIfPresent(String.self, forKey: .checkOutSelfieUrl)
+        id = container.decodeLossyString(forKey: .id)
+        date = container.decodeLossyString(forKey: .date)
+        status = container.decodeLossyString(forKey: .status)
+        checkinAt = container.decodeLossyString(forKey: .checkinAt)
+            ?? container.decodeLossyString(forKey: .checkInAt)
+            ?? container.decodeLossyString(forKey: .checkInTime)
+        checkoutAt = container.decodeLossyString(forKey: .checkoutAt)
+            ?? container.decodeLossyString(forKey: .checkOutAt)
+            ?? container.decodeLossyString(forKey: .checkOutTime)
+        totalHours = container.decodeLossyDouble(forKey: .totalHours)
+            ?? container.decodeLossyDouble(forKey: .totalHrs)
+        checkinSelfieUrl = container.decodeLossyString(forKey: .checkinSelfieUrl)
+            ?? container.decodeLossyString(forKey: .checkInSelfieUrl)
+        checkoutSelfieUrl = container.decodeLossyString(forKey: .checkoutSelfieUrl)
+            ?? container.decodeLossyString(forKey: .checkOutSelfieUrl)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeLossyString(forKey key: Key) -> String? {
+        if let value = try? decodeIfPresent(String.self, forKey: key) { return value }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) { return String(value) }
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            let intValue = Int(value)
+            return value == Double(intValue) ? String(intValue) : String(value)
+        }
+        if let value = try? decodeIfPresent(Bool.self, forKey: key) { return String(value) }
+        return nil
+    }
+
+    func decodeLossyDouble(forKey key: Key) -> Double? {
+        if let value = try? decodeIfPresent(Double.self, forKey: key) { return value }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) { return Double(value) }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
+    }
+
+    func decodeLossyInt(forKey key: Key) -> Int? {
+        if let value = try? decodeIfPresent(Int.self, forKey: key) { return value }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        if let value = try? decodeIfPresent(Double.self, forKey: key) { return Int(value) }
+        return nil
+    }
+
+    func decodeLossyBool(forKey key: Key) -> Bool? {
+        if let value = try? decodeIfPresent(Bool.self, forKey: key) { return value }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) { return value != 0 }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ["true", "1", "yes", "y"].contains(normalized) { return true }
+            if ["false", "0", "no", "n"].contains(normalized) { return false }
+        }
+        return nil
     }
 }
 
@@ -238,20 +284,20 @@ struct MobileHomeResponse: Codable {
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        today = try container.decodeIfPresent(AttendanceRecord.self, forKey: .today)
-            ?? container.decodeIfPresent(AttendanceRecord.self, forKey: .attendance)
-            ?? container.decodeIfPresent(AttendanceRecord.self, forKey: .attendanceToday)
-        
-        summary = try container.decodeIfPresent(AnalyticsSummary.self, forKey: .summary)
-        routePlan = try container.decodeIfPresent([RoutePlan].self, forKey: .routePlan)
-            ?? container.decodeIfPresent([RoutePlan].self, forKey: .route_plan)
-            ?? container.decodeIfPresent([RoutePlan].self, forKey: .routes)
-        
-        unreadCount = try container.decodeIfPresent(Int.self, forKey: .unreadCount)
-            ?? container.decodeIfPresent(Int.self, forKey: .unread_count)
-        quote = try container.decodeIfPresent(MotivationQuote.self, forKey: .quote)
-        alreadyAnswered = try container.decodeIfPresent(Bool.self, forKey: .alreadyAnswered)
-        broadcast = try container.decodeIfPresent(BroadcastQuestion.self, forKey: .broadcast)
+        today = (try? container.decodeIfPresent(AttendanceRecord.self, forKey: .today))
+            ?? (try? container.decodeIfPresent(AttendanceRecord.self, forKey: .attendance))
+            ?? (try? container.decodeIfPresent(AttendanceRecord.self, forKey: .attendanceToday))
+
+        summary = try? container.decodeIfPresent(AnalyticsSummary.self, forKey: .summary)
+        routePlan = (try? container.decodeIfPresent([RoutePlan].self, forKey: .routePlan))
+            ?? (try? container.decodeIfPresent([RoutePlan].self, forKey: .route_plan))
+            ?? (try? container.decodeIfPresent([RoutePlan].self, forKey: .routes))
+
+        unreadCount = container.decodeLossyInt(forKey: .unreadCount)
+            ?? container.decodeLossyInt(forKey: .unread_count)
+        quote = try? container.decodeIfPresent(MotivationQuote.self, forKey: .quote)
+        alreadyAnswered = container.decodeLossyBool(forKey: .alreadyAnswered)
+        broadcast = try? container.decodeIfPresent(BroadcastQuestion.self, forKey: .broadcast)
     }
 }
 
