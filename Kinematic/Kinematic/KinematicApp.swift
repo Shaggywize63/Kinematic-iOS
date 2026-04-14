@@ -107,9 +107,51 @@ struct AttendanceRecord: Codable {
         case id, date, status
         case checkinAt = "checkin_at"
         case checkoutAt = "checkout_at"
+        case checkInAt = "check_in_at"
+        case checkOutAt = "check_out_at"
         case totalHours = "total_hours"
+        case totalHrs = "total_hrs"
         case checkinSelfieUrl = "checkin_selfie_url"
         case checkoutSelfieUrl = "checkout_selfie_url"
+        case checkInSelfieUrl = "check_in_selfie_url"
+        case checkOutSelfieUrl = "check_out_selfie_url"
+    }
+    
+    init(
+        id: String?,
+        date: String?,
+        status: String?,
+        checkinAt: String?,
+        checkoutAt: String?,
+        totalHours: Double?,
+        checkinSelfieUrl: String?,
+        checkoutSelfieUrl: String?
+    ) {
+        self.id = id
+        self.date = date
+        self.status = status
+        self.checkinAt = checkinAt
+        self.checkoutAt = checkoutAt
+        self.totalHours = totalHours
+        self.checkinSelfieUrl = checkinSelfieUrl
+        self.checkoutSelfieUrl = checkoutSelfieUrl
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        date = try container.decodeIfPresent(String.self, forKey: .date)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        checkinAt = try container.decodeIfPresent(String.self, forKey: .checkinAt)
+            ?? container.decodeIfPresent(String.self, forKey: .checkInAt)
+        checkoutAt = try container.decodeIfPresent(String.self, forKey: .checkoutAt)
+            ?? container.decodeIfPresent(String.self, forKey: .checkOutAt)
+        totalHours = try container.decodeIfPresent(Double.self, forKey: .totalHours)
+            ?? container.decodeIfPresent(Double.self, forKey: .totalHrs)
+        checkinSelfieUrl = try container.decodeIfPresent(String.self, forKey: .checkinSelfieUrl)
+            ?? container.decodeIfPresent(String.self, forKey: .checkInSelfieUrl)
+        checkoutSelfieUrl = try container.decodeIfPresent(String.self, forKey: .checkoutSelfieUrl)
+            ?? container.decodeIfPresent(String.self, forKey: .checkOutSelfieUrl)
     }
 }
 
@@ -167,9 +209,49 @@ struct MobileHomeResponse: Codable {
     var broadcast: BroadcastQuestion?
     
     enum CodingKeys: String, CodingKey {
-        case today, summary, quote, unreadCount, broadcast
+        case today, attendance, attendanceToday
+        case summary, quote, broadcast
+        case unreadCount, unread_count
         case alreadyAnswered = "already_answered"
         case routePlan = "routePlan"
+        case route_plan
+        case routes
+    }
+    
+    init(
+        today: AttendanceRecord?,
+        summary: AnalyticsSummary?,
+        routePlan: [RoutePlan]?,
+        unreadCount: Int?,
+        quote: MotivationQuote?,
+        alreadyAnswered: Bool?,
+        broadcast: BroadcastQuestion?
+    ) {
+        self.today = today
+        self.summary = summary
+        self.routePlan = routePlan
+        self.unreadCount = unreadCount
+        self.quote = quote
+        self.alreadyAnswered = alreadyAnswered
+        self.broadcast = broadcast
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        today = try container.decodeIfPresent(AttendanceRecord.self, forKey: .today)
+            ?? container.decodeIfPresent(AttendanceRecord.self, forKey: .attendance)
+            ?? container.decodeIfPresent(AttendanceRecord.self, forKey: .attendanceToday)
+        
+        summary = try container.decodeIfPresent(AnalyticsSummary.self, forKey: .summary)
+        routePlan = try container.decodeIfPresent([RoutePlan].self, forKey: .routePlan)
+            ?? container.decodeIfPresent([RoutePlan].self, forKey: .route_plan)
+            ?? container.decodeIfPresent([RoutePlan].self, forKey: .routes)
+        
+        unreadCount = try container.decodeIfPresent(Int.self, forKey: .unreadCount)
+            ?? container.decodeIfPresent(Int.self, forKey: .unread_count)
+        quote = try container.decodeIfPresent(MotivationQuote.self, forKey: .quote)
+        alreadyAnswered = try container.decodeIfPresent(Bool.self, forKey: .alreadyAnswered)
+        broadcast = try container.decodeIfPresent(BroadcastQuestion.self, forKey: .broadcast)
     }
 }
 
@@ -293,8 +375,26 @@ struct RoutePlan: Codable, Identifiable {
     var outlets: [RouteOutlet]?
     
     enum CodingKeys: String, CodingKey {
-        case id, status, outlets
+        case id, status, outlets, stores
         case planDate = "plan_date"
+        case date
+    }
+    
+    init(id: String?, planDate: String?, status: String?, outlets: [RouteOutlet]?) {
+        self.id = id
+        self.planDate = planDate
+        self.status = status
+        self.outlets = outlets
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        planDate = try container.decodeIfPresent(String.self, forKey: .planDate)
+            ?? container.decodeIfPresent(String.self, forKey: .date)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        outlets = try container.decodeIfPresent([RouteOutlet].self, forKey: .outlets)
+            ?? container.decodeIfPresent([RouteOutlet].self, forKey: .stores)
     }
 }
 
@@ -309,10 +409,32 @@ struct RouteOutlet: Codable, Identifiable {
     var id: String { rawId ?? storeId ?? UUID().uuidString }
     
     enum CodingKeys: String, CodingKey {
-        case status, activities, address
+        case status, activities, address, tasks
         case rawId = "id"
         case storeId = "store_id"
         case storeName = "store_name"
+        case name
+    }
+    
+    init(rawId: String?, storeId: String?, storeName: String?, address: String?, status: String?, activities: [RouteActivity]?) {
+        self.rawId = rawId
+        self.storeId = storeId
+        self.storeName = storeName
+        self.address = address
+        self.status = status
+        self.activities = activities
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rawId = try container.decodeIfPresent(String.self, forKey: .rawId)
+        storeId = try container.decodeIfPresent(String.self, forKey: .storeId)
+        storeName = try container.decodeIfPresent(String.self, forKey: .storeName)
+            ?? container.decodeIfPresent(String.self, forKey: .name)
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        activities = try container.decodeIfPresent([RouteActivity].self, forKey: .activities)
+            ?? container.decodeIfPresent([RouteActivity].self, forKey: .tasks)
     }
 }
 
@@ -384,6 +506,8 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
 class KinematicRepository {
     static let shared = KinematicRepository()
     private let baseURL = "https://kinematic-production.up.railway.app/api/v1"
+    private let cachedMobileHomeKey = "cached_mobile_home_payload"
+    private let cachedRoutePlanKey = "cached_route_plan_payload"
     
     func logVisit(outletId: String, lat: Double, lng: Double) async -> String? {
         if Session.isDemoMode { return "demo-visit-id" }
@@ -669,9 +793,16 @@ class KinematicRepository {
         if Session.isDemoMode { return mockMobileHome() }
         do {
             let res: ApiResponse<MobileHomeResponse>? = try await performRequest("/analytics/mobile-home")
-            return res?.data
+            if let home = res?.data {
+                cache(home, forKey: cachedMobileHomeKey)
+                if let routes = home.routePlan, !routes.isEmpty {
+                    cache(routes, forKey: cachedRoutePlanKey)
+                }
+                return home
+            }
+            return loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey)
         } catch {
-            return nil
+            return loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey)
         }
     }
     
@@ -697,15 +828,28 @@ class KinematicRepository {
             
             if let data = res?.data {
                 print("✅ FETCH_ROUTE_PLAN_SUCCESS: Found \(data.count) plans")
-                return data
+                if !data.isEmpty {
+                    cache(data, forKey: cachedRoutePlanKey)
+                }
+                return data.isEmpty ? (loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []) : data
             } else {
                 print("⚠️ FETCH_ROUTE_PLAN_EMPTY: Success but no data. Message: \(res?.message ?? "N/A")")
-                return []
+                return loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
             }
         } catch {
             print("❌ FETCH_ROUTE_PLAN_ERROR: \(error)")
-            return []
+            return loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
         }
+    }
+    
+    private func cache<T: Encodable>(_ value: T, forKey key: String) {
+        guard let encoded = try? JSONEncoder().encode(value) else { return }
+        UserDefaults.standard.set(encoded, forKey: key)
+    }
+    
+    private func loadCached<T: Decodable>(_ type: T.Type, forKey key: String) -> T? {
+        guard let raw = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(type, from: raw)
     }
     // --- MOCK DATA PROVIDER ---
     private func mockMobileHome() -> MobileHomeResponse {
@@ -769,12 +913,12 @@ struct KinematicApp: App {
             .task {
                 locationService.requestPermissions()
                 
-                // Android Parity: Load status and resume tracking if needed
+                // Run startup sync in parallel so splash duration stays fixed at 3 seconds.
                 if Session.isAuthenticated {
-                    await appState.attendanceVM.refresh()
+                    Task { await appState.attendanceVM.refresh() }
                 }
                 
-                // Securely dismiss splash after 3 seconds
+                // Dismiss splash in exactly 3 seconds.
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await MainActor.run {
                     withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
