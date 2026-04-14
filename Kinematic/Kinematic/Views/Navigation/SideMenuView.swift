@@ -12,7 +12,7 @@ struct SideMenuView: View {
                     .onTapGesture {
                         withAnimation { isOpen = false }
                     }
-                
+
                 HStack(spacing: 0) {
                     sidebarContent
                         .transition(.move(edge: .leading))
@@ -20,6 +20,7 @@ struct SideMenuView: View {
                 }
             }
         }
+        .allowsHitTesting(isOpen)
     }
     
     private var sidebarContent: some View {
