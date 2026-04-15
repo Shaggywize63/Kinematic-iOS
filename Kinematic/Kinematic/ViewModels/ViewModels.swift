@@ -114,17 +114,34 @@ class AttendanceViewModel: ObservableObject {
         didSet {
             // Automatically trigger attendance if we are in automated flow
             if selfie != nil && autoSubmitScheduled {
-                autoSubmitScheduled = false
-                if let loc = LocationTrackingService.shared.lastLocation {
-                    Task { await toggleAttendance(loc: loc) }
-                } else {
-                    message = "Waiting for GPS..."
-                }
+                checkLocationAndSubmit()
             }
         }
     }
     @Published var showCamera = false
     private var autoSubmitScheduled = false
+    private var cancellables = Set<AnyCancellable>()
+    
+    private func checkLocationAndSubmit() {
+        if let loc = LocationTrackingService.shared.lastLocation {
+            autoSubmitScheduled = false
+            Task { await toggleAttendance(loc: loc) }
+        } else {
+            message = "Waiting for GPS..."
+            LocationTrackingService.shared.startTracking()
+            
+            // Parity with Android: Listen for first valid location update to resume flow
+            LocationTrackingService.shared.$lastLocation
+                .compactMap { $0 }
+                .first()
+                .sink { [weak self] loc in
+                    guard let self = self, self.autoSubmitScheduled else { return }
+                    self.autoSubmitScheduled = false
+                    Task { await self.toggleAttendance(loc: loc) }
+                }
+                .store(in: &cancellables)
+        }
+    }
     
     func useMockSelfie() {
         // Create a professional colored placeholder to represent a successful mock capture
@@ -151,8 +168,10 @@ class AttendanceViewModel: ObservableObject {
     
     func startFlow() {
         self.autoSubmitScheduled = true
+        LocationTrackingService.shared.startTracking() // Pre-warm GPS for instant capture
         self.showCamera = true
     }
+
     
     func refresh() async {
         let data = await KinematicRepository.shared.getMobileHome()
@@ -194,7 +213,7 @@ class AttendanceViewModel: ObservableObject {
         
         var selfieUrl: String? = nil
         if let img = selfie {
-            selfieUrl = await KinematicRepository.shared.uploadImage(image: img, type: "attendance")
+            selfieUrl = await KinematicRepository.shared.uploadImage(image: img, type: "selfie")
             if selfieUrl == nil {
                 await MainActor.run {
                     isLoading = false

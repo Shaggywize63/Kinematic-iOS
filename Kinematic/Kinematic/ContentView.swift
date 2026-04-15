@@ -32,6 +32,7 @@ struct LiquidGlassModifier: ViewModifier {
                         ),
                         lineWidth: 1
                     )
+                    .allowsHitTesting(false)
             )
             // 4. Subtle Drop Shadow for floating depth
             .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
@@ -135,6 +136,10 @@ struct MainTabView: View {
         }
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
+        }
+        .sheet(isPresented: $appState.attendanceVM.showCamera) {
+            ImagePicker(image: $appState.attendanceVM.selfie)
+                .ignoresSafeArea()
         }
     }
 }
@@ -305,10 +310,6 @@ struct HomeView: View {
             .refreshable { await vm.refresh() }
         }
         .onAppear { Task { await vm.refresh() } }
-        .sheet(isPresented: $appState.attendanceVM.showCamera) {
-            ImagePicker(image: $appState.attendanceVM.selfie)
-                .ignoresSafeArea()
-        }
     }
 }
 
@@ -680,11 +681,10 @@ struct AttendanceView: View {
         }
     }
     .onReceive(timer) { _ in currentTime = Date() }
-        .sheet(isPresented: $appState.attendanceVM.showCamera) {
-            ImagePicker(image: $appState.attendanceVM.selfie)
-                .ignoresSafeArea()
+        .onAppear { 
+            Task { await vm.refresh() }
+            LocationTrackingService.shared.startTracking()
         }
-        .onAppear { Task { await vm.refresh() } }
     }
 }
 

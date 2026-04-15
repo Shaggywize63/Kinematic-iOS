@@ -121,10 +121,10 @@ struct AttendanceRecord: Codable {
         case checkoutSelfieUrl = "checkout_selfie_url"
         case checkInSelfieUrl = "check_in_selfie_url"
         case checkOutSelfieUrl = "check_out_selfie_url"
-        case checkinLatitude = "checkin_latitude"
-        case checkinLongitude = "checkin_longitude"
-        case checkoutLatitude = "checkout_latitude"
-        case checkoutLongitude = "checkout_longitude"
+        case checkinLatitude = "checkin_lat"
+        case checkinLongitude = "checkin_lng"
+        case checkoutLatitude = "checkout_lat"
+        case checkoutLongitude = "checkout_lng"
         case checkinAddress = "checkin_address"
         case checkoutAddress = "checkout_address"
         case location
@@ -185,6 +185,18 @@ struct AttendanceRecord: Codable {
         checkinAddress = container.decodeLossyString(forKey: .checkinAddress)
             ?? container.decodeLossyString(forKey: .location)
         checkoutAddress = container.decodeLossyString(forKey: .checkoutAddress)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encodeIfPresent(date, forKey: .date)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(checkinAt, forKey: .checkinAt)
+        try container.encodeIfPresent(checkoutAt, forKey: .checkoutAt)
+        try container.encodeIfPresent(totalHours, forKey: .totalHours)
+        try container.encodeIfPresent(checkinSelfieUrl, forKey: .checkinSelfieUrl)
+        try container.encodeIfPresent(checkoutSelfieUrl, forKey: .checkoutSelfieUrl)
     }
 }
 
@@ -327,6 +339,17 @@ struct MobileHomeResponse: Codable {
         quote = try? container.decodeIfPresent(MotivationQuote.self, forKey: .quote)
         alreadyAnswered = container.decodeLossyBool(forKey: .alreadyAnswered)
         broadcast = try? container.decodeIfPresent(BroadcastQuestion.self, forKey: .broadcast)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(today, forKey: .today)
+        try container.encodeIfPresent(summary, forKey: .summary)
+        try container.encodeIfPresent(routePlan, forKey: .routePlan)
+        try container.encodeIfPresent(unreadCount, forKey: .unreadCount)
+        try container.encodeIfPresent(quote, forKey: .quote)
+        try container.encodeIfPresent(alreadyAnswered, forKey: .alreadyAnswered)
+        try container.encodeIfPresent(broadcast, forKey: .broadcast)
     }
 }
 
@@ -471,6 +494,14 @@ struct RoutePlan: Codable, Identifiable {
         outlets = try container.decodeIfPresent([RouteOutlet].self, forKey: .outlets)
             ?? container.decodeIfPresent([RouteOutlet].self, forKey: .stores)
     }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encodeIfPresent(planDate, forKey: .planDate)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(outlets, forKey: .outlets)
+    }
 }
 
 struct RouteOutlet: Codable, Identifiable {
@@ -510,6 +541,16 @@ struct RouteOutlet: Codable, Identifiable {
         status = try container.decodeIfPresent(String.self, forKey: .status)
         activities = try container.decodeIfPresent([RouteActivity].self, forKey: .activities)
             ?? container.decodeIfPresent([RouteActivity].self, forKey: .tasks)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(rawId, forKey: .rawId)
+        try container.encodeIfPresent(storeId, forKey: .storeId)
+        try container.encodeIfPresent(storeName, forKey: .storeName)
+        try container.encodeIfPresent(address, forKey: .address)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(activities, forKey: .activities)
     }
 }
 
