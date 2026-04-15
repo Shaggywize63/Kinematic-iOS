@@ -136,6 +136,13 @@ struct MainTabView: View {
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
         }
+        // Single camera sheet at the root level — prevents the two-sheet conflict that
+        // silently swallowed taps when both HomeView and AttendanceView had their own sheet
+        // bound to the same showCamera bool simultaneously.
+        .sheet(isPresented: $appState.attendanceVM.showCamera) {
+            ImagePicker(image: $appState.attendanceVM.selfie)
+                .ignoresSafeArea()
+        }
     }
 }
 
@@ -305,10 +312,6 @@ struct HomeView: View {
             .refreshable { await vm.refresh() }
         }
         .onAppear { Task { await vm.refresh() } }
-        .sheet(isPresented: $appState.attendanceVM.showCamera) {
-            ImagePicker(image: $appState.attendanceVM.selfie)
-                .ignoresSafeArea()
-        }
     }
 }
 
@@ -611,6 +614,8 @@ struct AttendanceView: View {
                                     }
                                 }
                                 .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                                // Ensure the full circle area is tappable, not just visible pixels
+                                .contentShape(Circle())
                             }
                             
                             // Simulator Fallback Button
@@ -684,10 +689,6 @@ struct AttendanceView: View {
         }
     }
     .onReceive(timer) { _ in currentTime = Date() }
-        .sheet(isPresented: $appState.attendanceVM.showCamera) {
-            ImagePicker(image: $appState.attendanceVM.selfie)
-                .ignoresSafeArea()
-        }
         .onAppear { Task { await vm.refresh() } }
     }
 }
