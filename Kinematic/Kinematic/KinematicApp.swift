@@ -102,7 +102,13 @@ struct AttendanceRecord: Codable {
     let totalHours: Double?
     let checkinSelfieUrl: String?
     let checkoutSelfieUrl: String?
-    
+    let checkinLatitude: Double?
+    let checkinLongitude: Double?
+    let checkoutLatitude: Double?
+    let checkoutLongitude: Double?
+    let checkinAddress: String?
+    let checkoutAddress: String?
+
     enum CodingKeys: String, CodingKey {
         case id, date, status
         case checkinAt = "checkin_at"
@@ -115,8 +121,15 @@ struct AttendanceRecord: Codable {
         case checkoutSelfieUrl = "checkout_selfie_url"
         case checkInSelfieUrl = "check_in_selfie_url"
         case checkOutSelfieUrl = "check_out_selfie_url"
+        case checkinLatitude = "checkin_latitude"
+        case checkinLongitude = "checkin_longitude"
+        case checkoutLatitude = "checkout_latitude"
+        case checkoutLongitude = "checkout_longitude"
+        case checkinAddress = "checkin_address"
+        case checkoutAddress = "checkout_address"
+        case location
     }
-    
+
     init(
         id: String?,
         date: String?,
@@ -125,7 +138,13 @@ struct AttendanceRecord: Codable {
         checkoutAt: String?,
         totalHours: Double?,
         checkinSelfieUrl: String?,
-        checkoutSelfieUrl: String?
+        checkoutSelfieUrl: String?,
+        checkinLatitude: Double? = nil,
+        checkinLongitude: Double? = nil,
+        checkoutLatitude: Double? = nil,
+        checkoutLongitude: Double? = nil,
+        checkinAddress: String? = nil,
+        checkoutAddress: String? = nil
     ) {
         self.id = id
         self.date = date
@@ -135,8 +154,14 @@ struct AttendanceRecord: Codable {
         self.totalHours = totalHours
         self.checkinSelfieUrl = checkinSelfieUrl
         self.checkoutSelfieUrl = checkoutSelfieUrl
+        self.checkinLatitude = checkinLatitude
+        self.checkinLongitude = checkinLongitude
+        self.checkoutLatitude = checkoutLatitude
+        self.checkoutLongitude = checkoutLongitude
+        self.checkinAddress = checkinAddress
+        self.checkoutAddress = checkoutAddress
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = container.decodeLossyString(forKey: .id)
@@ -152,6 +177,14 @@ struct AttendanceRecord: Codable {
             ?? container.decodeLossyString(forKey: .checkInSelfieUrl)
         checkoutSelfieUrl = container.decodeLossyString(forKey: .checkoutSelfieUrl)
             ?? container.decodeLossyString(forKey: .checkOutSelfieUrl)
+        checkinLatitude = container.decodeLossyDouble(forKey: .checkinLatitude)
+        checkinLongitude = container.decodeLossyDouble(forKey: .checkinLongitude)
+        checkoutLatitude = container.decodeLossyDouble(forKey: .checkoutLatitude)
+        checkoutLongitude = container.decodeLossyDouble(forKey: .checkoutLongitude)
+        // Address: prefer dedicated field, fall back to generic "location"
+        checkinAddress = container.decodeLossyString(forKey: .checkinAddress)
+            ?? container.decodeLossyString(forKey: .location)
+        checkoutAddress = container.decodeLossyString(forKey: .checkoutAddress)
     }
 }
 
@@ -860,26 +893,35 @@ class KinematicRepository {
     
     func fetchMyRoutePlan() async -> [RoutePlan] {
         if Session.isDemoMode { return mockRoute() }
-        let date = ISO8601DateFormatter().string(from: Date()).prefix(10)
+        // Use local timezone date so IST/non-UTC users get the correct date
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.timeZone = TimeZone.current
+        let date = dateFormatter.string(from: Date())
         print("🔍 FETCH_ROUTE_PLAN_START: Date=\(date)")
         do {
             let res: ApiResponse<[RoutePlan]>? = try await performRequest(
                 "/route-plan/me",
-                queryItems: [URLQueryItem(name: "date", value: String(date))]
+                queryItems: [URLQueryItem(name: "date", value: date)]
             )
-            
+
             if let data = res?.data {
                 print("✅ FETCH_ROUTE_PLAN_SUCCESS: Found \(data.count) plans")
                 if !data.isEmpty {
                     cache(data, forKey: cachedRoutePlanKey)
+                } else {
+                    // Server returned empty for today — clear stale cache so old data is not shown
+                    UserDefaults.standard.removeObject(forKey: cachedRoutePlanKey)
                 }
-                return data.isEmpty ? (loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []) : data
+                // Always trust fresh server response, even if empty
+                return data
             } else {
                 print("⚠️ FETCH_ROUTE_PLAN_EMPTY: Success but no data. Message: \(res?.message ?? "N/A")")
                 return loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
             }
         } catch {
             print("❌ FETCH_ROUTE_PLAN_ERROR: \(error)")
+            // Only fall back to cache on network/decode errors
             return loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
         }
     }
