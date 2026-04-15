@@ -230,10 +230,10 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, 25)
                     
-                    // Selfie Status Card
-                    SelfieStatusCard(record: vm.data?.today)
+                    // Selfie Status Card — uses shared state so it updates after check-in from Attendance tab
+                    SelfieStatusCard(record: appState.todayAttendance ?? vm.data?.today)
                         .padding(.horizontal, 20)
-                    
+
                     // Stats Row
                     HStack(spacing: 12) {
                         StatTile(label: "Stores", value: "\(vm.totalStoreCount)", icon: "storefront.fill", color: .blue)
@@ -241,9 +241,9 @@ struct HomeView: View {
                         StatTile(label: "Forms", value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: .purple)
                     }
                     .padding(.horizontal, 20)
-                    
-                    // Today's Session
-                    SessionCard(record: vm.data?.today)
+
+                    // Today's Session — uses shared state so check-in time appears immediately
+                    SessionCard(record: appState.todayAttendance ?? vm.data?.today)
                         .padding(.horizontal, 20)
                     
                     // Broadcast / Announcement Card
@@ -645,8 +645,12 @@ struct AttendanceView: View {
                                 .padding(.horizontal, 12).padding(.vertical, 4).background(Color.white.opacity(0.05)).cornerRadius(8)
                         }
                         
-                        Button(action: { 
-                            if let loc = locationService.lastLocation { Task { await vm.toggleAttendance(loc: loc) } }
+                        Button(action: {
+                            if let loc = locationService.lastLocation {
+                                Task { await vm.toggleAttendance(loc: loc) }
+                            } else {
+                                vm.message = "GPS not ready — please wait a moment and try again."
+                            }
                         }) {
                             HStack {
                                 if vm.isLoading {

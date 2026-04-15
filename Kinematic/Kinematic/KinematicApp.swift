@@ -34,7 +34,10 @@ class AppState: ObservableObject {
     @Published var selectedTab: Int = 0
     @Published var selectedOutlet: RouteOutlet? = nil
     @Published var attendanceVM = AttendanceViewModel()
-    
+
+    // --- Shared Attendance State (synced from both AttendanceViewModel & HomeViewModel) ---
+    @Published var todayAttendance: AttendanceRecord? = nil
+
     // --- Shared Home Data (Parity with Android AppViewModel) ---
     @Published var summary: AnalyticsSummary? = nil
     @Published var quote: MotivationQuote? = nil
@@ -794,33 +797,63 @@ class KinematicRepository {
     
     func uploadImage(image: UIImage, type: String) async -> String? {
         if Session.isDemoMode { return "https://demo.kinematic.com/selfie.jpg" }
-        
+
         let url = URL(string: "\(baseURL)/upload/\(type)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
         if let orgId = Session.currentUser?.orgId { request.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
-        
+
         let boundary = "Boundary-\(UUID().uuidString)"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        
-        guard let imageData = image.jpegData(compressionQuality: 0.5) else { return nil }
-        
+
+        guard let imageData = image.jpegData(compressionQuality: 0.7) else { return nil }
+
+        // Field name "file" matches most multer/formidable defaults; change if server expects different
+        let fileFieldName = "file"
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"selfie.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"\(fileFieldName)\"; filename=\"selfie.jpg\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
         body.append(imageData)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        
         request.httpBody = body
-        
+
         print("🚀 UPLOAD_START: \(url.absoluteString)")
-        
+
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            let res = try JSONDecoder().decode(ApiResponse<UploadResponse>.self, from: data)
-            return res.data?.url
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            print("📡 UPLOAD_STATUS: \(statusCode)")
+            if let rawJson = String(data: data, encoding: .utf8) {
+                print("📦 UPLOAD_RAW_JSON: \(rawJson)")
+            }
+
+            // Shape 1: { success, data: { url, path } }
+            if let res = try? JSONDecoder().decode(ApiResponse<UploadResponse>.self, from: data),
+               let uploadedUrl = res.data?.url {
+                print("✅ UPLOAD_URL (shape1): \(uploadedUrl)")
+                return uploadedUrl
+            }
+            // Shape 2: { url, path } directly
+            if let res = try? JSONDecoder().decode(UploadResponse.self, from: data) {
+                print("✅ UPLOAD_URL (shape2): \(res.url)")
+                return res.url
+            }
+            // Shape 3: arbitrary JSON — look for any url-like key
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let candidate = json["url"] as? String
+                    ?? json["file_url"] as? String
+                    ?? json["fileUrl"] as? String
+                    ?? json["path"] as? String
+                    ?? (json["data"] as? [String: Any])?["url"] as? String
+                if let found = candidate {
+                    print("✅ UPLOAD_URL (shape3): \(found)")
+                    return found
+                }
+            }
+            print("❌ UPLOAD_FAILED: Could not extract URL from response")
+            return nil
         } catch {
             print("❌ UPLOAD_ERROR: \(error)")
             return nil
@@ -830,21 +863,43 @@ class KinematicRepository {
     func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil) async -> (Bool, String?) {
         if Session.isDemoMode { return (true, nil) }
         let endpoint = isCheckIn ? "/attendance/checkin" : "/attendance/checkout"
-        
+
+        var payload: [String: Any] = ["latitude": lat, "longitude": lng]
+        if let selfie = selfieUrl { payload["selfie_url"] = selfie }
+        if let battery = battery { payload["battery_percentage"] = battery }
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
+            return (false, "Failed to encode request")
+        }
+
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else { return (false, "Invalid URL") }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+        if let orgId = Session.currentUser?.orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = body
+
         do {
-            var payload: [String: Any] = ["latitude": lat, "longitude": lng]
-            if let selfie = selfieUrl { payload["selfie_url"] = selfie }
-            if let battery = battery { payload["battery_percentage"] = battery }
-            
-            let body = try? JSONSerialization.data(withJSONObject: payload)
-            let res: ApiResponse<AttendanceRecord>? = try await performRequest(
-                endpoint,
-                method: "POST",
-                body: body
-            )
-            if res?.success == true { return (true, nil) }
-            return (false, res?.error ?? res?.message ?? "Failed to mark attendance")
+            let (data, response) = try await URLSession.shared.data(for: req)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            print("📡 ATTENDANCE_STATUS: \(statusCode) for \(endpoint)")
+            if let rawJson = String(data: data, encoding: .utf8) {
+                print("📦 ATTENDANCE_RAW_JSON: \(rawJson)")
+            }
+
+            // Prefer structured response; fall back to HTTP status code on decode failure
+            if let res = try? JSONDecoder().decode(ApiResponse<AttendanceRecord>.self, from: data) {
+                if res.success { return (true, nil) }
+                return (false, res.error ?? res.message ?? "Attendance rejected by server")
+            }
+            // Decode failed but server returned 2xx — treat as success
+            if statusCode >= 200 && statusCode < 300 {
+                print("✅ ATTENDANCE: Decode failed but \(statusCode) — treating as success")
+                return (true, nil)
+            }
+            return (false, "Server error (\(statusCode))")
         } catch {
+            print("❌ ATTENDANCE_ERROR: \(error)")
             return (false, error.localizedDescription)
         }
     }
@@ -872,6 +927,9 @@ class KinematicRepository {
                 cache(home, forKey: cachedMobileHomeKey)
                 if let routes = home.routePlan, !routes.isEmpty {
                     cache(routes, forKey: cachedRoutePlanKey)
+                } else {
+                    // No routes in today's home payload — clear stale cache
+                    UserDefaults.standard.removeObject(forKey: cachedRoutePlanKey)
                 }
                 return home
             }

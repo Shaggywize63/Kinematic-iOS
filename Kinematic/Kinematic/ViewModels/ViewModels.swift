@@ -41,14 +41,18 @@ class HomeViewModel: ObservableObject {
     func refresh() async {
         await MainActor.run { isLoading = true }
         let newData = await KinematicRepository.shared.getMobileHome()
-        await MainActor.run { 
+        await MainActor.run {
             self.data = newData
             self.isLoading = false
-            
+
             // Parity with Android: Populate global app state for secondary views
             AppState.shared.summary = newData?.summary
             if let q = newData?.quote {
                 AppState.shared.quote = q
+            }
+            // Keep shared attendance in sync so AttendanceView & SessionCard agree
+            if let today = newData?.today {
+                AppState.shared.todayAttendance = today
             }
         }
     }
@@ -156,9 +160,11 @@ class AttendanceViewModel: ObservableObject {
     
     func refresh() async {
         let data = await KinematicRepository.shared.getMobileHome()
-        await MainActor.run { 
+        await MainActor.run {
             self.today = data?.today
-            
+            // Push to shared AppState so HomeView SessionCard updates immediately
+            AppState.shared.todayAttendance = data?.today
+
             // Android Parity: Resume tracking if checked in
             if let status = data?.today?.status, status == "present" || status == "checked_in" {
                 LocationTrackingService.shared.startTracking()
