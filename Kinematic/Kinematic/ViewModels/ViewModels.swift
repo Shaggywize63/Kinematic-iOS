@@ -107,6 +107,9 @@ class AttendanceViewModel: ObservableObject {
     @Published var today: AttendanceRecord?
     @Published var isLoading = false
     @Published var message = ""
+    /// Locally persisted check-in location stamp (lat,lng string) shown when the
+    /// server does not return location coordinates in the AttendanceRecord.
+    @Published var checkinLocationStamp: String? = UserDefaults.standard.string(forKey: "checkin_location_stamp")
     @Published var selfie: UIImage? {
         didSet {
             // Automatically trigger attendance if we are in automated flow
@@ -223,11 +226,18 @@ class AttendanceViewModel: ObservableObject {
             isLoading = false
             if success {
                 message = isCheckIn ? "Checked in!" : "Checked out!"
-                
-                // Sync Location Service lifecycle with attendance status
+                // Clear local selfie so it doesn't persist into the next check-in cycle
+                selfie = nil
+                // Persist location stamp locally in case server doesn't echo it back
                 if isCheckIn {
+                    let stamp = String(format: "%.4f, %.4f", loc.coordinate.latitude, loc.coordinate.longitude)
+                    checkinLocationStamp = stamp
+                    UserDefaults.standard.set(stamp, forKey: "checkin_location_stamp")
                     LocationTrackingService.shared.startTracking()
                 } else {
+                    // Clear stamp on checkout so next check-in gets a fresh location
+                    checkinLocationStamp = nil
+                    UserDefaults.standard.removeObject(forKey: "checkin_location_stamp")
                     LocationTrackingService.shared.stopTracking()
                 }
             } else {

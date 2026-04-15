@@ -590,9 +590,19 @@ struct AttendanceView: View {
                                 ZStack {
                                     Circle().fill(Color.white.opacity(0.05)).frame(width: 140, height: 140)
                                     if let img = vm.selfie {
+                                        // Locally captured selfie (just taken this session)
                                         Image(uiImage: img)
                                             .resizable().aspectRatio(contentMode: .fill)
                                             .frame(width: 130, height: 130).clipShape(Circle())
+                                    } else if let selfieUrl = vm.today?.checkinSelfieUrl,
+                                              let url = URL(string: selfieUrl) {
+                                        // Stored selfie from server (shown after app restart)
+                                        AsyncImage(url: url) { image in
+                                            image.resizable().aspectRatio(contentMode: .fill)
+                                                .frame(width: 130, height: 130).clipShape(Circle())
+                                        } placeholder: {
+                                            ProgressView().tint(.gray).frame(width: 130, height: 130)
+                                        }
                                     } else {
                                         VStack(spacing: 8) {
                                             Image(systemName: "camera.fill").font(.title).foregroundColor(.red)
@@ -658,7 +668,7 @@ struct AttendanceView: View {
                     
                     VStack(spacing: 12) {
                         if let t = vm.today {
-                            AttendanceHistoryRow(record: t)
+                            AttendanceHistoryRow(record: t, localLocationStamp: vm.checkinLocationStamp)
                         } else {
                             EmptyHistoryRow()
                         }
@@ -680,31 +690,92 @@ struct AttendanceView: View {
 
 struct AttendanceHistoryRow: View {
     let record: AttendanceRecord
+    var localLocationStamp: String? = nil
+
+    private var dayString: String {
+        guard let dateStr = record.date else { return "--" }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        if let d = fmt.date(from: dateStr) {
+            fmt.dateFormat = "dd"
+            return fmt.string(from: d)
+        }
+        return "--"
+    }
+
+    private var monthString: String {
+        guard let dateStr = record.date else { return "---" }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        if let d = fmt.date(from: dateStr) {
+            fmt.dateFormat = "MMM"
+            return fmt.string(from: d).uppercased()
+        }
+        return "---"
+    }
+
+    private var statusTitle: String {
+        if record.checkoutAt != nil { return "Full Shift Completed" }
+        if record.checkinAt != nil { return "Checked In" }
+        return "Present"
+    }
+
     var body: some View {
         HStack(spacing: 15) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.1)).frame(width: 50, height: 50)
-                VStack(spacing: -2) {
-                    Text("13").font(.headline).foregroundColor(Color(uiColor: .label))
-                    Text("APR").font(.system(size: 8, weight: .bold)).foregroundColor(.green)
+            // Selfie thumbnail if available, otherwise date badge
+            if let selfieUrl = record.checkinSelfieUrl, let url = URL(string: selfieUrl) {
+                AsyncImage(url: url) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                        .frame(width: 50, height: 50)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                } placeholder: {
+                    dateBadge
                 }
+            } else {
+                dateBadge
             }
-            
+
             VStack(alignment: .leading, spacing: 4) {
-                Text("Full Shift Completed").font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label))
+                Text(statusTitle)
+                    .font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label))
                 HStack(spacing: 10) {
-                    Label(formatTime(record.checkinAt), systemImage: "clock").font(.caption2).foregroundColor(.gray)
+                    Label(formatTime(record.checkinAt), systemImage: "clock")
+                        .font(.caption2).foregroundColor(.gray)
                     if record.checkoutAt != nil {
-                        Label(formatTime(record.checkoutAt), systemImage: "clock.fill").font(.caption2).foregroundColor(.gray)
+                        Label(formatTime(record.checkoutAt), systemImage: "clock.fill")
+                            .font(.caption2).foregroundColor(.gray)
                     }
+                }
+                // Location stamp (server address → server coords → locally cached coords)
+                if let address = record.checkinAddress {
+                    Label(address, systemImage: "location.fill")
+                        .font(.caption2).foregroundColor(.gray).lineLimit(1)
+                } else if let lat = record.checkinLatitude, let lng = record.checkinLongitude {
+                    Label(String(format: "%.4f, %.4f", lat, lng), systemImage: "location")
+                        .font(.caption2).foregroundColor(.gray)
+                } else if let stamp = localLocationStamp {
+                    Label(stamp, systemImage: "location")
+                        .font(.caption2).foregroundColor(.gray)
                 }
             }
             Spacer()
             if let hours = record.totalHours {
-                Text(String(format: "%.1f hrs", hours)).font(.caption).fontWeight(.black).padding(6).background(Color.white.opacity(0.08)).cornerRadius(8)
+                Text(String(format: "%.1f hrs", hours))
+                    .font(.caption).fontWeight(.black).padding(6)
+                    .background(Color.white.opacity(0.08)).cornerRadius(8)
             }
         }
         .padding().liquidGlass()
+    }
+
+    private var dateBadge: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.1)).frame(width: 50, height: 50)
+            VStack(spacing: -2) {
+                Text(dayString).font(.headline).foregroundColor(Color(uiColor: .label))
+                Text(monthString).font(.system(size: 8, weight: .bold)).foregroundColor(.green)
+            }
+        }
     }
 }
 
