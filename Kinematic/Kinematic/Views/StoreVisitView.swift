@@ -10,6 +10,18 @@ struct StoreVisitView: View {
         appState.activeVisitOutletId == appState.selectedOutlet?.id
     }
     
+    var resolvedActivities: [RouteActivity] {
+        let explicit = appState.selectedOutlet?.activities ?? []
+        if !explicit.isEmpty { return explicit }
+        
+        // Dashboard Linkage: Synth one if activityId is present at outlet level
+        if let activityId = appState.selectedOutlet?.activityId {
+            return [RouteActivity(id: activityId, name: "Store Activity", status: "pending")]
+        }
+        
+        return []
+    }
+    
     var body: some View {
         ZStack {
             VibrantBackgroundView()
@@ -54,9 +66,9 @@ struct StoreVisitView: View {
                         }
                         .padding(.horizontal, 20)
                         
-                        if let activities = appState.selectedOutlet?.activities, !activities.isEmpty {
+                        if !resolvedActivities.isEmpty {
                             VStack(spacing: 15) {
-                                ForEach(activities) { activity in
+                                ForEach(resolvedActivities) { activity in
                                     TaskCard(activity: activity) {
                                         if isVisitActive {
                                             self.selectedActivity = activity

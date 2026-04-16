@@ -429,9 +429,9 @@ struct FormTemplate: Codable {
     
     enum CodingKeys: String, CodingKey {
         case id, name, description, fields
-        case activityId = "activity_id"
         case requiresPhoto = "requires_photo"
         case requiresGps = "requires_gps"
+        case activityId = "activity_id"
     }
 }
 
@@ -488,18 +488,21 @@ struct RoutePlan: Codable, Identifiable {
     let id: String?
     let planDate: String?
     let status: String?
+    let activityId: String? // Added for dashboard parity
     var outlets: [RouteOutlet]?
     
     enum CodingKeys: String, CodingKey {
         case id, status, outlets, stores
         case planDate = "plan_date"
+        case activityId = "activity_id" // Maps to Android activity_id
         case date
     }
     
-    init(id: String?, planDate: String?, status: String?, outlets: [RouteOutlet]?) {
+    init(id: String?, planDate: String?, status: String?, activityId: String?, outlets: [RouteOutlet]?) {
         self.id = id
         self.planDate = planDate
         self.status = status
+        self.activityId = activityId
         self.outlets = outlets
     }
     
@@ -509,6 +512,7 @@ struct RoutePlan: Codable, Identifiable {
         planDate = try container.decodeIfPresent(String.self, forKey: .planDate)
             ?? container.decodeIfPresent(String.self, forKey: .date)
         status = try container.decodeIfPresent(String.self, forKey: .status)
+        activityId = try container.decodeIfPresent(String.self, forKey: .activityId)
         outlets = try container.decodeIfPresent([RouteOutlet].self, forKey: .outlets)
             ?? container.decodeIfPresent([RouteOutlet].self, forKey: .stores)
     }
@@ -518,6 +522,7 @@ struct RoutePlan: Codable, Identifiable {
         try container.encodeIfPresent(id, forKey: .id)
         try container.encodeIfPresent(planDate, forKey: .planDate)
         try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(activityId, forKey: .activityId)
         try container.encodeIfPresent(outlets, forKey: .outlets)
     }
 }
@@ -528,6 +533,7 @@ struct RouteOutlet: Codable, Identifiable {
     let storeName: String?
     let address: String?
     let status: String?
+    let activityId: String?
     var activities: [RouteActivity]?
     
     var id: String { rawId ?? storeId ?? UUID().uuidString }
@@ -537,15 +543,17 @@ struct RouteOutlet: Codable, Identifiable {
         case rawId = "id"
         case storeId = "store_id"
         case storeName = "store_name"
+        case activityId = "activity_id"
         case name
     }
     
-    init(rawId: String?, storeId: String?, storeName: String?, address: String?, status: String?, activities: [RouteActivity]?) {
+    init(rawId: String?, storeId: String?, storeName: String?, address: String?, status: String?, activityId: String?, activities: [RouteActivity]?) {
         self.rawId = rawId
         self.storeId = storeId
         self.storeName = storeName
         self.address = address
         self.status = status
+        self.activityId = activityId
         self.activities = activities
     }
     
@@ -557,6 +565,7 @@ struct RouteOutlet: Codable, Identifiable {
             ?? container.decodeIfPresent(String.self, forKey: .name)
         address = try container.decodeIfPresent(String.self, forKey: .address)
         status = try container.decodeIfPresent(String.self, forKey: .status)
+        activityId = try container.decodeIfPresent(String.self, forKey: .activityId)
         activities = try container.decodeIfPresent([RouteActivity].self, forKey: .activities)
             ?? container.decodeIfPresent([RouteActivity].self, forKey: .tasks)
     }
@@ -568,6 +577,7 @@ struct RouteOutlet: Codable, Identifiable {
         try container.encodeIfPresent(storeName, forKey: .storeName)
         try container.encodeIfPresent(address, forKey: .address)
         try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(activityId, forKey: .activityId)
         try container.encodeIfPresent(activities, forKey: .activities)
     }
 }
@@ -998,18 +1008,10 @@ class KinematicRepository {
     
     private func mockRoute() -> [RoutePlan] {
         let outlets = [
-            RouteOutlet(rawId: "o1", storeId: "s1", storeName: "Global Mart", address: "123 Outer Ring Rd", status: "visited", activities: [
-                RouteActivity(id: "a1", name: "Shelf Stocking", status: "completed")
-            ]),
-            RouteOutlet(rawId: "o2", storeId: "s2", storeName: "Metro Corner", address: "456 Inner Circle", status: "pending", activities: [
-                RouteActivity(id: "a2", name: "Merchandising", status: "pending"),
-                RouteActivity(id: "a3", name: "Price Audit", status: "pending")
-            ]),
-            RouteOutlet(rawId: "o3", storeId: "s3", storeName: "City Supermarket", address: "Market St, Plaza", status: "pending", activities: [
-                RouteActivity(id: "a4", name: "Inventory", status: "pending")
-            ])
+            RouteOutlet(rawId: "o1", storeId: "s1", storeName: "Apex Retail", address: "Andheri East, Mumbai", status: "pending", activityId: "form_123", activities: []),
+            RouteOutlet(rawId: "o2", storeId: "s2", storeName: "Global Mart", address: "Powai, Mumbai", status: "visited", activityId: "form_123", activities: [])
         ]
-        return [RoutePlan(id: "p1", planDate: "2024-04-08", status: "active", outlets: outlets)]
+        return [RoutePlan(id: "p1", planDate: "2024-04-08", status: "active", activityId: "form_123", outlets: outlets)]
     }
 }
 
