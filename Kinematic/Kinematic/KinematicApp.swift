@@ -50,6 +50,7 @@ class AppState: ObservableObject {
     // --- Visit Management ---
     @Published var activeVisitId: String? = nil
     @Published var activeVisitOutletId: String? = nil
+    @Published var visitErrorMessage: String? = nil
     
     init() {
         // Load persisted theme or default to dark

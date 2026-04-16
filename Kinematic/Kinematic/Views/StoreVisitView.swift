@@ -113,7 +113,7 @@ struct StoreVisitView: View {
         let lng = LocationTrackingService.shared.lastLocation?.coordinate.longitude ?? 0
         
         isStartingVisit = true
-        appState.visitErrorMessage = nil // Reset error
+        AppState.shared.visitErrorMessage = nil // Reset error
         
         let visitTask = Task {
             let result = await KinematicRepository.shared.logVisit(outletId: outletId, lat: lat, lng: lng)
@@ -121,16 +121,16 @@ struct StoreVisitView: View {
                 await MainActor.run {
                     if let visitId = result {
                         withAnimation {
-                            appState.activeVisitId = visitId
-                            appState.activeVisitOutletId = outletId
-                            isStartingVisit = false
+                            AppState.shared.activeVisitId = visitId
+                            AppState.shared.activeVisitOutletId = outletId
+                            self.isStartingVisit = false
                             if let activity = activity {
                                 self.selectedActivity = activity
                             }
                         }
                     } else {
-                        isStartingVisit = false
-                        appState.visitErrorMessage = "Server rejected visit log. Please check GPS."
+                        self.isStartingVisit = false
+                        AppState.shared.visitErrorMessage = "Server rejected visit log. Please check GPS."
                     }
                 }
             }
@@ -139,12 +139,12 @@ struct StoreVisitView: View {
         // Timeout Task
         Task {
             try? await Task.sleep(nanoseconds: 12_000_000_000) // 12 seconds
-            if isStartingVisit {
+            if self.isStartingVisit {
                 visitTask.cancel()
                 await MainActor.run {
                     withAnimation { 
-                        isStartingVisit = false 
-                        appState.visitErrorMessage = "Connection timed out. Please try again."
+                        self.isStartingVisit = false 
+                        AppState.shared.visitErrorMessage = "Connection timed out. Please try again."
                     }
                 }
             }
