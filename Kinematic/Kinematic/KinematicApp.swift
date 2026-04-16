@@ -669,6 +669,7 @@ class KinematicRepository {
         
         var req = URLRequest(url: url)
         req.httpMethod = method
+        req.timeoutInterval = 15.0 // Prevent hangs
         req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
         
         // --- PROD SYNC: Inject X-Org-Id if available ---

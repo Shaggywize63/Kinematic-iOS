@@ -61,8 +61,11 @@ struct MainTabView: View {
         ZStack(alignment: .bottom) {
             TabView(selection: $appState.selectedTab) {
                 HomeView().tag(0)
+                    .toolbar(.hidden, for: .tabBar)
                 AttendanceView().tag(1)
+                    .toolbar(.hidden, for: .tabBar)
                 RoutePlansView().tag(2)
+                    .toolbar(.hidden, for: .tabBar)
             }
             .ignoresSafeArea()
             
@@ -307,6 +310,7 @@ struct HomeView: View {
         .onAppear { Task { await vm.refresh() } }
     }
 }
+}
 
 struct SelfieStatusCard: View {
     @EnvironmentObject var appState: AppState
@@ -475,6 +479,7 @@ struct RoutePreviewRow: View {
     }
 }
 
+// --- HELPERS ---
 func formatTime(_ iso: String?) -> String {
     guard let iso = iso else { return "--:--" }
     let formatter = ISO8601DateFormatter()

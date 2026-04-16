@@ -89,7 +89,15 @@ struct StoreVisitView: View {
                     Color(uiColor: .systemBackground).opacity(0.8).ignoresSafeArea()
                     VStack(spacing: 20) {
                         ProgressView().tint(.red).scaleEffect(1.5)
-                        Text("Starting Visit & Validating Location...").foregroundColor(Color(uiColor: .label)).font(.headline)
+                        Text("Starting Visit & Validating Location...")
+                            .foregroundColor(Color(uiColor: .label))
+                            .font(.headline)
+                        
+                        Button("CANCEL") {
+                            isStartingVisit = false
+                        }
+                        .font(.caption).fontWeight(.bold).foregroundColor(.red)
+                        .padding(.top, 10)
                     }
                 }
             }
