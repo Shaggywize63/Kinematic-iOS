@@ -123,7 +123,13 @@ struct ActivitySubmissionView: View {
             let success = await KinematicRepository.shared.submitForm(request: request)
             await MainActor.run {
                 isSubmitting = false
-                if success { dismiss() }
+                if success { 
+                    // Update local state for immediate feedback
+                    if let index = AppState.shared.selectedOutlet?.activities?.firstIndex(where: { $0.id == activity.id }) {
+                        AppState.shared.selectedOutlet?.activities?[index].status = "completed"
+                    }
+                    dismiss() 
+                }
             }
         }
     }

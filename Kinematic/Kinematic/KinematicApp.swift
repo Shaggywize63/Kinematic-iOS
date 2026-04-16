@@ -575,7 +575,7 @@ struct RouteOutlet: Codable, Identifiable {
 struct RouteActivity: Codable, Identifiable {
     let id: String?
     let name: String?
-    let status: String?
+    var status: String? // Changed to var for local state updates
 }
 
 // --- SERVICES ---
@@ -708,6 +708,7 @@ class KinematicRepository {
         
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
         print("📡 API_END: Status \(statusCode) for \(path)")
+        
         
         if statusCode == 401 {
             print("⚠️ AUTH_ERROR: Unauthorized (401). Triggering Auto-Logout.")

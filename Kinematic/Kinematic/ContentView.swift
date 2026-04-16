@@ -17,25 +17,38 @@ struct LiquidGlassModifier: ViewModifier {
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color(uiColor: .systemBackground).opacity(opacity))
+                    .fill(
+                        LinearGradient(
+                            colors: [.white.opacity(0.08), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             )
             .overlay(
+                // Ultimate Chromatic Refraction Border
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .stroke(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.8), .clear, Color.black.opacity(0.3)],
+                            stops: [
+                                .init(color: .white.opacity(0.9), location: 0),
+                                .init(color: .white.opacity(0.1), location: 0.4),
+                                .init(color: .clear, location: 0.6),
+                                .init(color: .white.opacity(0.4), location: 1)
+                            ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
                         lineWidth: 1.5
                     )
-                    .blendMode(.overlay)
             )
             .overlay(
+                // Inner Specular Glow
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                    .padding(0.5)
             )
-            .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 5)
+            .shadow(color: Color.black.opacity(0.12), radius: 15, x: 0, y: 8)
     }
 }
 
@@ -90,31 +103,53 @@ struct MainTabView: View {
             .padding(.horizontal, appState.isTabBarExpanded ? 12 : 18)
             .padding(.vertical, appState.isTabBarExpanded ? 12 : 10)
             .background {
-                // Adaptive Liquid Glass Lensing
+                // High-End Mirror Glass Background (Crystalline Lensing)
                 ZStack {
                     MirrorGlassTabBarShape()
-                        .fill(.ultraThinMaterial)
+                        .fill(.ultraThickMaterial)
                     
-                    if !appState.isTabBarExpanded {
-                        MirrorGlassTabBarShape()
-                            .fill(Color.red.opacity(0.05))
-                            .blur(radius: 10)
-                    }
+                    // Ambient Light Refraction
+                    MirrorGlassTabBarShape()
+                        .stroke(
+                            LinearGradient(
+                                colors: [.white.opacity(0.7), .clear, .black.opacity(0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.5
+                        )
+                    
+                    // Specular Highlight
+                    MirrorGlassTabBarShape()
+                        .fill(
+                            RadialGradient(
+                                colors: [.white.opacity(0.12), .clear],
+                                center: .topLeading,
+                                startRadius: 0,
+                                endRadius: 200
+                            )
+                        )
                 }
             }
             .overlay {
+                // Ultimate Chromatic Refraction Border
                 MirrorGlassTabBarShape()
                     .stroke(
                         LinearGradient(
-                            colors: [.white.opacity(0.8), .clear, .black.opacity(0.3)],
+                            stops: [
+                                .init(color: .white.opacity(0.8), location: 0),
+                                .init(color: .white.opacity(0.1), location: 0.4),
+                                .init(color: .clear, location: 0.6),
+                                .init(color: .white.opacity(0.3), location: 1)
+                            ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
                         lineWidth: 1.5
                     )
             }
-            .scaleEffect(appState.isTabBarExpanded ? 1.0 : 0.92)
-            .shadow(color: .black.opacity(appState.isTabBarExpanded ? 0.18 : 0.25), radius: 25, x: 0, y: 15)
+            .scaleEffect(appState.isTabBarExpanded ? 1.0 : 0.94)
+            .shadow(color: .black.opacity(appState.isTabBarExpanded ? 0.2 : 0.3), radius: 30, x: 0, y: 15)
             .padding(.horizontal, 24)
             .padding(.bottom, appState.isTabBarExpanded ? 34 : 20)
             .offset(y: appState.isTabBarExpanded ? 0 : 10)
@@ -150,18 +185,31 @@ struct TabBtn: View {
             VStack(spacing: ex ? 6 : 0) {
                 ZStack {
                     if s {
-                        // Crystalline Liquid Pod with Bokeh Highlight
+                        // Ultimate ‘Nuclear’ Liquid Pod (Crystalline Lensing)
                         ZStack {
                             Capsule()
-                                .fill(.white.opacity(0.18))
-                                .background(.ultraThinMaterial, in: Capsule())
+                                .fill(.ultraThickMaterial)
+                                .overlay {
+                                    // Specular Center Glint
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.4), .clear],
+                                        startPoint: .topLeading,
+                                        endPoint: .center
+                                    )
+                                }
                                 .matchedGeometryEffect(id: "pod", in: ns)
                             
-                            // High-Focus Lensing Border
+                            // Refractive Chromatic Edge (iOS 26 Concept)
                             Capsule()
                                 .stroke(
                                     LinearGradient(
-                                        colors: [.white, .clear, .white.opacity(0.4)],
+                                        stops: [
+                                            .init(color: .white.opacity(0.9), location: 0),
+                                            .init(color: .white.opacity(0.2), location: 0.1),
+                                            .init(color: .clear, location: 0.5),
+                                            .init(color: .white.opacity(0.3), location: 0.9),
+                                            .init(color: .white.opacity(0.8), location: 1)
+                                        ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
@@ -170,19 +218,27 @@ struct TabBtn: View {
                                 .matchedGeometryEffect(id: "pod_border", in: ns)
                         }
                         .frame(width: ex ? 54 : 48, height: ex ? 38 : 34)
-                        .shadow(color: .white.opacity(0.3), radius: 8, x: -2, y: -2)
+                        .shadow(color: .white.opacity(0.2), radius: 10, x: -3, y: -3)
+                        .shadow(color: .black.opacity(0.15), radius: 10, x: 3, y: 3)
                     }
                     
-                    Image(systemName: s ? "\(i).fill" : i)
-                        .font(.system(size: ex ? 20 : 18, weight: s ? .black : .bold))
-                        .foregroundColor(s ? .blue : .gray.opacity(0.6))
-                        .scaleEffect(s ? (ex ? 1.2 : 1.1) : 1.0)
+                    VStack(spacing: 0) {
+                        Image(systemName: s ? "\(i).fill" : i)
+                            .font(.system(size: ex ? 20 : 18, weight: s ? .black : .bold))
+                            .foregroundStyle(
+                                s ? 
+                                LinearGradient(colors: [.white, .blue], startPoint: .topLeading, endPoint: .bottomTrailing) :
+                                LinearGradient(colors: [.gray.opacity(0.6), .gray.opacity(0.4)], startPoint: .top, endPoint: .bottom)
+                            )
+                            .scaleEffect(s ? (ex ? 1.25 : 1.15) : 1.0)
+                            .shadow(color: s ? .blue.opacity(0.4) : .clear, radius: 10)
+                    }
                 }
                 
                 if ex {
                     Text(l)
                         .font(.system(size: 9, weight: .black, design: .rounded))
-                        .foregroundColor(s ? .blue : .gray.opacity(0.6))
+                        .foregroundStyle(s ? Color.blue : Color.gray.opacity(0.6))
                         .transition(.opacity.combined(with: .scale))
                 }
             }

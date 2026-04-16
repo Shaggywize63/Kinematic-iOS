@@ -191,7 +191,21 @@ struct TaskCard: View {
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption).foregroundColor(.gray)
             }
-            .padding(20).liquidGlass()
+            .padding(20)
+            .background(.ultraThinMaterial)
+            .cornerRadius(20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.5), .clear, .black.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
         }
     }
 }
