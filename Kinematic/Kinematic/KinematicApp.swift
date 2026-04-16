@@ -1001,6 +1001,10 @@ struct KinematicApp: App {
     @StateObject private var appState = AppState.shared
     @State private var isSplashScreenActive = true
     
+    init() {
+        UITabBar.appearance().isHidden = true
+    }
+    
     var body: some Scene {
         WindowGroup {
             ZStack {

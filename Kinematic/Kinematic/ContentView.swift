@@ -61,11 +61,8 @@ struct MainTabView: View {
         ZStack(alignment: .bottom) {
             TabView(selection: $appState.selectedTab) {
                 HomeView().tag(0)
-                    .toolbar(.hidden, for: .tabBar)
                 AttendanceView().tag(1)
-                    .toolbar(.hidden, for: .tabBar)
                 RoutePlansView().tag(2)
-                    .toolbar(.hidden, for: .tabBar)
             }
             .ignoresSafeArea()
             

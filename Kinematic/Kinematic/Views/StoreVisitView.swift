@@ -113,20 +113,37 @@ struct StoreVisitView: View {
         let lng = LocationTrackingService.shared.lastLocation?.coordinate.longitude ?? 0
         
         isStartingVisit = true
-        Task {
-            if let visitId = await KinematicRepository.shared.logVisit(outletId: outletId, lat: lat, lng: lng) {
+        
+        let visitTask = Task {
+            let result = await KinematicRepository.shared.logVisit(outletId: outletId, lat: lat, lng: lng)
+            if !Task.isCancelled {
                 await MainActor.run {
-                    withAnimation {
-                        appState.activeVisitId = visitId
-                        appState.activeVisitOutletId = outletId
-                        isStartingVisit = false
-                        if let activity = activity {
-                            self.selectedActivity = activity
+                    if let visitId = result {
+                        withAnimation {
+                            appState.activeVisitId = visitId
+                            appState.activeVisitOutletId = outletId
+                            isStartingVisit = false
+                            if let activity = activity {
+                                self.selectedActivity = activity
+                            }
                         }
+                    } else {
+                        isStartingVisit = false
+                        // Error handling could be added here (e.g., alert)
                     }
                 }
-            } else {
-                await MainActor.run { isStartingVisit = false }
+            }
+        }
+        
+        // Timeout Task
+        Task {
+            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+            if isStartingVisit {
+                visitTask.cancel()
+                await MainActor.run {
+                    withAnimation { isStartingVisit = false }
+                    print("⚠️ VISIT_INIT_TIMEOUT: Connection timed out.")
+                }
             }
         }
     }
