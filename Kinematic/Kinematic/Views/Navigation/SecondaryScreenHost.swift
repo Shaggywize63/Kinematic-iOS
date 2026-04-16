@@ -3,6 +3,7 @@ import SwiftUI
 struct SecondaryScreenHost: View {
     let route: SecondaryRoute
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var appState: AppState
     
     var body: some View {
         NavigationView {
@@ -29,7 +30,6 @@ struct SecondaryScreenHost: View {
                         .foregroundColor(.blue)
                     }
                 }
-            }
             }
         }
         .sheet(isPresented: $appState.attendanceVM.showCamera) {
