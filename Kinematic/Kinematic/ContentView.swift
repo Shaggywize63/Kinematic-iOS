@@ -72,44 +72,31 @@ struct MainTabView: View {
             .ignoresSafeArea()
             .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.98)), removal: .opacity))
             
-            // Mirror Glass Floating Tab Bar
+            // High-Refraction Floating Tab Bar (Liquid Glass)
             HStack(spacing: 0) {
-                TabBtn(i: "house.fill", l: "Home", s: appState.selectedTab == 0) { 
-                    withAnimation(.spring()) { appState.selectedTab = 0 }
+                TabBtn(i: "house", l: "Home", s: appState.selectedTab == 0) { 
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { appState.selectedTab = 0 }
                 }
-                TabBtn(i: "person.text.rectangle.fill", l: "Attendance", s: appState.selectedTab == 1) { 
-                    withAnimation(.spring()) { appState.selectedTab = 1 }
+                TabBtn(i: "person.text.rectangle", l: "Attendance", s: appState.selectedTab == 1) { 
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { appState.selectedTab = 1 }
                 }
-                TabBtn(i: "map.fill", l: "Route", s: appState.selectedTab == 2) { 
-                    withAnimation(.spring()) { appState.selectedTab = 2 }
+                TabBtn(i: "map", l: "Route", s: appState.selectedTab == 2) { 
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { appState.selectedTab = 2 }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-            .background(MirrorGlassTabBarShape().fill(.ultraThinMaterial))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(.ultraThinMaterial, in: MirrorGlassTabBarShape())
             .overlay {
-                MirrorGlassTabBarShape()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.38),
-                                Color.white.opacity(0.10),
-                                Color.black.opacity(0.08)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
+                // Liquid Glow Highlight (Refractive Edge)
                 MirrorGlassTabBarShape()
                     .stroke(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(0.9),
-                                Color.white.opacity(0.2),
+                                .white.opacity(0.8),
+                                .white.opacity(0.1),
                                 .clear,
-                                Color.black.opacity(0.1)
+                                .black.opacity(0.2)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -118,24 +105,22 @@ struct MainTabView: View {
                     )
             }
             .overlay(alignment: .top) {
+                // Glass Gloss Overlay
                 MirrorGlassTabBarShape()
                     .fill(
                         LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.34),
-                                .clear
-                            ],
+                            colors: [.white.opacity(0.12), .clear],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
-                    .frame(height: 30)
-                    .padding(.horizontal, 18)
-                    .blur(radius: 8)
+                    .frame(height: 35)
+                    .padding(.horizontal, 10)
+                    .blur(radius: 4)
             }
-            .shadow(color: Color.black.opacity(0.12), radius: 20, x: 0, y: 12)
+            .shadow(color: .black.opacity(0.15), radius: 25, x: 0, y: 15)
             .padding(.horizontal, 24)
-            .padding(.bottom, 24)
+            .padding(.bottom, 32)
             
             // Side Menu Overlay
             SideMenuView(isOpen: $appState.showSideMenu)
@@ -155,23 +140,32 @@ struct TabBtn: View {
     let i: String; let l: String; let s: Bool; let a: () -> Void
     var body: some View {
         Button(action: a) {
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 ZStack {
                     if s {
-                        Circle()
-                            .fill(Color.red.opacity(0.15))
-                            .frame(width: 48, height: 48)
-                            .blur(radius: 8)
+                        // Liquid Aura Glow
+                        Capsule()
+                            .fill(Color.red.opacity(0.25))
+                            .frame(width: 54, height: 36)
+                            .blur(radius: 12)
                             .transition(.scale.combined(with: .opacity))
                     }
-                    Image(systemName: i)
-                        .font(.system(size: 22, weight: s ? .black : .bold))
+                    
+                    Image(systemName: s ? "\(i).fill" : i)
+                        .font(.system(size: 22))
+                        .fontWeight(s ? .black : .medium)
                         .foregroundStyle(
-                            s ? AnyShapeStyle(Color.red) : AnyShapeStyle(Color.gray.opacity(0.6))
+                            s ? 
+                            AnyShapeStyle(LinearGradient(colors: [.red, .red.opacity(0.8)], startPoint: .top, endPoint: .bottom)) : 
+                            AnyShapeStyle(Color.gray.opacity(0.6))
                         )
+                        .symbolRenderingMode(.hierarchical)
                 }
-                Text(l).font(.system(size: 10, weight: s ? .black : .bold))
+                
+                Text(l)
+                    .font(.system(size: 10, weight: s ? .black : .bold, design: .rounded))
                     .foregroundColor(s ? .red : .gray.opacity(0.6))
+                    .tracking(0.5)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
