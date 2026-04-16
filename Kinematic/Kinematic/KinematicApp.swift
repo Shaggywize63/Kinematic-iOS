@@ -626,7 +626,6 @@ class KinematicRepository {
     private let cachedRoutePlanKey = "cached_route_plan_payload"
     
     func logVisit(outletId: String, lat: Double, lng: Double) async -> String? {
-        if Session.isDemoMode { return "demo-visit-id" }
         do {
             let payload: [String: Any] = [
                 "visit_outlet_id": outletId,
@@ -716,7 +715,6 @@ class KinematicRepository {
     }
     
     func getFormTemplates(activityId: String) async -> FormTemplate? {
-        if Session.isDemoMode { return nil }
         print("LOADING_TEMPLATE_FOR_ACTIVITY: \(activityId)")
         
         do {
@@ -731,7 +729,6 @@ class KinematicRepository {
     }
     
     func submitForm(request: FormSubmissionRequest) async -> Bool {
-        if Session.isDemoMode { return true }
         do {
             let body = try? JSONEncoder().encode(request)
             let res: ApiResponse<[String: String]>? = try await performRequest(
@@ -747,7 +744,6 @@ class KinematicRepository {
     
     // --- BROADCAST ---
     func getBroadcastHistory() async -> [BroadcastQuestion] {
-        if Session.isDemoMode { return [] }
         do {
             let res: ApiResponse<[BroadcastQuestion]>? = try await performRequest("/analytics/broadcasts")
             return res?.data ?? []
@@ -757,7 +753,6 @@ class KinematicRepository {
     }
     
     func sendBroadcastAnswer(id: String, selectedIndex: Int) async -> Bool {
-        if Session.isDemoMode { return true }
         do {
             let payload = SubmitAnswerRequest(selected: selectedIndex)
             let body = try? JSONEncoder().encode(payload)
@@ -774,7 +769,6 @@ class KinematicRepository {
     
     // --- LEARNING HUB ---
     func getLearningMaterials() async -> [LearningMaterial] {
-        if Session.isDemoMode { return [] }
         do {
             let res: ApiResponse<[LearningMaterial]>? = try await performRequest("/analytics/learning")
             return res?.data ?? []
@@ -834,8 +828,6 @@ class KinematicRepository {
     }
     
     func uploadImage(image: UIImage, type: String) async -> String? {
-        if Session.isDemoMode { return "https://demo.kinematic.com/selfie.jpg" }
-        
         let url = URL(string: "\(baseURL)/upload/\(type)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -869,7 +861,6 @@ class KinematicRepository {
     }
     
     func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil) async -> (Bool, String?, AttendanceRecord?) {
-        if Session.isDemoMode { return (true, nil, nil) }
         let endpoint = isCheckIn ? "/attendance/checkin" : "/attendance/checkout"
         
         do {
@@ -891,7 +882,6 @@ class KinematicRepository {
     }
     
     func logSecurityViolation(type: String, action: String, lat: Double?, lng: Double?) async {
-        if Session.isDemoMode { return }
         do {
             let payload: [String: Any?] = ["type": type, "action": action, "lat": lat, "lng": lng]
             let body = try? JSONSerialization.data(withJSONObject: payload)
@@ -906,7 +896,6 @@ class KinematicRepository {
     }
     
     func getMobileHome() async -> MobileHomeResponse? {
-        if Session.isDemoMode { return mockMobileHome() }
         do {
             let res: ApiResponse<MobileHomeResponse>? = try await performRequest("/analytics/mobile-home")
             if let home = res?.data {
@@ -923,7 +912,6 @@ class KinematicRepository {
     }
     
     func getFeed() async -> [ActivityFeedItem] {
-        if Session.isDemoMode { return mockFeed() }
         do {
             let res: ApiResponse<[ActivityFeedItem]>? = try await performRequest("/feed")
             return res?.data ?? []
@@ -933,7 +921,6 @@ class KinematicRepository {
     }
     
     func fetchMyRoutePlan() async -> [RoutePlan] {
-        if Session.isDemoMode { return mockRoute() }
         // Use local timezone date so IST/non-UTC users get the correct date
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
