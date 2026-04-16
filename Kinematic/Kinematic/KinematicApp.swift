@@ -779,16 +779,6 @@ class KinematicRepository {
     }
     
     func login(email: String, phone: String?, pass: String) async -> (Bool, String?) {
-        if email.lowercased() == "demo@kinematic.com" {
-            await MainActor.run {
-                Session.isDemoMode = true
-                Session.sharedToken = "demo-token-123"
-                Session.currentUser = User(id: "demo-id", name: "Demo Executive", role: "Field Executive", email: "demo@kinematic.com", mobile: "9999999999", orgId: "Kinematic Demo")
-                AppState.shared.checkAuth()
-            }
-            return (true, nil)
-        }
-        
         guard let url = URL(string: "\(baseURL)/auth/login") else { return (false, "Invalid URL") }
         let identifier = (phone != nil && !phone!.isEmpty) ? phone! : email
         let payload: [String: String] = ["email": identifier, "password": pass]

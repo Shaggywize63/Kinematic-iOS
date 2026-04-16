@@ -137,6 +137,10 @@ struct MainTabView: View {
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
         }
+        .sheet(isPresented: $appState.attendanceVM.showCamera) {
+            ImagePicker(image: $appState.attendanceVM.selfie)
+                .ignoresSafeArea()
+        }
     }
 }
 

@@ -32,9 +32,6 @@ struct SecondaryScreenHost: View {
                 }
             }
         }
-        .sheet(isPresented: $appState.attendanceVM.showCamera) {
-            ImagePicker(image: $appState.attendanceVM.selfie)
-                .ignoresSafeArea()
         }
     }
 }
