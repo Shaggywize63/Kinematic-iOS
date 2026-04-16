@@ -34,4 +34,4 @@ struct SecondaryScreenHost: View {
         }
         }
     }
-}
+

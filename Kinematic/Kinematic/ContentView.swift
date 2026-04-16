@@ -14,28 +14,28 @@ struct LiquidGlassModifier: ViewModifier {
     var opacity: Double
     func body(content: Content) -> some View {
         content
-            // 1. Base Blur Layer matching the corner radius perfectly
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
-            // 2. Tint Layer to provide the specific color opacity OVER the blur, not behind it
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(Color(uiColor: .systemBackground).opacity(opacity))
             )
-            // 3. Crisp Glass Border using an overlay so it sits tight to the edges
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .stroke(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.6), .clear, Color.black.opacity(0.2)],
+                            colors: [Color.white.opacity(0.8), .clear, Color.black.opacity(0.3)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: 1
+                        lineWidth: 1.5
                     )
-                    .allowsHitTesting(false)
+                    .blendMode(.overlay)
             )
-            // 4. Subtle Drop Shadow for floating depth
-            .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+            )
+            .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -64,7 +64,6 @@ struct MainTabView: View {
                 AttendanceView().tag(1)
                 RoutePlansView().tag(2)
             }
-            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             .ignoresSafeArea()
             
             // Mirror Glass Floating Tab Bar
@@ -101,14 +100,15 @@ struct MainTabView: View {
                     .stroke(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(0.85),
-                                Color.white.opacity(0.18),
-                                Color.black.opacity(0.14)
+                                Color.white.opacity(0.9),
+                                Color.white.opacity(0.2),
+                                .clear,
+                                Color.black.opacity(0.1)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: 1
+                        lineWidth: 1.2
                     )
             }
             .overlay(alignment: .top) {
@@ -134,6 +134,7 @@ struct MainTabView: View {
             // Side Menu Overlay
             SideMenuView(isOpen: $appState.showSideMenu)
         }
+        .allowsHitTesting(true)
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
         }
@@ -151,30 +152,21 @@ struct TabBtn: View {
             VStack(spacing: 6) {
                 ZStack {
                     if s {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.42),
-                                        Color.white.opacity(0.08)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(Color.white.opacity(0.35), lineWidth: 0.8)
-                            )
-                            .frame(width: 52, height: 42)
+                        Circle()
+                            .fill(Color.red.opacity(0.15))
+                            .frame(width: 48, height: 48)
+                            .blur(radius: 8)
                             .transition(.scale.combined(with: .opacity))
                     }
                     Image(systemName: i)
-                        .font(.system(size: 20, weight: s ? .bold : .medium))
+                        .font(.system(size: 22, weight: s ? .black : .bold))
+                        .foregroundStyle(
+                            s ? AnyShapeStyle(Color.red) : AnyShapeStyle(Color.gray.opacity(0.6))
+                        )
                 }
                 Text(l).font(.system(size: 10, weight: s ? .black : .bold))
+                    .foregroundColor(s ? .red : .gray.opacity(0.6))
             }
-            .foregroundColor(s ? Color(uiColor: .label) : Color(uiColor: .label).opacity(0.48))
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
@@ -194,10 +186,13 @@ struct HomeView: View {
     @StateObject var vm = HomeViewModel()
     
     var body: some View {
-        ZStack {
-            VibrantBackgroundView()
-            ScrollView {
-                VStack(spacing: 24) {
+        if appState.selectedOutlet != nil {
+            StoreVisitView()
+        } else {
+            ZStack {
+                VibrantBackgroundView()
+                ScrollView {
+                    VStack(spacing: 24) {
                     // Modern App Bar Parity
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
@@ -304,7 +299,7 @@ struct HomeView: View {
                     .liquidGlass()
                     .padding(.horizontal, 20)
                     
-                    Spacer().frame(height: 100)
+                    Spacer().frame(height: 120)
                 }
             }
             .refreshable { await vm.refresh() }
@@ -360,9 +355,37 @@ struct StatTile: View {
 
 struct SessionCard: View {
     let record: AttendanceRecord?
+    
+    private var progress: Double {
+        guard let checkin = record?.checkinAt else { return 0 }
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        
+        guard let checkinDate = formatter.date(from: checkin) else { return 0 }
+        
+        let duration: TimeInterval
+        if let checkout = record?.checkoutAt, let checkoutDate = formatter.date(from: checkout) {
+            duration = checkoutDate.timeIntervalSince(checkinDate)
+        } else {
+            duration = Date().timeIntervalSince(checkinDate)
+        }
+        
+        // Target: 8 Hours (8 * 3600 seconds)
+        let totalSeconds: Double = 8 * 3600
+        return min(max(duration / totalSeconds, 0.0), 1.0)
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("TODAY'S SESSION").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
+            HStack {
+                Text("TODAY'S SESSION").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
+                Spacer()
+                if record?.checkinAt != nil {
+                    Text("\(Int(progress * 100))%").font(.caption2).fontWeight(.black).foregroundColor(.red)
+                }
+            }
+            
             HStack {
                 VStack(alignment: .leading) {
                     Text("Check-In").font(.caption).foregroundColor(.gray)
@@ -374,10 +397,19 @@ struct SessionCard: View {
                     Text(formatTime(record?.checkoutAt)).font(.headline).foregroundColor(Color(uiColor: .label))
                 }
             }
-            // Progress Bar simulation
+            
+            // Dynamic Progress Bar
             if record?.checkinAt != nil {
-                Capsule().fill(Color.gray.opacity(0.2)).frame(height: 6)
-                    .overlay(Capsule().fill(Color.red).frame(width: 100), alignment: .leading)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.gray.opacity(0.15)).frame(height: 8)
+                        Capsule().fill(
+                            LinearGradient(colors: [.red, .orange], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .frame(width: geo.size.width * CGFloat(progress), height: 8)
+                    }
+                }
+                .frame(height: 8)
             }
         }
         .padding(20).liquidGlass()
