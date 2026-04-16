@@ -56,6 +56,7 @@ struct ContentView: View {
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
+    @Namespace private var animation // For Matched Geometry (Liquid Pod)
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -72,55 +73,60 @@ struct MainTabView: View {
             .ignoresSafeArea()
             .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.98)), removal: .opacity))
             
-            // High-Refraction Floating Tab Bar (Liquid Glass)
+            // 2025 High-Refraction Liquid Island
             HStack(spacing: 0) {
-                TabBtn(i: "house", l: "Home", s: appState.selectedTab == 0) { 
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { appState.selectedTab = 0 }
+                TabBtn(i: "house", l: "Home", s: appState.selectedTab == 0, ns: animation) { 
+                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) { appState.selectedTab = 0 }
                 }
-                TabBtn(i: "person.text.rectangle", l: "Attendance", s: appState.selectedTab == 1) { 
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { appState.selectedTab = 1 }
+                TabBtn(i: "person.text.rectangle", l: "Attendance", s: appState.selectedTab == 1, ns: animation) { 
+                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) { appState.selectedTab = 1 }
                 }
-                TabBtn(i: "map", l: "Route", s: appState.selectedTab == 2) { 
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { appState.selectedTab = 2 }
+                TabBtn(i: "map", l: "Route", s: appState.selectedTab == 2, ns: animation) { 
+                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) { appState.selectedTab = 2 }
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .background(.ultraThinMaterial, in: MirrorGlassTabBarShape())
+            .background {
+                // Liquid Glass Layering (Lensing Effect)
+                ZStack {
+                    MirrorGlassTabBarShape()
+                        .fill(.ultraThinMaterial)
+                    
+                    MirrorGlassTabBarShape()
+                        .fill(
+                            LinearGradient(
+                                colors: [.white.opacity(0.15), .clear, .black.opacity(0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+            }
             .overlay {
-                // Liquid Glow Highlight (Refractive Edge)
+                // Refractive Edge Glow
                 MirrorGlassTabBarShape()
                     .stroke(
                         LinearGradient(
-                            colors: [
-                                .white.opacity(0.8),
-                                .white.opacity(0.1),
-                                .clear,
-                                .black.opacity(0.2)
-                            ],
+                            colors: [.white.opacity(0.9), .white.opacity(0.3), .clear, .black.opacity(0.3)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: 1.2
+                        lineWidth: 1.5
                     )
+                    .blendMode(.overlay)
             }
             .overlay(alignment: .top) {
-                // Glass Gloss Overlay
-                MirrorGlassTabBarShape()
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.12), .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(height: 35)
-                    .padding(.horizontal, 10)
-                    .blur(radius: 4)
+                // Gloss Lensing
+                Capsule()
+                    .fill(Color.white.opacity(0.2))
+                    .frame(height: 25)
+                    .padding(.horizontal, 40)
+                    .blur(radius: 10)
             }
-            .shadow(color: .black.opacity(0.15), radius: 25, x: 0, y: 15)
+            .shadow(color: .black.opacity(0.2), radius: 30, x: 0, y: 15)
             .padding(.horizontal, 24)
-            .padding(.bottom, 32)
+            .padding(.bottom, 34)
             
             // Side Menu Overlay
             SideMenuView(isOpen: $appState.showSideMenu)
@@ -137,35 +143,41 @@ struct MainTabView: View {
 }
 
 struct TabBtn: View {
-    let i: String; let l: String; let s: Bool; let a: () -> Void
+    let i: String; let l: String; let s: Bool
+    let ns: Namespace.ID // Namespace for Matched Geometry
+    let a: () -> Void
+    
     var body: some View {
         Button(action: a) {
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 ZStack {
                     if s {
-                        // Liquid Aura Glow
+                        // Liquid Pod (The actual morphing transition)
                         Capsule()
-                            .fill(Color.red.opacity(0.25))
-                            .frame(width: 54, height: 36)
-                            .blur(radius: 12)
-                            .transition(.scale.combined(with: .opacity))
+                            .fill(
+                                LinearGradient(
+                                    colors: [.red, .red.opacity(0.7)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .frame(width: 50, height: 32)
+                            .matchedGeometryEffect(id: "pod", in: ns)
+                            .shadow(color: .red.opacity(0.5), radius: 10, x: 0, y: 5)
+                            .blur(radius: 1)
                     }
                     
                     Image(systemName: s ? "\(i).fill" : i)
-                        .font(.system(size: 22))
-                        .fontWeight(s ? .black : .medium)
-                        .foregroundStyle(
-                            s ? 
-                            AnyShapeStyle(LinearGradient(colors: [.red, .red.opacity(0.8)], startPoint: .top, endPoint: .bottom)) : 
-                            AnyShapeStyle(Color.gray.opacity(0.6))
-                        )
-                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 20))
+                        .fontWeight(s ? .black : .bold)
+                        .foregroundColor(s ? .white : .gray.opacity(0.6))
+                        .scaleEffect(s ? 1.1 : 1.0)
                 }
                 
                 Text(l)
-                    .font(.system(size: 10, weight: s ? .black : .bold, design: .rounded))
+                    .font(.system(size: 9, weight: s ? .black : .heavy, design: .rounded))
                     .foregroundColor(s ? .red : .gray.opacity(0.6))
-                    .tracking(0.5)
+                    .tracking(0.8)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
