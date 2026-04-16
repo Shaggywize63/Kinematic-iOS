@@ -868,8 +868,8 @@ class KinematicRepository {
         }
     }
     
-    func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil) async -> (Bool, String?) {
-        if Session.isDemoMode { return (true, nil) }
+    func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil) async -> (Bool, String?, AttendanceRecord?) {
+        if Session.isDemoMode { return (true, nil, nil) }
         let endpoint = isCheckIn ? "/attendance/checkin" : "/attendance/checkout"
         
         do {
@@ -883,10 +883,10 @@ class KinematicRepository {
                 method: "POST",
                 body: body
             )
-            if res?.success == true { return (true, nil) }
-            return (false, res?.error ?? res?.message ?? "Failed to mark attendance")
+            if res?.success == true { return (true, nil, res?.data) }
+            return (false, res?.error ?? res?.message ?? "Failed to mark attendance", nil)
         } catch {
-            return (false, error.localizedDescription)
+            return (false, error.localizedDescription, nil)
         }
     }
     

@@ -176,10 +176,20 @@ class AttendanceViewModel: ObservableObject {
     func refresh() async {
         let data = await KinematicRepository.shared.getMobileHome()
         await MainActor.run { 
-            self.today = data?.today
+            let serverToday = data?.today
+            
+            // ── STABILITY FIX (Android Parity) ──────────────────────
+            // If server returns null but we are ALREADY checked in locally, 
+            // PRESERVE the status to prevent UI flickering or session loss.
+            if serverToday == nil && (self.today?.checkinAt != nil && self.today?.checkoutAt == nil) {
+                print("⚠️ [Attendance] Server sent null, but local is active. Preserving state.")
+                return 
+            }
+            
+            self.today = serverToday
             
             // Android Parity: Resume tracking if checked in
-            if let status = data?.today?.status, status == "present" || status == "checked_in" {
+            if let status = serverToday?.status, status == "present" || status == "checked_in" {
                 LocationTrackingService.shared.startTracking()
             }
         }
@@ -233,7 +243,7 @@ class AttendanceViewModel: ObservableObject {
             }
         }
         
-        let (success, err) = await KinematicRepository.shared.markAttendance(
+        let (success, err, record) = await KinematicRepository.shared.markAttendance(
             isCheckIn: isCheckIn, 
             lat: loc.coordinate.latitude, 
             lng: loc.coordinate.longitude, 
@@ -244,17 +254,23 @@ class AttendanceViewModel: ObservableObject {
         await MainActor.run {
             isLoading = false
             if success {
+                // ── IMMEDIATE STATE UPDATE (Android Parity) ─────────
+                // Instantly update the UI with the record returned from the API
+                // so the user sees "Shift: Active" without waiting for a refresh.
+                if let newRecord = record {
+                    self.today = newRecord
+                }
+                
                 message = isCheckIn ? "Checked in!" : "Checked out!"
-                // Clear local selfie so it doesn't persist into the next check-in cycle
+                // Clear local selfie so it doesn't persist
                 selfie = nil
-                // Persist location stamp locally in case server doesn't echo it back
+                
                 if isCheckIn {
                     let stamp = String(format: "%.4f, %.4f", loc.coordinate.latitude, loc.coordinate.longitude)
                     checkinLocationStamp = stamp
                     UserDefaults.standard.set(stamp, forKey: "checkin_location_stamp")
                     LocationTrackingService.shared.startTracking()
                 } else {
-                    // Clear stamp on checkout so next check-in gets a fresh location
                     checkinLocationStamp = nil
                     UserDefaults.standard.removeObject(forKey: "checkin_location_stamp")
                     LocationTrackingService.shared.stopTracking()
