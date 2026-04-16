@@ -52,6 +52,22 @@ class AppState: ObservableObject {
     @Published var activeVisitOutletId: String? = nil
     @Published var visitErrorMessage: String? = nil
     
+    // --- Navigation Morphing (iOS 26 Liquid Glass) ---
+    @Published var isTabBarExpanded: Bool = true
+    private var lastScrollY: CGFloat = 0
+    
+    func updateScrollProgress(_ y: CGFloat) {
+        let delta = y - lastScrollY
+        if abs(delta) > 5 { // Threshold to avoid jitter
+            if delta > 0 && isTabBarExpanded {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { isTabBarExpanded = false }
+            } else if delta < 0 && !isTabBarExpanded {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { isTabBarExpanded = true }
+            }
+            lastScrollY = y
+        }
+    }
+    
     init() {
         // Load persisted theme or default to dark
         let savedTheme = UserDefaults.standard.string(forKey: "app_theme") ?? AppTheme.dark.rawValue

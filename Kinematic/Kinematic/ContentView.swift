@@ -80,38 +80,49 @@ struct MainTabView: View {
                     .zIndex(10)
             }
             
-            // Crystalline Liquid Bar (2025 Standard)
-            HStack(spacing: 0) {
-                TabBtn(i: "house", l: "Home", s: appState.selectedTab == 0, ns: animation) { 
+            // 2025 High-Refraction Liquid Island (Adaptive Morphing)
+            HStack(spacing: appState.isTabBarExpanded ? 0 : 20) {
+                TabBtn(i: "house", l: "Home", s: appState.selectedTab == 0, ex: appState.isTabBarExpanded, ns: animation) { 
                     withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 0 }
                 }
-                TabBtn(i: "person.text.rectangle", l: "Attendance", s: appState.selectedTab == 1, ns: animation) { 
+                TabBtn(i: "person.text.rectangle", l: "Attendance", s: appState.selectedTab == 1, ex: appState.isTabBarExpanded, ns: animation) { 
                     withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 1 }
                 }
-                TabBtn(i: "map", l: "Route", s: appState.selectedTab == 2, ns: animation) { 
+                TabBtn(i: "map", l: "Route", s: appState.selectedTab == 2, ex: appState.isTabBarExpanded, ns: animation) { 
                     withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 2 }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
+            .padding(.horizontal, appState.isTabBarExpanded ? 12 : 18)
+            .padding(.vertical, appState.isTabBarExpanded ? 12 : 10)
             .background {
-                MirrorGlassTabBarShape()
-                    .fill(.ultraThinMaterial)
-                    .overlay {
+                // Adaptive Liquid Glass Lensing
+                ZStack {
+                    MirrorGlassTabBarShape()
+                        .fill(.ultraThinMaterial)
+                    
+                    if !appState.isTabBarExpanded {
                         MirrorGlassTabBarShape()
-                            .stroke(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.6), .clear, .black.opacity(0.2)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.5
-                            )
+                            .fill(Color.red.opacity(0.05))
+                            .blur(radius: 10)
                     }
+                }
             }
-            .shadow(color: .black.opacity(0.18), radius: 25, x: 0, y: 15)
+            .overlay {
+                MirrorGlassTabBarShape()
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.8), .clear, .black.opacity(0.3)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+            }
+            .scaleEffect(appState.isTabBarExpanded ? 1.0 : 0.92)
+            .shadow(color: .black.opacity(appState.isTabBarExpanded ? 0.18 : 0.25), radius: 25, x: 0, y: 15)
             .padding(.horizontal, 24)
-            .padding(.bottom, 34)
+            .padding(.bottom, appState.isTabBarExpanded ? 34 : 20)
+            .offset(y: appState.isTabBarExpanded ? 0 : 10)
             
             // Side Menu Overlay
             SideMenuView(isOpen: $appState.showSideMenu)
@@ -128,27 +139,27 @@ struct MainTabView: View {
 }
 
 struct TabBtn: View {
-    let i: String; let l: String; let s: Bool
+    let i: String; let l: String; let s: Bool; let ex: Bool
     let ns: Namespace.ID
     let a: () -> Void
     
     var body: some View {
         Button(action: a) {
-            VStack(spacing: 6) {
+            VStack(spacing: ex ? 6 : 0) {
                 ZStack {
                     if s {
-                        // Crystalline Liquid Pod (The "Refraction" Effect)
+                        // Crystalline Liquid Pod with Bokeh Highlight
                         ZStack {
                             Capsule()
-                                .fill(.white.opacity(0.15))
+                                .fill(.white.opacity(0.18))
                                 .background(.ultraThinMaterial, in: Capsule())
                                 .matchedGeometryEffect(id: "pod", in: ns)
                             
-                            // Specular Lighting (The Gloss)
+                            // High-Focus Lensing Border
                             Capsule()
                                 .stroke(
                                     LinearGradient(
-                                        colors: [.white.opacity(0.9), .clear, .white.opacity(0.2)],
+                                        colors: [.white, .clear, .white.opacity(0.4)],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
@@ -156,21 +167,22 @@ struct TabBtn: View {
                                 )
                                 .matchedGeometryEffect(id: "pod_border", in: ns)
                         }
-                        .frame(width: 54, height: 38)
-                        .shadow(color: .white.opacity(0.2), radius: 10, x: -2, y: -2)
-                        .shadow(color: .black.opacity(0.1), radius: 10, x: 2, y: 10)
+                        .frame(width: ex ? 54 : 48, height: ex ? 38 : 34)
+                        .shadow(color: .white.opacity(0.3), radius: 8, x: -2, y: -2)
                     }
                     
                     Image(systemName: s ? "\(i).fill" : i)
-                        .font(.system(size: 20, weight: s ? .black : .bold))
+                        .font(.system(size: ex ? 20 : 18, weight: s ? .black : .bold))
                         .foregroundColor(s ? .blue : .gray.opacity(0.6))
-                        .scaleEffect(s ? 1.2 : 1.0) // Magnification effect
+                        .scaleEffect(s ? (ex ? 1.2 : 1.1) : 1.0)
                 }
                 
-                Text(l)
-                    .font(.system(size: 9, weight: s ? .black : .heavy, design: .rounded))
-                    .foregroundColor(s ? .blue : .gray.opacity(0.6))
-                    .opacity(s ? 1 : 0.8)
+                if ex {
+                    Text(l)
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .foregroundColor(s ? .blue : .gray.opacity(0.6))
+                        .transition(.opacity.combined(with: .scale))
+                }
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -306,12 +318,17 @@ struct HomeView: View {
                     Spacer().frame(height: 120)
                 }
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y
+            } action: { _, newValue in
+                appState.updateScrollProgress(newValue)
+            }
             .refreshable { await vm.refresh() }
         }
         .onAppear { Task { await vm.refresh() } }
     }
 }
-}
+
 
 struct SelfieStatusCard: View {
     @EnvironmentObject var appState: AppState
@@ -539,6 +556,11 @@ struct RoutePlansView: View {
                     Spacer().frame(height: 120)
                 }
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y
+            } action: { _, newValue in
+                appState.updateScrollProgress(newValue)
+            }
             .refreshable { await vm.refresh() }
         }
         }
@@ -716,6 +738,11 @@ struct AttendanceView: View {
                     Spacer().frame(height: 120)
                 }
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y
+            } action: { _, newValue in
+                appState.updateScrollProgress(newValue)
+            }
         }
     }
     .onReceive(timer) { _ in currentTime = Date() }
@@ -855,6 +882,11 @@ struct ActivityFeedView: View {
                         }
                         Spacer().frame(height: 120)
                     }
+                }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y
+                } action: { _, newValue in
+                    appState.updateScrollProgress(newValue)
                 }
                 .refreshable { await vm.refresh() }
             }
