@@ -60,7 +60,7 @@ struct MainTabView: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Custom View Switcher (Definitively removes native TabBar)
+            // Global Content Switcher
             Group {
                 switch appState.selectedTab {
                 case 0: HomeView().id("home")
@@ -73,58 +73,43 @@ struct MainTabView: View {
             .ignoresSafeArea()
             .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.98)), removal: .opacity))
             
-            // 2025 High-Refraction Liquid Island
+            // Global Store Visit Overlay (Always opens over active tab)
+            if appState.selectedOutlet != nil {
+                StoreVisitView()
+                    .transition(.move(edge: .bottom))
+                    .zIndex(10)
+            }
+            
+            // Crystalline Liquid Bar (2025 Standard)
             HStack(spacing: 0) {
                 TabBtn(i: "house", l: "Home", s: appState.selectedTab == 0, ns: animation) { 
-                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) { appState.selectedTab = 0 }
+                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 0 }
                 }
                 TabBtn(i: "person.text.rectangle", l: "Attendance", s: appState.selectedTab == 1, ns: animation) { 
-                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) { appState.selectedTab = 1 }
+                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 1 }
                 }
                 TabBtn(i: "map", l: "Route", s: appState.selectedTab == 2, ns: animation) { 
-                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) { appState.selectedTab = 2 }
+                    withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 2 }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
             .background {
-                // Liquid Glass Layering (Lensing Effect)
-                ZStack {
-                    MirrorGlassTabBarShape()
-                        .fill(.ultraThinMaterial)
-                    
-                    MirrorGlassTabBarShape()
-                        .fill(
-                            LinearGradient(
-                                colors: [.white.opacity(0.15), .clear, .black.opacity(0.1)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            }
-            .overlay {
-                // Refractive Edge Glow
                 MirrorGlassTabBarShape()
-                    .stroke(
-                        LinearGradient(
-                            colors: [.white.opacity(0.9), .white.opacity(0.3), .clear, .black.opacity(0.3)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
-                    .blendMode(.overlay)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        MirrorGlassTabBarShape()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.6), .clear, .black.opacity(0.2)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                    }
             }
-            .overlay(alignment: .top) {
-                // Gloss Lensing
-                Capsule()
-                    .fill(Color.white.opacity(0.2))
-                    .frame(height: 25)
-                    .padding(.horizontal, 40)
-                    .blur(radius: 10)
-            }
-            .shadow(color: .black.opacity(0.2), radius: 30, x: 0, y: 15)
+            .shadow(color: .black.opacity(0.18), radius: 25, x: 0, y: 15)
             .padding(.horizontal, 24)
             .padding(.bottom, 34)
             
@@ -144,7 +129,7 @@ struct MainTabView: View {
 
 struct TabBtn: View {
     let i: String; let l: String; let s: Bool
-    let ns: Namespace.ID // Namespace for Matched Geometry
+    let ns: Namespace.ID
     let a: () -> Void
     
     var body: some View {
@@ -152,32 +137,40 @@ struct TabBtn: View {
             VStack(spacing: 6) {
                 ZStack {
                     if s {
-                        // Liquid Pod (The actual morphing transition)
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [.red, .red.opacity(0.7)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
+                        // Crystalline Liquid Pod (The "Refraction" Effect)
+                        ZStack {
+                            Capsule()
+                                .fill(.white.opacity(0.15))
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .matchedGeometryEffect(id: "pod", in: ns)
+                            
+                            // Specular Lighting (The Gloss)
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.9), .clear, .white.opacity(0.2)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 2
                                 )
-                            )
-                            .frame(width: 50, height: 32)
-                            .matchedGeometryEffect(id: "pod", in: ns)
-                            .shadow(color: .red.opacity(0.5), radius: 10, x: 0, y: 5)
-                            .blur(radius: 1)
+                                .matchedGeometryEffect(id: "pod_border", in: ns)
+                        }
+                        .frame(width: 54, height: 38)
+                        .shadow(color: .white.opacity(0.2), radius: 10, x: -2, y: -2)
+                        .shadow(color: .black.opacity(0.1), radius: 10, x: 2, y: 10)
                     }
                     
                     Image(systemName: s ? "\(i).fill" : i)
-                        .font(.system(size: 20))
-                        .fontWeight(s ? .black : .bold)
-                        .foregroundColor(s ? .white : .gray.opacity(0.6))
-                        .scaleEffect(s ? 1.1 : 1.0)
+                        .font(.system(size: 20, weight: s ? .black : .bold))
+                        .foregroundColor(s ? .blue : .gray.opacity(0.6))
+                        .scaleEffect(s ? 1.2 : 1.0) // Magnification effect
                 }
                 
                 Text(l)
                     .font(.system(size: 9, weight: s ? .black : .heavy, design: .rounded))
-                    .foregroundColor(s ? .red : .gray.opacity(0.6))
-                    .tracking(0.8)
+                    .foregroundColor(s ? .blue : .gray.opacity(0.6))
+                    .opacity(s ? 1 : 0.8)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -198,13 +191,10 @@ struct HomeView: View {
     @StateObject var vm = HomeViewModel()
     
     var body: some View {
-        if appState.selectedOutlet != nil {
-            StoreVisitView()
-        } else {
-            ZStack {
-                VibrantBackgroundView()
-                ScrollView {
-                    VStack(spacing: 24) {
+        ZStack {
+            VibrantBackgroundView()
+            ScrollView {
+                VStack(spacing: 24) {
                     // Modern App Bar Parity
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
@@ -297,8 +287,10 @@ struct HomeView: View {
                         if !previewOutlets.isEmpty {
                             ForEach(previewOutlets) { outlet in
                                 Button(action: { 
-                                    appState.selectedOutlet = outlet
-                                    appState.selectedTab = 0
+                                    withAnimation(.spring()) {
+                                        appState.selectedOutlet = outlet
+                                        appState.selectedTab = 2 // Switch to Route Plans
+                                    }
                                 }) {
                                     RoutePreviewRow(outlet: outlet)
                                 }
