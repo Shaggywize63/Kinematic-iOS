@@ -70,15 +70,10 @@ struct MainTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea()
+            // Removed .ignoresSafeArea() to fix top overlap on Dynamic Island devices
             .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.98)), removal: .opacity))
             
-            // Global Store Visit Overlay (Always opens over active tab)
-            if appState.selectedOutlet != nil {
-                StoreVisitView()
-                    .transition(.move(edge: .bottom))
-                    .zIndex(10)
-            }
+            .offset(y: appState.isTabBarExpanded ? 0 : 10)
             
             // 2025 High-Refraction Liquid Island (Adaptive Morphing)
             HStack(spacing: appState.isTabBarExpanded ? 0 : 20) {
@@ -123,6 +118,13 @@ struct MainTabView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, appState.isTabBarExpanded ? 34 : 20)
             .offset(y: appState.isTabBarExpanded ? 0 : 10)
+            
+            // Global Store Visit Overlay (Absolute top z-index)
+            if appState.selectedOutlet != nil {
+                StoreVisitView()
+                    .transition(.move(edge: .bottom))
+                    .zIndex(100)
+            }
             
             // Side Menu Overlay
             SideMenuView(isOpen: $appState.showSideMenu)
@@ -207,7 +209,7 @@ struct HomeView: View {
             VibrantBackgroundView()
             ScrollView {
                 VStack(spacing: 24) {
-                    // Modern App Bar Parity
+                    // Modern App Bar Parity (Adjusted for iPhone 17 Pro Safe Area)
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Kinematic").font(.system(size: 28, weight: .black, design: .rounded)).foregroundColor(Color(uiColor: .label))
@@ -517,7 +519,7 @@ struct RoutePlansView: View {
         ZStack {
             VibrantBackgroundView()
             VStack(spacing: 0) {
-                // Header
+                // Header (Adjusted for iPhone 17 Pro Safe Area)
                 HStack {
                     Button(action: { withAnimation { appState.showSideMenu = true } }) {
                         Image(systemName: "line.3.horizontal")
@@ -531,7 +533,7 @@ struct RoutePlansView: View {
                     Spacer()
                 }
                 .padding(.horizontal)
-                .padding(.top, 10)
+                .padding(.top, 20) // Increased for Safe Area
                 .padding(.bottom, 10)
                 
                 ScrollView {
@@ -589,9 +591,9 @@ struct OutletCard: View {
                 }.foregroundColor(.purple)
                 Spacer()
                 Button(action: {
-                    // Start Visit Action: Navigate to Home showing StoreVisitView
+                    // Start Visit Action: Simply set selectedOutlet (Overlay handles visibility)
                     appState.selectedOutlet = outlet
-                    appState.selectedTab = 0
+                    // Removed selectedTab = 0 to fulfill request to stay in Route Plans
                 }) {
                     Text(outlet.status == "visited" ? "View Details" : "Start Visit")
                         .font(.caption2).fontWeight(.black).padding(.horizontal, 12).padding(.vertical, 6)
@@ -615,7 +617,7 @@ struct AttendanceView: View {
         ZStack {
             VibrantBackgroundView()
             VStack(spacing: 0) {
-                // Header
+                // Header (Adjusted for iPhone 17 Pro Safe Area)
                 HStack {
                     Button(action: { withAnimation { appState.showSideMenu = true } }) {
                         Image(systemName: "line.3.horizontal")
@@ -628,7 +630,7 @@ struct AttendanceView: View {
                     Spacer()
                 }
                 .padding(.horizontal)
-                .padding(.top, 10)
+                .padding(.top, 20) // Increased for Safe Area
                 
                 ScrollView {
                     VStack(spacing: 25) {
@@ -866,7 +868,7 @@ struct ActivityFeedView: View {
                 VibrantBackgroundView()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        Text("Work Feed").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 60).padding(.horizontal)
+                        Text("Work Feed").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 20).padding(.horizontal)
                         
                         if vm.isLoading && vm.items.isEmpty {
                             ProgressView().tint(.red).frame(maxWidth: .infinity).padding(.top, 50)
