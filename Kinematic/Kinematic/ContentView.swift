@@ -59,12 +59,18 @@ struct MainTabView: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
-            TabView(selection: $appState.selectedTab) {
-                HomeView().tag(0)
-                AttendanceView().tag(1)
-                RoutePlansView().tag(2)
+            // Custom View Switcher (Definitively removes native TabBar)
+            Group {
+                switch appState.selectedTab {
+                case 0: HomeView().id("home")
+                case 1: AttendanceView().id("attendance")
+                case 2: RoutePlansView().id("route")
+                default: HomeView().id("default")
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea()
+            .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.98)), removal: .opacity))
             
             // Mirror Glass Floating Tab Bar
             HStack(spacing: 0) {
@@ -127,9 +133,9 @@ struct MainTabView: View {
                     .padding(.horizontal, 18)
                     .blur(radius: 8)
             }
-            .shadow(color: Color.black.opacity(0.18), radius: 18, x: 0, y: 10)
-            .padding(.horizontal, 25)
-            .padding(.bottom, 25)
+            .shadow(color: Color.black.opacity(0.12), radius: 20, x: 0, y: 12)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
             
             // Side Menu Overlay
             SideMenuView(isOpen: $appState.showSideMenu)

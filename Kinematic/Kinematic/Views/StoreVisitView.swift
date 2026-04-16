@@ -113,6 +113,7 @@ struct StoreVisitView: View {
         let lng = LocationTrackingService.shared.lastLocation?.coordinate.longitude ?? 0
         
         isStartingVisit = true
+        appState.visitErrorMessage = nil // Reset error
         
         let visitTask = Task {
             let result = await KinematicRepository.shared.logVisit(outletId: outletId, lat: lat, lng: lng)
@@ -129,7 +130,7 @@ struct StoreVisitView: View {
                         }
                     } else {
                         isStartingVisit = false
-                        // Error handling could be added here (e.g., alert)
+                        appState.visitErrorMessage = "Server rejected visit log. Please check GPS."
                     }
                 }
             }
@@ -137,12 +138,14 @@ struct StoreVisitView: View {
         
         // Timeout Task
         Task {
-            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+            try? await Task.sleep(nanoseconds: 12_000_000_000) // 12 seconds
             if isStartingVisit {
                 visitTask.cancel()
                 await MainActor.run {
-                    withAnimation { isStartingVisit = false }
-                    print("⚠️ VISIT_INIT_TIMEOUT: Connection timed out.")
+                    withAnimation { 
+                        isStartingVisit = false 
+                        appState.visitErrorMessage = "Connection timed out. Please try again."
+                    }
                 }
             }
         }
