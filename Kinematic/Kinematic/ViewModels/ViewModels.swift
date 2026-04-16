@@ -45,7 +45,9 @@ class HomeViewModel: ObservableObject {
             self.data = newData
             self.isLoading = false
             
-            // Parity with Android: Populate global app state for secondary views
+            // Centralized State Sync (Android Parity)
+            AppState.shared.today = newData?.today
+            
             AppState.shared.summary = newData?.summary
             if let q = newData?.quote {
                 AppState.shared.quote = q
@@ -181,12 +183,12 @@ class AttendanceViewModel: ObservableObject {
             // ── STABILITY FIX (Android Parity) ──────────────────────
             // If server returns null but we are ALREADY checked in locally, 
             // PRESERVE the status to prevent UI flickering or session loss.
-            if serverToday == nil && (self.today?.checkinAt != nil && self.today?.checkoutAt == nil) {
+            if serverToday == nil && (AppState.shared.today?.checkinAt != nil && AppState.shared.today?.checkoutAt == nil) {
                 print("⚠️ [Attendance] Server sent null, but local is active. Preserving state.")
                 return 
             }
             
-            self.today = serverToday
+            AppState.shared.today = serverToday
             
             // Android Parity: Resume tracking if checked in
             if let status = serverToday?.status, status == "present" || status == "checked_in" {
@@ -256,9 +258,8 @@ class AttendanceViewModel: ObservableObject {
             if success {
                 // ── IMMEDIATE STATE UPDATE (Android Parity) ─────────
                 // Instantly update the UI with the record returned from the API
-                // so the user sees "Shift: Active" without waiting for a refresh.
                 if let newRecord = record {
-                    self.today = newRecord
+                    AppState.shared.today = newRecord
                 }
                 
                 message = isCheckIn ? "Checked in!" : "Checked out!"

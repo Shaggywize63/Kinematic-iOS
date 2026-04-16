@@ -232,7 +232,7 @@ struct HomeView: View {
                     .padding(.horizontal, 25)
                     
                     // Selfie Status Card
-                    SelfieStatusCard(record: vm.data?.today)
+                    SelfieStatusCard(record: appState.today)
                         .padding(.horizontal, 20)
                     
                     // Stats Row
@@ -244,7 +244,7 @@ struct HomeView: View {
                     .padding(.horizontal, 20)
                     
                     // Today's Session
-                    SessionCard(record: vm.data?.today)
+                    SessionCard(record: appState.today)
                         .padding(.horizontal, 20)
                     
                     // Broadcast / Announcement Card
@@ -591,7 +591,7 @@ struct AttendanceView: View {
                                         Image(uiImage: img)
                                             .resizable().aspectRatio(contentMode: .fill)
                                             .frame(width: 130, height: 130).clipShape(Circle())
-                                    } else if let selfieUrl = vm.today?.checkinSelfieUrl,
+                                    } else if let selfieUrl = appState.today?.checkinSelfieUrl,
                                               let url = URL(string: selfieUrl) {
                                         // Stored selfie from server (shown after app restart)
                                         AsyncImage(url: url) { image in
@@ -649,14 +649,14 @@ struct AttendanceView: View {
                                 if vm.isLoading {
                                     ProgressView().tint(.white)
                                 } else {
-                                    Image(systemName: vm.today?.checkinAt != nil ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
-                                    Text(vm.today?.checkinAt != nil ? "CHECK OUT NOW" : "CHECK IN NOW").fontWeight(.black)
+                                    Image(systemName: appState.today?.checkinAt != nil ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
+                                    Text(appState.today?.checkinAt != nil ? "CHECK OUT NOW" : "CHECK IN NOW").fontWeight(.black)
                                 }
                             }
                         }
-                        .frame(maxWidth: .infinity).padding().background(vm.today?.checkinAt != nil ? Color.gray.opacity(0.3) : Color.red).foregroundColor(.white).cornerRadius(18)
-                        .disabled(vm.isLoading || (vm.selfie == nil && vm.today?.checkinAt == nil))
-                        .opacity((vm.selfie == nil && vm.today?.checkinAt == nil) ? 0.5 : 1.0)
+                        .frame(maxWidth: .infinity).padding().background(appState.today?.checkinAt != nil ? Color.gray.opacity(0.3) : Color.red).foregroundColor(.white).cornerRadius(18)
+                        .disabled(vm.isLoading || (vm.selfie == nil && appState.today?.checkinAt == nil))
+                        .opacity((vm.selfie == nil && appState.today?.checkinAt == nil) ? 0.5 : 1.0)
                     }
                     .padding(30).liquidGlass().padding(.horizontal, 20)
                     
@@ -664,7 +664,7 @@ struct AttendanceView: View {
                     Text("RECENT HISTORY").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 25)
                     
                     VStack(spacing: 12) {
-                        if let t = vm.today {
+                        if let t = appState.today {
                             AttendanceHistoryRow(record: t, localLocationStamp: vm.checkinLocationStamp)
                         } else {
                             EmptyHistoryRow()

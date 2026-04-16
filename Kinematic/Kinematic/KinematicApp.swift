@@ -36,6 +36,7 @@ class AppState: ObservableObject {
     @Published var attendanceVM = AttendanceViewModel()
     
     // --- Shared Home Data (Parity with Android AppViewModel) ---
+    @Published var today: AttendanceRecord? = nil
     @Published var summary: AnalyticsSummary? = nil
     @Published var quote: MotivationQuote? = nil
     
