@@ -360,66 +360,204 @@ struct StatTile: View {
     }
 }
 
+/// Live-updating session card — uses TimelineView so the elapsed timer
+/// and progress ring refresh automatically without a manual Timer.
 struct SessionCard: View {
     let record: AttendanceRecord?
-    
-    private var progress: Double {
-        guard let checkin = record?.checkinAt else { return 0 }
-        
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        guard let checkinDate = formatter.date(from: checkin) else { return 0 }
-        
-        let duration: TimeInterval
-        if let checkout = record?.checkoutAt, let checkoutDate = formatter.date(from: checkout) {
-            duration = checkoutDate.timeIntervalSince(checkinDate)
-        } else {
-            duration = Date().timeIntervalSince(checkinDate)
-        }
-        
-        // Target: 8 Hours (8 * 3600 seconds)
-        let totalSeconds: Double = 8 * 3600
-        return min(max(duration / totalSeconds, 0.0), 1.0)
-    }
-    
+
+    private var checkinDate: Date? { parseISO(record?.checkinAt) }
+    private var checkoutDate: Date? { parseISO(record?.checkoutAt) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack {
-                Text("TODAY'S SESSION").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
-                Spacer()
-                if record?.checkinAt != nil {
-                    Text("\(Int(progress * 100))%").font(.caption2).fontWeight(.black).foregroundColor(.red)
-                }
+        if checkinDate != nil {
+            // Update every second while shift is active; static once checked out
+            TimelineView(checkoutDate == nil ? .periodic(from: .now, by: 1) : .explicit([])) { context in
+                SessionCardContent(
+                    checkinDate: checkinDate,
+                    checkoutDate: checkoutDate,
+                    now: context.date
+                )
             }
-            
+        } else {
+            SessionCardContent(checkinDate: nil, checkoutDate: nil, now: .now)
+        }
+    }
+
+    private func parseISO(_ s: String?) -> Date? {
+        guard let s else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: s)
+    }
+}
+
+struct SessionCardContent: View {
+    let checkinDate: Date?
+    let checkoutDate: Date?
+    let now: Date
+
+    private var isActive: Bool { checkinDate != nil && checkoutDate == nil }
+    private var endDate: Date { checkoutDate ?? now }
+
+    private var elapsed: TimeInterval {
+        guard let ci = checkinDate else { return 0 }
+        return max(0, endDate.timeIntervalSince(ci))
+    }
+    private var progress: Double { min(elapsed / (8 * 3600), 1.0) }
+
+    private var elapsedLabel: String {
+        let h = Int(elapsed) / 3600
+        let m = (Int(elapsed) % 3600) / 60
+        let s = Int(elapsed) % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
             HStack {
-                VStack(alignment: .leading) {
-                    Text("Check-In").font(.caption).foregroundColor(.gray)
-                    Text(formatTime(record?.checkinAt)).font(.headline).foregroundColor(Color(uiColor: .label))
-                }
+                Text("TODAY'S SESSION")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .tracking(1)
                 Spacer()
-                VStack(alignment: .trailing) {
-                    Text("Check-Out").font(.caption).foregroundColor(.gray)
-                    Text(formatTime(record?.checkoutAt)).font(.headline).foregroundColor(Color(uiColor: .label))
-                }
-            }
-            
-            // Dynamic Progress Bar
-            if record?.checkinAt != nil {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.gray.opacity(0.15)).frame(height: 8)
-                        Capsule().fill(
-                            LinearGradient(colors: [.red, .orange], startPoint: .leading, endPoint: .trailing)
-                        )
-                        .frame(width: geo.size.width * CGFloat(progress), height: 8)
+                if checkinDate != nil {
+                    HStack(spacing: 4) {
+                        if isActive {
+                            Circle()
+                                .fill(.green)
+                                .frame(width: 6, height: 6)
+                        }
+                        Text(isActive ? "ACTIVE" : "COMPLETED")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundStyle(isActive ? .green : .secondary)
                     }
                 }
-                .frame(height: 8)
+            }
+
+            if let ci = checkinDate {
+                HStack(spacing: 16) {
+                    // Progress Ring
+                    ZStack {
+                        Circle()
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 8)
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(
+                                LinearGradient(
+                                    colors: progress >= 1.0 ? [.green, .mint] : [.red, .orange],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeInOut(duration: 0.6), value: progress)
+
+                        VStack(spacing: 1) {
+                            Text("\(Int(progress * 100))%")
+                                .font(.system(size: 16, weight: .black, design: .rounded))
+                                .foregroundStyle(Color(uiColor: .label))
+                                .contentTransition(.numericText())
+                            Text("of 8h")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(width: 72, height: 72)
+
+                    // Time details
+                    VStack(alignment: .leading, spacing: 10) {
+                        SessionTimeRow(
+                            label: "Check-In",
+                            value: ci.formatted(date: .omitted, time: .shortened),
+                            icon: "arrow.right.circle.fill",
+                            color: .green
+                        )
+                        if let co = checkoutDate {
+                            SessionTimeRow(
+                                label: "Check-Out",
+                                value: co.formatted(date: .omitted, time: .shortened),
+                                icon: "arrow.left.circle.fill",
+                                color: .red
+                            )
+                        } else {
+                            SessionTimeRow(
+                                label: "Elapsed",
+                                value: elapsedLabel,
+                                icon: "timer",
+                                color: .orange
+                            )
+                        }
+                    }
+
+                    Spacer()
+                }
+
+                // Linear progress bar
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.primary.opacity(0.06))
+                            .frame(height: 6)
+                        Capsule()
+                            .fill(LinearGradient(
+                                colors: progress >= 1.0 ? [.green, .mint] : [.red, .orange],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ))
+                            .frame(width: geo.size.width * CGFloat(progress), height: 6)
+                            .animation(.easeInOut(duration: 0.4), value: progress)
+                    }
+                }
+                .frame(height: 6)
+
+            } else {
+                // No session yet
+                HStack(spacing: 12) {
+                    Image(systemName: "clock.badge.questionmark")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No active session")
+                            .font(.subheadline).fontWeight(.semibold)
+                            .foregroundStyle(Color(uiColor: .label))
+                        Text("Check in to start tracking your shift")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
             }
         }
-        .padding(20).liquidGlass()
+        .padding(20)
+        .liquidGlass()
+    }
+}
+
+struct SessionTimeRow: View {
+    let label: String
+    let value: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(color)
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(label)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(uiColor: .label))
+                    .contentTransition(.numericText())
+            }
+        }
     }
 }
 
@@ -692,21 +830,36 @@ struct AttendanceView: View {
                                 .padding(.horizontal, 12).padding(.vertical, 4).background(Color.white.opacity(0.05)).cornerRadius(8)
                         }
                         
-                        Button(action: { 
-                            if let loc = locationService.lastLocation { Task { await vm.toggleAttendance(loc: loc) } }
+                        // Unified action button: opens camera if no selfie yet, else submits
+                        let needsSelfie = vm.selfie == nil && appState.today?.checkinAt == nil
+                        Button(action: {
+                            if needsSelfie {
+                                vm.startFlow()
+                            } else if let loc = locationService.lastLocation {
+                                Task { await vm.toggleAttendance(loc: loc) }
+                            } else {
+                                LocationTrackingService.shared.startTracking()
+                                vm.message = "Acquiring GPS location…"
+                            }
                         }) {
-                            HStack {
+                            HStack(spacing: 10) {
                                 if vm.isLoading {
                                     ProgressView().tint(.white)
+                                } else if needsSelfie {
+                                    Image(systemName: "camera.fill")
+                                    Text("TAKE SELFIE TO CHECK IN").fontWeight(.black)
                                 } else {
                                     Image(systemName: appState.today?.checkinAt != nil ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
                                     Text(appState.today?.checkinAt != nil ? "CHECK OUT NOW" : "CHECK IN NOW").fontWeight(.black)
                                 }
                             }
                         }
-                        .frame(maxWidth: .infinity).padding().background(appState.today?.checkinAt != nil ? Color.gray.opacity(0.3) : Color.red).foregroundColor(.white).cornerRadius(18)
-                        .disabled(vm.isLoading || (vm.selfie == nil && appState.today?.checkinAt == nil))
-                        .opacity((vm.selfie == nil && appState.today?.checkinAt == nil) ? 0.5 : 1.0)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(needsSelfie ? Color.blue : (appState.today?.checkinAt != nil ? Color.gray.opacity(0.3) : Color.red))
+                        .foregroundColor(.white)
+                        .cornerRadius(18)
+                        .disabled(vm.isLoading)
                     }
                     .padding(30).liquidGlass().padding(.horizontal, 20)
                     
