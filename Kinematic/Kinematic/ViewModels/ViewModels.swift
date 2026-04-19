@@ -38,17 +38,31 @@ class HomeViewModel: ObservableObject {
         uniqueOutlets.filter { $0.status == "visited" }.count
     }
     
+    private var lastRefreshTime: Date?
+    
     func refresh() async {
+        // --- PERFORMANCE: Throttling (Parity with high-end Android) ---
+        // Avoid redundant calls if refreshed in last 30 seconds
+        if let last = lastRefreshTime, Date().timeIntervalSince(last) < 30 {
+            print("🕒 [HomeVM] Throttled. Using fresh AppState.")
+            return
+        }
+        
         await MainActor.run { isLoading = true }
         let newData = await KinematicRepository.shared.getMobileHome()
         await MainActor.run { 
             self.data = newData
             self.isLoading = false
+            self.lastRefreshTime = Date()
             
             // Centralized State Sync (Android Parity)
-            AppState.shared.today = newData?.today
+            if let today = newData?.today {
+                AppState.shared.today = today
+            }
             
-            AppState.shared.summary = newData?.summary
+            if let summ = newData?.summary {
+                AppState.shared.summary = summ
+            }
             if let q = newData?.quote {
                 AppState.shared.quote = q
             }
@@ -170,14 +184,30 @@ class AttendanceViewModel: ObservableObject {
     
     func startFlow() {
         self.autoSubmitScheduled = true
-        LocationTrackingService.shared.startTracking() // Pre-warm GPS for instant capture
-        self.showCamera = true
+        // --- PERFORMANCE: Background GPS Initialization ---
+        DispatchQueue.global(qos: .userInteractive).async {
+            LocationTrackingService.shared.startTracking()
+        }
+        
+        // --- PERFORMANCE: Priority UI Update ---
+        // Ensure camera opens instantly on first click by using high-priority main actor
+        Task { @MainActor in
+            self.showCamera = true
+        }
     }
 
     
+    private var lastRefreshTime: Date?
+
     func refresh() async {
+        // --- PERFORMANCE: Throttling ---
+        if let last = lastRefreshTime, Date().timeIntervalSince(last) < 30 {
+            return
+        }
+
         let data = await KinematicRepository.shared.getMobileHome()
         await MainActor.run { 
+            self.lastRefreshTime = Date()
             let serverToday = data?.today
             
             // ── STABILITY FIX (Android Parity) ──────────────────────
@@ -212,7 +242,8 @@ class AttendanceViewModel: ObservableObject {
     }
 
     func toggleAttendance(loc: CLLocation) async {
-        let isCheckIn = today?.checkinAt == nil || (today?.checkinAt != nil && today?.checkoutAt != nil)
+        let currentSession = AppState.shared.today
+        let isCheckIn = currentSession?.checkinAt == nil || (currentSession?.checkinAt != nil && currentSession?.checkoutAt != nil)
         let action = isCheckIn ? "CHECK_IN" : "CHECK_OUT"
         
         guard await checkSecurity(action: action, lat: loc.coordinate.latitude, lng: loc.coordinate.longitude) else { return }
