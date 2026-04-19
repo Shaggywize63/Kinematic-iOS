@@ -2,12 +2,8 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-// ── Entry point ──────────────────────────────────────────────────────────────
-@main
-struct KinematicShiftWidgetBundle: WidgetBundle {
-    var body: some Widget { ShiftLiveActivityWidget() }
-}
-
+// Add ShiftLiveActivityWidget() to the WidgetBundle in your Xcode-generated
+// entry-point file (e.g. KinematicShiftWidgetBundle.swift).
 struct ShiftLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ShiftActivityAttributes.self) { context in

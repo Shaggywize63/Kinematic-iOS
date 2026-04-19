@@ -370,8 +370,9 @@ struct SessionCard: View {
 
     var body: some View {
         if checkinDate != nil {
-            // Update every second while shift is active; static once checked out
-            TimelineView(checkoutDate == nil ? .periodic(from: .now, by: 1) : .explicit([])) { context in
+            // Always tick every second; SessionCardContent uses checkoutDate when
+            // present so the display freezes naturally without stopping the view.
+            TimelineView(.periodic(from: .now, by: 1)) { context in
                 SessionCardContent(
                     checkinDate: checkinDate,
                     checkoutDate: checkoutDate,
