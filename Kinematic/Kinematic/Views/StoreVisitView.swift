@@ -43,7 +43,7 @@ struct StoreVisitView: View {
                     .padding(.leading, 8)
                     Spacer()
                 }
-                .padding(.horizontal, 20).padding(.top, 60).padding(.bottom, 20)
+                .padding(.horizontal, 28).padding(.top, 60).padding(.bottom, 20)
                 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 25) {
@@ -60,14 +60,14 @@ struct StoreVisitView: View {
                                 }
                                 .font(.caption).fontWeight(.bold).foregroundColor(.red)
                             }
-                            .padding(12).background(Color.green.opacity(0.1)).cornerRadius(10).padding(.horizontal, 20)
+                            .padding(12).background(Color.green.opacity(0.1)).cornerRadius(10).padding(.horizontal, 28)
                         }
 
                         VStack(alignment: .leading, spacing: 5) {
                             Text("ASSIGNED TASKS").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
                             Text("Complete the following activities").font(.title3).fontWeight(.black).foregroundColor(Color(uiColor: .label))
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 28)
                         
                         if !resolvedActivities.isEmpty {
                             VStack(spacing: 15) {
@@ -85,7 +85,7 @@ struct StoreVisitView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 28)
                         } else {
                             VStack(spacing: 20) {
                                 Image(systemName: "checklist.checked").font(.system(size: 80)).foregroundColor(.white.opacity(0.1))

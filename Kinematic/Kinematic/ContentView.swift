@@ -14,12 +14,42 @@ struct LiquidGlassModifier: ViewModifier {
     var opacity: Double
     func body(content: Content) -> some View {
         content
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    .fill(
+                        LinearGradient(
+                            colors: [.white.opacity(0.1), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             )
-            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+            .overlay(
+                // Chromatic Refraction Border
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.8), location: 0),
+                                .init(color: .white.opacity(0.1), location: 0.4),
+                                .init(color: .clear, location: 0.6),
+                                .init(color: .white.opacity(0.3), location: 1)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.2
+                    )
+            )
+            .overlay(
+                // Inner Specular Glow
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                    .padding(0.5)
+            )
+            .shadow(color: Color.black.opacity(0.15), radius: 15, x: 0, y: 8)
+            .drawingGroup() // High Performance Rendering
     }
 }
 
@@ -41,23 +71,46 @@ struct ContentView: View {
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
     @Namespace private var animation // For Matched Geometry (Liquid Pod)
+    @State private var dragOffset: CGFloat = 0
     
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Global Content Switcher
-            Group {
-                switch appState.selectedTab {
-                case 0: HomeView().id("home")
-                case 1: AttendanceView().id("attendance")
-                case 2: RoutePlansView().id("route")
-                default: HomeView().id("default")
-                }
+            // Global Content Switcher with Gesture Tracking
+            ZStack {
+                // Pre-calculating indices for swipe
+                HomeView().id(0)
+                    .offset(x: appState.selectedTab == 0 ? dragOffset : (appState.selectedTab == 1 ? dragOffset - UIScreen.main.bounds.width : dragOffset - 2 * UIScreen.main.bounds.width))
+                    .opacity(appState.selectedTab == 0 ? 1 : 0)
+                
+                AttendanceView().id(1)
+                    .offset(x: appState.selectedTab == 1 ? dragOffset : (appState.selectedTab == 0 ? dragOffset + UIScreen.main.bounds.width : dragOffset - UIScreen.main.bounds.width))
+                    .opacity(appState.selectedTab == 1 ? 1 : 0)
+                
+                RoutePlansView().id(2)
+                    .offset(x: appState.selectedTab == 2 ? dragOffset : (appState.selectedTab == 1 ? dragOffset + UIScreen.main.bounds.width : dragOffset + 2 * UIScreen.main.bounds.width))
+                    .opacity(appState.selectedTab == 2 ? 1 : 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Removed .ignoresSafeArea() to fix top overlap on Dynamic Island devices
-            .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.98)), removal: .opacity))
-            
-            .offset(y: appState.isTabBarExpanded ? 0 : 10)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        dragOffset = value.translation.width
+                    }
+                    .onEnded { value in
+                        let threshold = UIScreen.main.bounds.width * 0.2
+                        withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) {
+                            if value.translation.width < -threshold && appState.selectedTab < 2 {
+                                appState.selectedTab += 1
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            } else if value.translation.width > threshold && appState.selectedTab > 0 {
+                                appState.selectedTab -= 1
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            }
+                            dragOffset = 0
+                        }
+                    }
+            )
             
             // 2025 High-Refraction Liquid Island (Adaptive Morphing)
             HStack(spacing: appState.isTabBarExpanded ? 0 : 20) {
@@ -71,15 +124,45 @@ struct MainTabView: View {
                     withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 2 }
                 }
             }
-            .padding(.horizontal, appState.isTabBarExpanded ? 14 : 20)
+            .padding(.horizontal, appState.isTabBarExpanded ? 12 : 18)
             .padding(.vertical, appState.isTabBarExpanded ? 12 : 10)
-            .background(.regularMaterial, in: MirrorGlassTabBarShape())
+            .background {
+                // High-End Mirror Glass Background (Crystalline Lensing)
+                ZStack {
+                    MirrorGlassTabBarShape()
+                        .fill(.ultraThickMaterial)
+                    
+                    // Ambient Light Refraction
+                    MirrorGlassTabBarShape()
+                        .stroke(
+                            LinearGradient(
+                                colors: [.white.opacity(0.7), .clear, .black.opacity(0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.5
+                        )
+                }
+            }
             .overlay {
+                // Ultimate Chromatic Refraction Border
                 MirrorGlassTabBarShape()
-                    .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
+                    .stroke(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.8), location: 0),
+                                .init(color: .white.opacity(0.1), location: 0.4),
+                                .init(color: .clear, location: 0.6),
+                                .init(color: .white.opacity(0.3), location: 1)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
             }
             .scaleEffect(appState.isTabBarExpanded ? 1.0 : 0.94)
-            .shadow(color: .black.opacity(0.12), radius: 20, x: 0, y: 8)
+            .shadow(color: .black.opacity(appState.isTabBarExpanded ? 0.2 : 0.3), radius: 30, x: 0, y: 15)
             .padding(.horizontal, 24)
             .padding(.bottom, appState.isTabBarExpanded ? 34 : 20)
             .offset(y: appState.isTabBarExpanded ? 0 : 10)
@@ -115,12 +198,41 @@ struct TabBtn: View {
             VStack(spacing: ex ? 6 : 0) {
                 ZStack {
                     if s {
-                        Capsule()
-                            .fill(.thickMaterial)
-                            .overlay(Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
-                            .matchedGeometryEffect(id: "pod", in: ns)
-                            .frame(width: ex ? 54 : 50, height: ex ? 36 : 32)
-                            .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 2)
+                        // Ultimate ‘Nuclear’ Liquid Pod (Crystalline Lensing)
+                        ZStack {
+                            Capsule()
+                                .fill(.ultraThickMaterial)
+                                .overlay {
+                                    // Specular Center Glint
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.4), .clear],
+                                        startPoint: .topLeading,
+                                        endPoint: .center
+                                    )
+                                }
+                                .matchedGeometryEffect(id: "pod", in: ns)
+                            
+                            // Refractive Chromatic Edge (iOS 26 Concept)
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: .white.opacity(0.9), location: 0),
+                                            .init(color: .white.opacity(0.2), location: 0.1),
+                                            .init(color: .clear, location: 0.5),
+                                            .init(color: .white.opacity(0.3), location: 0.9),
+                                            .init(color: .white.opacity(0.8), location: 1)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 2
+                                )
+                                .matchedGeometryEffect(id: "pod_border", in: ns)
+                        }
+                        .frame(width: ex ? 54 : 48, height: ex ? 38 : 34)
+                        .shadow(color: .white.opacity(0.2), radius: 10, x: -3, y: -3)
+                        .shadow(color: .black.opacity(0.15), radius: 10, x: 3, y: 3)
                     }
                     
                     VStack(spacing: 0) {
@@ -187,8 +299,8 @@ struct HomeView: View {
                                 .background(.regularMaterial, in: Circle())
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 60) // Dynamic Island Breathing Space
 
                     // Summary Info Row
                     HStack {
@@ -219,23 +331,23 @@ struct HomeView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 28)
 
                     // Selfie Status Card
                     SelfieStatusCard(record: appState.today)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 28)
 
                     // Stats Row
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         StatTile(label: "Stores", value: "\(vm.totalStoreCount)", icon: "storefront.fill", color: .blue)
                         StatTile(label: "Visited", value: "\(vm.visitedStoreCount)", icon: "checkmark.seal.fill", color: .green)
                         StatTile(label: "Forms", value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: .purple)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 28)
 
                     // Today's Session
                     SessionCard(record: appState.today)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 28)
 
                     // Broadcast / Announcement Card
                     if vm.showSubmissionSuccess {
@@ -252,13 +364,13 @@ struct HomeView: View {
                         }
                         .padding(18)
                         .liquidGlass()
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 28)
                         .transition(.scale.combined(with: .opacity))
                     } else if let b = vm.data?.broadcast, !(vm.data?.alreadyAnswered ?? b.alreadyAnswered) {
                         BroadcastCard(broadcast: b) { selectedIndex in
                             Task { await vm.submitBroadcastAnswer(id: b.id, selectedIndex: selectedIndex) }
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 28)
                     }
 
                     // Route Preview
@@ -298,7 +410,7 @@ struct HomeView: View {
                     }
                     .padding(18)
                     .liquidGlass()
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 28)
 
                     Spacer().frame(height: 110)
                 }
@@ -656,8 +768,8 @@ struct RoutePlansView: View {
                         .padding(.leading, 8)
                     Spacer()
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                .padding(.horizontal, 28)
+                .padding(.top, 60) // Dynamic Island Breathing Space
                 .padding(.bottom, 8)
                 
                 ScrollView {
@@ -726,7 +838,7 @@ struct OutletCard: View {
             }
             .padding(.top, 5)
         }
-        .padding(20).liquidGlass().padding(.horizontal, 20)
+        .padding(20).liquidGlass().padding(.horizontal, 28)
     }
 }
 
@@ -752,8 +864,8 @@ struct AttendanceView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                .padding(.horizontal, 28)
+                .padding(.top, 60)
                 
                 ScrollView {
                     VStack(spacing: 25) {
@@ -862,7 +974,7 @@ struct AttendanceView: View {
                         .cornerRadius(18)
                         .disabled(vm.isLoading)
                     }
-                    .padding(30).liquidGlass().padding(.horizontal, 20)
+                    .padding(30).liquidGlass().padding(.horizontal, 28)
                     
                     // History Header
                     Text("RECENT HISTORY").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 25)
@@ -873,7 +985,7 @@ struct AttendanceView: View {
                         } else {
                             EmptyHistoryRow()
                         }
-                    }.padding(.horizontal, 20)
+                    }.padding(.horizontal, 28)
                     
                     Spacer().frame(height: 120)
                 }
@@ -1048,7 +1160,7 @@ struct ActivityFeedView: View {
                     Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.caption)
                 }
             }
-            .padding(15).liquidGlass().padding(.horizontal, 20)
+            .padding(15).liquidGlass().padding(.horizontal, 28)
         }
     }
 }
