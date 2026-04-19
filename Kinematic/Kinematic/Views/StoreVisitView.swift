@@ -3,7 +3,6 @@ import CoreLocation
 
 struct StoreVisitView: View {
     @EnvironmentObject var appState: AppState
-    @State private var selectedActivity: RouteActivity? = nil
     @State private var isStartingVisit = false
     
     var isVisitActive: Bool {
@@ -11,15 +10,19 @@ struct StoreVisitView: View {
     }
     
     var resolvedActivities: [RouteActivity] {
+        // Priority 1: Backend aggregated activities array (newly supported)
         let explicit = appState.selectedOutlet?.activities ?? []
         if !explicit.isEmpty { return explicit }
         
-        // Dashboard Linkage: Synth one if activityId is present at outlet level
+        // Priority 2: Dashboard Linkage: Synth one if activityId is present at outlet level (legacy fallback)
         if let activityId = appState.selectedOutlet?.activityId {
             return [RouteActivity(id: activityId, name: "Store Activity", status: "pending")]
         }
         
-        return []
+        // Priority 3: Testing Fallback: Ensure user can ALWAYS test the Test Form even if linkage is missing
+        return [
+            RouteActivity(id: "test_audit_001", name: "Test Product Audit", status: "pending")
+        ]
     }
     
     var body: some View {
@@ -71,7 +74,9 @@ struct StoreVisitView: View {
                                 ForEach(resolvedActivities) { activity in
                                     TaskCard(activity: activity) {
                                         if isVisitActive {
-                                            self.selectedActivity = activity
+                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                                appState.selectedActivity = activity
+                                            }
                                         } else {
                                             // Trigger check-in prompt
                                             self.isStartingVisit = true
@@ -113,9 +118,12 @@ struct StoreVisitView: View {
                     }
                 }
             }
-        }
-        .sheet(item: $selectedActivity) { activity in
-            ActivitySubmissionView(activity: activity)
+            // Activity Form Overlay (Proper Screen Transition)
+            if let activity = appState.selectedActivity {
+                ActivitySubmissionView(activity: activity)
+                    .transition(.move(edge: .trailing)) // "Push" from right
+                    .zIndex(10)
+            }
         }
     }
     
@@ -136,8 +144,11 @@ struct StoreVisitView: View {
                             AppState.shared.activeVisitId = visitId
                             AppState.shared.activeVisitOutletId = outletId
                             self.isStartingVisit = false
-                            if let activity = activity {
-                                self.selectedActivity = activity
+                        }
+                        // Non-animated state change for the sheet to ensure reliability
+                        if let activity = activity {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                appState.selectedActivity = activity
                             }
                         }
                     } else {
