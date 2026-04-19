@@ -184,11 +184,18 @@ class AttendanceViewModel: ObservableObject {
     
     func startFlow() {
         self.autoSubmitScheduled = true
-        // --- STABILITY: Ensure GPS starts on Main Actor for reliability ---
-        LocationTrackingService.shared.startTracking()
         
-        // --- STABILITY: Immediate UI State Change ---
+        // --- STABILITY: Immediate UI State Change (Priority 1) ---
+        // We set showCamera BEFORE starting other tasks to ensure the sheet animation begins.
         self.showCamera = true
+        
+        // --- STABILITY: Defer GPS start by a few ms to allow UI to breathe ---
+        Task {
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+            await MainActor.run {
+                LocationTrackingService.shared.startTracking()
+            }
+        }
     }
 
     

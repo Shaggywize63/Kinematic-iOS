@@ -49,6 +49,7 @@ struct LiquidGlassModifier: ViewModifier {
                     .padding(0.5)
             )
             .shadow(color: Color.black.opacity(0.12), radius: 15, x: 0, y: 8)
+            .drawingGroup() // PERFORMANCE: Flatten complex refractive layers
     }
 }
 
@@ -281,8 +282,8 @@ struct HomeView: View {
                                 .clipShape(Circle())
                         }
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 20)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 60) // Dynamic Island Breathing Space
     
                     // Summary Info Row
                     HStack {
@@ -304,7 +305,7 @@ struct HomeView: View {
                     
                     // Selfie Status Card
                     SelfieStatusCard(record: appState.today)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 24)
                     
                     // Stats Row
                     HStack(spacing: 12) {
@@ -312,11 +313,11 @@ struct HomeView: View {
                         StatTile(label: "Visited", value: "\(vm.visitedStoreCount)", icon: "checkmark.seal.fill", color: .green)
                         StatTile(label: "Forms", value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: .purple)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 24)
                     
                     // Today's Session
                     SessionCard(record: appState.today)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 24)
                     
                     // Broadcast / Announcement Card
                     if vm.showSubmissionSuccess {
@@ -588,8 +589,8 @@ struct RoutePlansView: View {
                     Text("Today's Route").font(.title3).fontWeight(.bold).foregroundColor(Color(uiColor: .label)).padding(.leading, 8)
                     Spacer()
                 }
-                .padding(.horizontal)
-                .padding(.top, 20) // Increased for Safe Area
+                .padding(.horizontal, 24)
+                .padding(.top, 60) // Dynamic Island Breathing Space
                 .padding(.bottom, 10)
                 
                 ScrollView {
@@ -685,8 +686,8 @@ struct AttendanceView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal)
-                .padding(.top, 20) // Increased for Safe Area
+                .padding(.horizontal, 24)
+                .padding(.top, 60) // Dynamic Island Breathing Space
                 
                 ScrollView {
                     VStack(spacing: 25) {
