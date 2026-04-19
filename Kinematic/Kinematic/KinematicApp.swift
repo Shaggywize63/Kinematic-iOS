@@ -1124,23 +1124,11 @@ struct KinematicApp: App {
                 
                 // --- PERFORMANCE: Background Sync ---
                 if Session.isAuthenticated {
-                    Task { 
-                        let _ = await appState.attendanceVM.refresh() 
-                        // Once data is refreshed, allow splash to dismiss
-                        await MainActor.run { isDataReady = true }
-                    }
-                } else {
-                    await MainActor.run { isDataReady = true }
+                    Task { let _ = await appState.attendanceVM.refresh() }
                 }
                 
-                // Minimum splash duration for branding
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                
-                // Wait for data or timeout after 5s
-                let start = Date()
-                while !isDataReady && Date().timeIntervalSince(start) < 4.0 {
-                    try? await Task.sleep(nanoseconds: 100_000_000)
-                }
+                // Fixed branding duration (1.5s) — provides professional feel without blocking.
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
                 
                 await MainActor.run {
                     withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {

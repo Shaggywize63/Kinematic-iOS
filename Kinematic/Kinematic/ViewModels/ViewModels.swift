@@ -184,16 +184,11 @@ class AttendanceViewModel: ObservableObject {
     
     func startFlow() {
         self.autoSubmitScheduled = true
-        // --- PERFORMANCE: Background GPS Initialization ---
-        DispatchQueue.global(qos: .userInteractive).async {
-            LocationTrackingService.shared.startTracking()
-        }
+        // --- STABILITY: Ensure GPS starts on Main Actor for reliability ---
+        LocationTrackingService.shared.startTracking()
         
-        // --- PERFORMANCE: Priority UI Update ---
-        // Ensure camera opens instantly on first click by using high-priority main actor
-        Task { @MainActor in
-            self.showCamera = true
-        }
+        // --- STABILITY: Immediate UI State Change ---
+        self.showCamera = true
     }
 
     
