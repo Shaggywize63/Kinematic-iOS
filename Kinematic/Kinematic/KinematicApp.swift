@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import CoreLocation
+import AVFoundation
 
 // --- MODELS ---
 struct User: Codable, Identifiable {
@@ -43,7 +44,7 @@ class AppState: ObservableObject {
     // --- Navigation & UI ---
     @Published var showSideMenu = false
     @Published var activeSecondaryRoute: SecondaryRoute? = nil
-    @Published var theme: AppTheme = .dark {
+    @Published var theme: AppTheme = .system {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: "app_theme") }
     }
     
@@ -70,9 +71,9 @@ class AppState: ObservableObject {
     }
     
     init() {
-        // Load persisted theme or default to dark
-        let savedTheme = UserDefaults.standard.string(forKey: "app_theme") ?? AppTheme.dark.rawValue
-        self.theme = AppTheme(rawValue: savedTheme) ?? .dark
+        // Load persisted theme or follow system appearance
+        let savedTheme = UserDefaults.standard.string(forKey: "app_theme") ?? AppTheme.system.rawValue
+        self.theme = AppTheme(rawValue: savedTheme) ?? .system
         
         // --- PERFORMANCE: Immediate Cache Restoration ---
         if let cachedHome = KinematicRepository.shared.loadCached(MobileHomeResponse.self, forKey: "cached_mobile_home_payload") {
@@ -1121,7 +1122,9 @@ struct KinematicApp: App {
             .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
             .task {
                 locationService.requestPermissions()
-                
+                // Pre-warm camera permission so the selfie sheet opens instantly
+                AVCaptureDevice.requestAccess(for: .video) { _ in }
+
                 // --- PERFORMANCE: Background Sync ---
                 if Session.isAuthenticated {
                     Task { let _ = await appState.attendanceVM.refresh() }
