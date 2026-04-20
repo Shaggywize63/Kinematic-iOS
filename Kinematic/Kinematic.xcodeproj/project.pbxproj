@@ -6,24 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		8E096DC62F94AFE0003D8F01 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8E096DC52F94AFE0003D8F01 /* WidgetKit.framework */; };
-		8E096DC82F94AFE0003D8F01 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8E096DC72F94AFE0003D8F01 /* SwiftUI.framework */; };
-		8E096DD72F94AFE2003D8F01 /* KinematicShiftWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8E096DC32F94AFE0003D8F01 /* KinematicShiftWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		8E96A0012F94B111003D8F01 /* ShiftLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E96A0022F94B111003D8F01 /* ShiftLiveActivityWidget.swift */; };
-		8E96A0042F94B222003D8F01 /* ShiftActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E96A0032F94B222003D8F01 /* ShiftActivityAttributes.swift */; };
-/* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		8E096DD52F94AFE2003D8F01 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 8E6066DD2F84E703009FFCFF /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 8E096DC22F94AFE0003D8F01;
-			remoteInfo = KinematicShiftWidgetExtension;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXCopyFilesBuildPhase section */
 		8E096DDC2F94AFE2003D8F01 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -31,7 +13,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				8E096DD72F94AFE2003D8F01 /* KinematicShiftWidgetExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -39,31 +20,16 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		8E096DC32F94AFE0003D8F01 /* KinematicShiftWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KinematicShiftWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8E096DC52F94AFE0003D8F01 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		8E096DC72F94AFE0003D8F01 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
-		8E96A0022F94B111003D8F01 /* ShiftLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KinematicShiftWidget/ShiftLiveActivityWidget.swift; sourceTree = SOURCE_ROOT; };
-		8E96A0032F94B222003D8F01 /* ShiftActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kinematic/Models/ShiftActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 		8E6066E52F84E703009FFCFF /* Kinematic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kinematic.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8E96A0022F94B111003D8F01 /* KinematicShiftWidget/ShiftLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KinematicShiftWidget/ShiftLiveActivityWidget.swift; sourceTree = SOURCE_ROOT; };
+		8E96A0032F94B222003D8F01 /* Kinematic/Models/ShiftActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kinematic/Models/ShiftActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
-
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		8E096DD82F94AFE2003D8F01 /* Exceptions for "KinematicShiftWidget" folder in "KinematicShiftWidgetExtension" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-				ShiftLiveActivityWidget.swift,
-			);
-			target = 8E096DC22F94AFE0003D8F01 /* KinematicShiftWidgetExtension */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		8E096DC92F94AFE0003D8F01 /* KinematicShiftWidget */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				8E096DD82F94AFE2003D8F01 /* Exceptions for "KinematicShiftWidget" folder in "KinematicShiftWidgetExtension" target */,
-			);
 			path = KinematicShiftWidget;
 			sourceTree = "<group>";
 		};
@@ -75,15 +41,6 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		8E096DC02F94AFE0003D8F01 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				8E096DC82F94AFE0003D8F01 /* SwiftUI.framework in Frameworks */,
-				8E096DC62F94AFE0003D8F01 /* WidgetKit.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		8E6066E22F84E703009FFCFF /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -110,6 +67,7 @@
 				8E096DC92F94AFE0003D8F01 /* KinematicShiftWidget */,
 				8E096DC42F94AFE0003D8F01 /* Frameworks */,
 				8E6066E62F84E703009FFCFF /* Products */,
+				8E8927E52F9511EB00A1120C /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -117,36 +75,22 @@
 			isa = PBXGroup;
 			children = (
 				8E6066E52F84E703009FFCFF /* Kinematic.app */,
-				8E096DC32F94AFE0003D8F01 /* KinematicShiftWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		8E8927E52F9511EB00A1120C /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				8E96A0032F94B222003D8F01 /* Kinematic/Models/ShiftActivityAttributes.swift */,
+				8E96A0022F94B111003D8F01 /* KinematicShiftWidget/ShiftLiveActivityWidget.swift */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		8E096DC22F94AFE0003D8F01 /* KinematicShiftWidgetExtension */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 8E096DD92F94AFE2003D8F01 /* Build configuration list for PBXNativeTarget "KinematicShiftWidgetExtension" */;
-			buildPhases = (
-				8E096DBF2F94AFE0003D8F01 /* Sources */,
-				8E096DC02F94AFE0003D8F01 /* Frameworks */,
-				8E096DC12F94AFE0003D8F01 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				8E096DC92F94AFE0003D8F01 /* KinematicShiftWidget */,
-			);
-			name = KinematicShiftWidgetExtension;
-			packageProductDependencies = (
-			);
-			productName = KinematicShiftWidgetExtension;
-			productReference = 8E096DC32F94AFE0003D8F01 /* KinematicShiftWidgetExtension.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 		8E6066E42F84E703009FFCFF /* Kinematic */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8E6066F02F84E706009FFCFF /* Build configuration list for PBXNativeTarget "Kinematic" */;
@@ -159,7 +103,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				8E096DD62F94AFE2003D8F01 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8E6066E72F84E703009FFCFF /* Kinematic */,
@@ -181,9 +124,6 @@
 				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
-					8E096DC22F94AFE0003D8F01 = {
-						CreatedOnToolsVersion = 26.4.1;
-					};
 					8E6066E42F84E703009FFCFF = {
 						CreatedOnToolsVersion = 26.4;
 					};
@@ -204,19 +144,11 @@
 			projectRoot = "";
 			targets = (
 				8E6066E42F84E703009FFCFF /* Kinematic */,
-				8E096DC22F94AFE0003D8F01 /* KinematicShiftWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		8E096DC12F94AFE0003D8F01 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		8E6066E32F84E703009FFCFF /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -227,15 +159,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		8E096DBF2F94AFE0003D8F01 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				8E96A0042F94B222003D8F01 /* ShiftActivityAttributes.swift in Sources */,
-				8E96A0012F94B111003D8F01 /* ShiftLiveActivityWidget.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		8E6066E12F84E703009FFCFF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -245,80 +168,7 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		8E096DD62F94AFE2003D8F01 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 8E096DC22F94AFE0003D8F01 /* KinematicShiftWidgetExtension */;
-			targetProxy = 8E096DD52F94AFE2003D8F01 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
-		8E096DDA2F94AFE2003D8F01 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = K7PLGT7499;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = KinematicShiftWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = KinematicShiftWidget;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Kinematic.Kinematic.KinematicShiftWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		8E096DDB2F94AFE2003D8F01 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = K7PLGT7499;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = KinematicShiftWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = KinematicShiftWidget;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Kinematic.Kinematic.KinematicShiftWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 		8E6066EE2F84E706009FFCFF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -504,15 +354,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		8E096DD92F94AFE2003D8F01 /* Build configuration list for PBXNativeTarget "KinematicShiftWidgetExtension" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				8E096DDA2F94AFE2003D8F01 /* Debug */,
-				8E096DDB2F94AFE2003D8F01 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		8E6066E02F84E703009FFCFF /* Build configuration list for PBXProject "Kinematic" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

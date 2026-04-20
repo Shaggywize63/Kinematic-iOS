@@ -1,7 +1,6 @@
 import SwiftUI
 import Combine
 import CoreLocation
-import ActivityKit
 
 class SOSViewModel: ObservableObject {
     @Published var countdown = 5
@@ -304,21 +303,10 @@ class AttendanceViewModel: ObservableObject {
                     checkinLocationStamp = stamp
                     UserDefaults.standard.set(stamp, forKey: "checkin_location_stamp")
                     LocationTrackingService.shared.startTracking()
-
-                    // ── Live Activity: start on check-in ────────────────
-                    let name = Session.currentUser?.name ?? "Field Executive"
-                    LiveActivityManager.shared.startActivity(userName: name, checkinDate: Date())
                 } else {
                     checkinLocationStamp = nil
                     UserDefaults.standard.removeObject(forKey: "checkin_location_stamp")
                     LocationTrackingService.shared.stopTracking()
-
-                    // ── Live Activity: end on check-out ─────────────────
-                    // Recover check-in date from the record if available, else use a 1s-ago fallback
-                    let fmt = ISO8601DateFormatter()
-                    fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                    let ciDate = record?.checkinAt.flatMap { fmt.date(from: $0) } ?? Date().addingTimeInterval(-1)
-                    LiveActivityManager.shared.endActivity(checkinDate: ciDate, checkoutDate: Date())
                 }
             } else {
                 message = err ?? "Failed"

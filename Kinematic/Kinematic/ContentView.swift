@@ -19,12 +19,29 @@ struct LiquidGlassModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [.white.opacity(0.1), .clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                            colors: [.white.opacity(0.12), .clear],
+                            startPoint: UnitPoint(x: 0.1, y: 0.1),
+                            endPoint: UnitPoint(x: 0.9, y: 0.9)
                         )
                     )
             )
+            .overlay {
+                // Dynamic Specular Glint (Parallax Effect)
+                GeometryReader { geo in
+                    let scrollY = geo.frame(in: .global).minY
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [.clear, .white.opacity(0.15), .clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .offset(x: -scrollY * 0.05, y: -scrollY * 0.05) // Parallax shift
+                        .mask(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                        .opacity(0.5)
+                }
+            }
             .overlay(
                 // Chromatic Refraction Border
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -49,7 +66,6 @@ struct LiquidGlassModifier: ViewModifier {
                     .padding(0.5)
             )
             .shadow(color: Color.black.opacity(0.15), radius: 15, x: 0, y: 8)
-            .drawingGroup() // High Performance Rendering
     }
 }
 
@@ -112,60 +128,33 @@ struct MainTabView: View {
                     }
             )
             
-            // 2025 High-Refraction Liquid Island (Adaptive Morphing)
-            HStack(spacing: appState.isTabBarExpanded ? 0 : 20) {
-                TabBtn(i: "house", l: "Home", s: appState.selectedTab == 0, ex: appState.isTabBarExpanded, ns: animation) { 
+            // iOS 26 "Liquid Glass" Navigation (Unified Capsule)
+            HStack(spacing: 0) {
+                TabBtn(i: "house", l: "Home", s: appState.selectedTab == 0, ns: animation) { 
                     withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 0 }
                 }
-                TabBtn(i: "person.text.rectangle", l: "Attendance", s: appState.selectedTab == 1, ex: appState.isTabBarExpanded, ns: animation) { 
+                TabBtn(i: "person.text.rectangle", l: "Attendance", s: appState.selectedTab == 1, ns: animation) { 
                     withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 1 }
                 }
-                TabBtn(i: "map", l: "Route", s: appState.selectedTab == 2, ex: appState.isTabBarExpanded, ns: animation) { 
+                TabBtn(i: "map", l: "Route", s: appState.selectedTab == 2, ns: animation) { 
                     withAnimation(.interpolatingSpring(stiffness: 300, damping: 25)) { appState.selectedTab = 2 }
                 }
+                
             }
-            .padding(.horizontal, appState.isTabBarExpanded ? 12 : 18)
-            .padding(.vertical, appState.isTabBarExpanded ? 12 : 10)
+            .padding(.vertical, 10)
             .background {
-                // High-End Mirror Glass Background (Crystalline Lensing)
-                ZStack {
-                    MirrorGlassTabBarShape()
-                        .fill(.ultraThickMaterial)
-                    
-                    // Ambient Light Refraction
-                    MirrorGlassTabBarShape()
-                        .stroke(
-                            LinearGradient(
-                                colors: [.white.opacity(0.7), .clear, .black.opacity(0.2)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.5
-                        )
-                }
+                // Primary Glass Capsule
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .shadow(color: .black.opacity(0.2), radius: 30, x: 0, y: 15)
             }
             .overlay {
-                // Ultimate Chromatic Refraction Border
-                MirrorGlassTabBarShape()
-                    .stroke(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.8), location: 0),
-                                .init(color: .white.opacity(0.1), location: 0.4),
-                                .init(color: .clear, location: 0.6),
-                                .init(color: .white.opacity(0.3), location: 1)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
+                // Crystalline Rim
+                Capsule()
+                    .stroke(LinearGradient(colors: [.white.opacity(0.3), .clear], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
             }
-            .scaleEffect(appState.isTabBarExpanded ? 1.0 : 0.94)
-            .shadow(color: .black.opacity(appState.isTabBarExpanded ? 0.2 : 0.3), radius: 30, x: 0, y: 15)
             .padding(.horizontal, 24)
-            .padding(.bottom, appState.isTabBarExpanded ? 34 : 20)
-            .offset(y: appState.isTabBarExpanded ? 0 : 10)
+            .padding(.bottom, 24)
             
             // Global Store Visit Overlay (Absolute top z-index)
             if appState.selectedOutlet != nil {
@@ -189,71 +178,61 @@ struct MainTabView: View {
 }
 
 struct TabBtn: View {
-    let i: String; let l: String; let s: Bool; let ex: Bool
+    let i: String; let l: String; let s: Bool
     let ns: Namespace.ID
     let a: () -> Void
     
     var body: some View {
         Button(action: a) {
-            VStack(spacing: ex ? 6 : 0) {
+            VStack(spacing: 2) {
                 ZStack {
                     if s {
-                        // Ultimate ‘Nuclear’ Liquid Pod (Crystalline Lensing)
+                        // High-Fidelity Glass Bubble (Magnifying Refraction)
                         ZStack {
                             Capsule()
                                 .fill(.ultraThickMaterial)
-                                .overlay {
-                                    // Specular Center Glint
-                                    LinearGradient(
-                                        colors: [.white.opacity(0.4), .clear],
-                                        startPoint: .topLeading,
-                                        endPoint: .center
-                                    )
-                                }
+                                .scaleEffect(1.25)
                                 .matchedGeometryEffect(id: "pod", in: ns)
                             
-                            // Refractive Chromatic Edge (iOS 26 Concept)
                             Capsule()
                                 .stroke(
                                     LinearGradient(
-                                        stops: [
-                                            .init(color: .white.opacity(0.9), location: 0),
-                                            .init(color: .white.opacity(0.2), location: 0.1),
-                                            .init(color: .clear, location: 0.5),
-                                            .init(color: .white.opacity(0.3), location: 0.9),
-                                            .init(color: .white.opacity(0.8), location: 1)
-                                        ],
+                                        colors: [.white.opacity(0.6), .clear, .white.opacity(0.3)],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
-                                    lineWidth: 2
+                                    lineWidth: 1.5
                                 )
-                                .matchedGeometryEffect(id: "pod_border", in: ns)
+                                .matchedGeometryEffect(id: "pod_glint", in: ns)
                         }
-                        .frame(width: ex ? 54 : 48, height: ex ? 38 : 34)
-                        .shadow(color: .white.opacity(0.2), radius: 10, x: -3, y: -3)
-                        .shadow(color: .black.opacity(0.15), radius: 10, x: 3, y: 3)
+                        .frame(width: 48, height: 32)
+                        .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
                     }
                     
-                    VStack(spacing: 0) {
-                        Image(systemName: s ? "\(i).fill" : i)
-                            .font(.system(size: ex ? 20 : 18, weight: s ? .black : .bold))
-                            .foregroundStyle(
-                                s ? 
-                                LinearGradient(colors: [.white, .blue], startPoint: .topLeading, endPoint: .bottomTrailing) :
-                                LinearGradient(colors: [.gray.opacity(0.6), .gray.opacity(0.4)], startPoint: .top, endPoint: .bottom)
-                            )
-                            .scaleEffect(s ? (ex ? 1.25 : 1.15) : 1.0)
-                            .shadow(color: s ? .blue.opacity(0.4) : .clear, radius: 10)
-                    }
+                    // Clean Glass Icon Logic
+                    Image(systemName: s ? "\(i).fill" : i)
+                        .font(.system(size: 19, weight: s ? .black : .bold))
+                        .symbolEffect(.bounce, value: s)
+                        .foregroundStyle(
+                            s ? 
+                            AnyShapeStyle(.white) : 
+                            AnyShapeStyle(.ultraThinMaterial) // Frosted glass look when inactive
+                        )
+                        .overlay {
+                            if !s {
+                                Image(systemName: i)
+                                    .font(.system(size: 19, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.25))
+                            }
+                        }
+                        .scaleEffect(s ? 1.2 : 1.0)
+                        .shadow(color: s ? .white.opacity(0.5) : .clear, radius: 8)
                 }
                 
-                if ex {
-                    Text(l)
-                        .font(.system(size: 9, weight: .black, design: .rounded))
-                        .foregroundStyle(s ? Color.blue : Color.gray.opacity(0.6))
-                        .transition(.opacity.combined(with: .scale))
-                }
+                Text(l)
+                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .foregroundStyle(s ? Color.white : Color.white.opacity(0.3))
+                    .scaleEffect(s ? 1.1 : 1.0)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -775,7 +754,11 @@ struct RoutePlansView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         // Original Large Title (removed top padding to fit new header)
-                        Text("Route Details").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.horizontal)
+                        Text("Route Details")
+                            .font(.largeTitle)
+                            .fontWeight(.black)
+                            .foregroundColor(Color(uiColor: .label))
+                            .padding(.horizontal, 28) // Unified Breathing Space
                     
                     if vm.isLoading && vm.plans.isEmpty {
                         ProgressView().tint(.red).frame(maxWidth: .infinity).padding(.top, 50)
@@ -869,7 +852,13 @@ struct AttendanceView: View {
                 
                 ScrollView {
                     VStack(spacing: 25) {
-                        Text("Attendance").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 10).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
+                        Text("Attendance")
+                            .font(.largeTitle)
+                            .fontWeight(.black)
+                            .foregroundColor(Color(uiColor: .label))
+                            .padding(.top, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 28) // Unified Breathing Space
                     
                     // Main Status Card
                     VStack(spacing: 24) {
@@ -977,7 +966,13 @@ struct AttendanceView: View {
                     .padding(30).liquidGlass().padding(.horizontal, 28)
                     
                     // History Header
-                    Text("RECENT HISTORY").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 25)
+                    Text("RECENT HISTORY")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundColor(.gray)
+                        .tracking(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 28) // Unified Breathing Space
                     
                     VStack(spacing: 12) {
                         if let t = appState.today {

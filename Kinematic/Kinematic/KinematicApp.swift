@@ -999,7 +999,11 @@ class KinematicRepository {
     func getMobileHome() async -> MobileHomeResponse? {
         do {
             let res: ApiResponse<MobileHomeResponse>? = try await performRequest("/analytics/mobile-home")
-            if let home = res?.data {
+            if var home = res?.data {
+                // STRICT FILTER: Only show route plans for TODAY
+                let today = todayString
+                home.routePlan = home.routePlan?.filter { $0.planDate == today || $0.date == today }
+                
                 cache(home, forKey: cachedMobileHomeKey)
                 if let routes = home.routePlan, !routes.isEmpty {
                     cache(routes, forKey: cachedRoutePlanKey)
@@ -1035,24 +1039,34 @@ class KinematicRepository {
             )
 
             if let data = res?.data {
-                print("✅ FETCH_ROUTE_PLAN_SUCCESS: Found \(data.count) plans")
-                if !data.isEmpty {
-                    cache(data, forKey: cachedRoutePlanKey)
+                // STRICT FILTER: Validate server response against today's date
+                let filtered = data.filter { $0.planDate == date || $0.date == date }
+                
+                print("✅ FETCH_ROUTE_PLAN_SUCCESS: Found \(filtered.count) valid plans")
+                if !filtered.isEmpty {
+                    cache(filtered, forKey: cachedRoutePlanKey)
                 } else {
-                    // Server returned empty for today — clear stale cache so old data is not shown
                     UserDefaults.standard.removeObject(forKey: cachedRoutePlanKey)
                 }
-                // Always trust fresh server response, even if empty
-                return data
+                return filtered
             } else {
-                print("⚠️ FETCH_ROUTE_PLAN_EMPTY: Success but no data. Message: \(res?.message ?? "N/A")")
-                return loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
+                print("⚠️ FETCH_ROUTE_PLAN_EMPTY: Success but no data.")
+                let cached = loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
+                return cached.filter { $0.planDate == date || $0.date == date }
             }
         } catch {
             print("❌ FETCH_ROUTE_PLAN_ERROR: \(error)")
-            // Only fall back to cache on network/decode errors
-            return loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
+            let cached = loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
+            return cached.filter { $0.planDate == date || $0.date == date }
         }
+    }
+    
+    // MARK: - Date Helpers
+    private var todayString: String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.timeZone = TimeZone.current
+        return dateFormatter.string(from: Date())
     }
     
     private func cache<T: Encodable>(_ value: T, forKey key: String) {

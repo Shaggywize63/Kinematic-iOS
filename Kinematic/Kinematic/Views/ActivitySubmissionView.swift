@@ -50,7 +50,7 @@ struct ActivitySubmissionView: View {
                     // Invisible spacer for centering
                     Image(systemName: "chevron.left.circle.fill").opacity(0).font(.title2)
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 28)
                 .padding(.top, 60)
                 .padding(.bottom, 12)
                 .background(.ultraThinMaterial)
@@ -75,8 +75,8 @@ struct ActivitySubmissionView: View {
                                         .foregroundColor(.secondary)
                                 }
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.top, 20)
+                            .padding(.horizontal, 28)
+                            .padding(.top, 60)
                             
                             // Progress Section
                             VStack(alignment: .leading, spacing: 8) {
@@ -94,7 +94,7 @@ struct ActivitySubmissionView: View {
                                 }
                                 .frame(height: 4)
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 28)
                             
                             // Dynamic Groups
                             VStack(spacing: 20) {
@@ -120,7 +120,7 @@ struct ActivitySubmissionView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 28)
                             
                             Spacer().frame(height: 140)
                         }
@@ -140,7 +140,7 @@ struct ActivitySubmissionView: View {
                             .padding(.vertical, 16)
                             .background(activity.status == "completed" ? Color.gray : Color.red)
                             .cornerRadius(14)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 28)
                     }
                     .disabled(activity.status == "completed" || isSubmitting)
                     .padding(.vertical, 20)

@@ -8,18 +8,43 @@ struct VibrantBackgroundView: View {
             // Atmospheric Glows
             ZStack {
                 Circle()
-                    .fill(Color.red.opacity(0.08))
-                    .frame(width: 450, height: 450)
-                    .offset(x: -150, y: -250)
-                    .blur(radius: 60)
+                    .fill(Color.red.opacity(0.12))
+                    .frame(width: 500, height: 500)
+                    .offset(x: -180, y: -300)
+                    .blur(radius: 80)
                 
                 Circle()
+                    .fill(Color.red.opacity(0.08))
+                    .frame(width: 400, height: 400)
+                    .offset(x: 180, y: 350)
+                    .blur(radius: 70)
+                
+                // Deep Accent Glow
+                Circle()
                     .fill(Color.red.opacity(0.05))
-                    .frame(width: 350, height: 350)
-                    .offset(x: 150, y: 300)
-                    .blur(radius: 50)
+                    .frame(width: 300, height: 300)
+                    .offset(x: 0, y: 0)
+                    .blur(radius: 100)
             }
         }
+    }
+}
+
+private struct LoginFieldChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 10, y: 4)
+    }
+}
+
+private extension View {
+    func loginFieldChrome() -> some View {
+        modifier(LoginFieldChrome())
     }
 }
 
@@ -75,11 +100,14 @@ struct LoginView: View {
                                 Image(systemName: "at").foregroundColor(.white.opacity(0.3))
                                 TextField("", text: $email, prompt: Text("Mobile or Email").foregroundColor(Color(uiColor: .label).opacity(0.2)))
                                     .foregroundColor(Color(uiColor: .label))
-                                    .autocapitalization(.none)
+                                    .textFieldStyle(.plain)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
                                     .keyboardType(.emailAddress)
+                                    .textContentType(.username) // Standard AutoFill Support
                             }
                             .padding()
-                            .liquidGlass(cornerRadius: 16, opacity: 0.1)
+                            .loginFieldChrome()
                         }
                         
                         // Security Key
@@ -94,9 +122,13 @@ struct LoginView: View {
                                 if showPassword {
                                     TextField("", text: $password, prompt: Text("Enter password").foregroundColor(Color(uiColor: .label).opacity(0.2)))
                                         .foregroundColor(Color(uiColor: .label))
+                                        .textFieldStyle(.plain)
+                                        .textContentType(.password)
                                 } else {
                                     SecureField("", text: $password, prompt: Text("Enter password").foregroundColor(Color(uiColor: .label).opacity(0.2)))
                                         .foregroundColor(Color(uiColor: .label))
+                                        .textFieldStyle(.plain)
+                                        .textContentType(.password)
                                 }
                                 Button(action: { showPassword.toggle() }) {
                                     Image(systemName: showPassword ? "eye.slash" : "eye")
@@ -104,7 +136,7 @@ struct LoginView: View {
                                 }
                             }
                             .padding()
-                            .liquidGlass(cornerRadius: 16, opacity: 0.1)
+                            .loginFieldChrome()
                         }
                         
                         if !errorMessage.isEmpty {
