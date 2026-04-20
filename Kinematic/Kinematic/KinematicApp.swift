@@ -1010,9 +1010,21 @@ class KinematicRepository {
                 }
                 return home
             }
-            return loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey)
+            if let cached = loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey) {
+                var home = cached
+                let today = todayString
+                home.routePlan = home.routePlan?.filter { $0.planDate == today || $0.date == today }
+                return home
+            }
+            return nil
         } catch {
-            return loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey)
+            if let cached = loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey) {
+                var home = cached
+                let today = todayString
+                home.routePlan = home.routePlan?.filter { $0.planDate == today || $0.date == today }
+                return home
+            }
+            return nil
         }
     }
     
@@ -1052,11 +1064,13 @@ class KinematicRepository {
             } else {
                 print("⚠️ FETCH_ROUTE_PLAN_EMPTY: Success but no data.")
                 let cached = loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
+                // Safety re-filter of cached data
                 return cached.filter { $0.planDate == date || $0.date == date }
             }
         } catch {
             print("❌ FETCH_ROUTE_PLAN_ERROR: \(error)")
             let cached = loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
+            // Safety re-filter of cached data
             return cached.filter { $0.planDate == date || $0.date == date }
         }
     }

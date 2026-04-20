@@ -52,12 +52,20 @@ class HomeViewModel: ObservableObject {
         let newData = await KinematicRepository.shared.getMobileHome()
         await MainActor.run { 
             self.data = newData
+            
+            // SECONDARY SAFETY FILTER: Ensure stale data NEVER hits the UI
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd"
+            df.timeZone = TimeZone.current
+            let today = df.string(from: Date())
+            self.data?.routePlan = self.data?.routePlan?.filter { $0.planDate == today || $0.date == today }
+            
             self.isLoading = false
             self.lastRefreshTime = Date()
             
             // Centralized State Sync (Android Parity)
-            if let today = newData?.today {
-                AppState.shared.today = today
+            if let todayRecord = newData?.today {
+                AppState.shared.today = todayRecord
             }
             
             if let summ = newData?.summary {
