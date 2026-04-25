@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import CoreLocation
 import AVFoundation
+import Foundation
 
 // --- MODELS ---
 struct User: Codable, Identifiable {
@@ -20,8 +21,13 @@ struct User: Codable, Identifiable {
 
 // --- APP STATE ---
 enum SecondaryRoute: String, Identifiable {
-    case profile, broadcast, learning, settings
+    case profile, broadcast, learning, settings, camera
     var id: String { rawValue }
+}
+
+struct ModalRoute: Identifiable {
+    let id = UUID()
+    let route: SecondaryRoute
 }
 
 enum AppTheme: String, CaseIterable, Identifiable {
@@ -29,8 +35,8 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-class AppState: ObservableObject {
-    static let shared = AppState()
+class KiniAppState: ObservableObject {
+    static let shared = KiniAppState()
     @Published var isAuthenticated = Session.isAuthenticated
     @Published var selectedTab: Int = 0
     @Published var selectedOutlet: RouteOutlet? = nil
@@ -43,7 +49,7 @@ class AppState: ObservableObject {
     
     // --- Navigation & UI ---
     @Published var showSideMenu = false
-    @Published var activeSecondaryRoute: SecondaryRoute? = nil
+    @Published var activeSecondaryRoute: ModalRoute? = nil
     @Published var theme: AppTheme = .system {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: "app_theme") }
     }
@@ -57,6 +63,20 @@ class AppState: ObservableObject {
     // --- Navigation Morphing (iOS 26 Liquid Glass) ---
     @Published var isTabBarExpanded: Bool = true
     private var lastScrollY: CGFloat = 0
+    
+    // --- Ironclad Aura Flow (Flat State) ---
+    @Published var capturedSelfie: UIImage? = nil
+    
+    // --- GLOBAL FEEDBACK ---
+    @Published var showGlobalSuccess = false
+    @Published var lastSuccessMessage = "Data submitted successfully"
+    
+    func triggerCamera() {
+        print("📸 [KiniAppState] triggerCamera() - High Reliability Signal (UUID Trigger)")
+        DispatchQueue.main.async {
+            self.activeSecondaryRoute = ModalRoute(route: .camera)
+        }
+    }
     
     func updateScrollProgress(_ y: CGFloat) {
         let delta = y - lastScrollY
@@ -80,7 +100,7 @@ class AppState: ObservableObject {
             self.today = cachedHome.today
             self.summary = cachedHome.summary
             self.quote = cachedHome.quote
-            print("🚀 [AppState] Instantly restored state from cache.")
+            print("🚀 [KiniAppState] Instantly restored state from cache.")
         }
     }
     
@@ -94,6 +114,51 @@ class AppState: ObservableObject {
         self.selectedTab = 0
         self.showSideMenu = false
         self.activeSecondaryRoute = nil
+        stopTrackingTimer()
+    }
+    
+    // --- LIVE TRACKING ENGINE ---
+    private var trackingTimer: Timer?
+    
+    func startTrackingTimer() {
+        guard trackingTimer == nil else { return }
+        print("📡 [KiniAppState] Initializing Live Tracking Cycle (5min)")
+        
+        trackingTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            Task { [weak self] in
+                await self?.performLivePing()
+            }
+        }
+    }
+    
+    func stopTrackingTimer() {
+        print("🛑 [KiniAppState] Terminating Live Tracking Cycle")
+        trackingTimer?.invalidate()
+        trackingTimer = nil
+    }
+    
+    private func performLivePing() async {
+        // Gate 1: Check Auth & Shift Status
+        guard isAuthenticated, let shift = today, shift.isIn else { 
+            print("💤 [Tracking] Shift inactive. Skipping ping.")
+            return 
+        }
+        
+        // Gate 2: Fetch Coordinates
+        guard let location = LocationTrackingService.shared.lastLocation else {
+            print("⚠️ [Tracking] No GPS fix. Skipping ping.")
+            return
+        }
+        
+        // Gate 3: Fetch Battery
+        let battery = Int(UIDevice.current.batteryLevel * 100)
+        
+        print("📍 [Tracking] Sending Ping: \(location.coordinate.latitude), \(location.coordinate.longitude) | Battery: \(battery)%")
+        _ = await KinematicRepository.shared.sendLiveTrackingPing(
+            lat: location.coordinate.latitude,
+            lng: location.coordinate.longitude,
+            battery: battery
+        )
     }
 }
 
@@ -114,6 +179,36 @@ struct LoginData: Codable {
 }
 
 // Attendance Models
+// Flexible Codable type that accepts any JSON value shape
+struct AnyCodableValue: Codable {
+    let value: Any
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let dict = try? container.decode([String: AnyCodableValue].self) {
+            value = dict
+        } else if let array = try? container.decode([AnyCodableValue].self) {
+            value = array
+        } else if let str = try? container.decode(String.self) {
+            value = str
+        } else if let num = try? container.decode(Double.self) {
+            value = num
+        } else if let bool = try? container.decode(Bool.self) {
+            value = bool
+        } else {
+            value = NSNull()
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        if let str = value as? String { try container.encode(str) }
+        else if let num = value as? Double { try container.encode(num) }
+        else if let bool = value as? Bool { try container.encode(bool) }
+        else { try container.encodeNil() }
+    }
+}
+
 struct ApiResponse<T: Codable>: Codable {
     let success: Bool
     let data: T?
@@ -124,9 +219,9 @@ struct ApiResponse<T: Codable>: Codable {
 struct AttendanceRecord: Codable {
     let id: String?
     let date: String?
-    let status: String?
-    let checkinAt: String?
-    let checkoutAt: String?
+    var status: String?
+    var checkinAt: String?
+    var checkoutAt: String?
     let totalHours: Double?
     let checkinSelfieUrl: String?
     let checkoutSelfieUrl: String?
@@ -134,8 +229,11 @@ struct AttendanceRecord: Codable {
     let checkinLongitude: Double?
     let checkoutLatitude: Double?
     let checkoutLongitude: Double?
+    var firstCheckinAt: String?
+    var lastCheckoutAt: String?
     let checkinAddress: String?
     let checkoutAddress: String?
+    let totalDuration: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, date, status
@@ -155,6 +253,9 @@ struct AttendanceRecord: Codable {
         case checkoutLongitude = "checkout_lng"
         case checkinAddress = "checkin_address"
         case checkoutAddress = "checkout_address"
+        case firstCheckinAt = "first_checkin_at"
+        case lastCheckoutAt = "last_checkout_at"
+        case totalDuration = "total_duration"
         case location
     }
 
@@ -172,7 +273,10 @@ struct AttendanceRecord: Codable {
         checkoutLatitude: Double? = nil,
         checkoutLongitude: Double? = nil,
         checkinAddress: String? = nil,
-        checkoutAddress: String? = nil
+        checkoutAddress: String? = nil,
+        firstCheckinAt: String? = nil,
+        lastCheckoutAt: String? = nil,
+        totalDuration: Int? = nil
     ) {
         self.id = id
         self.date = date
@@ -188,6 +292,9 @@ struct AttendanceRecord: Codable {
         self.checkoutLongitude = checkoutLongitude
         self.checkinAddress = checkinAddress
         self.checkoutAddress = checkoutAddress
+        self.firstCheckinAt = firstCheckinAt
+        self.lastCheckoutAt = lastCheckoutAt
+        self.totalDuration = totalDuration
     }
 
     init(from decoder: Decoder) throws {
@@ -195,24 +302,32 @@ struct AttendanceRecord: Codable {
         id = container.decodeLossyString(forKey: .id)
         date = container.decodeLossyString(forKey: .date)
         status = container.decodeLossyString(forKey: .status)
+        
         checkinAt = container.decodeLossyString(forKey: .checkinAt)
             ?? container.decodeLossyString(forKey: .checkInAt)
         checkoutAt = container.decodeLossyString(forKey: .checkoutAt)
             ?? container.decodeLossyString(forKey: .checkOutAt)
+            
         totalHours = container.decodeLossyDouble(forKey: .totalHours)
             ?? container.decodeLossyDouble(forKey: .totalHrs)
+            
         checkinSelfieUrl = container.decodeLossyString(forKey: .checkinSelfieUrl)
             ?? container.decodeLossyString(forKey: .checkInSelfieUrl)
         checkoutSelfieUrl = container.decodeLossyString(forKey: .checkoutSelfieUrl)
             ?? container.decodeLossyString(forKey: .checkOutSelfieUrl)
+            
         checkinLatitude = container.decodeLossyDouble(forKey: .checkinLatitude)
         checkinLongitude = container.decodeLossyDouble(forKey: .checkinLongitude)
         checkoutLatitude = container.decodeLossyDouble(forKey: .checkoutLatitude)
         checkoutLongitude = container.decodeLossyDouble(forKey: .checkoutLongitude)
-        // Address: prefer dedicated field, fall back to generic "location"
+        
         checkinAddress = container.decodeLossyString(forKey: .checkinAddress)
             ?? container.decodeLossyString(forKey: .location)
         checkoutAddress = container.decodeLossyString(forKey: .checkoutAddress)
+        
+        firstCheckinAt = container.decodeLossyString(forKey: .firstCheckinAt)
+        lastCheckoutAt = container.decodeLossyString(forKey: .lastCheckoutAt)
+        totalDuration = container.decodeLossyInt(forKey: .totalDuration)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -225,7 +340,56 @@ struct AttendanceRecord: Codable {
         try container.encodeIfPresent(totalHours, forKey: .totalHours)
         try container.encodeIfPresent(checkinSelfieUrl, forKey: .checkinSelfieUrl)
         try container.encodeIfPresent(checkoutSelfieUrl, forKey: .checkoutSelfieUrl)
+        try container.encodeIfPresent(checkinLatitude, forKey: .checkinLatitude)
+        try container.encodeIfPresent(checkinLongitude, forKey: .checkinLongitude)
+        try container.encodeIfPresent(checkoutLatitude, forKey: .checkoutLatitude)
+        try container.encodeIfPresent(checkoutLongitude, forKey: .checkoutLongitude)
+        try container.encodeIfPresent(checkinAddress, forKey: .checkinAddress)
+        try container.encodeIfPresent(checkoutAddress, forKey: .checkoutAddress)
+        try container.encodeIfPresent(firstCheckinAt, forKey: .firstCheckinAt)
+        try container.encodeIfPresent(lastCheckoutAt, forKey: .lastCheckoutAt)
+        try container.encodeIfPresent(totalDuration, forKey: .totalDuration)
     }
+
+    var isIn: Bool {
+        checkinAt != nil && checkoutAt == nil
+    }
+}
+
+struct TrackingPingRequest: Codable {
+    let latitude: Double
+    let longitude: Double
+    let batteryPercentage: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case latitude, longitude
+        case batteryPercentage = "battery_percentage"
+    }
+}
+
+// Robust ISO Parsing with Fractional Second and SQL fallback
+func parseISO(_ s: String?) -> Date? {
+    guard let s = s, !s.lowercased().contains("null") else { return nil }
+    
+    // 1. Try ISO8601 (Strict)
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = f.date(from: s) { return date }
+    
+    f.formatOptions = [.withInternetDateTime]
+    if let date = f.date(from: s) { return date }
+    
+    // 2. Try Standard SQL Format (yyyy-MM-dd HH:mm:ss)
+    let df = DateFormatter()
+    df.locale = Locale(identifier: "en_US_POSIX")
+    df.timeZone = TimeZone(secondsFromGMT: 0)
+    
+    df.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    if let date = df.date(from: s) { return date }
+    
+    // 3. Try Date-only fallback for specific server responses
+    df.dateFormat = "yyyy-MM-dd"
+    return df.date(from: s)
 }
 
 private extension KeyedDecodingContainer {
@@ -276,7 +440,7 @@ struct UploadResponse: Codable {
 }
 
 struct AnalyticsSummary: Codable {
-    let tffCount: Int
+    var tffCount: Int
     enum CodingKeys: String, CodingKey {
         case tffCount = "tff_count"
     }
@@ -436,6 +600,7 @@ struct FormTemplate: Codable {
     let requiresPhoto: Bool
     let requiresGps: Bool
     let fields: [FormField]?
+    let pages: [FormPage]?
     
     enum CodingKeys: String, CodingKey {
         case id, name, description
@@ -443,9 +608,21 @@ struct FormTemplate: Codable {
         case requiresPhoto = "requires_photo"
         case requiresGps = "requires_gps"
         case activityId = "activity_id"
+        case pages = "form_pages"
     }
 }
 
+struct FormPage: Codable, Identifiable {
+    let id: String
+    let title: String
+    let description: String?
+    let order: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case id, title, description
+        case order = "page_order"
+    }
+}
 struct FormField: Codable, Identifiable {
     let id: String
     let label: String
@@ -460,24 +637,130 @@ struct FormField: Codable, Identifiable {
     let dependsOnValue: String?
     let imageCount: Int?
     let cameraOnly: Bool?
+    let pageId: String?
+    let keyboardType: String?
     
     enum CodingKeys: String, CodingKey {
-        case id, label, options, placeholder
+        case id, label, placeholder
         case fieldKey = "field_key"
         case fieldType = "field_type"
         case helpText = "help_text"
         case isRequired = "is_required"
         case sortOrder = "sort_order"
+        case options = "options"
+        case fieldOptions = "field_options"
         case dependsOnId = "depends_on_id"
         case dependsOnValue = "depends_on_value"
         case imageCount = "image_count"
         case cameraOnly = "camera_only"
+        case pageId = "page_id"
+        case keyboardType = "keyboard_type"
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        label = try container.decode(String.self, forKey: .label)
+        fieldKey = try container.decode(String.self, forKey: .fieldKey)
+        fieldType = try container.decode(String.self, forKey: .fieldType)
+        placeholder = try? container.decodeIfPresent(String.self, forKey: .placeholder)
+        helpText = try? container.decodeIfPresent(String.self, forKey: .helpText)
+        isRequired = (try? container.decodeIfPresent(Bool.self, forKey: .isRequired)) ?? false
+        sortOrder = try? container.decodeIfPresent(Int.self, forKey: .sortOrder)
+        
+        // Options can arrive in 3 formats from the backend:
+        // 1. Array of objects: [{"label":"A","value":"a"}]  (FormOption directly)
+        // 2. Array of plain strings: ["Option 1","Option 2"]  (DB stores this way)
+        // 3. Under key "field_options" instead of "options"
+        if let objOptions = try? container.decodeIfPresent([FormOption].self, forKey: .options), !objOptions.isEmpty {
+            options = objOptions
+        } else if let strOptions = try? container.decodeIfPresent([String].self, forKey: .options), !strOptions.isEmpty {
+            options = strOptions.map { FormOption(label: $0, value: $0) }
+        } else if let objOptions = try? container.decodeIfPresent([FormOption].self, forKey: .fieldOptions), !objOptions.isEmpty {
+            options = objOptions
+        } else if let strOptions = try? container.decodeIfPresent([String].self, forKey: .fieldOptions), !strOptions.isEmpty {
+            options = strOptions.map { FormOption(label: $0, value: $0) }
+        } else {
+            options = nil
+        }
+        
+        dependsOnId = try? container.decodeIfPresent(String.self, forKey: .dependsOnId)
+        dependsOnValue = try? container.decodeIfPresent(String.self, forKey: .dependsOnValue)
+        imageCount = try? container.decodeIfPresent(Int.self, forKey: .imageCount)
+        cameraOnly = try? container.decodeIfPresent(Bool.self, forKey: .cameraOnly)
+        pageId = try? container.decodeIfPresent(String.self, forKey: .pageId)
+        keyboardType = try? container.decodeIfPresent(String.self, forKey: .keyboardType)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(label, forKey: .label)
+        try container.encode(fieldKey, forKey: .fieldKey)
+        try container.encode(fieldType, forKey: .fieldType)
+        try container.encodeIfPresent(placeholder, forKey: .placeholder)
+        try container.encodeIfPresent(helpText, forKey: .helpText)
+        try container.encode(isRequired, forKey: .isRequired)
+        try container.encodeIfPresent(sortOrder, forKey: .sortOrder)
+        try container.encodeIfPresent(options, forKey: .options)
+        try container.encodeIfPresent(dependsOnId, forKey: .dependsOnId)
+        try container.encodeIfPresent(dependsOnValue, forKey: .dependsOnValue)
+        try container.encodeIfPresent(imageCount, forKey: .imageCount)
+        try container.encodeIfPresent(cameraOnly, forKey: .cameraOnly)
+        try container.encodeIfPresent(pageId, forKey: .pageId)
+        try container.encodeIfPresent(keyboardType, forKey: .keyboardType)
+    }
+
+    init(id: String, label: String, fieldKey: String, fieldType: String, placeholder: String? = nil, helpText: String? = nil, isRequired: Bool = false, sortOrder: Int? = nil, options: [FormOption]? = nil, dependsOnId: String? = nil, dependsOnValue: String? = nil, imageCount: Int? = nil, cameraOnly: Bool? = nil, pageId: String? = nil, keyboardType: String? = nil) {
+        self.id = id
+        self.label = label
+        self.fieldKey = fieldKey
+        self.fieldType = fieldType
+        self.placeholder = placeholder
+        self.helpText = helpText
+        self.isRequired = isRequired
+        self.sortOrder = sortOrder
+        self.options = options
+        self.dependsOnId = dependsOnId
+        self.dependsOnValue = dependsOnValue
+        self.imageCount = imageCount
+        self.cameraOnly = cameraOnly
+        self.pageId = pageId
+        self.keyboardType = keyboardType
     }
 }
 
-struct FormOption: Codable {
+struct FormOption: Codable, Identifiable {
+    var id: String { "\(label)_\(value)" } // Deterministic identity for ForEach
     let label: String
     let value: String
+    
+    enum CodingKeys: String, CodingKey {
+        case label, value, name, id
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let parsedLabel = container.decodeLossyString(forKey: .label) 
+             ?? container.decodeLossyString(forKey: .name) 
+             ?? "Option"
+        label = parsedLabel
+        
+        value = container.decodeLossyString(forKey: .value) 
+             ?? container.decodeLossyString(forKey: .id) 
+             ?? parsedLabel
+    }
+    
+    init(label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(label, forKey: .label)
+        try container.encode(value, forKey: .value)
+    }
 }
 
 struct FormSubmissionRequest: Codable {
@@ -661,18 +944,27 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.distanceFilter = 10 // Update every 10 meters if moving fast
         
         // Defer background update activation to prevent launch-time crashes
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             #if !targetEnvironment(simulator)
-            // CRITICAL: This requires 'location' in UIBackgroundModes in project settings/Info.plist
             self.locationManager.allowsBackgroundLocationUpdates = true
+            self.locationManager.pausesLocationUpdatesAutomatically = false
+            self.locationManager.showsBackgroundLocationIndicator = true
             #endif
         }
     }
-    func requestPermissions() { locationManager.requestWhenInUseAuthorization() }
+    
+    func requestPermissions() { 
+        locationManager.requestWhenInUseAuthorization()
+        // Modern background tracking requires 'Always' permission for high reliability
+        locationManager.requestAlwaysAuthorization() 
+    }
+    
     func startTracking() { locationManager.startUpdatingLocation() }
     func stopTracking() { locationManager.stopUpdatingLocation() }
+    
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         self.lastLocation = locations.last
     }
@@ -705,6 +997,28 @@ class KinematicRepository {
         } catch {
             print("❌ LOG_VISIT_ERROR: \(error). Returning MOCK_ID.")
             return "mock_visit_\(UUID().uuidString)"
+        }
+    }
+    
+    func sendLiveTrackingPing(lat: Double, lng: Double, battery: Int) async -> Bool {
+        do {
+            let payload = TrackingPingRequest(latitude: lat, longitude: lng, batteryPercentage: battery)
+            let body = try? JSONEncoder().encode(payload)
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/attendance/pings",
+                method: "POST",
+                body: body
+            )
+            let success = res?.success ?? false
+            if success {
+                print("✅ [Tracking] Ping successful.")
+            } else {
+                print("⚠️ [Tracking] Ping rejected: \(res?.error ?? res?.message ?? "Unknown error")")
+            }
+            return success
+        } catch {
+            print("❌ TRACKING_PING_FAILED: \(error)")
+            return false
         }
     }
     
@@ -755,7 +1069,7 @@ class KinematicRepository {
             print("⚠️ AUTH_ERROR: Unauthorized (401). Triggering Auto-Logout.")
             await MainActor.run { 
                 Session.logout()
-                AppState.shared.checkAuth()
+                KiniAppState.shared.checkAuth()
             }
         }
         
@@ -807,34 +1121,40 @@ class KinematicRepository {
             id: "tmp_form_unified_001",
             activityId: activityId,
             name: "Ultimate Retail Audit",
-            description: "100% Parity Demonstration: Sections, Logic, and Parallel Performance.",
+            description: "Phase-based synthesis with specialized keyboards.",
             requiresPhoto: true,
             requiresGps: true,
             fields: [
-                FormField(id: "s1", label: "Initial Details", fieldKey: "sec_1", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 1, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
-                FormField(id: "f1", label: "Audit Date", fieldKey: "audit_date", fieldType: "date", placeholder: nil, helpText: "Target date for this audit", isRequired: true, sortOrder: 2, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
-                FormField(id: "f2", label: "Store Email", fieldKey: "email", fieldType: "email", placeholder: "manager@store.com", helpText: nil, isRequired: false, sortOrder: 3, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
+                // Page 1: Initial Details
+                FormField(id: "s1", label: "Initial Details", fieldKey: "sec_1", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 1, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p1", keyboardType: nil),
+                FormField(id: "f1", label: "Audit Date", fieldKey: "audit_date", fieldType: "date", placeholder: nil, helpText: "Target date for this audit", isRequired: true, sortOrder: 2, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p1", keyboardType: nil),
+                FormField(id: "f2", label: "Store Email", fieldKey: "email", fieldType: "email", placeholder: "manager@store.com", helpText: nil, isRequired: false, sortOrder: 3, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p1", keyboardType: "email"),
+                FormField(id: "f10", label: "FE Mobile", fieldKey: "mobile", fieldType: "short_text", placeholder: "Contact number", helpText: nil, isRequired: true, sortOrder: 4, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p1", keyboardType: "phone"),
                 
-                FormField(id: "s2", label: "Product Visibility", fieldKey: "sec_2", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 4, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
-                FormField(id: "f3", label: "Display Correct?", fieldKey: "is_correct", fieldType: "yes_no", placeholder: nil, helpText: "Check against Planogram V4", isRequired: true, sortOrder: 5, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
-                FormField(id: "f4", label: "Condition Rating", fieldKey: "rating", fieldType: "rating", placeholder: nil, helpText: "Rate the shelf presentation", isRequired: true, sortOrder: 6, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
+                // Page 2: Product Visibility
+                FormField(id: "s2", label: "Product Visibility", fieldKey: "sec_2", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 4, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p2", keyboardType: nil),
+                FormField(id: "f3", label: "Display Correct?", fieldKey: "is_correct", fieldType: "yes_no", placeholder: nil, helpText: "Check against Planogram V4", isRequired: true, sortOrder: 5, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p2", keyboardType: nil),
+                FormField(id: "f4", label: "Condition Rating", fieldKey: "rating", fieldType: "rating", placeholder: nil, helpText: "Rate the shelf presentation", isRequired: true, sortOrder: 6, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p2", keyboardType: nil),
                 
-                FormField(id: "s3", label: "Inventory Logic", fieldKey: "sec_3", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 7, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
-                FormField(id: "f5", label: "Stock Priority", fieldKey: "priority", fieldType: "radio", placeholder: nil, helpText: "Choose one", isRequired: true, sortOrder: 8, options: [
+                // Page 3: Inventory Logic
+                FormField(id: "s3", label: "Inventory Logic", fieldKey: "sec_3", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 7, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p3", keyboardType: nil),
+                FormField(id: "f5", label: "Stock Priority", fieldKey: "stock_priority", fieldType: "radio", placeholder: nil, helpText: "Choose one", isRequired: true, sortOrder: 8, options: [
                     FormOption(label: "Critical", value: "crit"),
                     FormOption(label: "Normal", value: "norm"),
                     FormOption(label: "Low", value: "low")
-                ], dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
-                FormField(id: "f6", label: "Missing SKU Categories", fieldKey: "skus", fieldType: "checkbox", placeholder: nil, helpText: "Select all that apply", isRequired: false, sortOrder: 9, options: [
-                    FormOption(label: "Beverages", value: "bev"),
-                    FormOption(label: "Snacks", value: "snacks"),
-                    FormOption(label: "Dairy", value: "dairy")
-                ], dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
+                ], dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p3", keyboardType: nil),
+                FormField(id: "f11", label: "Unit Count", fieldKey: "units", fieldType: "short_text", placeholder: "0", helpText: "Numerical count", isRequired: true, sortOrder: 9, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p3", keyboardType: "number"),
                 
-                FormField(id: "s4", label: "Evidence & Signature", fieldKey: "sec_4", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 10, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
-                FormField(id: "f7", label: "Audit Photos", fieldKey: "photos", fieldType: "image", placeholder: nil, helpText: "Capture up to 5 photos of the shelf", isRequired: true, sortOrder: 11, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: 5, cameraOnly: true),
-                FormField(id: "f8", label: "Confirm Location", fieldKey: "gps", fieldType: "location", placeholder: nil, helpText: "Fetch exact audit point", isRequired: true, sortOrder: 12, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil),
-                FormField(id: "f9", label: "Final Signature", fieldKey: "sig", fieldType: "signature", placeholder: nil, helpText: "Sign to confirm all data is accurate", isRequired: true, sortOrder: 13, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil)
+                // Page 4: Evidence
+                FormField(id: "s4", label: "Evidence & Signature", fieldKey: "sec_4", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 10, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p4", keyboardType: nil),
+                FormField(id: "f7", label: "Audit Photos", fieldKey: "photos", fieldType: "image", placeholder: nil, helpText: "Capture photos of the shelf", isRequired: true, sortOrder: 11, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: 5, cameraOnly: true, pageId: "p4", keyboardType: nil),
+                FormField(id: "f8", label: "Confirm Location", fieldKey: "gps", fieldType: "location", placeholder: nil, helpText: "Fetch exact audit point", isRequired: true, sortOrder: 12, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p4", keyboardType: nil),
+            ],
+            pages: [
+                FormPage(id: "p1", title: "Setup", description: "Standard identity validation", order: 1),
+                FormPage(id: "p2", title: "Visibility", description: "Visual audit metrics", order: 2),
+                FormPage(id: "p3", title: "Inventory", description: "Stock level checks", order: 3),
+                FormPage(id: "p4", title: "Verification", description: "Final proof of check", order: 4)
             ]
         )
     }
@@ -842,13 +1162,16 @@ class KinematicRepository {
     func submitForm(request: FormSubmissionRequest) async -> Bool {
         do {
             let body = try? JSONEncoder().encode(request)
-            let res: ApiResponse<[String: String]>? = try await performRequest(
+            // Backend returns the full submission object (mixed types: strings, ints, booleans, dates)
+            // Use a flexible decode type that won't fail on type mismatches
+            let res: ApiResponse<AnyCodableValue>? = try await performRequest(
                 "/forms/submit",
                 method: "POST",
                 body: body
             )
             return res?.success ?? false
         } catch {
+            print("❌ SUBMIT_FORM_ERROR: \(error)")
             return false
         }
     }
@@ -911,7 +1234,7 @@ class KinematicRepository {
                     await MainActor.run { 
                         Session.sharedToken = t
                         Session.currentUser = result.data?.user
-                        AppState.shared.checkAuth()
+                        KiniAppState.shared.checkAuth()
                     }
                     return (true, nil)
                 }
@@ -999,32 +1322,16 @@ class KinematicRepository {
     func getMobileHome() async -> MobileHomeResponse? {
         do {
             let res: ApiResponse<MobileHomeResponse>? = try await performRequest("/analytics/mobile-home")
-            if var home = res?.data {
-                // STRICT FILTER: Only show route plans for TODAY
-                let today = todayString
-                home.routePlan = home.routePlan?.filter { $0.planDate == today || $0.date == today }
-                
+            if let home = res?.data {
                 cache(home, forKey: cachedMobileHomeKey)
                 if let routes = home.routePlan, !routes.isEmpty {
                     cache(routes, forKey: cachedRoutePlanKey)
                 }
                 return home
             }
-            if let cached = loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey) {
-                var home = cached
-                let today = todayString
-                home.routePlan = home.routePlan?.filter { $0.planDate == today || $0.date == today }
-                return home
-            }
-            return nil
+            return loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey)
         } catch {
-            if let cached = loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey) {
-                var home = cached
-                let today = todayString
-                home.routePlan = home.routePlan?.filter { $0.planDate == today || $0.date == today }
-                return home
-            }
-            return nil
+            return loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey)
         }
     }
     
@@ -1051,27 +1358,20 @@ class KinematicRepository {
             )
 
             if let data = res?.data {
-                // STRICT FILTER: Validate server response against today's date
-                let filtered = data.filter { $0.planDate == date || $0.date == date }
-                
-                print("✅ FETCH_ROUTE_PLAN_SUCCESS: Found \(filtered.count) valid plans")
-                if !filtered.isEmpty {
-                    cache(filtered, forKey: cachedRoutePlanKey)
+                print("✅ FETCH_ROUTE_PLAN_SUCCESS: Found \(data.count) plans")
+                if !data.isEmpty {
+                    cache(data, forKey: cachedRoutePlanKey)
                 } else {
                     UserDefaults.standard.removeObject(forKey: cachedRoutePlanKey)
                 }
-                return filtered
+                return data
             } else {
                 print("⚠️ FETCH_ROUTE_PLAN_EMPTY: Success but no data.")
-                let cached = loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
-                // Safety re-filter of cached data
-                return cached.filter { $0.planDate == date || $0.date == date }
+                return loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
             }
         } catch {
             print("❌ FETCH_ROUTE_PLAN_ERROR: \(error)")
-            let cached = loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
-            // Safety re-filter of cached data
-            return cached.filter { $0.planDate == date || $0.date == date }
+            return loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
         }
     }
     
@@ -1095,7 +1395,7 @@ class KinematicRepository {
     // --- MOCK DATA PROVIDER ---
     private func mockMobileHome() -> MobileHomeResponse {
         return MobileHomeResponse(
-            today: AttendanceRecord(id: "1", date: "2024-04-08", status: "present", checkinAt: "2024-04-08T09:00:00Z", checkoutAt: nil, totalHours: 4.5, checkinSelfieUrl: nil, checkoutSelfieUrl: nil),
+            today: AttendanceRecord(id: "1", date: "2024-04-08", status: "present", checkinAt: "2024-04-08T09:00:00Z", checkoutAt: nil, totalHours: 4.5, checkinSelfieUrl: nil, checkoutSelfieUrl: nil, checkinLatitude: nil, checkinLongitude: nil, checkoutLatitude: nil, checkoutLongitude: nil, checkinAddress: nil, checkoutAddress: nil, firstCheckinAt: nil, lastCheckoutAt: nil, totalDuration: 16200),
             summary: AnalyticsSummary(tffCount: 12),
             routePlan: mockRoute(),
             unreadCount: 5,
@@ -1127,11 +1427,12 @@ class KinematicRepository {
 @main
 struct KinematicApp: App {
     @StateObject private var locationService = LocationTrackingService.shared
-    @StateObject private var appState = AppState.shared
+    @StateObject private var appState = KiniAppState.shared
     @State private var isSplashScreenActive = true
     @State private var isDataReady = false
     
     init() {
+        print("🚀 APP_LIFE: KinematicApp launched")
         UITabBar.appearance().isHidden = true
     }
     
@@ -1149,13 +1450,14 @@ struct KinematicApp: App {
             }
             .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
             .task {
+                UIDevice.current.isBatteryMonitoringEnabled = true
                 locationService.requestPermissions()
                 // Pre-warm camera permission so the selfie sheet opens instantly
                 AVCaptureDevice.requestAccess(for: .video) { _ in }
 
-                // --- PERFORMANCE: Background Sync ---
+                // --- PERFORMANCE: Background Sync moved to ContentView to avoid root loop ---
                 if Session.isAuthenticated {
-                    Task { let _ = await appState.attendanceVM.refresh() }
+                    // One-time pre-warm logic if needed, but NOT refresh()
                 }
                 
                 // Fixed branding duration (1.5s) — provides professional feel without blocking.

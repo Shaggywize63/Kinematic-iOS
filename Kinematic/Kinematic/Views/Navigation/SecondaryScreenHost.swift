@@ -1,37 +1,46 @@
 import SwiftUI
 
 struct SecondaryScreenHost: View {
-    let route: SecondaryRoute
+    let route: ModalRoute
     @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var appState: KiniAppState
     
     var body: some View {
-        NavigationView {
-            Group {
-                switch route {
-                case .profile:
-                    ProfileView()
-                case .broadcast:
-                    BroadcastHubView()
-                case .learning:
-                    LearningHubView()
-                case .settings:
-                    SettingsView()
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text("Back")
+        Group {
+            if route.route == .camera {
+                ImagePicker(image: $appState.capturedSelfie)
+                    .ignoresSafeArea()
+            } else {
+                NavigationView {
+                    Group {
+                        switch route.route {
+                        case .profile:
+                            ProfileView()
+                        case .broadcast:
+                            BroadcastHubView()
+                        case .learning:
+                            LearningHubView()
+                        case .settings:
+                            SettingsView()
+                        case .camera:
+                            EmptyView() // Handled above
                         }
-                        .foregroundColor(.blue)
+                    }
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button(action: { dismiss() }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                    Text("Back")
+                                }
+                                .foregroundColor(.blue)
+                            }
+                        }
                     }
                 }
             }
         }
-        }
+    }
     }
 

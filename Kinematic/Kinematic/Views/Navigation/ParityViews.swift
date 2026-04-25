@@ -333,7 +333,7 @@ struct LearningMaterialRow: View {
 // ── NEW PROFILE VIEW (Parity with Android) ─────────────────────
 
 struct ProfileView: View {
-    @ObservedObject var appState = AppState.shared
+    @ObservedObject var appState = KiniAppState.shared
     let user = Session.currentUser
     
     var body: some View {
@@ -466,7 +466,7 @@ struct ProfileRow: View {
 // ── NEW SETTINGS VIEW (Parity with Android) ─────────────────────
 
 struct SettingsView: View {
-    @ObservedObject var appState = AppState.shared
+    @ObservedObject var appState = KiniAppState.shared
     
     var body: some View {
         ScrollView {
@@ -575,7 +575,7 @@ struct ThemeToggleCard: View {
     var isSelected: Bool { type == current }
     
     var body: some View {
-        Button(action: { AppState.shared.theme = type }) {
+        Button(action: { KiniAppState.shared.theme = type }) {
             VStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 20))

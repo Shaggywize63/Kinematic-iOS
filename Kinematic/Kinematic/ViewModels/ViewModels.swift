@@ -44,7 +44,7 @@ class HomeViewModel: ObservableObject {
         // --- PERFORMANCE: Throttling (Parity with high-end Android) ---
         // Avoid redundant calls if refreshed in last 30 seconds
         if let last = lastRefreshTime, Date().timeIntervalSince(last) < 30 {
-            print("🕒 [HomeVM] Throttled. Using fresh AppState.")
+            print("🕒 [HomeVM] Throttled. Using fresh KiniAppState.")
             return
         }
         
@@ -52,27 +52,19 @@ class HomeViewModel: ObservableObject {
         let newData = await KinematicRepository.shared.getMobileHome()
         await MainActor.run { 
             self.data = newData
-            
-            // SECONDARY SAFETY FILTER: Ensure stale data NEVER hits the UI
-            let df = DateFormatter()
-            df.dateFormat = "yyyy-MM-dd"
-            df.timeZone = TimeZone.current
-            let today = df.string(from: Date())
-            self.data?.routePlan = self.data?.routePlan?.filter { $0.planDate == today || $0.date == today }
-            
             self.isLoading = false
             self.lastRefreshTime = Date()
             
             // Centralized State Sync (Android Parity)
-            if let todayRecord = newData?.today {
-                AppState.shared.today = todayRecord
+            if let today = newData?.today {
+                KiniAppState.shared.today = today
             }
             
             if let summ = newData?.summary {
-                AppState.shared.summary = summ
+                KiniAppState.shared.summary = summ
             }
             if let q = newData?.quote {
-                AppState.shared.quote = q
+                KiniAppState.shared.quote = q
             }
         }
     }
@@ -127,6 +119,12 @@ class RoutePlansViewModel: ObservableObject {
     }
 }
 
+import Combine
+
+extension Notification.Name {
+    static let triggerCamera = Notification.Name("TriggerSelfieCamera")
+}
+
 class AttendanceViewModel: ObservableObject {
     @Published var today: AttendanceRecord?
     @Published var isLoading = false
@@ -134,27 +132,26 @@ class AttendanceViewModel: ObservableObject {
     /// Locally persisted check-in location stamp (lat,lng string) shown when the
     /// server does not return location coordinates in the AttendanceRecord.
     @Published var checkinLocationStamp: String? = UserDefaults.standard.string(forKey: "checkin_location_stamp")
-    @Published var selfie: UIImage? {
-        didSet {
-            // Automatically trigger attendance if we are in automated flow
-            if selfie != nil && autoSubmitScheduled {
-                checkLocationAndSubmit()
-            }
-        }
-    }
-    @Published var showCamera = false
+    @Published var selfie: UIImage?
     private var autoSubmitScheduled = false
     private var cancellables = Set<AnyCancellable>()
+    
+    func processCapturedSelfie(image: UIImage) {
+        self.selfie = image
+        self.autoSubmitScheduled = true
+        checkLocationAndSubmit()
+    }
     
     private func checkLocationAndSubmit() {
         if let loc = LocationTrackingService.shared.lastLocation {
             autoSubmitScheduled = false
             Task { await toggleAttendance(loc: loc) }
         } else {
-            message = "Waiting for GPS..."
+            isLoading = true // Show progress while waiting
+            message = "Waiting for high-precision GPS..."
             LocationTrackingService.shared.startTracking()
             
-            // Parity with Android: Listen for first valid location update to resume flow
+            // Listen for first valid location update to resume flow
             LocationTrackingService.shared.$lastLocation
                 .compactMap { $0 }
                 .first()
@@ -186,16 +183,22 @@ class AttendanceViewModel: ObservableObject {
         let mockImage = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         
-        self.selfie = mockImage
+        KiniAppState.shared.attendanceVM.processCapturedSelfie(image: mockImage ?? UIImage())
         self.message = "SIMULATOR: Mock selfie captured."
     }
     
     func startFlow() {
+        print("🔥 [CRITICAL] BROADCASTING CAMERA SIGNAL")
+        print("🚀 ATTEMPT: startFlow() signal broadcasted")
+        print("📸 [AttendanceVM] startFlow() entered")
         self.autoSubmitScheduled = true
         
-        // --- STABILITY: Immediate UI State Change (Priority 1) ---
-        // We set showCamera BEFORE starting other tasks to ensure the sheet animation begins.
-        self.showCamera = true
+        // Drive presentation through shared state so the camera cover opens
+        // even if a notification listener misses the event.
+        KiniAppState.shared.triggerCamera()
+        
+        // Keep the broadcast as a fallback for legacy listeners.
+        NotificationCenter.default.post(name: .triggerCamera, object: nil)
         
         // --- STABILITY: Defer GPS start by a few ms to allow UI to breathe ---
         Task {
@@ -206,29 +209,43 @@ class AttendanceViewModel: ObservableObject {
         }
     }
 
-    
     private var lastRefreshTime: Date?
+    private var lastAttendanceActionTime: Date? // Guard against stale server data
+    private var isRefreshing = false
 
-    func refresh() async {
-        // --- PERFORMANCE: Throttling ---
-        if let last = lastRefreshTime, Date().timeIntervalSince(last) < 30 {
-            return
+    func refresh(force: Bool = false) async {
+        // --- STABILITY: Concurrency Guard ---
+        guard !isRefreshing else { return }
+        
+        // --- PERFORMANCE: Throttling (Bypass with 'force') ---
+        if !force {
+            if let last = lastRefreshTime, Date().timeIntervalSince(last) < 30 {
+                return
+            }
         }
+        
+        isRefreshing = true
+        defer { isRefreshing = false }
 
         let data = await KinematicRepository.shared.getMobileHome()
         await MainActor.run { 
             self.lastRefreshTime = Date()
             let serverToday = data?.today
             
-            // ── STABILITY FIX (Android Parity) ──────────────────────
-            // If server returns null but we are ALREADY checked in locally, 
-            // PRESERVE the status to prevent UI flickering or session loss.
-            if serverToday == nil && (AppState.shared.today?.checkinAt != nil && AppState.shared.today?.checkoutAt == nil) {
-                print("⚠️ [Attendance] Server sent null, but local is active. Preserving state.")
-                return 
+            // ── STABILITY: Stale-State Guard (Extended 2m) ──────────
+            if let lastAction = self.lastAttendanceActionTime, Date().timeIntervalSince(lastAction) < 120 {
+                let localIsIn = KiniAppState.shared.today?.isIn ?? false
+                let serverIsIn = serverToday?.isIn ?? false
+                
+                // ── SYMMETRIC PROTECTION ──
+                if localIsIn != serverIsIn {
+                    print("🛡️ [Attendance] Symmetric Protection: Ignoring stale server state (\(serverIsIn ? "In" : "Out")).")
+                    return
+                }
             }
             
-            AppState.shared.today = serverToday
+            KiniAppState.shared.today = serverToday
+            self.today = serverToday
             
             // Android Parity: Resume tracking if checked in
             if let status = serverToday?.status, status == "present" || status == "checked_in" {
@@ -252,17 +269,33 @@ class AttendanceViewModel: ObservableObject {
     }
 
     func toggleAttendance(loc: CLLocation) async {
-        let currentSession = AppState.shared.today
-        let isCheckIn = currentSession?.checkinAt == nil || (currentSession?.checkinAt != nil && currentSession?.checkoutAt != nil)
+        // --- CONCURRENCY LOCK (Anti-Double-Firing) ---
+        guard !isLoading else { return }
+        
+        let currentSession = KiniAppState.shared.today
+        let isCheckIn = currentSession?.checkinAt == nil
+        
+        // --- SINGLE-CYCLE GUARD ---
+        if currentSession?.checkoutAt != nil {
+            await MainActor.run { message = "Shift already completed for today." }
+            return
+        }
         let action = isCheckIn ? "CHECK_IN" : "CHECK_OUT"
         
         guard await checkSecurity(action: action, lat: loc.coordinate.latitude, lng: loc.coordinate.longitude) else { return }
         
-        await MainActor.run { isLoading = true; message = "" }
+        await MainActor.run { 
+            isLoading = true
+            message = ""
+            // Anticipatory Lock: Set action time START to protect state during upload
+            self.lastAttendanceActionTime = Date()
+        }
         
-        // Integrate Battery Telemetry
-        UIDevice.current.isBatteryMonitoringEnabled = true
-        let batteryLevel = Int(UIDevice.current.batteryLevel * 100)
+        // Integrate Battery Telemetry safely on MainActor
+        let batteryLevel = await MainActor.run {
+            UIDevice.current.isBatteryMonitoringEnabled = true
+            return Int(UIDevice.current.batteryLevel * 100)
+        }
         
         var selfieUrl: String? = nil
         if let img = selfie {
@@ -295,16 +328,34 @@ class AttendanceViewModel: ObservableObject {
         )
         
         await MainActor.run {
-            isLoading = false
             if success {
-                // ── IMMEDIATE STATE UPDATE (Android Parity) ─────────
-                // Instantly update the UI with the record returned from the API
-                if let newRecord = record {
-                    AppState.shared.today = newRecord
+                // ── ATOMIC STATE PROTECTION ─────────────────────────
+                // Merge server response with local intent. We NEVER want 
+                // to appear Offline immediately after a 200 OK Check-In.
+                let nowIso = ISO8601DateFormatter().string(from: Date())
+                var merged = record ?? KiniAppState.shared.today ?? AttendanceRecord(id: nil, date: nil, status: nil, checkinAt: nil, checkoutAt: nil, totalHours: 0, checkinSelfieUrl: nil, checkoutSelfieUrl: nil)
+                
+                if isCheckIn {
+                    merged.status = "present"
+                    // Preserve FIRST check-in ever, but update CURRENT check-in for the "Ongoing since" display
+                    if merged.firstCheckinAt == nil { merged.firstCheckinAt = nowIso }
+                    merged.checkinAt = nowIso
+                    merged.checkoutAt = nil 
+                } else {
+                    merged.status = "checked_out"
+                    // Update CURRENT checkout and LAST checkout
+                    merged.checkoutAt = nowIso
+                    merged.lastCheckoutAt = nowIso 
                 }
                 
+                KiniAppState.shared.today = merged
+                self.today = merged
+                
+                // Track completion time for final guard window
+                self.lastAttendanceActionTime = Date()
+                // Clear selfie
+                self.selfie = nil
                 message = isCheckIn ? "Checked in!" : "Checked out!"
-                selfie = nil
 
                 if isCheckIn {
                     let stamp = String(format: "%.4f, %.4f", loc.coordinate.latitude, loc.coordinate.longitude)
@@ -312,15 +363,20 @@ class AttendanceViewModel: ObservableObject {
                     UserDefaults.standard.set(stamp, forKey: "checkin_location_stamp")
                     LocationTrackingService.shared.startTracking()
                 } else {
-                    checkinLocationStamp = nil
-                    UserDefaults.standard.removeObject(forKey: "checkin_location_stamp")
                     LocationTrackingService.shared.stopTracking()
                 }
             } else {
-                message = err ?? "Failed"
+                isLoading = false
+                message = err ?? "Submission failed"
+                self.lastAttendanceActionTime = nil // Release lock on failure
             }
         }
-        await refresh()
+        
+        // Force refresh to pull GROUND TRUTH bypassing throttles
+        await refresh(force: true)
+        
+        // RELEASE LOADING STATE ONLY AFTER SYNC IS COMPLETE
+        await MainActor.run { self.isLoading = false }
     }
 }
 
