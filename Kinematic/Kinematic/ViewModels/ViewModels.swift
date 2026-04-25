@@ -58,7 +58,7 @@ class HomeViewModel: ObservableObject {
             df.dateFormat = "yyyy-MM-dd"
             df.timeZone = TimeZone.current
             let today = df.string(from: Date())
-            self.data?.routePlan = self.data?.routePlan?.filter { $0.planDate == today || $0.date == today }
+            self.data?.routePlan = self.data?.routePlan?.filter { $0.planDate == today }
             
             self.isLoading = false
             self.lastRefreshTime = Date()

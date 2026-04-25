@@ -317,7 +317,7 @@ struct SubmitAnswerRequest: Codable {
 struct MobileHomeResponse: Codable {
     let today: AttendanceRecord?
     let summary: AnalyticsSummary?
-    let routePlan: [RoutePlan]?
+    var routePlan: [RoutePlan]?
     let unreadCount: Int?
     let quote: MotivationQuote?
     var alreadyAnswered: Bool?
@@ -1002,7 +1002,7 @@ class KinematicRepository {
             if var home = res?.data {
                 // STRICT FILTER: Only show route plans for TODAY
                 let today = todayString
-                home.routePlan = home.routePlan?.filter { $0.planDate == today || $0.date == today }
+                home.routePlan = home.routePlan?.filter { $0.planDate == today }
                 
                 cache(home, forKey: cachedMobileHomeKey)
                 if let routes = home.routePlan, !routes.isEmpty {
@@ -1013,7 +1013,7 @@ class KinematicRepository {
             if let cached = loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey) {
                 var home = cached
                 let today = todayString
-                home.routePlan = home.routePlan?.filter { $0.planDate == today || $0.date == today }
+                home.routePlan = home.routePlan?.filter { $0.planDate == today }
                 return home
             }
             return nil
@@ -1021,7 +1021,7 @@ class KinematicRepository {
             if let cached = loadCached(MobileHomeResponse.self, forKey: cachedMobileHomeKey) {
                 var home = cached
                 let today = todayString
-                home.routePlan = home.routePlan?.filter { $0.planDate == today || $0.date == today }
+                home.routePlan = home.routePlan?.filter { $0.planDate == today }
                 return home
             }
             return nil
@@ -1052,7 +1052,7 @@ class KinematicRepository {
 
             if let data = res?.data {
                 // STRICT FILTER: Validate server response against today's date
-                let filtered = data.filter { $0.planDate == date || $0.date == date }
+                let filtered = data.filter { $0.planDate == date }
                 
                 print("✅ FETCH_ROUTE_PLAN_SUCCESS: Found \(filtered.count) valid plans")
                 if !filtered.isEmpty {
@@ -1065,13 +1065,13 @@ class KinematicRepository {
                 print("⚠️ FETCH_ROUTE_PLAN_EMPTY: Success but no data.")
                 let cached = loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
                 // Safety re-filter of cached data
-                return cached.filter { $0.planDate == date || $0.date == date }
+                return cached.filter { $0.planDate == date }
             }
         } catch {
             print("❌ FETCH_ROUTE_PLAN_ERROR: \(error)")
             let cached = loadCached([RoutePlan].self, forKey: cachedRoutePlanKey) ?? []
             // Safety re-filter of cached data
-            return cached.filter { $0.planDate == date || $0.date == date }
+            return cached.filter { $0.planDate == date }
         }
     }
     
