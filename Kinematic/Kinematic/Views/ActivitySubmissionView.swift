@@ -52,7 +52,12 @@ struct ActivitySubmissionView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 60)
                 .padding(.bottom, 12)
-                .background(.ultraThinMaterial)
+                .frame(maxWidth: .infinity)
+                .background {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .ignoresSafeArea(edges: .top)
+                }
 
                 if isLoading {
                     VStack(spacing: 12) {
@@ -157,7 +162,11 @@ struct ActivitySubmissionView: View {
                     }
                     .disabled(activity.status == "completed" || isSubmitting)
                     .padding(.vertical, 16)
-                    .background(.ultraThinMaterial)
+                }
+                .background {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .ignoresSafeArea(edges: .bottom)
                 }
             }
         }
@@ -363,14 +372,15 @@ struct LongTextField: View {
                 Text(ph)
                     .foregroundColor(Color(uiColor: .placeholderText))
                     .font(.body)
-                    .padding(.horizontal, 18)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 14)
                     .allowsHitTesting(false)
             }
             TextEditor(text: $value)
+                .scrollContentBackground(.hidden)
                 .frame(minHeight: 110)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
         }
         .background(Color(uiColor: .tertiarySystemGroupedBackground))
         .cornerRadius(10)
@@ -721,14 +731,17 @@ struct DateInputField: View {
     }
 
     var body: some View {
-        DatePicker("", selection: dateBinding, displayedComponents: .date)
-            .datePickerStyle(.compact)
-            .labelsHidden()
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color(uiColor: .tertiarySystemGroupedBackground))
-            .cornerRadius(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        HStack {
+            DatePicker("", selection: dateBinding, displayedComponents: .date)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(Color(uiColor: .tertiarySystemGroupedBackground))
+        .cornerRadius(10)
     }
 }
 
