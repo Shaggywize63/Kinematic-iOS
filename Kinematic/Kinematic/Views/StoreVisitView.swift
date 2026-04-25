@@ -154,6 +154,8 @@ struct StoreVisitView: View {
             }
             // Activity form is presented via fullScreenCover (see modifier below).
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .fullScreenCover(item: $appState.selectedActivity) { activity in
             ActivitySubmissionView(activity: activity)
                 .environmentObject(appState)
