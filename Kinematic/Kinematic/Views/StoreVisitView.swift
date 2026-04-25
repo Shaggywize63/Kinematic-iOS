@@ -24,6 +24,11 @@ struct StoreVisitView: View {
             RouteActivity(id: "test_audit_001", name: "Test Product Audit", status: "pending")
         ]
     }
+
+    var isClockedIn: Bool {
+        guard let today = appState.today else { return false }
+        return today.checkinAt != nil && today.checkoutAt == nil
+    }
     
     var body: some View {
         ZStack {
@@ -68,8 +73,24 @@ struct StoreVisitView: View {
                             Text("Complete the following activities").font(.title3).fontWeight(.black).foregroundColor(Color(uiColor: .label))
                         }
                         .padding(.horizontal, 28)
-                        
-                        if !resolvedActivities.isEmpty {
+
+                        if !isClockedIn {
+                            VStack(spacing: 16) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 56))
+                                    .foregroundColor(.secondary)
+                                Text("Clock-in Required")
+                                    .font(.title3).fontWeight(.bold)
+                                    .foregroundColor(Color(uiColor: .label))
+                                Text("Please mark your daily attendance first to perform activities.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 32)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 20)
+                        } else if !resolvedActivities.isEmpty {
                             VStack(spacing: 15) {
                                 ForEach(resolvedActivities) { activity in
                                     TaskCard(activity: activity) {
