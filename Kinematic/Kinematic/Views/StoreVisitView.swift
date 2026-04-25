@@ -35,20 +35,33 @@ struct StoreVisitView: View {
             VibrantBackgroundView()
             
             VStack(spacing: 0) {
-                // Header (Same as before)
-                HStack {
+                // Header
+                HStack(spacing: 12) {
                     Button(action: { appState.selectedOutlet = nil }) {
                         Image(systemName: "chevron.left")
-                            .padding(12).background(Color(uiColor: .label).opacity(0.05)).clipShape(Circle()).foregroundColor(Color(uiColor: .label))
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.red, in: Circle())
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(appState.selectedOutlet?.storeName ?? "Store Visit").font(.headline).foregroundColor(Color(uiColor: .label))
-                        Text(appState.selectedOutlet?.address ?? "No address provided").font(.caption).foregroundColor(.gray)
+                    .accessibilityLabel("Close")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(appState.selectedOutlet?.storeName ?? "Store Visit")
+                            .font(.headline)
+                            .foregroundColor(Color(uiColor: .label))
+                            .lineLimit(1)
+                        Text(appState.selectedOutlet?.address ?? "No address provided")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
                     }
-                    .padding(.leading, 8)
-                    Spacer()
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 28).padding(.top, 60).padding(.bottom, 20)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity)
                 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 25) {
@@ -65,14 +78,14 @@ struct StoreVisitView: View {
                                 }
                                 .font(.caption).fontWeight(.bold).foregroundColor(.red)
                             }
-                            .padding(12).background(Color.green.opacity(0.1)).cornerRadius(10).padding(.horizontal, 28)
+                            .padding(12).background(Color.green.opacity(0.1)).cornerRadius(10).padding(.horizontal, 20)
                         }
 
                         VStack(alignment: .leading, spacing: 5) {
                             Text("ASSIGNED TASKS").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
                             Text("Complete the following activities").font(.title3).fontWeight(.black).foregroundColor(Color(uiColor: .label))
                         }
-                        .padding(.horizontal, 28)
+                        .padding(.horizontal, 20)
 
                         if !isClockedIn {
                             VStack(spacing: 16) {
@@ -106,7 +119,7 @@ struct StoreVisitView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal, 28)
+                            .padding(.horizontal, 20)
                         } else {
                             VStack(spacing: 20) {
                                 Image(systemName: "checklist.checked").font(.system(size: 80)).foregroundColor(.white.opacity(0.1))

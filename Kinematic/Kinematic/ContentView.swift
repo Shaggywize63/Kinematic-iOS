@@ -188,13 +188,11 @@ struct MainTabView: View {
             .padding(.bottom, 24)
             .zIndex(10) // Prioritize hit testing for taps
             
-            if appState.selectedOutlet != nil {
-                StoreVisitView()
-                    .transition(.move(edge: .bottom))
-                    .zIndex(100)
-            }
-            
             SideMenuView(isOpen: $appState.showSideMenu)
+        }
+        .fullScreenCover(item: $appState.selectedOutlet) { _ in
+            StoreVisitView()
+                .environmentObject(appState)
         }
         .onReceive(NotificationCenter.default.publisher(for: .triggerCamera)) { _ in
             print("📸 [MainTab] Caught Broadcast Signal - Forcing Camera Presentation")
