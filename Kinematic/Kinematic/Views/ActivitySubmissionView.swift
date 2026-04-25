@@ -73,6 +73,7 @@ struct ActivitySubmissionView: View {
                                     .font(.largeTitle)
                                     .fontWeight(.bold)
                                     .foregroundColor(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 if let desc = t.description, !desc.isEmpty {
                                     Text(desc)
                                         .font(.subheadline)
@@ -80,6 +81,7 @@ struct ActivitySubmissionView: View {
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
                             .padding(.top, 24)
 
@@ -116,6 +118,7 @@ struct ActivitySubmissionView: View {
                                         if shouldShow(field: field) {
                                             if field.fieldType == "section_header" {
                                                 SectionHeaderRow(label: field.label)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
                                                     .padding(.top, 8)
                                             } else {
                                                 FieldCard(
@@ -138,6 +141,7 @@ struct ActivitySubmissionView: View {
 
                             Spacer().frame(height: 120)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
@@ -279,6 +283,7 @@ struct FieldCard: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if field.isRequired {
                     Text("Required")
                         .font(.caption2)
@@ -289,7 +294,7 @@ struct FieldCard: View {
                         .background(Color.red)
                         .cornerRadius(4)
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
 
             if let help = field.helpText, !help.isEmpty {
@@ -324,6 +329,8 @@ struct FieldCard: View {
             PhotoCaptureField(images: $images, maxCount: field.imageCount ?? 5)
         case "file":
             FileAttachmentField(value: $value)
+        case "signature":
+            SignatureCaptureField(value: $value)
         case "consent":
             ConsentToggleField(value: $value)
         case "long_text":
@@ -423,13 +430,13 @@ struct ChoiceListField: View {
     @Binding var value: String
     let multiSelect: Bool
 
-    private func isSelected(_ opt: FormFieldOption) -> Bool {
+    private func isSelected(_ opt: FormOption) -> Bool {
         multiSelect
             ? value.split(separator: ",").map(String.init).contains(opt.value)
             : value == opt.value
     }
 
-    private func toggle(_ opt: FormFieldOption) {
+    private func toggle(_ opt: FormOption) {
         if multiSelect {
             var current = value.split(separator: ",").map(String.init).filter { !$0.isEmpty }
             if isSelected(opt) { current.removeAll { $0 == opt.value } }
@@ -601,32 +608,45 @@ struct FileAttachmentField: View {
     @Binding var value: String
     @State private var showPicker = false
 
+    private var hasFile: Bool { !value.isEmpty }
+
     var body: some View {
-        Button(action: { showPicker = true }) {
-            HStack(spacing: 12) {
-                Image(systemName: "paperclip.circle.fill")
-                    .font(.title3)
-                    .foregroundColor(.red)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(value.isEmpty ? "Choose a file" : value)
-                        .font(.subheadline)
-                        .foregroundColor(value.isEmpty ? .secondary : .primary)
-                        .lineLimit(1)
-                    if value.isEmpty {
-                        Text("PDF, images, documents")
+        VStack(spacing: 8) {
+            Button(action: { showPicker = true }) {
+                HStack(spacing: 12) {
+                    Image(systemName: hasFile ? "doc.fill" : "paperclip.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(hasFile ? .green : .red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(hasFile ? value : "Choose a file")
+                            .font(.subheadline)
+                            .foregroundColor(hasFile ? .primary : .secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(hasFile ? "Tap to replace" : "PDF, images, or documents")
                             .font(.caption)
                             .foregroundColor(.secondary.opacity(0.7))
                     }
+                    Spacer(minLength: 0)
+                    if hasFile {
+                        Button(action: { value = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color(uiColor: .tertiarySystemGroupedBackground))
+                .cornerRadius(10)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color(uiColor: .tertiarySystemGroupedBackground))
-            .cornerRadius(10)
+            .buttonStyle(.plain)
         }
         .fileImporter(
             isPresented: $showPicker,
@@ -648,29 +668,22 @@ struct ConsentToggleField: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Toggle("", isOn: Binding(
-                get: { isConsented },
-                set: { value = $0 ? "true" : "false" }
-            ))
-            .toggleStyle(SwitchToggleStyle(tint: .red))
-            .labelsHidden()
-            .frame(width: 51)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("I agree")
+        Toggle(isOn: Binding(
+            get: { isConsented },
+            set: { value = $0 ? "true" : "false" }
+        )) {
+            HStack(spacing: 8) {
+                Image(systemName: isConsented ? "checkmark.seal.fill" : "seal")
+                    .foregroundColor(isConsented ? .green : .secondary)
+                Text(isConsented ? "Agreed" : "Tap to agree")
                     .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-                Text("By enabling this you confirm your consent to the terms above.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .fontWeight(.medium)
+                    .foregroundColor(isConsented ? .primary : .secondary)
             }
-            Spacer()
         }
+        .toggleStyle(SwitchToggleStyle(tint: .green))
         .padding(.horizontal, 14)
-        .padding(.vertical, 14)
+        .padding(.vertical, 12)
         .background(isConsented ? Color.green.opacity(0.07) : Color(uiColor: .tertiarySystemGroupedBackground))
         .cornerRadius(10)
         .animation(.easeInOut(duration: 0.2), value: isConsented)
@@ -779,6 +792,85 @@ struct PHPickerRepresentable: UIViewControllerRepresentable {
             }
         }
     }
+}
+
+// MARK: - Signature
+
+struct SignatureCaptureField: View {
+    @Binding var value: String
+    @State private var lines: [SignatureLine] = []
+    @State private var currentLine = SignatureLine(points: [])
+
+    private var hasSignature: Bool { !value.isEmpty || !lines.isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ZStack(alignment: .topLeading) {
+                Color(uiColor: .tertiarySystemGroupedBackground)
+                Canvas { ctx, _ in
+                    for line in lines {
+                        var path = Path()
+                        guard let first = line.points.first else { continue }
+                        path.move(to: first)
+                        for point in line.points.dropFirst() { path.addLine(to: point) }
+                        ctx.stroke(path, with: .color(.primary), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    }
+                    if !currentLine.points.isEmpty {
+                        var path = Path()
+                        path.move(to: currentLine.points[0])
+                        for point in currentLine.points.dropFirst() { path.addLine(to: point) }
+                        ctx.stroke(path, with: .color(.primary), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    }
+                }
+                if !hasSignature {
+                    Text("Sign here")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(12)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(height: 160)
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+            )
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        currentLine.points.append(gesture.location)
+                        if value.isEmpty { value = "drawn" }
+                    }
+                    .onEnded { _ in
+                        if !currentLine.points.isEmpty {
+                            lines.append(currentLine)
+                            currentLine = SignatureLine(points: [])
+                        }
+                    }
+            )
+
+            if hasSignature {
+                Button(action: clear) {
+                    Label("Clear signature", systemImage: "arrow.uturn.backward")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.red)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func clear() {
+        lines.removeAll()
+        currentLine = SignatureLine(points: [])
+        value = ""
+    }
+}
+
+struct SignatureLine {
+    var points: [CGPoint]
 }
 
 // MARK: - Backward-compat aliases
