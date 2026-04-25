@@ -134,13 +134,6 @@ struct MainTabView: View {
             .scrollTargetBehavior(.viewAligned)
             .safeAreaPadding(.horizontal, 0)
             
-            // --- GLOBAL OVERLAY: Store Visit & Activity Forms ---
-            if appState.selectedOutlet != nil {
-                StoreVisitView()
-                    .transition(.move(edge: .bottom))
-                    .zIndex(5)
-            }
-            
             if appState.showGlobalSuccess {
                 SuccessOverlay(message: appState.lastSuccessMessage) {
                     withAnimation { appState.showGlobalSuccess = false }

@@ -12,6 +12,12 @@ struct ActivitySubmissionView: View {
     @State private var isLoading = true
     @State private var cachedImages: [String: [UIImage]] = [:]
 
+    private var screenWidth: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.screen.bounds.width }
+            .first ?? UIScreen.main.bounds.width
+    }
+
     private var progress: Double {
         guard let fields = template?.fields else { return 0 }
         let requiredFields = fields.filter { $0.isRequired && $0.fieldType != "section_header" }
@@ -174,6 +180,8 @@ struct ActivitySubmissionView: View {
                 }
             }
         }
+        .frame(width: screenWidth)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .task { await loadTemplate() }
     }
 
