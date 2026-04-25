@@ -87,12 +87,6 @@ public extension View {
     }
 }
 
-public extension Color {
-    /// Convenience accessor: `Color.brand.red`, `Color.brand.ink`, etc.
-    static var brandRed:    Color { Brand.red }
-    static var brandInk:    Color { Brand.ink }
-    static var brandPaper:  Color { Brand.paper }
-    static var brandNavy:   Color { Brand.navy }
-    static var brandStone:  Color { Brand.stone }
-    static var brandRule:   Color { Brand.rule }
-}
+// Note: Color convenience accessors (Color.brandRed, Color.brandInk, ...) are intentionally
+// not exposed here — `Brand.red`, `Brand.ink`, etc. already read clearly at call sites and
+// avoid colliding with any existing Color extensions elsewhere in the app.
