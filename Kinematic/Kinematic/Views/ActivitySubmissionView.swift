@@ -12,12 +12,6 @@ struct ActivitySubmissionView: View {
     @State private var isLoading = true
     @State private var cachedImages: [String: [UIImage]] = [:]
 
-    private var screenWidth: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.screen.bounds.width }
-            .first ?? UIScreen.main.bounds.width
-    }
-
     private var progress: Double {
         guard let fields = template?.fields else { return 0 }
         let requiredFields = fields.filter { $0.isRequired && $0.fieldType != "section_header" }
@@ -35,28 +29,30 @@ struct ActivitySubmissionView: View {
             Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
 
             VStack(spacing: 0) {
-                HStack {
+                HStack(spacing: 12) {
                     Button(action: {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             appState.selectedActivity = nil
                         }
+                        dismiss()
                     }) {
-                        Image(systemName: "chevron.left.circle.fill")
-                            .symbolRenderingMode(.hierarchical)
-                            .font(.title2)
-                            .foregroundColor(.red)
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.red, in: Circle())
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
                     }
-                    Spacer()
+                    .accessibilityLabel("Back")
                     Text(activity.name ?? "Audit")
                         .font(.headline)
                         .foregroundColor(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.left.circle.fill")
-                        .opacity(0)
-                        .font(.title2)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Color.clear.frame(width: 36, height: 36)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 60)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
                 .padding(.bottom, 12)
                 .frame(maxWidth: .infinity)
                 .background {
@@ -180,8 +176,6 @@ struct ActivitySubmissionView: View {
                 }
             }
         }
-        .frame(width: screenWidth)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .task { await loadTemplate() }
     }
 

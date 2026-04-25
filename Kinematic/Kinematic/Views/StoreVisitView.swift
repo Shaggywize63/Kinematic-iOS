@@ -139,12 +139,11 @@ struct StoreVisitView: View {
                     }
                 }
             }
-            // Activity Form Overlay (Proper Screen Transition)
-            if let activity = appState.selectedActivity {
-                ActivitySubmissionView(activity: activity)
-                    .transition(.move(edge: .trailing)) // "Push" from right
-                    .zIndex(10)
-            }
+            // Activity form is presented via fullScreenCover (see modifier below).
+        }
+        .fullScreenCover(item: $appState.selectedActivity) { activity in
+            ActivitySubmissionView(activity: activity)
+                .environmentObject(appState)
         }
     }
     
