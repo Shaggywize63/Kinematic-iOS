@@ -1,0 +1,8 @@
+Kinematic/DerivedData/
+Kinematic/build/
+Kinematic/local_build/
+Kinematic/local_build_2/
+*.log
+*.log.txt
+*.xcuserstate
+.DS_Store

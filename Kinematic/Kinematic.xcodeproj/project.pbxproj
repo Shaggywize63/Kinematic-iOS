@@ -5,7 +5,6 @@
 	};
 	objectVersion = 77;
 	objects = {
-
 /* Begin PBXCopyFilesBuildPhase section */
 		8E096DDC2F94AFE2003D8F01 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -23,16 +22,10 @@
 		8E096DC52F94AFE0003D8F01 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		8E096DC72F94AFE0003D8F01 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		8E6066E52F84E703009FFCFF /* Kinematic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kinematic.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		8E96A0022F94B111003D8F01 /* KinematicShiftWidget/ShiftLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KinematicShiftWidget/ShiftLiveActivityWidget.swift; sourceTree = SOURCE_ROOT; };
 		8E96A0032F94B222003D8F01 /* Kinematic/Models/ShiftActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kinematic/Models/ShiftActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		8E096DC92F94AFE0003D8F01 /* KinematicShiftWidget */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = KinematicShiftWidget;
-			sourceTree = "<group>";
-		};
 		8E6066E72F84E703009FFCFF /* Kinematic */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Kinematic;
@@ -64,7 +57,6 @@
 			isa = PBXGroup;
 			children = (
 				8E6066E72F84E703009FFCFF /* Kinematic */,
-				8E096DC92F94AFE0003D8F01 /* KinematicShiftWidget */,
 				8E096DC42F94AFE0003D8F01 /* Frameworks */,
 				8E6066E62F84E703009FFCFF /* Products */,
 				8E8927E52F9511EB00A1120C /* Recovered References */,
@@ -83,7 +75,6 @@
 			isa = PBXGroup;
 			children = (
 				8E96A0032F94B222003D8F01 /* Kinematic/Models/ShiftActivityAttributes.swift */,
-				8E96A0022F94B111003D8F01 /* KinematicShiftWidget/ShiftLiveActivityWidget.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -296,7 +287,8 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
@@ -306,13 +298,14 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = 1;
 				XROS_DEPLOYMENT_TARGET = 26.4;
 			};
 			name = Debug;
@@ -330,7 +323,8 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
@@ -340,13 +334,14 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = 1;
 				XROS_DEPLOYMENT_TARGET = 26.4;
 			};
 			name = Release;

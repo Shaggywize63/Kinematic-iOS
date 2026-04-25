@@ -26,7 +26,9 @@ struct VibrantBackgroundView: View {
                     .offset(x: 0, y: 0)
                     .blur(radius: 100)
             }
+            .allowsHitTesting(false)
         }
+        .allowsHitTesting(false)
     }
 }
 
@@ -63,130 +65,144 @@ struct LoginView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     
-                    Spacer().frame(height: 80)
+                    Spacer().frame(height: 100)
                     
                     // Header Section
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Welcome to")
-                            .font(.title3)
-                            .foregroundColor(Color(uiColor: .secondaryLabel))
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 8, height: 8)
+                            Text("SECURED")
+                                .font(.system(size: 10, weight: .black))
+                                .tracking(2)
+                                .foregroundColor(.red)
+                        }
                         
-                        Text("Kinematic")
+                        Text("Welcome to\nKinematic")
                             .font(.system(size: 48, weight: .black, design: .rounded))
                             .foregroundColor(Color(uiColor: .label))
+                            .lineSpacing(-8)
                             .tracking(-1)
                         
-                        Rectangle()
-                            .fill(Color.red)
-                            .frame(width: 40, height: 4)
-                            .cornerRadius(2)
+                        Text("Field Operations Hub")
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                            .foregroundColor(.secondary)
                             .padding(.top, 4)
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 60)
                     
-                    Spacer().frame(height: 64)
+                    Spacer().frame(height: 80)
                     
                     // Form Section
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 32) {
                         
                         // Identification
                         VStack(alignment: .leading, spacing: 12) {
                             Text("IDENTIFICATION")
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white.opacity(0.4))
+                                .foregroundColor(.secondary)
                                 .tracking(2)
                             
                             HStack {
-                                Image(systemName: "at").foregroundColor(.white.opacity(0.3))
-                                TextField("", text: $email, prompt: Text("Mobile or Email").foregroundColor(Color(uiColor: .label).opacity(0.2)))
+                                Image(systemName: "at").foregroundColor(.red).font(.system(size: 16, weight: .bold))
+                                TextField("", text: $email, prompt: Text("Mobile or Email").foregroundColor(Color(uiColor: .label).opacity(0.3)))
                                     .foregroundColor(Color(uiColor: .label))
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
                                     .textFieldStyle(.plain)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
                                     .keyboardType(.emailAddress)
-                                    .textContentType(.username) // Standard AutoFill Support
+                                    .textContentType(.username)
                             }
-                            .padding()
-                            .loginFieldChrome()
+                            .padding(20)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.white.opacity(0.1), lineWidth: 1))
                         }
                         
                         // Security Key
                         VStack(alignment: .leading, spacing: 12) {
                             Text("SECURITY KEY")
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color(uiColor: .secondaryLabel))
+                                .foregroundColor(.secondary)
                                 .tracking(2)
                             
                             HStack {
-                                Image(systemName: "lock.open.fill").foregroundColor(Color(uiColor: .label).opacity(0.3))
+                                Image(systemName: "lock.fill").foregroundColor(.red).font(.system(size: 16, weight: .bold))
                                 if showPassword {
-                                    TextField("", text: $password, prompt: Text("Enter password").foregroundColor(Color(uiColor: .label).opacity(0.2)))
+                                    TextField("", text: $password, prompt: Text("Enter password").foregroundColor(Color(uiColor: .label).opacity(0.3)))
                                         .foregroundColor(Color(uiColor: .label))
+                                        .font(.system(size: 16, weight: .bold, design: .rounded))
                                         .textFieldStyle(.plain)
                                         .textContentType(.password)
                                 } else {
-                                    SecureField("", text: $password, prompt: Text("Enter password").foregroundColor(Color(uiColor: .label).opacity(0.2)))
+                                    SecureField("", text: $password, prompt: Text("Enter password").foregroundColor(Color(uiColor: .label).opacity(0.3)))
                                         .foregroundColor(Color(uiColor: .label))
+                                        .font(.system(size: 16, weight: .bold, design: .rounded))
                                         .textFieldStyle(.plain)
                                         .textContentType(.password)
                                 }
                                 Button(action: { showPassword.toggle() }) {
-                                    Image(systemName: showPassword ? "eye.slash" : "eye")
-                                        .foregroundColor(Color(uiColor: .label).opacity(0.3))
+                                    Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                        .foregroundColor(.secondary)
+                                        .font(.system(size: 14))
                                 }
                             }
-                            .padding()
-                            .loginFieldChrome()
+                            .padding(20)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.white.opacity(0.1), lineWidth: 1))
                         }
                         
                         if !errorMessage.isEmpty {
                             HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.octagon.fill").foregroundColor(.red)
-                                Text(errorMessage).font(.caption).foregroundColor(.red)
+                                Image(systemName: "exclamationmark.shield.fill").foregroundColor(.red)
+                                Text(errorMessage).font(.caption).fontWeight(.bold).foregroundColor(.red)
                             }
                             .padding(.top, 4)
                         }
-                        
-                        Spacer().frame(height: 16)
                         
                         Button(action: performLogin) {
                             ZStack {
                                 if isLoading {
                                     ProgressView().tint(.white)
                                 } else {
-                                    Text("Login")
-                                        .font(.headline)
-                                        .fontWeight(.bold)
+                                    HStack(spacing: 12) {
+                                        Text("Authorize Session")
+                                        Image(systemName: "arrow.right.circle.fill")
+                                    }
+                                    .font(.headline)
+                                    .fontWeight(.black)
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .frame(height: 56)
+                            .frame(height: 60)
                             .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color.red.opacity(isLoading ? 0.6 : 1.0))
+                                LinearGradient(colors: [.red, Color(red: 0.8, green: 0, blue: 0)], startPoint: .top, endPoint: .bottom)
                             )
+                            .cornerRadius(20)
                             .foregroundColor(.white)
                             .shadow(color: Color.red.opacity(0.3), radius: 20, y: 10)
                         }
                         .disabled(isLoading || email.isEmpty || password.isEmpty)
                         
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 60)
                     
-                    Spacer().frame(height: 100)
+                    Spacer().frame(height: 80)
                     
-                    VStack(alignment: .center, spacing: 4) {
+                    VStack(alignment: .center, spacing: 6) {
                         Text("KINEMATIC SHIELD PROTECTED")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 10, weight: .black))
                             .foregroundColor(Color(uiColor: .tertiaryLabel))
-                            .tracking(1)
+                            .tracking(2)
                             .frame(maxWidth: .infinity)
                         
-                        Text("v1.1 (Redesigned)")
-                            .font(.system(size: 8))
-                            .foregroundColor(Color(uiColor: .tertiaryLabel).opacity(0.5))
+                        Text("Secured Multi-Manpower Management Platform")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(Color(uiColor: .tertiaryLabel).opacity(0.6))
                     }
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 40)
                 }
             }
             .ignoresSafeArea(.keyboard)
