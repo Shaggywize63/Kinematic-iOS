@@ -5,6 +5,7 @@ struct VibrantBackgroundView: View {
         ZStack {
             Brand.navy.ignoresSafeArea()
 
+            // Atmospheric glows — restrained per the 60-30-10 brand rule.
             ZStack {
                 Circle()
                     .fill(Brand.red.opacity(0.10))
@@ -52,8 +53,25 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage = ""
     @State private var showPassword = false
+    @State private var showSplash = true
 
     var body: some View {
+        ZStack {
+            if showSplash {
+                SplashView()
+                    .transition(.opacity)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                            withAnimation(.easeOut(duration: 0.35)) { showSplash = false }
+                        }
+                    }
+            } else {
+                loginContent.transition(.opacity)
+            }
+        }
+    }
+
+    private var loginContent: some View {
         ZStack {
             VibrantBackgroundView()
 
@@ -62,6 +80,7 @@ struct LoginView: View {
 
                     Spacer().frame(height: 64)
 
+                    // Brand mark — anchors the screen as the first thing the user sees.
                     HStack {
                         Spacer()
                         KinematicMark(.reverse, size: 80)
@@ -69,6 +88,7 @@ struct LoginView: View {
                     }
                     .padding(.bottom, 24)
 
+                    // Wordmark + tagline
                     VStack(alignment: .center, spacing: 8) {
                         Text("Kinematic")
                             .font(Brand.Display.extraBold(40))
@@ -83,6 +103,7 @@ struct LoginView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.bottom, 48)
 
+                    // Welcome heading + lead
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Welcome back")
                             .font(Brand.Display.bold(28))
@@ -96,8 +117,10 @@ struct LoginView: View {
                     .padding(.horizontal, 28)
                     .padding(.bottom, 28)
 
+                    // Form
                     VStack(alignment: .leading, spacing: 22) {
 
+                        // Email
                         VStack(alignment: .leading, spacing: 10) {
                             Text("EMAIL")
                                 .font(Brand.Mono.bold(Brand.Scale.eyebrow))
@@ -124,6 +147,7 @@ struct LoginView: View {
                             .brandFieldChrome()
                         }
 
+                        // Password
                         VStack(alignment: .leading, spacing: 10) {
                             Text("PASSWORD")
                                 .font(Brand.Mono.bold(Brand.Scale.eyebrow))
@@ -206,6 +230,7 @@ struct LoginView: View {
 
                     Spacer().frame(height: 56)
 
+                    // Footer — minimal, on-brand. No "shield", no "manpower".
                     VStack(alignment: .center, spacing: 6) {
                         Text("KINEMATIC v1.0")
                             .font(Brand.Mono.bold(10))
