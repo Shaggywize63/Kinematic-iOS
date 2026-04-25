@@ -2,7 +2,7 @@ import SwiftUI
 import CoreLocation
 
 struct StoreVisitView: View {
-    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var appState: KiniAppState
     @State private var isStartingVisit = false
     
     var isVisitActive: Bool {
@@ -154,7 +154,7 @@ struct StoreVisitView: View {
         let lng = LocationTrackingService.shared.lastLocation?.coordinate.longitude ?? 0
         
         isStartingVisit = true
-        AppState.shared.visitErrorMessage = nil // Reset error
+        KiniAppState.shared.visitErrorMessage = nil // Reset error
         
         let visitTask = Task {
             let result = await KinematicRepository.shared.logVisit(outletId: outletId, lat: lat, lng: lng)
@@ -162,8 +162,8 @@ struct StoreVisitView: View {
                 await MainActor.run {
                     if let visitId = result {
                         withAnimation {
-                            AppState.shared.activeVisitId = visitId
-                            AppState.shared.activeVisitOutletId = outletId
+                            KiniAppState.shared.activeVisitId = visitId
+                            KiniAppState.shared.activeVisitOutletId = outletId
                             self.isStartingVisit = false
                         }
                         // Non-animated state change for the sheet to ensure reliability
@@ -174,7 +174,7 @@ struct StoreVisitView: View {
                         }
                     } else {
                         self.isStartingVisit = false
-                        AppState.shared.visitErrorMessage = "Server rejected visit log. Please check GPS."
+                        KiniAppState.shared.visitErrorMessage = "Server rejected visit log. Please check GPS."
                     }
                 }
             }
@@ -188,7 +188,7 @@ struct StoreVisitView: View {
                 await MainActor.run {
                     withAnimation { 
                         self.isStartingVisit = false 
-                        AppState.shared.visitErrorMessage = "Connection timed out. Please try again."
+                        KiniAppState.shared.visitErrorMessage = "Connection timed out. Please try again."
                     }
                 }
             }

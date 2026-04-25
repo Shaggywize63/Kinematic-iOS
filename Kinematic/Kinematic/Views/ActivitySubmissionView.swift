@@ -5,7 +5,7 @@ import PhotosUI
 struct ActivitySubmissionView: View {
     let activity: RouteActivity
     @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var appState: KiniAppState
     @State private var template: FormTemplate? = nil
     @State private var responses: [String: String] = [:]
     @State private var isSubmitting = false
@@ -226,8 +226,8 @@ struct ActivitySubmissionView: View {
             let request = FormSubmissionRequest(
                 templateId: template?.id,
                 activityId: activity.id,
-                outletId: AppState.shared.selectedOutlet?.rawId,
-                outletName: AppState.shared.selectedOutlet?.storeName,
+                outletId: KiniAppState.shared.selectedOutlet?.rawId,
+                outletName: KiniAppState.shared.selectedOutlet?.storeName,
                 latitude: LocationTrackingService.shared.lastLocation?.coordinate.latitude,
                 longitude: LocationTrackingService.shared.lastLocation?.coordinate.longitude,
                 submittedAt: ISO8601DateFormatter().string(from: Date()),
@@ -239,8 +239,8 @@ struct ActivitySubmissionView: View {
             await MainActor.run {
                 isSubmitting = false
                 if success {
-                    if let index = AppState.shared.selectedOutlet?.activities?.firstIndex(where: { $0.id == activity.id }) {
-                        AppState.shared.selectedOutlet?.activities?[index].status = "completed"
+                    if let index = KiniAppState.shared.selectedOutlet?.activities?.firstIndex(where: { $0.id == activity.id }) {
+                        KiniAppState.shared.selectedOutlet?.activities?[index].status = "completed"
                     }
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                         appState.selectedActivity = nil
@@ -881,3 +881,39 @@ typealias MultiPhotoPickerRedesign = PhotoCaptureField
 typealias LocationFetcherRedesign = LocationFetchField
 
 struct Line { var points: [CGPoint] }
+
+struct SuccessOverlay: View {
+    let message: String
+    let action: () -> Void
+    var body: some View {
+        ZStack {
+            Color(uiColor: .systemBackground).ignoresSafeArea()
+            VStack(spacing: 25) {
+                Spacer()
+                ZStack {
+                    Circle().fill(Color.green.opacity(0.1)).frame(width: 120, height: 120)
+                    Image(systemName: "checkmark.seal.fill").font(.system(size: 80)).foregroundColor(.green)
+                }
+                VStack(spacing: 12) {
+                    Text("Thank You!").font(.title2).fontWeight(.black).foregroundColor(Color(uiColor: .label))
+                    Text(message).font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 60)
+
+                Button(action: action) {
+                    Text("CONTINUE")
+                        .font(.headline).fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(Color.green)
+                        .cornerRadius(18)
+                }
+                .padding(.horizontal, 60)
+                .padding(.top, 20)
+                Spacer()
+            }
+        }
+        .transition(.asymmetric(insertion: .move(edge: .bottom), removal: .opacity))
+    }
+}
