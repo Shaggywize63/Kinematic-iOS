@@ -1,26 +1,44 @@
 import SwiftUI
 
+// MARK: - Theme-aware tokens
+
+private struct LoginTheme {
+    let isDark: Bool
+    var background: Color  { isDark ? Brand.navy  : Brand.paper }
+    var surface:    Color  { isDark ? Color.white.opacity(0.04) : Brand.stone }
+    var border:     Color  { isDark ? Color.white.opacity(0.10) : Brand.rule }
+    var text:       Color  { isDark ? Brand.paper : Brand.ink }
+    var textDim:    Color  { isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55) }
+    var textMuted:  Color  { isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.40) }
+    var placeholder:Color  { isDark ? Color.white.opacity(0.35) : Color.black.opacity(0.30) }
+    var fieldText:  Color  { isDark ? Brand.paper : Brand.ink }
+    var markVariant: KinematicMark.Variant { isDark ? .reverse : .primary }
+}
+
 struct VibrantBackgroundView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
+        let isDark = colorScheme == .dark
         ZStack {
-            Brand.navy.ignoresSafeArea()
+            (isDark ? Brand.navy : Brand.paper).ignoresSafeArea()
 
             // Atmospheric glows — restrained per the 60-30-10 brand rule.
             ZStack {
                 Circle()
-                    .fill(Brand.red.opacity(0.10))
+                    .fill(Brand.red.opacity(isDark ? 0.10 : 0.05))
                     .frame(width: 500, height: 500)
                     .offset(x: -180, y: -300)
                     .blur(radius: 80)
 
                 Circle()
-                    .fill(Brand.red.opacity(0.06))
+                    .fill(Brand.red.opacity(isDark ? 0.06 : 0.03))
                     .frame(width: 400, height: 400)
                     .offset(x: 180, y: 350)
                     .blur(radius: 70)
 
                 Circle()
-                    .fill(Brand.info.opacity(0.05))
+                    .fill(Brand.info.opacity(isDark ? 0.05 : 0.03))
                     .frame(width: 300, height: 300)
                     .blur(radius: 100)
             }
@@ -31,13 +49,18 @@ struct VibrantBackgroundView: View {
 }
 
 private struct BrandFieldChrome: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
     func body(content: Content) -> some View {
+        let theme = LoginTheme(isDark: colorScheme == .dark)
         content
             .padding(18)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(theme.surface)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    .stroke(theme.border, lineWidth: 1)
             )
     }
 }
@@ -54,6 +77,7 @@ struct LoginView: View {
     @State private var errorMessage = ""
     @State private var showPassword = false
     @State private var showSplash = true
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -72,28 +96,29 @@ struct LoginView: View {
     }
 
     private var loginContent: some View {
-        ZStack {
+        let theme = LoginTheme(isDark: colorScheme == .dark)
+        return ZStack {
             VibrantBackgroundView()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
 
-                    Spacer().frame(height: 64)
+                    Spacer().frame(height: 88)
 
                     // Brand mark — anchors the screen as the first thing the user sees.
                     HStack {
                         Spacer()
-                        KinematicMark(.reverse, size: 80)
+                        KinematicMark(theme.markVariant, size: 88)
                         Spacer()
                     }
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 32)
 
                     // Wordmark + tagline
-                    VStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .center, spacing: 10) {
                         Text("Kinematic")
                             .font(Brand.Display.extraBold(40))
                             .tracking(-0.5)
-                            .foregroundColor(Brand.paper)
+                            .foregroundColor(theme.text)
 
                         Text("FIELD FORCE MANAGEMENT")
                             .font(Brand.Mono.bold(Brand.Scale.eyebrow))
@@ -101,31 +126,31 @@ struct LoginView: View {
                             .foregroundColor(Brand.red)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.bottom, 48)
+                    .padding(.bottom, 64)
 
                     // Welcome heading + lead
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Welcome back")
                             .font(Brand.Display.bold(28))
                             .tracking(-0.3)
-                            .foregroundColor(Brand.paper)
+                            .foregroundColor(theme.text)
 
                         Text("Sign in to your Kinematic account.")
                             .font(Brand.Body.regular(15))
-                            .foregroundColor(Color.white.opacity(0.65))
+                            .foregroundColor(theme.textDim)
                     }
-                    .padding(.horizontal, 28)
-                    .padding(.bottom, 28)
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 36)
 
                     // Form
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 24) {
 
                         // Email
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("EMAIL")
                                 .font(Brand.Mono.bold(Brand.Scale.eyebrow))
                                 .tracking(0.8)
-                                .foregroundColor(Color.white.opacity(0.55))
+                                .foregroundColor(theme.textMuted)
 
                             HStack(spacing: 12) {
                                 Image(systemName: "envelope")
@@ -134,9 +159,9 @@ struct LoginView: View {
                                 TextField(
                                     "",
                                     text: $email,
-                                    prompt: Text("you@company.com").foregroundColor(Color.white.opacity(0.35))
+                                    prompt: Text("you@company.com").foregroundColor(theme.placeholder)
                                 )
-                                .foregroundColor(Brand.paper)
+                                .foregroundColor(theme.fieldText)
                                 .font(Brand.Body.medium(15))
                                 .textFieldStyle(.plain)
                                 .textInputAutocapitalization(.never)
@@ -148,11 +173,11 @@ struct LoginView: View {
                         }
 
                         // Password
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("PASSWORD")
                                 .font(Brand.Mono.bold(Brand.Scale.eyebrow))
                                 .tracking(0.8)
-                                .foregroundColor(Color.white.opacity(0.55))
+                                .foregroundColor(theme.textMuted)
 
                             HStack(spacing: 12) {
                                 Image(systemName: "lock")
@@ -162,9 +187,9 @@ struct LoginView: View {
                                     TextField(
                                         "",
                                         text: $password,
-                                        prompt: Text("Enter your password").foregroundColor(Color.white.opacity(0.35))
+                                        prompt: Text("Enter your password").foregroundColor(theme.placeholder)
                                     )
-                                    .foregroundColor(Brand.paper)
+                                    .foregroundColor(theme.fieldText)
                                     .font(Brand.Body.medium(15))
                                     .textFieldStyle(.plain)
                                     .textContentType(.password)
@@ -172,16 +197,16 @@ struct LoginView: View {
                                     SecureField(
                                         "",
                                         text: $password,
-                                        prompt: Text("Enter your password").foregroundColor(Color.white.opacity(0.35))
+                                        prompt: Text("Enter your password").foregroundColor(theme.placeholder)
                                     )
-                                    .foregroundColor(Brand.paper)
+                                    .foregroundColor(theme.fieldText)
                                     .font(Brand.Body.medium(15))
                                     .textFieldStyle(.plain)
                                     .textContentType(.password)
                                 }
                                 Button(action: { showPassword.toggle() }) {
                                     Image(systemName: showPassword ? "eye.slash" : "eye")
-                                        .foregroundColor(Color.white.opacity(0.55))
+                                        .foregroundColor(theme.textMuted)
                                         .font(.system(size: 14, weight: .medium))
                                 }
                             }
@@ -197,6 +222,7 @@ struct LoginView: View {
                                     .font(Brand.Body.medium(13))
                                     .foregroundColor(Brand.red)
                             }
+                            .padding(.top, 4)
                         }
 
                         Button(action: performLogin) {
@@ -211,7 +237,7 @@ struct LoginView: View {
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .frame(height: 54)
+                            .frame(height: 56)
                             .foregroundColor(Brand.paper)
                             .background(Brand.red)
                             .cornerRadius(14)
@@ -219,30 +245,31 @@ struct LoginView: View {
                         }
                         .disabled(isLoading || email.isEmpty || password.isEmpty)
                         .opacity((isLoading || email.isEmpty || password.isEmpty) ? 0.7 : 1.0)
+                        .padding(.top, 8)
 
                         Text("Forgot your password? Contact your administrator.")
                             .font(Brand.Body.regular(12))
-                            .foregroundColor(Color.white.opacity(0.50))
+                            .foregroundColor(theme.textMuted)
                             .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 4)
+                            .padding(.top, 12)
                     }
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 32)
 
-                    Spacer().frame(height: 56)
+                    Spacer().frame(height: 72)
 
                     // Footer — minimal, on-brand. No "shield", no "manpower".
-                    VStack(alignment: .center, spacing: 6) {
+                    VStack(alignment: .center, spacing: 8) {
                         Text("KINEMATIC v1.0")
                             .font(Brand.Mono.bold(10))
                             .tracking(2)
-                            .foregroundColor(Color.white.opacity(0.30))
+                            .foregroundColor(theme.textMuted)
 
                         Text("Role-based access controlled by your administrator.")
                             .font(Brand.Body.regular(11))
-                            .foregroundColor(Color.white.opacity(0.30))
+                            .foregroundColor(theme.textMuted)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 40)
                 }
             }
             .ignoresSafeArea(.keyboard)

@@ -1,7 +1,10 @@
 // Kinematic Mark — see BRAND.md
 // The kinematic chain: one red disc anchored, two satellite discs in coordinated orbit.
-// Geometry per spec: an invisible 6×6 grid; primary disc 4 units, satellites 2.4 units;
-// optical centre of the satellite pair sits on the right edge of the primary.
+//
+// Geometry: an invisible 6×6 grid; primary disc 4 units, satellites 2.4 units.
+// The satellite pair sits to the right of the primary so the discs read as
+// three distinct bodies (no overlap into the primary, no overlap with each
+// other) rather than a melted blob.
 
 import SwiftUI
 
@@ -22,26 +25,38 @@ public struct KinematicMark: View {
     }
 
     public var body: some View {
-        let primaryD: CGFloat = size
-        let satelliteD: CGFloat = size * 0.6
-        let canvasW: CGFloat = primaryD + satelliteD * 1.25
-        let canvasH: CGFloat = primaryD
+        // `size` is the diameter of the primary disc.
+        let primaryD: CGFloat   = size
+        let satelliteD: CGFloat = size * 0.55             // 2.4 / ~4.4 — a touch smaller for cleaner separation
+
+        // Satellite centre sits just outside the primary's right edge so the
+        // inner edge of each satellite tangents (no overlap into the red disc).
+        let satelliteCenterX: CGFloat = primaryD + satelliteD * 0.10
+        let satelliteCenterYTop: CGFloat = primaryD * 0.18
+        let satelliteCenterYBot: CGFloat = primaryD * 0.82
+
+        // Canvas extends to fully contain both satellites.
+        let canvasW: CGFloat = satelliteCenterX + satelliteD / 2
+        let canvasH: CGFloat = satelliteCenterYBot + satelliteD / 2
 
         ZStack(alignment: .topLeading) {
+            // Primary disc — anchored at the centre of the primary's height.
             Circle()
                 .fill(primaryColor)
                 .frame(width: primaryD, height: primaryD)
-                .position(x: primaryD / 2, y: canvasH / 2)
+                .position(x: primaryD / 2, y: primaryD / 2)
 
+            // Upper satellite
             Circle()
                 .fill(satelliteColor)
                 .frame(width: satelliteD, height: satelliteD)
-                .position(x: primaryD, y: canvasH * 0.34)
+                .position(x: satelliteCenterX, y: satelliteCenterYTop)
 
+            // Lower satellite
             Circle()
                 .fill(satelliteColor)
                 .frame(width: satelliteD, height: satelliteD)
-                .position(x: primaryD, y: canvasH * 0.66)
+                .position(x: satelliteCenterX, y: satelliteCenterYBot)
         }
         .frame(width: canvasW, height: canvasH)
         .accessibilityLabel("Kinematic")
