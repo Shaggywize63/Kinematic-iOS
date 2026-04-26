@@ -1,10 +1,16 @@
 // Kinematic Mark — see BRAND.md
 // The kinematic chain: one red disc anchored, two satellite discs in coordinated orbit.
 //
-// Geometry: an invisible 6×6 grid; primary disc 4 units, satellites 2.4 units.
-// The satellite pair sits to the right of the primary so the discs read as
-// three distinct bodies (no overlap into the primary, no overlap with each
-// other) rather than a melted blob.
+// Geometry mirrors the brand favicon (which is the source of truth for the mark):
+//   <circle cx="36" cy="50" r="24" fill="#D01E2C"/>
+//   <circle cx="66" cy="36" r="12" fill="#0A0E1A"/>
+//   <circle cx="66" cy="64" r="12" fill="#0A0E1A"/>
+// In primary-disc-diameter (D) units:
+//   primary  : centred at (0.50D, 0.50D), radius 0.50D
+//   sat top  : centred at (1.125D, 0.208D), radius 0.25D
+//   sat bot  : centred at (1.125D, 0.792D), radius 0.25D
+// This produces three clearly-separated discs with the satellite pair sitting
+// just past the primary's right edge per the brand spec.
 
 import SwiftUI
 
@@ -26,21 +32,19 @@ public struct KinematicMark: View {
 
     public var body: some View {
         // `size` is the diameter of the primary disc.
-        let primaryD: CGFloat   = size
-        let satelliteD: CGFloat = size * 0.55             // 2.4 / ~4.4 — a touch smaller for cleaner separation
+        let D: CGFloat = size
+        let primaryD: CGFloat   = D
+        let satelliteD: CGFloat = D * 0.50              // 24/48 — favicon ratio
 
-        // Satellite centre sits just outside the primary's right edge so the
-        // inner edge of each satellite tangents (no overlap into the red disc).
-        let satelliteCenterX: CGFloat = primaryD + satelliteD * 0.10
-        let satelliteCenterYTop: CGFloat = primaryD * 0.18
-        let satelliteCenterYBot: CGFloat = primaryD * 0.82
+        let satelliteCenterX: CGFloat    = D * 1.125    // 66/48 — favicon offset
+        let satelliteCenterYTop: CGFloat = D * 0.208    // 36/(2*48*0.5) — favicon offset
+        let satelliteCenterYBot: CGFloat = D * 0.792    // 64/...
 
-        // Canvas extends to fully contain both satellites.
-        let canvasW: CGFloat = satelliteCenterX + satelliteD / 2
-        let canvasH: CGFloat = satelliteCenterYBot + satelliteD / 2
+        let canvasW: CGFloat = satelliteCenterX + satelliteD / 2  // ~1.375 D
+        let canvasH: CGFloat = max(primaryD, satelliteCenterYBot + satelliteD / 2) // ~1.042 D
 
         ZStack(alignment: .topLeading) {
-            // Primary disc — anchored at the centre of the primary's height.
+            // Primary disc — red anchor
             Circle()
                 .fill(primaryColor)
                 .frame(width: primaryD, height: primaryD)

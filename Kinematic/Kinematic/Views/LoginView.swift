@@ -101,20 +101,19 @@ struct LoginView: View {
             VibrantBackgroundView()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                // Outer column: full ScrollView width, centred. ALL horizontal
+                // padding is applied at THIS level so children can safely use
+                // .frame(maxWidth: .infinity) without breaking the inset.
+                VStack(spacing: 0) {
 
                     Spacer().frame(height: 88)
 
-                    // Brand mark — anchors the screen as the first thing the user sees.
-                    HStack {
-                        Spacer()
-                        KinematicMark(theme.markVariant, size: 88)
-                        Spacer()
-                    }
-                    .padding(.bottom, 32)
+                    // Brand mark — centred
+                    KinematicMark(theme.markVariant, size: 88)
+                        .padding(.bottom, 32)
 
-                    // Wordmark + tagline
-                    VStack(alignment: .center, spacing: 10) {
+                    // Wordmark + tagline — centred
+                    VStack(spacing: 10) {
                         Text("Kinematic")
                             .font(Brand.Display.extraBold(40))
                             .tracking(-0.5)
@@ -125,10 +124,9 @@ struct LoginView: View {
                             .tracking(2.0)
                             .foregroundColor(Brand.red)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.bottom, 64)
+                    .padding(.bottom, 56)
 
-                    // Welcome heading + lead
+                    // Welcome heading — left-aligned within the padded column
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Welcome back")
                             .font(Brand.Display.bold(28))
@@ -139,14 +137,14 @@ struct LoginView: View {
                             .font(Brand.Body.regular(15))
                             .foregroundColor(theme.textDim)
                     }
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 36)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 32)
 
                     // Form
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 22) {
 
                         // Email
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 10) {
                             Text("EMAIL")
                                 .font(Brand.Mono.bold(Brand.Scale.eyebrow))
                                 .tracking(0.8)
@@ -173,7 +171,7 @@ struct LoginView: View {
                         }
 
                         // Password
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 10) {
                             Text("PASSWORD")
                                 .font(Brand.Mono.bold(Brand.Scale.eyebrow))
                                 .tracking(0.8)
@@ -253,12 +251,12 @@ struct LoginView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 12)
                     }
-                    .padding(.horizontal, 32)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Spacer().frame(height: 72)
+                    Spacer().frame(height: 64)
 
-                    // Footer — minimal, on-brand. No "shield", no "manpower".
-                    VStack(alignment: .center, spacing: 8) {
+                    // Footer — centred
+                    VStack(spacing: 8) {
                         Text("KINEMATIC v1.0")
                             .font(Brand.Mono.bold(10))
                             .tracking(2)
@@ -268,9 +266,12 @@ struct LoginView: View {
                             .font(Brand.Body.regular(11))
                             .foregroundColor(theme.textMuted)
                     }
-                    .frame(maxWidth: .infinity)
                     .padding(.bottom, 40)
                 }
+                // Single horizontal inset for the entire column. Inner views can
+                // safely use .frame(maxWidth: .infinity) without escaping it.
+                .padding(.horizontal, 28)
+                .frame(maxWidth: .infinity)
             }
             .ignoresSafeArea(.keyboard)
         }
