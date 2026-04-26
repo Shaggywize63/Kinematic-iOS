@@ -1,29 +1,45 @@
 import SwiftUI
 
+// MARK: - Theme-aware tokens
+
+private struct LoginTheme {
+    let isDark: Bool
+    var background: Color  { isDark ? Brand.navy  : Brand.paper }
+    var surface:    Color  { isDark ? Color.white.opacity(0.04) : Brand.stone }
+    var border:     Color  { isDark ? Color.white.opacity(0.10) : Brand.rule }
+    var text:       Color  { isDark ? Brand.paper : Brand.ink }
+    var textDim:    Color  { isDark ? Color.white.opacity(0.65) : Color.black.opacity(0.55) }
+    var textMuted:  Color  { isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.40) }
+    var placeholder:Color  { isDark ? Color.white.opacity(0.35) : Color.black.opacity(0.30) }
+    var fieldText:  Color  { isDark ? Brand.paper : Brand.ink }
+    var markVariant: KinematicMark.Variant { isDark ? .reverse : .primary }
+}
+
 struct VibrantBackgroundView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
+        let isDark = colorScheme == .dark
         ZStack {
-            Color(uiColor: .systemBackground).ignoresSafeArea()
-            
-            // Atmospheric Glows
+            (isDark ? Brand.navy : Brand.paper).ignoresSafeArea()
+
+            // Atmospheric glows — restrained per the 60-30-10 brand rule.
             ZStack {
                 Circle()
-                    .fill(Color.red.opacity(0.12))
+                    .fill(Brand.red.opacity(isDark ? 0.10 : 0.05))
                     .frame(width: 500, height: 500)
                     .offset(x: -180, y: -300)
                     .blur(radius: 80)
-                
+
                 Circle()
-                    .fill(Color.red.opacity(0.08))
+                    .fill(Brand.red.opacity(isDark ? 0.06 : 0.03))
                     .frame(width: 400, height: 400)
                     .offset(x: 180, y: 350)
                     .blur(radius: 70)
-                
-                // Deep Accent Glow
+
                 Circle()
-                    .fill(Color.red.opacity(0.05))
+                    .fill(Brand.info.opacity(isDark ? 0.05 : 0.03))
                     .frame(width: 300, height: 300)
-                    .offset(x: 0, y: 0)
                     .blur(radius: 100)
             }
             .allowsHitTesting(false)
@@ -32,22 +48,25 @@ struct VibrantBackgroundView: View {
     }
 }
 
-private struct LoginFieldChrome: ViewModifier {
+private struct BrandFieldChrome: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
     func body(content: Content) -> some View {
+        let theme = LoginTheme(isDark: colorScheme == .dark)
         content
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(18)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(theme.surface)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    .stroke(theme.border, lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.08), radius: 10, y: 4)
     }
 }
 
 private extension View {
-    func loginFieldChrome() -> some View {
-        modifier(LoginFieldChrome())
-    }
+    func brandFieldChrome() -> some View { modifier(BrandFieldChrome()) }
 }
 
 struct LoginView: View {
@@ -57,158 +76,207 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage = ""
     @State private var showPassword = false
-    
+    @State private var showSplash = true
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         ZStack {
-            VibrantBackgroundView()
-            
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    
-                    Spacer().frame(height: 100)
-                    
-                    // Header Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 8, height: 8)
-                            Text("SECURED")
-                                .font(.system(size: 10, weight: .black))
-                                .tracking(2)
-                                .foregroundColor(.red)
+            if showSplash {
+                SplashView()
+                    .transition(.opacity)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                            withAnimation(.easeOut(duration: 0.35)) { showSplash = false }
                         }
-                        
-                        Text("Welcome to\nKinematic")
-                            .font(.system(size: 48, weight: .black, design: .rounded))
-                            .foregroundColor(Color(uiColor: .label))
-                            .lineSpacing(-8)
-                            .tracking(-1)
-                        
-                        Text("Field Operations Hub")
-                            .font(.subheadline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.secondary)
-                            .padding(.top, 4)
                     }
-                    .padding(.horizontal, 60)
-                    
-                    Spacer().frame(height: 80)
-                    
-                    // Form Section
-                    VStack(alignment: .leading, spacing: 32) {
-                        
-                        // Identification
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("IDENTIFICATION")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.secondary)
-                                .tracking(2)
-                            
-                            HStack {
-                                Image(systemName: "at").foregroundColor(.red).font(.system(size: 16, weight: .bold))
-                                TextField("", text: $email, prompt: Text("Mobile or Email").foregroundColor(Color(uiColor: .label).opacity(0.3)))
-                                    .foregroundColor(Color(uiColor: .label))
-                                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                                    .textFieldStyle(.plain)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .keyboardType(.emailAddress)
-                                    .textContentType(.username)
+            } else {
+                loginContent.transition(.opacity)
+            }
+        }
+    }
+
+    private var loginContent: some View {
+        let theme = LoginTheme(isDark: colorScheme == .dark)
+        return ZStack {
+            VibrantBackgroundView()
+
+            ScrollView {
+                // Outer column: full ScrollView width, centred. ALL horizontal
+                // padding is applied at THIS level so children can safely use
+                // .frame(maxWidth: .infinity) without breaking the inset.
+                VStack(spacing: 0) {
+
+                    Spacer().frame(height: 88)
+
+                    // Brand mark — centred
+                    KinematicMark(theme.markVariant, size: 88)
+                        .padding(.bottom, 32)
+
+                    // Wordmark + tagline — centred
+                    VStack(spacing: 10) {
+                        Text("Kinematic")
+                            .font(Brand.Display.extraBold(40))
+                            .tracking(-0.5)
+                            .foregroundColor(theme.text)
+
+                        Text("FIELD FORCE MANAGEMENT")
+                            .font(Brand.Mono.bold(Brand.Scale.eyebrow))
+                            .tracking(2.0)
+                            .foregroundColor(Brand.red)
+                    }
+                    .padding(.bottom, 56)
+
+                    // Welcome heading — left-aligned within the padded column
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Welcome back")
+                            .font(Brand.Display.bold(28))
+                            .tracking(-0.3)
+                            .foregroundColor(theme.text)
+
+                        Text("Sign in to your Kinematic account.")
+                            .font(Brand.Body.regular(15))
+                            .foregroundColor(theme.textDim)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 32)
+
+                    // Form
+                    VStack(alignment: .leading, spacing: 22) {
+
+                        // Email
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("EMAIL")
+                                .font(Brand.Mono.bold(Brand.Scale.eyebrow))
+                                .tracking(0.8)
+                                .foregroundColor(theme.textMuted)
+
+                            HStack(spacing: 12) {
+                                Image(systemName: "envelope")
+                                    .foregroundColor(Brand.red)
+                                    .font(.system(size: 15, weight: .medium))
+                                TextField(
+                                    "",
+                                    text: $email,
+                                    prompt: Text("you@company.com").foregroundColor(theme.placeholder)
+                                )
+                                .foregroundColor(theme.fieldText)
+                                .font(Brand.Body.medium(15))
+                                .textFieldStyle(.plain)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.emailAddress)
+                                .textContentType(.username)
                             }
-                            .padding(20)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            .brandFieldChrome()
                         }
-                        
-                        // Security Key
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("SECURITY KEY")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.secondary)
-                                .tracking(2)
-                            
-                            HStack {
-                                Image(systemName: "lock.fill").foregroundColor(.red).font(.system(size: 16, weight: .bold))
+
+                        // Password
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("PASSWORD")
+                                .font(Brand.Mono.bold(Brand.Scale.eyebrow))
+                                .tracking(0.8)
+                                .foregroundColor(theme.textMuted)
+
+                            HStack(spacing: 12) {
+                                Image(systemName: "lock")
+                                    .foregroundColor(Brand.red)
+                                    .font(.system(size: 15, weight: .medium))
                                 if showPassword {
-                                    TextField("", text: $password, prompt: Text("Enter password").foregroundColor(Color(uiColor: .label).opacity(0.3)))
-                                        .foregroundColor(Color(uiColor: .label))
-                                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                                        .textFieldStyle(.plain)
-                                        .textContentType(.password)
+                                    TextField(
+                                        "",
+                                        text: $password,
+                                        prompt: Text("Enter your password").foregroundColor(theme.placeholder)
+                                    )
+                                    .foregroundColor(theme.fieldText)
+                                    .font(Brand.Body.medium(15))
+                                    .textFieldStyle(.plain)
+                                    .textContentType(.password)
                                 } else {
-                                    SecureField("", text: $password, prompt: Text("Enter password").foregroundColor(Color(uiColor: .label).opacity(0.3)))
-                                        .foregroundColor(Color(uiColor: .label))
-                                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                                        .textFieldStyle(.plain)
-                                        .textContentType(.password)
+                                    SecureField(
+                                        "",
+                                        text: $password,
+                                        prompt: Text("Enter your password").foregroundColor(theme.placeholder)
+                                    )
+                                    .foregroundColor(theme.fieldText)
+                                    .font(Brand.Body.medium(15))
+                                    .textFieldStyle(.plain)
+                                    .textContentType(.password)
                                 }
                                 Button(action: { showPassword.toggle() }) {
-                                    Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                                        .foregroundColor(.secondary)
-                                        .font(.system(size: 14))
+                                    Image(systemName: showPassword ? "eye.slash" : "eye")
+                                        .foregroundColor(theme.textMuted)
+                                        .font(.system(size: 14, weight: .medium))
                                 }
                             }
-                            .padding(20)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            .brandFieldChrome()
                         }
-                        
+
                         if !errorMessage.isEmpty {
                             HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.shield.fill").foregroundColor(.red)
-                                Text(errorMessage).font(.caption).fontWeight(.bold).foregroundColor(.red)
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundColor(Brand.red)
+                                    .font(.system(size: 14))
+                                Text(errorMessage)
+                                    .font(Brand.Body.medium(13))
+                                    .foregroundColor(Brand.red)
                             }
                             .padding(.top, 4)
                         }
-                        
+
                         Button(action: performLogin) {
-                            ZStack {
+                            HStack(spacing: 10) {
                                 if isLoading {
-                                    ProgressView().tint(.white)
+                                    ProgressView().tint(Brand.paper)
                                 } else {
-                                    HStack(spacing: 12) {
-                                        Text("Authorize Session")
-                                        Image(systemName: "arrow.right.circle.fill")
-                                    }
-                                    .font(.headline)
-                                    .fontWeight(.black)
+                                    Text("Sign in")
+                                        .font(Brand.Display.semiBold(16))
+                                    Image(systemName: "arrow.right")
+                                        .font(.system(size: 14, weight: .semibold))
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .frame(height: 60)
-                            .background(
-                                LinearGradient(colors: [.red, Color(red: 0.8, green: 0, blue: 0)], startPoint: .top, endPoint: .bottom)
-                            )
-                            .cornerRadius(20)
-                            .foregroundColor(.white)
-                            .shadow(color: Color.red.opacity(0.3), radius: 20, y: 10)
+                            .frame(height: 56)
+                            .foregroundColor(Brand.paper)
+                            .background(Brand.red)
+                            .cornerRadius(14)
+                            .shadow(color: Brand.red.opacity(0.30), radius: 18, y: 8)
                         }
                         .disabled(isLoading || email.isEmpty || password.isEmpty)
-                        
+                        .opacity((isLoading || email.isEmpty || password.isEmpty) ? 0.7 : 1.0)
+                        .padding(.top, 8)
+
+                        Text("Forgot your password? Contact your administrator.")
+                            .font(Brand.Body.regular(12))
+                            .foregroundColor(theme.textMuted)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, 12)
                     }
-                    .padding(.horizontal, 60)
-                    
-                    Spacer().frame(height: 80)
-                    
-                    VStack(alignment: .center, spacing: 6) {
-                        Text("KINEMATIC SHIELD PROTECTED")
-                            .font(.system(size: 10, weight: .black))
-                            .foregroundColor(Color(uiColor: .tertiaryLabel))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Spacer().frame(height: 64)
+
+                    // Footer — centred
+                    VStack(spacing: 8) {
+                        Text("KINEMATIC v1.0")
+                            .font(Brand.Mono.bold(10))
                             .tracking(2)
-                            .frame(maxWidth: .infinity)
-                        
-                        Text("Secured Multi-Manpower Management Platform")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(Color(uiColor: .tertiaryLabel).opacity(0.6))
+                            .foregroundColor(theme.textMuted)
+
+                        Text("Role-based access controlled by your administrator.")
+                            .font(Brand.Body.regular(11))
+                            .foregroundColor(theme.textMuted)
                     }
                     .padding(.bottom, 40)
                 }
+                // Single horizontal inset for the entire column. Inner views can
+                // safely use .frame(maxWidth: .infinity) without escaping it.
+                .padding(.horizontal, 28)
+                .frame(maxWidth: .infinity)
             }
             .ignoresSafeArea(.keyboard)
         }
     }
-    
+
     private func performLogin() {
         isLoading = true
         errorMessage = ""
@@ -221,7 +289,7 @@ struct LoginView: View {
                 if success {
                     onSuccess()
                 } else {
-                    errorMessage = error ?? "Access denied"
+                    errorMessage = error ?? "Sign in failed. Check your credentials."
                 }
             }
         }

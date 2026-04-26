@@ -2,6 +2,9 @@
 // The visual and verbal system for the Kinematic field force management platform.
 
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public enum Brand {
 
@@ -21,26 +24,28 @@ public enum Brand {
     public static let info    = Color(red: 0x00/255.0, green: 0x66/255.0, blue: 0xFF/255.0) // Information Blue
 
     // MARK: - Typography
-    /// Display & headlines — Manrope. Never use for body. Always pair with Inter for body.
+    /// Display & headlines — Manrope. Falls back to SF Pro Rounded when Manrope is not bundled.
     public enum Display {
-        public static func extraBold(_ size: CGFloat) -> Font { custom("Manrope-ExtraBold", weight: .black, size: size) }
-        public static func bold(_ size: CGFloat)      -> Font { custom("Manrope-Bold",      weight: .bold,  size: size) }
-        public static func semiBold(_ size: CGFloat)  -> Font { custom("Manrope-SemiBold",  weight: .semibold, size: size) }
-        public static func medium(_ size: CGFloat)    -> Font { custom("Manrope-Medium",    weight: .medium, size: size) }
-        public static func regular(_ size: CGFloat)   -> Font { custom("Manrope-Regular",   weight: .regular, size: size) }
+        public static func extraBold(_ size: CGFloat) -> Font { custom("Manrope-ExtraBold", design: .rounded, weight: .heavy,    size: size) }
+        public static func bold(_ size: CGFloat)      -> Font { custom("Manrope-Bold",      design: .rounded, weight: .bold,     size: size) }
+        public static func semiBold(_ size: CGFloat)  -> Font { custom("Manrope-SemiBold",  design: .rounded, weight: .semibold, size: size) }
+        public static func medium(_ size: CGFloat)    -> Font { custom("Manrope-Medium",    design: .rounded, weight: .medium,   size: size) }
+        public static func regular(_ size: CGFloat)   -> Font { custom("Manrope-Regular",   design: .rounded, weight: .regular,  size: size) }
     }
 
-    /// Body & interface — Inter. Never bold body text — use weight 500 (Medium) or italics for inline emphasis.
+    /// Body & interface — Inter. Falls back to system default when Inter is not bundled.
+    /// Never bold body text — use Medium (500) or italics for inline emphasis.
     public enum Body {
-        public static func regular(_ size: CGFloat) -> Font { custom("Inter-Regular", weight: .regular, size: size) }
-        public static func medium(_ size: CGFloat)  -> Font { custom("Inter-Medium",  weight: .medium,  size: size) }
-        public static func semiBold(_ size: CGFloat)-> Font { custom("Inter-SemiBold",weight: .semibold,size: size) }
+        public static func regular(_ size: CGFloat)  -> Font { custom("Inter-Regular",  design: .default, weight: .regular,  size: size) }
+        public static func medium(_ size: CGFloat)   -> Font { custom("Inter-Medium",   design: .default, weight: .medium,   size: size) }
+        public static func semiBold(_ size: CGFloat) -> Font { custom("Inter-SemiBold", design: .default, weight: .semibold, size: size) }
     }
 
-    /// Data, code & labels — JetBrains Mono. Used sparingly. Never for body or headlines longer than three words.
+    /// Data, code & labels — JetBrains Mono. Falls back to SF Mono. Used sparingly.
+    /// Never for body or headlines longer than three words.
     public enum Mono {
-        public static func regular(_ size: CGFloat) -> Font { custom("JetBrainsMono-Regular", weight: .regular, size: size) }
-        public static func bold(_ size: CGFloat)    -> Font { custom("JetBrainsMono-Bold",    weight: .bold,    size: size) }
+        public static func regular(_ size: CGFloat) -> Font { custom("JetBrainsMono-Regular", design: .monospaced, weight: .regular, size: size) }
+        public static func bold(_ size: CGFloat)    -> Font { custom("JetBrainsMono-Bold",    design: .monospaced, weight: .bold,    size: size) }
     }
 
     // MARK: - Type scale (digital, in points)
@@ -66,13 +71,18 @@ public enum Brand {
     """
 
     // MARK: - Internals
-    /// Resolves the brand font with a system fallback when the bundled face is unavailable.
-    /// System fallbacks per the brand guide:
-    /// - Manrope → Segoe UI / Helvetica Neue / Roboto / Arial
-    /// - Inter → -apple-system / Segoe UI / Roboto / Arial
-    /// - JetBrains Mono → SF Mono / Consolas / Menlo / Courier New
-    private static func custom(_ name: String, weight: Font.Weight, size: CGFloat) -> Font {
-        Font.custom(name, size: size).weight(weight)
+    /// Resolves the brand font, falling back to a system font in the closest design family
+    /// when the bundled face is unavailable. Falls back per spec:
+    ///   Manrope → SF Pro Rounded
+    ///   Inter   → SF Pro (system default)
+    ///   JetBrains Mono → SF Mono
+    private static func custom(_ name: String, design: Font.Design, weight: Font.Weight, size: CGFloat) -> Font {
+        #if canImport(UIKit)
+        if UIFont(name: name, size: size) != nil {
+            return Font.custom(name, size: size).weight(weight)
+        }
+        #endif
+        return Font.system(size: size, weight: weight, design: design)
     }
 }
 
@@ -85,14 +95,4 @@ public extension View {
             .textCase(.uppercase)
             .foregroundColor(Brand.red)
     }
-}
-
-public extension Color {
-    /// Convenience accessor: `Color.brand.red`, `Color.brand.ink`, etc.
-    static var brandRed:    Color { Brand.red }
-    static var brandInk:    Color { Brand.ink }
-    static var brandPaper:  Color { Brand.paper }
-    static var brandNavy:   Color { Brand.navy }
-    static var brandStone:  Color { Brand.stone }
-    static var brandRule:   Color { Brand.rule }
 }
