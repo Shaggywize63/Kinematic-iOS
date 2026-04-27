@@ -12,7 +12,6 @@ private struct LoginTheme {
     var textMuted:  Color  { isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.40) }
     var placeholder:Color  { isDark ? Color.white.opacity(0.35) : Color.black.opacity(0.30) }
     var fieldText:  Color  { isDark ? Brand.paper : Brand.ink }
-    var markVariant: KinematicMark.Variant { isDark ? .reverse : .primary }
 }
 
 struct VibrantBackgroundView: View {
@@ -89,23 +88,7 @@ struct LoginView: View {
             ScrollView {
                 VStack(spacing: 0) {
 
-                    Spacer().frame(height: 88)
-
-                    KinematicMark(theme.markVariant, size: 88)
-                        .padding(.bottom, 32)
-
-                    VStack(spacing: 10) {
-                        Text("Kinematic")
-                            .font(Brand.Display.extraBold(40))
-                            .tracking(-0.5)
-                            .foregroundColor(theme.text)
-
-                        Text("FIELD FORCE MANAGEMENT")
-                            .font(Brand.Mono.bold(Brand.Scale.eyebrow))
-                            .tracking(2.0)
-                            .foregroundColor(Brand.red)
-                    }
-                    .padding(.bottom, 56)
+                    Spacer().frame(height: 96)
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Welcome back")
