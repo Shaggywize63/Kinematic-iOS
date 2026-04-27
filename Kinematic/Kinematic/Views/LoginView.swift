@@ -88,9 +88,9 @@ struct LoginView: View {
             ScrollView {
                 VStack(spacing: 0) {
 
-                    Spacer().frame(height: 96)
+                    Spacer().frame(height: 140)
 
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 10) {
                         Text("Welcome back")
                             .font(Brand.Display.bold(28))
                             .tracking(-0.3)
@@ -101,9 +101,9 @@ struct LoginView: View {
                             .foregroundColor(theme.textDim)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 48)
 
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 28) {
 
                         VStack(alignment: .leading, spacing: 10) {
                             Text("EMAIL")
@@ -203,17 +203,17 @@ struct LoginView: View {
                         }
                         .disabled(isLoading || email.isEmpty || password.isEmpty)
                         .opacity((isLoading || email.isEmpty || password.isEmpty) ? 0.7 : 1.0)
-                        .padding(.top, 8)
+                        .padding(.top, 16)
 
                         Text("Forgot your password? Contact your administrator.")
                             .font(Brand.Body.regular(12))
                             .foregroundColor(theme.textMuted)
                             .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 12)
+                            .padding(.top, 20)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Spacer().frame(height: 64)
+                    Spacer().frame(height: 96)
 
                     VStack(spacing: 8) {
                         Text("KINEMATIC v1.0")
@@ -227,7 +227,7 @@ struct LoginView: View {
                     }
                     .padding(.bottom, 40)
                 }
-                .padding(.horizontal, 28)
+                .padding(.horizontal, 32)
                 .frame(maxWidth: .infinity)
             }
             .ignoresSafeArea(.keyboard)
