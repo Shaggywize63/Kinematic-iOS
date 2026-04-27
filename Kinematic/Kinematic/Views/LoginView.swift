@@ -86,134 +86,127 @@ struct LoginView: View {
             VibrantBackgroundView()
 
             ScrollView {
-                VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
 
-                    Spacer().frame(height: 96)
+                    Spacer().frame(height: 120)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Welcome back")
-                            .font(Brand.Display.bold(28))
-                            .tracking(-0.3)
-                            .foregroundColor(theme.text)
+                    Text("Welcome back")
+                        .font(Brand.Display.bold(30))
+                        .tracking(-0.3)
+                        .foregroundColor(theme.text)
+                        .padding(.bottom, 12)
 
-                        Text("Sign in to your Kinematic account.")
-                            .font(Brand.Body.regular(15))
-                            .foregroundColor(theme.textDim)
+                    Text("Sign in to your Kinematic account.")
+                        .font(Brand.Body.regular(15))
+                        .foregroundColor(theme.textDim)
+                        .padding(.bottom, 48)
+
+                    Text("EMAIL")
+                        .font(Brand.Mono.bold(Brand.Scale.eyebrow))
+                        .tracking(0.8)
+                        .foregroundColor(theme.textMuted)
+                        .padding(.bottom, 10)
+
+                    HStack(spacing: 12) {
+                        Image(systemName: "envelope")
+                            .foregroundColor(Brand.red)
+                            .font(.system(size: 15, weight: .medium))
+                        TextField(
+                            "",
+                            text: $email,
+                            prompt: Text("you@company.com").foregroundColor(theme.placeholder)
+                        )
+                        .foregroundColor(theme.fieldText)
+                        .font(Brand.Body.medium(15))
+                        .textFieldStyle(.plain)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.emailAddress)
+                        .textContentType(.username)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 32)
+                    .brandFieldChrome()
+                    .padding(.bottom, 24)
 
-                    VStack(alignment: .leading, spacing: 22) {
+                    Text("PASSWORD")
+                        .font(Brand.Mono.bold(Brand.Scale.eyebrow))
+                        .tracking(0.8)
+                        .foregroundColor(theme.textMuted)
+                        .padding(.bottom, 10)
 
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("EMAIL")
-                                .font(Brand.Mono.bold(Brand.Scale.eyebrow))
-                                .tracking(0.8)
+                    HStack(spacing: 12) {
+                        Image(systemName: "lock")
+                            .foregroundColor(Brand.red)
+                            .font(.system(size: 15, weight: .medium))
+                        if showPassword {
+                            TextField(
+                                "",
+                                text: $password,
+                                prompt: Text("Enter your password").foregroundColor(theme.placeholder)
+                            )
+                            .foregroundColor(theme.fieldText)
+                            .font(Brand.Body.medium(15))
+                            .textFieldStyle(.plain)
+                            .textContentType(.password)
+                        } else {
+                            SecureField(
+                                "",
+                                text: $password,
+                                prompt: Text("Enter your password").foregroundColor(theme.placeholder)
+                            )
+                            .foregroundColor(theme.fieldText)
+                            .font(Brand.Body.medium(15))
+                            .textFieldStyle(.plain)
+                            .textContentType(.password)
+                        }
+                        Button(action: { showPassword.toggle() }) {
+                            Image(systemName: showPassword ? "eye.slash" : "eye")
                                 .foregroundColor(theme.textMuted)
-
-                            HStack(spacing: 12) {
-                                Image(systemName: "envelope")
-                                    .foregroundColor(Brand.red)
-                                    .font(.system(size: 15, weight: .medium))
-                                TextField(
-                                    "",
-                                    text: $email,
-                                    prompt: Text("you@company.com").foregroundColor(theme.placeholder)
-                                )
-                                .foregroundColor(theme.fieldText)
-                                .font(Brand.Body.medium(15))
-                                .textFieldStyle(.plain)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .keyboardType(.emailAddress)
-                                .textContentType(.username)
-                            }
-                            .brandFieldChrome()
+                                .font(.system(size: 14, weight: .medium))
                         }
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("PASSWORD")
-                                .font(Brand.Mono.bold(Brand.Scale.eyebrow))
-                                .tracking(0.8)
-                                .foregroundColor(theme.textMuted)
-
-                            HStack(spacing: 12) {
-                                Image(systemName: "lock")
-                                    .foregroundColor(Brand.red)
-                                    .font(.system(size: 15, weight: .medium))
-                                if showPassword {
-                                    TextField(
-                                        "",
-                                        text: $password,
-                                        prompt: Text("Enter your password").foregroundColor(theme.placeholder)
-                                    )
-                                    .foregroundColor(theme.fieldText)
-                                    .font(Brand.Body.medium(15))
-                                    .textFieldStyle(.plain)
-                                    .textContentType(.password)
-                                } else {
-                                    SecureField(
-                                        "",
-                                        text: $password,
-                                        prompt: Text("Enter your password").foregroundColor(theme.placeholder)
-                                    )
-                                    .foregroundColor(theme.fieldText)
-                                    .font(Brand.Body.medium(15))
-                                    .textFieldStyle(.plain)
-                                    .textContentType(.password)
-                                }
-                                Button(action: { showPassword.toggle() }) {
-                                    Image(systemName: showPassword ? "eye.slash" : "eye")
-                                        .foregroundColor(theme.textMuted)
-                                        .font(.system(size: 14, weight: .medium))
-                                }
-                            }
-                            .brandFieldChrome()
-                        }
-
-                        if !errorMessage.isEmpty {
-                            HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.circle.fill")
-                                    .foregroundColor(Brand.red)
-                                    .font(.system(size: 14))
-                                Text(errorMessage)
-                                    .font(Brand.Body.medium(13))
-                                    .foregroundColor(Brand.red)
-                            }
-                            .padding(.top, 4)
-                        }
-
-                        Button(action: performLogin) {
-                            HStack(spacing: 10) {
-                                if isLoading {
-                                    ProgressView().tint(Brand.paper)
-                                } else {
-                                    Text("Sign in")
-                                        .font(Brand.Display.semiBold(16))
-                                    Image(systemName: "arrow.right")
-                                        .font(.system(size: 14, weight: .semibold))
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .foregroundColor(Brand.paper)
-                            .background(Brand.red)
-                            .cornerRadius(14)
-                            .shadow(color: Brand.red.opacity(0.30), radius: 18, y: 8)
-                        }
-                        .disabled(isLoading || email.isEmpty || password.isEmpty)
-                        .opacity((isLoading || email.isEmpty || password.isEmpty) ? 0.7 : 1.0)
-                        .padding(.top, 8)
-
-                        Text("Forgot your password? Contact your administrator.")
-                            .font(Brand.Body.regular(12))
-                            .foregroundColor(theme.textMuted)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 12)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .brandFieldChrome()
 
-                    Spacer().frame(height: 64)
+                    if !errorMessage.isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundColor(Brand.red)
+                                .font(.system(size: 14))
+                            Text(errorMessage)
+                                .font(Brand.Body.medium(13))
+                                .foregroundColor(Brand.red)
+                        }
+                        .padding(.top, 12)
+                    }
+
+                    Button(action: performLogin) {
+                        HStack(spacing: 10) {
+                            if isLoading {
+                                ProgressView().tint(Brand.paper)
+                            } else {
+                                Text("Sign in")
+                                    .font(Brand.Display.semiBold(16))
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .foregroundColor(Brand.paper)
+                        .background(Brand.red)
+                        .cornerRadius(14)
+                        .shadow(color: Brand.red.opacity(0.30), radius: 18, y: 8)
+                    }
+                    .disabled(isLoading || email.isEmpty || password.isEmpty)
+                    .opacity((isLoading || email.isEmpty || password.isEmpty) ? 0.7 : 1.0)
+                    .padding(.top, 28)
+
+                    Text("Forgot your password? Contact your administrator.")
+                        .font(Brand.Body.regular(12))
+                        .foregroundColor(theme.textMuted)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 20)
+
+                    Spacer().frame(height: 80)
 
                     VStack(spacing: 8) {
                         Text("KINEMATIC v1.0")
@@ -225,10 +218,10 @@ struct LoginView: View {
                             .font(Brand.Body.regular(11))
                             .foregroundColor(theme.textMuted)
                     }
-                    .padding(.bottom, 40)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 32)
                 }
                 .padding(.horizontal, 28)
-                .frame(maxWidth: .infinity)
             }
             .ignoresSafeArea(.keyboard)
         }

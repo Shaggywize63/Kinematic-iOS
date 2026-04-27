@@ -15,12 +15,12 @@ public struct SplashView: View {
         ZStack {
             (isDark ? Brand.navy : Brand.paper).ignoresSafeArea()
 
-            VStack(spacing: 28) {
-                KinematicMark(isDark ? .reverse : .primary, size: 96)
+            VStack(spacing: 32) {
+                KinematicMark(isDark ? .reverse : .primary, size: 120)
                     .scaleEffect(appeared ? 1.0 : 0.94)
                     .opacity(appeared ? 1.0 : 0.0)
 
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     Text("Kinematic")
                         .font(Brand.Display.extraBold(36))
                         .tracking(-0.5)
@@ -33,6 +33,7 @@ public struct SplashView: View {
                 }
                 .opacity(appeared ? 1.0 : 0.0)
             }
+            .padding(.horizontal, 40)
             .onAppear {
                 withAnimation(.easeOut(duration: 0.45)) { appeared = true }
             }
