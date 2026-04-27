@@ -23,7 +23,6 @@ struct VibrantBackgroundView: View {
         ZStack {
             (isDark ? Brand.navy : Brand.paper).ignoresSafeArea()
 
-            // Atmospheric glows — restrained per the 60-30-10 brand rule.
             ZStack {
                 Circle()
                     .fill(Brand.red.opacity(isDark ? 0.10 : 0.05))
@@ -76,23 +75,10 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage = ""
     @State private var showPassword = false
-    @State private var showSplash = true
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ZStack {
-            if showSplash {
-                SplashView()
-                    .transition(.opacity)
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                            withAnimation(.easeOut(duration: 0.35)) { showSplash = false }
-                        }
-                    }
-            } else {
-                loginContent.transition(.opacity)
-            }
-        }
+        loginContent
     }
 
     private var loginContent: some View {
@@ -101,18 +87,13 @@ struct LoginView: View {
             VibrantBackgroundView()
 
             ScrollView {
-                // Outer column: full ScrollView width, centred. ALL horizontal
-                // padding is applied at THIS level so children can safely use
-                // .frame(maxWidth: .infinity) without breaking the inset.
                 VStack(spacing: 0) {
 
                     Spacer().frame(height: 88)
 
-                    // Brand mark — centred
                     KinematicMark(theme.markVariant, size: 88)
                         .padding(.bottom, 32)
 
-                    // Wordmark + tagline — centred
                     VStack(spacing: 10) {
                         Text("Kinematic")
                             .font(Brand.Display.extraBold(40))
@@ -126,7 +107,6 @@ struct LoginView: View {
                     }
                     .padding(.bottom, 56)
 
-                    // Welcome heading — left-aligned within the padded column
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Welcome back")
                             .font(Brand.Display.bold(28))
@@ -140,10 +120,8 @@ struct LoginView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 32)
 
-                    // Form
                     VStack(alignment: .leading, spacing: 22) {
 
-                        // Email
                         VStack(alignment: .leading, spacing: 10) {
                             Text("EMAIL")
                                 .font(Brand.Mono.bold(Brand.Scale.eyebrow))
@@ -170,7 +148,6 @@ struct LoginView: View {
                             .brandFieldChrome()
                         }
 
-                        // Password
                         VStack(alignment: .leading, spacing: 10) {
                             Text("PASSWORD")
                                 .font(Brand.Mono.bold(Brand.Scale.eyebrow))
@@ -255,7 +232,6 @@ struct LoginView: View {
 
                     Spacer().frame(height: 64)
 
-                    // Footer — centred
                     VStack(spacing: 8) {
                         Text("KINEMATIC v1.0")
                             .font(Brand.Mono.bold(10))
@@ -268,8 +244,6 @@ struct LoginView: View {
                     }
                     .padding(.bottom, 40)
                 }
-                // Single horizontal inset for the entire column. Inner views can
-                // safely use .frame(maxWidth: .infinity) without escaping it.
                 .padding(.horizontal, 28)
                 .frame(maxWidth: .infinity)
             }

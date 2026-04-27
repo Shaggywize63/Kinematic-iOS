@@ -2,10 +2,10 @@ import SwiftUI
 
 public struct KinematicMark: View {
     public enum Variant {
-        case primary   // Red anchor + Ink satellites — default for light surfaces
-        case reverse   // Red anchor + White satellites — for dark surfaces and Deep Navy
-        case monoBlack // All ink — single-colour print
-        case monoWhite // All white — photographic backgrounds, hero
+        case primary   // light surfaces
+        case reverse   // dark surfaces
+        case monoBlack
+        case monoWhite
     }
 
     private let variant: Variant
@@ -17,21 +17,14 @@ public struct KinematicMark: View {
     }
 
     public var body: some View {
-        // SVG viewBox is 70×56 (5:4). Frame to `size` height; width scales to preserve aspect.
-        Image(assetName)
+        // Asset catalog "KinematicMark" has dark/light appearance slots.
+        // Drop logo-light.png and logo-dark.png into the imageset folder;
+        // iOS picks the right one automatically based on color scheme.
+        Image("KinematicMark")
             .resizable()
             .scaledToFit()
             .frame(height: size)
             .accessibilityLabel("Kinematic")
-    }
-
-    private var assetName: String {
-        switch variant {
-        case .primary:   return "KinematicMarkPrimary"
-        case .reverse:   return "KinematicMarkReverse"
-        case .monoBlack: return "KinematicMarkMonoBlack"
-        case .monoWhite: return "KinematicMarkMonoWhite"
-        }
     }
 }
 
