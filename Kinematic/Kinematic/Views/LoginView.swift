@@ -88,11 +88,11 @@ struct LoginView: View {
             ScrollView {
                 VStack(spacing: 0) {
 
-                    Spacer().frame(height: 140)
+                    Spacer().frame(height: 160)
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Welcome back")
-                            .font(Brand.Display.bold(28))
+                            .font(Brand.Display.bold(30))
                             .tracking(-0.3)
                             .foregroundColor(theme.text)
 
@@ -101,7 +101,7 @@ struct LoginView: View {
                             .foregroundColor(theme.textDim)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 48)
+                    .padding(.bottom, 56)
 
                     VStack(alignment: .leading, spacing: 28) {
 
@@ -227,7 +227,7 @@ struct LoginView: View {
                     }
                     .padding(.bottom, 40)
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 40)
                 .frame(maxWidth: .infinity)
             }
             .ignoresSafeArea(.keyboard)

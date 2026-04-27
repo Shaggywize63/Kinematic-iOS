@@ -20,7 +20,7 @@ public struct KinematicMark: View {
         Image(assetName)
             .resizable()
             .scaledToFit()
-            .frame(height: size)
+            .frame(maxWidth: size * 1.6, maxHeight: size)
             .accessibilityLabel("Kinematic")
     }
 
