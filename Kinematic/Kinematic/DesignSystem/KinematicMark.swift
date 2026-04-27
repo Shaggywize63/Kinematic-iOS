@@ -2,8 +2,8 @@ import SwiftUI
 
 public struct KinematicMark: View {
     public enum Variant {
-        case primary   // light surfaces
-        case reverse   // dark surfaces
+        case primary   // dark/colored mark — for light surfaces
+        case reverse   // white mark — for dark surfaces
         case monoBlack
         case monoWhite
     }
@@ -17,14 +17,20 @@ public struct KinematicMark: View {
     }
 
     public var body: some View {
-        // Asset catalog "KinematicMark" has dark/light appearance slots.
-        // Drop logo-light.png and logo-dark.png into the imageset folder;
-        // iOS picks the right one automatically based on color scheme.
-        Image("KinematicMark")
+        Image(assetName)
             .resizable()
             .scaledToFit()
             .frame(height: size)
             .accessibilityLabel("Kinematic")
+    }
+
+    private var assetName: String {
+        switch variant {
+        case .primary:   return "KinematicMarkPrimary"
+        case .reverse:   return "KinematicMarkReverse"
+        case .monoBlack: return "KinematicMarkMonoBlack"
+        case .monoWhite: return "KinematicMarkMonoWhite"
+        }
     }
 }
 
