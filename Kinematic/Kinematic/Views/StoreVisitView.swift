@@ -4,21 +4,22 @@ import CoreLocation
 struct StoreVisitView: View {
     @EnvironmentObject var appState: KiniAppState
     @State private var isStartingVisit = false
-    
+    @State private var showingPlanogramCapture = false
+
     var isVisitActive: Bool {
         appState.activeVisitOutletId == appState.selectedOutlet?.id
     }
-    
+
     var resolvedActivities: [RouteActivity] {
         // Priority 1: Backend aggregated activities array (newly supported)
         let explicit = appState.selectedOutlet?.activities ?? []
         if !explicit.isEmpty { return explicit }
-        
+
         // Priority 2: Dashboard Linkage: Synth one if activityId is present at outlet level (legacy fallback)
         if let activityId = appState.selectedOutlet?.activityId {
             return [RouteActivity(id: activityId, name: "Store Activity", status: "pending")]
         }
-        
+
         // Priority 3: Testing Fallback: Ensure user can ALWAYS test the Test Form even if linkage is missing
         return [
             RouteActivity(id: "test_audit_001", name: "Test Product Audit", status: "pending")
@@ -29,11 +30,11 @@ struct StoreVisitView: View {
         guard let today = appState.today else { return false }
         return today.checkinAt != nil && today.checkoutAt == nil
     }
-    
+
     var body: some View {
         ZStack {
             VibrantBackgroundView()
-            
+
             VStack(spacing: 0) {
                 // Header (Same as before)
                 HStack {
@@ -49,17 +50,17 @@ struct StoreVisitView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 28).padding(.top, 60).padding(.bottom, 20)
-                
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 25) {
-                        
+
                         // Active Session Indicator (Optional top bar)
                         if isVisitActive {
                             HStack {
                                 Image(systemName: "location.fill").foregroundColor(.green)
                                 Text("Visit Active").font(.caption).fontWeight(.bold).foregroundColor(.green)
                                 Spacer()
-                                Button("END VISIT") { 
+                                Button("END VISIT") {
                                     appState.activeVisitId = nil
                                     appState.activeVisitOutletId = nil
                                 }
@@ -90,37 +91,51 @@ struct StoreVisitView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.top, 20)
-                        } else if !resolvedActivities.isEmpty {
-                            VStack(spacing: 15) {
-                                ForEach(resolvedActivities) { activity in
-                                    TaskCard(activity: activity) {
-                                        if isVisitActive {
-                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                                appState.selectedActivity = activity
-                                            }
-                                        } else {
-                                            // Trigger check-in prompt
-                                            self.isStartingVisit = true
-                                            startVisit(andOpen: activity)
-                                        }
-                                    }
+                        } else {
+                            // Planogram audit card — always shown when clocked in
+                            PlanogramAuditCard {
+                                if isVisitActive {
+                                    showingPlanogramCapture = true
+                                } else {
+                                    self.isStartingVisit = true
+                                    startVisit()
+                                    showingPlanogramCapture = true
                                 }
                             }
                             .padding(.horizontal, 28)
-                        } else {
-                            VStack(spacing: 20) {
-                                Image(systemName: "checklist.checked").font(.system(size: 80)).foregroundColor(.white.opacity(0.1))
-                                Text("All caught up!\nNo specific tasks assigned for this outlet.").font(.subheadline).multilineTextAlignment(.center).foregroundColor(.gray)
+
+                            if !resolvedActivities.isEmpty {
+                                VStack(spacing: 15) {
+                                    ForEach(resolvedActivities) { activity in
+                                        TaskCard(activity: activity) {
+                                            if isVisitActive {
+                                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                                    appState.selectedActivity = activity
+                                                }
+                                            } else {
+                                                // Trigger check-in prompt
+                                                self.isStartingVisit = true
+                                                startVisit(andOpen: activity)
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 28)
+                            } else {
+                                VStack(spacing: 20) {
+                                    Image(systemName: "checklist.checked").font(.system(size: 80)).foregroundColor(.white.opacity(0.1))
+                                    Text("All caught up!\nNo specific tasks assigned for this outlet.").font(.subheadline).multilineTextAlignment(.center).foregroundColor(.gray)
+                                }
+                                .frame(maxWidth: .infinity).padding(.top, 40)
                             }
-                            .frame(maxWidth: .infinity).padding(.top, 40)
                         }
-                        
+
                         // Footer padding
                         Spacer().frame(height: 100)
                     }
                 }
             }
-            
+
             // Loading Overlay when starting visit
             if isStartingVisit {
                 ZStack {
@@ -130,7 +145,7 @@ struct StoreVisitView: View {
                         Text("Starting Visit & Validating Location...")
                             .foregroundColor(Color(uiColor: .label))
                             .font(.headline)
-                        
+
                         Button("CANCEL") {
                             isStartingVisit = false
                         }
@@ -146,16 +161,23 @@ struct StoreVisitView: View {
                     .zIndex(10)
             }
         }
+        .fullScreenCover(isPresented: $showingPlanogramCapture) {
+            PlanogramCaptureView(
+                storeId: appState.selectedOutlet?.id,
+                visitId: appState.activeVisitId,
+                planogramId: nil // backend resolves from store assignment
+            )
+        }
     }
-    
+
     private func startVisit(andOpen activity: RouteActivity? = nil) {
         guard let outletId = appState.selectedOutlet?.id else { return }
         let lat = LocationTrackingService.shared.lastLocation?.coordinate.latitude ?? 0
         let lng = LocationTrackingService.shared.lastLocation?.coordinate.longitude ?? 0
-        
+
         isStartingVisit = true
         KiniAppState.shared.visitErrorMessage = nil // Reset error
-        
+
         let visitTask = Task {
             let result = await KinematicRepository.shared.logVisit(outletId: outletId, lat: lat, lng: lng)
             if !Task.isCancelled {
@@ -179,27 +201,27 @@ struct StoreVisitView: View {
                 }
             }
         }
-        
+
         // Timeout Task
         Task {
             try? await Task.sleep(nanoseconds: 12_000_000_000) // 12 seconds
             if self.isStartingVisit {
                 visitTask.cancel()
                 await MainActor.run {
-                    withAnimation { 
-                        self.isStartingVisit = false 
+                    withAnimation {
+                        self.isStartingVisit = false
                         KiniAppState.shared.visitErrorMessage = "Connection timed out. Please try again."
                     }
                 }
             }
         }
     }
-    
+
     private func startVisit() {
         guard let outletId = appState.selectedOutlet?.id else { return }
         let lat = LocationTrackingService.shared.lastLocation?.coordinate.latitude ?? 0
         let lng = LocationTrackingService.shared.lastLocation?.coordinate.longitude ?? 0
-        
+
         isStartingVisit = true
         Task {
             if let visitId = await KinematicRepository.shared.logVisit(outletId: outletId, lat: lat, lng: lng) {
@@ -220,7 +242,7 @@ struct StoreVisitView: View {
 struct TaskCard: View {
     let activity: RouteActivity
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 15) {
@@ -234,6 +256,52 @@ struct TaskCard: View {
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption).foregroundColor(.gray)
+            }
+            .padding(20)
+            .background(.ultraThinMaterial)
+            .cornerRadius(20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.5), .clear, .black.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
+        }
+    }
+}
+
+private struct PlanogramAuditCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 15) {
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.12))
+                        .frame(width: 50, height: 50)
+                    Image(systemName: "square.grid.3x3.fill")
+                        .font(.title3)
+                        .foregroundColor(.blue)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Planogram audit")
+                        .font(.headline)
+                        .foregroundColor(Color(uiColor: .label))
+                    Text("CAPTURE SHELF · AI COMPLIANCE")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(.blue)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.gray)
             }
             .padding(20)
             .background(.ultraThinMaterial)
