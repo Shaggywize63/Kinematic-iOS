@@ -11,6 +11,7 @@ import Combine
 import CoreMotion
 
 struct PlanogramCaptureView: View {
+    @Environment(\.dismiss) var dismiss
     @StateObject private var vm = PlanogramCaptureViewModel()
     @State private var showCamera = false
     @State private var showResult = false
@@ -53,9 +54,6 @@ struct PlanogramCaptureView: View {
             if case .complete(let resp) = vm.phase {
                 PlanogramComplianceView(response: resp, image: vm.capturedImage)
             }
-        }
-        .onReceive(vm.$phase) { phase in
-            if case .complete = phase { showResult = true }
         }
     }
 
@@ -115,9 +113,10 @@ struct PlanogramCaptureView: View {
     private var actions: some View {
         HStack(spacing: 12) {
             Button {
+                vm.reset()
                 showCamera = true
             } label: {
-                Label(vm.capturedImage == nil ? "Capture shelf" : "Retake",
+                Label(vm.capturedImage == nil ? "Capture" : "Retake",
                       systemImage: "camera.fill")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
@@ -126,8 +125,13 @@ struct PlanogramCaptureView: View {
                     .background(Color.white.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            
             Button {
-                Task { await vm.submit(imageURL: "") }
+                if case .complete = vm.phase {
+                    dismiss()
+                } else {
+                    Task { await vm.submit(imageURL: "") }
+                }
             } label: {
                 HStack(spacing: 8) {
                     if case .uploading = vm.phase {
@@ -138,18 +142,23 @@ struct PlanogramCaptureView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(vm.canSubmit ? Color(red: 0.88, green: 0.12, blue: 0.17) : Color.gray.opacity(0.5))
+                .background(vm.canSubmit || isComplete ? Color(red: 0.88, green: 0.12, blue: 0.17) : Color.gray.opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .disabled(!vm.canSubmit)
+            .disabled(!vm.canSubmit && !isComplete)
         }
+    }
+
+    private var isComplete: Bool {
+        if case .complete = vm.phase { return true }
+        return false
     }
 
     private var submitLabel: String {
         switch vm.phase {
         case .uploading:    return "Analyzing…"
         case .complete:     return "Done"
-        default:            return "Submit & score"
+        default:            return "Submit"
         }
     }
 
