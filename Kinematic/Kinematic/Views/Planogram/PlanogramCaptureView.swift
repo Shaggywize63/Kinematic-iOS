@@ -14,7 +14,6 @@ struct PlanogramCaptureView: View {
     @StateObject private var vm = PlanogramCaptureViewModel()
     @State private var showCamera = false
     @State private var showResult = false
-    @State private var imageURLForUpload = ""
 
     /// Pass these in from the parent (e.g. visit context).
     let storeId: String?
@@ -128,7 +127,7 @@ struct PlanogramCaptureView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             Button {
-                Task { await vm.submit(imageURL: imageURLForUpload) }
+                Task { await vm.submit(imageURL: "") }
             } label: {
                 HStack(spacing: 8) {
                     if case .uploading = vm.phase {

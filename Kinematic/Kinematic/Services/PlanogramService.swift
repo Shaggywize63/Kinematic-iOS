@@ -69,21 +69,26 @@ final class PlanogramService {
         guard let jpeg = image.jpegData(compressionQuality: 0.85) else {
             throw PlanogramServiceError.server("Could not encode image.")
         }
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "image_url":         imageURL,
             "image_base64":      jpeg.base64EncodedString(),
             "image_media_type":  "image/jpeg",
-            "store_id":          storeId as Any,
-            "visit_id":          visitId as Any,
-            "planogram_id":      planogramId as Any,
-            "capture_lat":       location?.lat as Any,
-            "capture_lng":       location?.lng as Any,
             "device_meta": [
                 "platform": "ios",
                 "model":    UIDevice.current.model,
                 "system":   UIDevice.current.systemVersion
-            ] as [String: String]
-        ].compactMapValues { $0 is NSNull ? nil : $0 }
+            ]
+        ]
+        
+        if let storeId = storeId { body["store_id"] = storeId }
+        if let visitId = visitId { body["visit_id"] = visitId }
+        if let planogramId = planogramId { body["planogram_id"] = planogramId }
+        
+        if let location = location {
+            body["capture_lat"] = location.lat
+            body["capture_lng"] = location.lng
+        }
+        
         return try await postJSON("/api/v1/planograms/captures", body: body)
     }
 

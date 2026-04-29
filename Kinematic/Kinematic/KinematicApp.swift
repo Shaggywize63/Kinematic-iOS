@@ -1275,11 +1275,19 @@ class KinematicRepository {
         print("🚀 UPLOAD_START: \(url.absoluteString)")
         
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            
+            if !(200..<300).contains(statusCode) {
+                let rawBody = String(data: data, encoding: .utf8) ?? "no body"
+                print("❌ UPLOAD_SERVER_ERROR: Status \(statusCode). Body: \(rawBody)")
+                return nil
+            }
+            
             let res = try JSONDecoder().decode(ApiResponse<UploadResponse>.self, from: data)
             return res.data?.url
         } catch {
-            print("❌ UPLOAD_ERROR: \(error)")
+            print("❌ UPLOAD_NETWORK_ERROR: \(error)")
             return nil
         }
     }

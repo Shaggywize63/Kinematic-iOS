@@ -66,6 +66,17 @@ final class PlanogramCaptureViewModel: ObservableObject {
         }
         phase = .uploading
 
+        var finalURL = imageURL
+        if finalURL.isEmpty {
+            // Planogram captures need to be persisted in storage before AI analysis
+            if let uploadedURL = await KinematicRepository.shared.uploadImage(image: image, type: "photo") {
+                finalURL = uploadedURL
+            } else {
+                phase = .failed("Failed to upload shelf capture to storage.")
+                return
+            }
+        }
+
         var coords: (Double, Double)? = nil
         if let loc = location.location {
             coords = (loc.coordinate.latitude, loc.coordinate.longitude)
@@ -77,7 +88,7 @@ final class PlanogramCaptureViewModel: ObservableObject {
                 storeId: storeId,
                 visitId: visitId,
                 planogramId: planogramId,
-                imageURL: imageURL,
+                imageURL: finalURL,
                 location: coords
             )
             phase = .complete(response)
