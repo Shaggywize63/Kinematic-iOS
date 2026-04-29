@@ -15,7 +15,7 @@ struct ActivitySubmissionView: View {
     private var screenWidth: CGFloat {
         UIApplication.shared.connectedScenes
             .compactMap { ($0 as? UIWindowScene)?.screen.bounds.width }
-            .first ?? UIScreen.main.bounds.width
+            .first ?? 390 // Fallback for iOS 26+ compatibility
     }
 
     private var progress: Double {

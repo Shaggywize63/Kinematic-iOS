@@ -88,7 +88,7 @@ struct LoginView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
 
-                    Spacer().frame(height: 120)
+                    Spacer().frame(height: 140)
 
                     Text("Welcome back")
                         .font(Brand.Display.bold(30))
@@ -221,8 +221,9 @@ struct LoginView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.bottom, 32)
                 }
-                .padding(.horizontal, 28)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 60)
             .ignoresSafeArea(.keyboard)
         }
     }

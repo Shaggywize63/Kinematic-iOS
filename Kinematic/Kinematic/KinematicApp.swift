@@ -1460,8 +1460,8 @@ struct KinematicApp: App {
                     // One-time pre-warm logic if needed, but NOT refresh()
                 }
                 
-                // Fixed branding duration (1.5s) — provides professional feel without blocking.
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                // Extended branding duration (3.0s) for better identity visibility.
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
                 
                 await MainActor.run {
                     withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {

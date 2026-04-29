@@ -15,27 +15,16 @@ public struct SplashView: View {
         ZStack {
             (isDark ? Brand.navy : Brand.paper).ignoresSafeArea()
 
-            VStack(spacing: 32) {
-                KinematicMark(isDark ? .reverse : .primary, size: 120)
-                    .scaleEffect(appeared ? 1.0 : 0.94)
+            VStack(spacing: 0) {
+                Image("KinematicLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 220)
+                    .scaleEffect(appeared ? 1.0 : 0.95)
                     .opacity(appeared ? 1.0 : 0.0)
-
-                VStack(spacing: 10) {
-                    Text("Kinematic")
-                        .font(Brand.Display.extraBold(36))
-                        .tracking(-0.5)
-                        .foregroundColor(isDark ? Brand.paper : Brand.ink)
-
-                    Text("FIELD FORCE MANAGEMENT")
-                        .font(Brand.Mono.bold(Brand.Scale.eyebrow))
-                        .tracking(2.0)
-                        .foregroundColor(Brand.red)
-                }
-                .opacity(appeared ? 1.0 : 0.0)
             }
-            .padding(.horizontal, 40)
             .onAppear {
-                withAnimation(.easeOut(duration: 0.45)) { appeared = true }
+                withAnimation(.easeOut(duration: 0.6)) { appeared = true }
             }
         }
     }
