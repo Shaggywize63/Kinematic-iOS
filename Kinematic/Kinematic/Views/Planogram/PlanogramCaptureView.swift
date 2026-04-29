@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import Combine
 import CoreMotion
 
 struct PlanogramCaptureView: View {
@@ -54,7 +55,7 @@ struct PlanogramCaptureView: View {
                 PlanogramComplianceView(response: resp, image: vm.capturedImage)
             }
         }
-        .onChange(of: vm.phase) { phase in
+        .onReceive(vm.$phase) { phase in
             if case .complete = phase { showResult = true }
         }
     }

@@ -7,12 +7,13 @@
 //
 
 import SwiftUI
+import Combine
 import CoreLocation
 
 @MainActor
 final class PlanogramCaptureViewModel: ObservableObject {
 
-    enum Phase: Equatable {
+    enum Phase {
         case idle
         case capturing
         case uploading
@@ -33,11 +34,13 @@ final class PlanogramCaptureViewModel: ObservableObject {
     private let location: CLLocationManager
 
     init(
-        service: PlanogramService = .shared,
-        location: CLLocationManager = CLLocationManager()
+        service: PlanogramService? = nil,
+        location: CLLocationManager? = nil
     ) {
-        self.service = service
-        self.location = location
+        // Defaults are resolved here so we don't reference main-actor-isolated
+        // values from a nonisolated default-argument position.
+        self.service = service ?? PlanogramService.shared
+        self.location = location ?? CLLocationManager()
     }
 
     /// Heuristic alignment quality from device motion (called from the camera
@@ -51,7 +54,9 @@ final class PlanogramCaptureViewModel: ObservableObject {
     }
 
     var canSubmit: Bool {
-        capturedImage != nil && phase != .uploading
+        if capturedImage == nil { return false }
+        if case .uploading = phase { return false }
+        return true
     }
 
     func submit(imageURL: String) async {
