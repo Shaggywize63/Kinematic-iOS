@@ -3,7 +3,8 @@
 //  Kinematic
 //
 //  Networking layer for the AI Planogram Engine. Reads the bearer token
-//  + base URL from the same UserDefaults keys the rest of the app uses.
+//  + org_id from the same Session/UserDefaults the rest of the app uses
+//  (see KinematicApp.swift → Session.sharedToken / Session.currentUser?.orgId).
 //
 
 import Foundation
@@ -28,6 +29,11 @@ enum PlanogramServiceError: LocalizedError {
 final class PlanogramService {
     static let shared = PlanogramService()
 
+    /// Match the rest of the app — see `KinematicRepository.baseURL` in
+    /// `KinematicApp.swift`. Path strings in this file include `/api/v1/...`,
+    /// so the host alone is the base.
+    private let baseHost: URL = URL(string: "https://kinematic-production.up.railway.app")!
+
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -36,23 +42,6 @@ final class PlanogramService {
         self.session = session
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
-    }
-
-    // MARK: Config
-
-    private var baseURL: URL {
-        let raw = UserDefaults.standard.string(forKey: "kinematic.baseURL")
-            ?? Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
-            ?? "https://api.kinematic.app"
-        return URL(string: raw)!
-    }
-
-    private var authToken: String? {
-        UserDefaults.standard.string(forKey: "kinematic.authToken")
-    }
-
-    private var orgId: String? {
-        UserDefaults.standard.string(forKey: "kinematic.orgId")
     }
 
     // MARK: Public API
@@ -100,6 +89,20 @@ final class PlanogramService {
 
     // MARK: Internals
 
+    /// Bearer token shared with `KinematicRepository` via `Session.sharedToken`.
+    /// Falls back to the same `UserDefaults` key (`auth_token`) so we still
+    /// work even if `Session` is re-namespaced in the future.
+    private var authToken: String? {
+        let token = Session.sharedToken
+        if !token.isEmpty { return token }
+        let raw = UserDefaults.standard.string(forKey: "auth_token") ?? ""
+        return raw.isEmpty ? nil : raw
+    }
+
+    private var orgId: String? {
+        Session.currentUser?.orgId
+    }
+
     private func get<T: Codable>(_ path: String) async throws -> T {
         let req = try makeRequest(path: path, method: "GET", body: nil)
         return try await perform(req)
@@ -113,7 +116,7 @@ final class PlanogramService {
 
     private func makeRequest(path: String, method: String, body: Data?) throws -> URLRequest {
         guard let token = authToken else { throw PlanogramServiceError.missingAuth }
-        let url = baseURL.appendingPathComponent(path)
+        let url = baseHost.appendingPathComponent(path)
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
