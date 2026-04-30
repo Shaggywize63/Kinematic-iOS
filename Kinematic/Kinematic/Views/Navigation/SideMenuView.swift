@@ -55,12 +55,47 @@ struct SideMenuView: View {
                     withAnimation { isOpen = false }
                     appState.activeSecondaryRoute = ModalRoute(route: .broadcast)
                 }
-                
+
+                MenuButton(icon: "bell.fill", title: "Notifications", isSelected: false, color: .indigo) {
+                    withAnimation { isOpen = false }
+                    appState.activeSecondaryRoute = ModalRoute(route: .notifications)
+                }
+
+                MenuButton(icon: "trophy.fill", title: "Leaderboard", isSelected: false, color: .yellow) {
+                    withAnimation { isOpen = false }
+                    appState.activeSecondaryRoute = ModalRoute(route: .leaderboard)
+                }
+
+                MenuButton(icon: "doc.text.fill", title: "Activity Feed", isSelected: false, color: .teal) {
+                    withAnimation { isOpen = false }
+                    appState.activeSecondaryRoute = ModalRoute(route: .activity)
+                }
+
+                MenuButton(icon: "list.bullet.rectangle", title: "Visit Log", isSelected: false, color: .green) {
+                    withAnimation { isOpen = false }
+                    appState.activeSecondaryRoute = ModalRoute(route: .visitlog)
+                }
+
+                MenuButton(icon: "shippingbox.fill", title: "Stock", isSelected: false, color: .brown) {
+                    withAnimation { isOpen = false }
+                    appState.activeSecondaryRoute = ModalRoute(route: .stock)
+                }
+
+                MenuButton(icon: "exclamationmark.bubble.fill", title: "Grievance", isSelected: false, color: .pink) {
+                    withAnimation { isOpen = false }
+                    appState.activeSecondaryRoute = ModalRoute(route: .grievance)
+                }
+
                 MenuButton(icon: "sparkles", title: "Learning Hub", isSelected: false, color: .purple) {
                     withAnimation { isOpen = false }
                     appState.activeSecondaryRoute = ModalRoute(route: .learning)
                 }
-                
+
+                MenuButton(icon: "exclamationmark.octagon.fill", title: "Emergency SOS", isSelected: false, color: .red) {
+                    withAnimation { isOpen = false }
+                    appState.activeSecondaryRoute = ModalRoute(route: .sos)
+                }
+
                 MenuButton(icon: "gearshape.fill", title: "Settings", isSelected: false, color: .gray) {
                     withAnimation { isOpen = false }
                     appState.activeSecondaryRoute = ModalRoute(route: .settings)

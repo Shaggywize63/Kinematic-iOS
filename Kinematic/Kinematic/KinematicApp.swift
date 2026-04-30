@@ -22,6 +22,7 @@ struct User: Codable, Identifiable {
 // --- APP STATE ---
 enum SecondaryRoute: String, Identifiable {
     case profile, broadcast, learning, settings, camera
+    case leaderboard, notifications, grievance, visitlog, stock, sos, activity
     var id: String { rawValue }
 }
 
