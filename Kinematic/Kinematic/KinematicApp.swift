@@ -110,6 +110,7 @@ class KiniAppState: ObservableObject {
     
     func logout() {
         Session.logout()
+        OutletCache.shared.invalidateAll()
         self.isAuthenticated = false
         self.selectedTab = 0
         self.showSideMenu = false
@@ -1002,16 +1003,16 @@ class KinematicRepository {
     
     func sendLiveTrackingPing(lat: Double, lng: Double, battery: Int) async -> Bool {
         do {
-            let payload = TrackingPingRequest(latitude: lat, longitude: lng, batteryPercentage: battery)
+            let payload = UserStatusUpdate.heartbeat(lat: lat, lng: lng, battery: battery)
             let body = try? JSONEncoder().encode(payload)
             let res: ApiResponse<[String: String]>? = try await performRequest(
-                "/attendance/pings",
-                method: "POST",
+                "/users/status",
+                method: "PATCH",
                 body: body
             )
             let success = res?.success ?? false
             if success {
-                print("✅ [Tracking] Ping successful.")
+                print("✅ [Tracking] Status update successful.")
             } else {
                 print("⚠️ [Tracking] Ping rejected: \(res?.error ?? res?.message ?? "Unknown error")")
             }
@@ -1328,9 +1329,13 @@ class KinematicRepository {
     }
     
     func getMobileHome() async -> MobileHomeResponse? {
+        if let cached = OutletCache.shared.get(MobileHomeResponse.self, key: .mobileHome) {
+            return cached
+        }
         do {
             let res: ApiResponse<MobileHomeResponse>? = try await performRequest("/analytics/mobile-home")
             if let home = res?.data {
+                OutletCache.shared.put(home, key: .mobileHome)
                 cache(home, forKey: cachedMobileHomeKey)
                 if let routes = home.routePlan, !routes.isEmpty {
                     cache(routes, forKey: cachedRoutePlanKey)
@@ -1353,6 +1358,9 @@ class KinematicRepository {
     }
     
     func fetchMyRoutePlan() async -> [RoutePlan] {
+        if let cached = OutletCache.shared.get([RoutePlan].self, key: .routePlan) {
+            return cached
+        }
         // Use local timezone date so IST/non-UTC users get the correct date
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -1368,6 +1376,7 @@ class KinematicRepository {
             if let data = res?.data {
                 print("✅ FETCH_ROUTE_PLAN_SUCCESS: Found \(data.count) plans")
                 if !data.isEmpty {
+                    OutletCache.shared.put(data, key: .routePlan)
                     cache(data, forKey: cachedRoutePlanKey)
                 } else {
                     UserDefaults.standard.removeObject(forKey: cachedRoutePlanKey)
