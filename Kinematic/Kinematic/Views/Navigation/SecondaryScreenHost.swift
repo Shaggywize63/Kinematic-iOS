@@ -22,6 +22,20 @@ struct SecondaryScreenHost: View {
                             LearningHubView()
                         case .settings:
                             SettingsView()
+                        case .leaderboard:
+                            LeaderboardView()
+                        case .notifications:
+                            NotificationsView()
+                        case .grievance:
+                            GrievanceView()
+                        case .visitlog:
+                            VisitLogView()
+                        case .stock:
+                            StockView()
+                        case .sos:
+                            SOSView()
+                        case .activity:
+                            ActivityFeedView()
                         case .camera:
                             EmptyView() // Handled above
                         }
