@@ -49,8 +49,6 @@
 	<dict>
 		<key>UIColorName</key>
 		<string>DeepNavy</string>
-		<key>UIImageName</key>
-		<string>KinematicLogo</string>
 	</dict>
 	<key>UIStatusBarStyle</key>
 	<string>UIStatusBarStyleLightContent</string>
