@@ -38,6 +38,22 @@ struct SecondaryScreenHost: View {
                             ActivityFeedView()
                         case .camera:
                             EmptyView() // Handled above
+                        case .orderHistory:
+                            OrderHistoryView()
+                        case .orderCart:
+                            OrderCartView(outletId: "", outletName: nil, visitId: nil)
+                        case .orderReview:
+                            // Reached only via NavigationLink from OrderCartView; placeholder for direct opens.
+                            OrderHistoryView()
+                        case .orderDetail:
+                            OrderHistoryView()
+                        case .paymentCollect:
+                            PaymentCollectView(outletId: "", outletName: nil)
+                        case .returns:
+                            ReturnView(outletId: "", originalInvoiceId: "")
+                        case .distributorStock, .secondarySales:
+                            // Distributor-stock + secondary-sales lightweight UIs ship in a follow-up patch.
+                            ComingSoonView()
                         }
                     }
                     .navigationBarTitleDisplayMode(.inline)
