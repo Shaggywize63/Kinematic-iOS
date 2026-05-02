@@ -315,13 +315,11 @@ struct HomeView: View {
                             Text(Session.currentUser?.name ?? "Field Executive").font(.title2).fontWeight(.bold).foregroundColor(Color(uiColor: .label))
                         }
                         Spacer()
-                        HStack(spacing: 10) {
-                            Button(action: { Task { await vm.refresh() } }) {
-                                Image(systemName: "arrow.clockwise").font(.system(size: 14, weight: .medium)).frame(width: 36, height: 36).background(.regularMaterial, in: Circle()).foregroundColor(Color(uiColor: .label))
-                            }
-                            Button(action: { appState.logout() }) {
-                                Image(systemName: "power").font(.system(size: 14, weight: .medium)).frame(width: 36, height: 36).background(Color.red.opacity(0.12), in: Circle()).foregroundColor(.red)
-                            }
+                        // Refresh button removed — pull-down on the
+                        // ScrollView (.refreshable below) is the only refresh
+                        // gesture so the toolbar stays uncluttered.
+                        Button(action: { appState.logout() }) {
+                            Image(systemName: "power").font(.system(size: 14, weight: .medium)).frame(width: 36, height: 36).background(Color.red.opacity(0.12), in: Circle()).foregroundColor(.red)
                         }
                     }
                     .padding(.horizontal, 60)
@@ -916,20 +914,58 @@ struct EmptyHistoryRow: View {
 struct ActivityFeedView: View {
     @EnvironmentObject var appState: KiniAppState
     @StateObject var vm = ActivityFeedViewModel()
+    // 20pt horizontal gutter matches the rest of the app on phones — the
+    // previous 60pt left content squeezed into the middle third of the
+    // screen and looked broken.
+    private let H: CGFloat = 20
+
     var body: some View {
         if appState.selectedOutlet != nil { StoreVisitView() }
         else {
-            ZStack {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text("Work Feed").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 20).padding(.horizontal, 60)
-                        if vm.isLoading && vm.items.isEmpty { ProgressView().tint(.red).frame(maxWidth: .infinity).padding(.top, 50) }
-                        else if vm.items.isEmpty { VStack(spacing: 15) { Image(systemName: "bubble.left.and.exclamationmark.bubble.right").font(.system(size: 50)).foregroundColor(.gray); Text("No recent activity found").foregroundColor(.gray) }.frame(maxWidth: .infinity).padding(.top, 100) }
-                        else { ForEach(vm.items) { item in ActivityRow(item: item) } }
-                        Spacer().frame(height: 120)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Work Feed")
+                                .font(.system(size: 28, weight: .black))
+                                .foregroundColor(Color(uiColor: .label))
+                            Text("Recent submissions and check-ins")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
                     }
-                }.refreshable { await vm.refresh() }
-            }.onAppear { Task { await vm.refresh() } }
+                    .padding(.top, 12)
+                    .padding(.horizontal, H)
+
+                    if vm.isLoading && vm.items.isEmpty {
+                        ProgressView().tint(.red)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 60)
+                    } else if vm.items.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
+                                .font(.system(size: 44))
+                                .foregroundColor(.gray.opacity(0.5))
+                            Text("No recent activity")
+                                .font(.subheadline).foregroundColor(.gray)
+                            Text("Pull down to refresh")
+                                .font(.caption2).foregroundColor(.gray.opacity(0.7))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 80)
+                    } else {
+                        VStack(spacing: 10) {
+                            ForEach(vm.items) { item in ActivityRow(item: item) }
+                        }
+                        .padding(.horizontal, H)
+                    }
+
+                    Spacer().frame(height: 100)
+                }
+            }
+            .refreshable { await vm.refresh() }
+            .onAppear { Task { await vm.refresh() } }
         }
     }
 }
@@ -937,12 +973,36 @@ struct ActivityFeedView: View {
 struct ActivityRow: View {
     let item: ActivityFeedItem
     var body: some View {
-        HStack(spacing: 15) {
-            Image(systemName: "doc.plaintext.fill").foregroundColor(.purple).font(.title3).padding(12).background(Color.purple.opacity(0.1)).clipShape(Circle())
-            VStack(alignment: .leading, spacing: 4) { Text(item.outletName ?? "General Submission").font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label)); Text(formatTime(item.submittedAt)).font(.caption2).foregroundColor(.gray) }
+        HStack(spacing: 14) {
+            Image(systemName: "doc.plaintext.fill")
+                .foregroundColor(.purple)
+                .font(.system(size: 18))
+                .frame(width: 40, height: 40)
+                .background(Color.purple.opacity(0.12))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.outletName ?? "General Submission")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Color(uiColor: .label))
+                    .lineLimit(1)
+                Text(formatTime(item.submittedAt))
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+            }
             Spacer()
-            if item.isConverted { Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.caption) }
-        }.padding(15).liquidGlass().padding(.horizontal, 60)
+            if item.isConverted {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.system(size: 16))
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
     }
 }
 

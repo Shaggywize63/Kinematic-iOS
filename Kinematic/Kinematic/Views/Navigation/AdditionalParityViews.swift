@@ -142,11 +142,11 @@ private struct LeaderboardRow: View {
 
 // MARK: - Notifications
 
-struct AppNotification: Codable, Identifiable {
+struct AppNotification: Identifiable {
     let id: String
-    let title: String?
-    let body: String?
-    let is_read: Bool?
+    let title: String
+    let body: String
+    let is_read: Bool
     let created_at: String?
     let type: String?
 }
@@ -155,12 +155,59 @@ struct AppNotification: Codable, Identifiable {
 class NotificationsViewModel: ObservableObject {
     @Published var items: [AppNotification] = []
     @Published var isLoading = false
+    @Published var errorMessage: String?
 
     func load() async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
-        if let result: [AppNotification] = await ParityAPI.request(path: "/notifications", as: [AppNotification].self) {
-            items = result
+
+        // Hit the raw endpoint and decode tolerantly so a single odd field
+        // (enum value, missing column, etc.) doesn't blank the whole list.
+        let baseURL = "https://kinematic-production.up.railway.app/api/v1"
+        guard let url = URL(string: "\(baseURL)/notifications") else {
+            errorMessage = "Bad URL"
+            return
+        }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 15
+        req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+        if let orgId = Session.currentUser?.orgId {
+            req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
+        }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200 else {
+                errorMessage = "Server returned \(status)"
+                return
+            }
+            // Backend wraps responses as { success, data: [...] }, but we
+            // also accept a bare top-level array to stay forgiving.
+            let json = try JSONSerialization.jsonObject(with: data, options: [])
+            let arr: [Any]
+            if let dict = json as? [String: Any], let inner = dict["data"] as? [Any] {
+                arr = inner
+            } else if let direct = json as? [Any] {
+                arr = direct
+            } else {
+                errorMessage = "Unexpected response shape"
+                return
+            }
+            items = arr.compactMap { row in
+                guard let r = row as? [String: Any] else { return nil }
+                let id = (r["id"] as? String) ?? UUID().uuidString
+                return AppNotification(
+                    id: id,
+                    title: (r["title"] as? String) ?? "Notification",
+                    body:  (r["body"]  as? String) ?? "",
+                    is_read: (r["is_read"] as? Bool) ?? false,
+                    created_at: r["created_at"] as? String,
+                    type:       r["type"] as? String
+                )
+            }
+        } catch {
+            errorMessage = "Couldn't load notifications: \(error.localizedDescription)"
         }
     }
 
@@ -177,10 +224,20 @@ struct NotificationsView: View {
         Group {
             if vm.isLoading && vm.items.isEmpty {
                 ProgressView().tint(.red)
+            } else if let err = vm.errorMessage {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 44))
+                        .foregroundColor(.orange)
+                    Text(err).font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal, 32)
+                    Button("Retry") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.red)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if vm.items.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "bell.slash.fill").font(.system(size: 50)).foregroundColor(.gray.opacity(0.4))
+                    Image(systemName: "bell.slash.fill").font(.system(size: 44)).foregroundColor(.gray.opacity(0.4))
                     Text("You're all caught up").font(.subheadline).foregroundColor(.gray)
+                    Text("Pull down to refresh").font(.caption2).foregroundColor(.gray.opacity(0.7))
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
@@ -191,8 +248,10 @@ struct NotificationsView: View {
         }
         .navigationTitle("Notifications")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Mark all read") { Task { await vm.markAllRead() } }
+            if !vm.items.isEmpty {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Mark all read") { Task { await vm.markAllRead() } }
+                }
             }
         }
         .task { await vm.load() }
@@ -204,11 +263,15 @@ private struct NotificationRow: View {
     let n: AppNotification
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Circle().fill((n.is_read == true) ? Color.gray.opacity(0.3) : Color.blue).frame(width: 8, height: 8).padding(.top, 6)
+            Circle().fill(n.is_read ? Color.gray.opacity(0.3) : Color.blue).frame(width: 8, height: 8).padding(.top, 6)
             VStack(alignment: .leading, spacing: 4) {
-                Text(n.title ?? "Notification").font(.subheadline).fontWeight((n.is_read == true) ? .regular : .bold)
-                if let body = n.body, !body.isEmpty {
-                    Text(body).font(.caption).foregroundColor(.gray)
+                Text(n.title).font(.subheadline).fontWeight(n.is_read ? .regular : .bold)
+                if !n.body.isEmpty {
+                    Text(n.body).font(.caption).foregroundColor(.gray)
+                }
+                if let ts = n.created_at {
+                    Text(ts.prefix(16).replacingOccurrences(of: "T", with: " "))
+                        .font(.caption2).foregroundColor(.gray.opacity(0.7))
                 }
             }
             Spacer()
