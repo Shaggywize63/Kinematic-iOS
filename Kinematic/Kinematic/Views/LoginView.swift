@@ -88,7 +88,21 @@ struct LoginView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
 
-                    Spacer().frame(height: 140)
+                    Spacer().frame(height: 80)
+
+                    // Brand mark + wordmark — matches splash so the
+                    // identity is consistent through the cold-start flow.
+                    HStack(spacing: 12) {
+                        Image("KinematicLogo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 44, height: 44)
+                        Text("KINEMATIC")
+                            .font(.system(size: 18, weight: .black))
+                            .tracking(3)
+                            .foregroundColor(theme.text)
+                    }
+                    .padding(.bottom, 36)
 
                     Text("Welcome back")
                         .font(Brand.Display.bold(30))
