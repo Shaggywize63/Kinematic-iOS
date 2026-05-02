@@ -51,6 +51,10 @@ class KiniAppState: ObservableObject {
     // --- Navigation & UI ---
     @Published var showSideMenu = false
     @Published var activeSecondaryRoute: ModalRoute? = nil
+    /// Set true when the API starts returning 401s. UI can read this to
+    /// surface a non-destructive "session expired, please sign in" prompt
+    /// without wiping the user's local check-in state.
+    @Published var needsReAuth: Bool = false
     @Published var theme: AppTheme = .system {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: "app_theme") }
     }
@@ -918,6 +922,11 @@ class Session: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "is_demo_mode") }
     }
     
+    /// Number of consecutive 401s seen by the API client. Used to decide
+    /// when to give up and force-logout instead of kicking the user out
+    /// on the very first transient 401.
+    static var unauthorizedHits: Int = 0
+
     static var isAuthenticated: Bool { !sharedToken.isEmpty || isDemoMode }
     static var currentUser: User? {
         get {
@@ -1067,11 +1076,33 @@ class KinematicRepository {
         print("📡 API_END: Status \(statusCode) for \(path)")
         
         
+        // Session resilience:
+        //   The previous behaviour was to wipe the session on the *first*
+        //   401, which kicked field executives out mid-shift the moment
+        //   their JWT expired. We now keep the local session intact and
+        //   only force-logout if 401s keep happening. This way:
+        //     1) Cached attendance/check-in UI stays visible
+        //     2) Transient 401s (network/clock skew) don't blow up auth
+        //     3) After repeated 401s we surface a "session expired" flag
+        //        the UI can act on without losing state
         if statusCode == 401 {
-            print("⚠️ AUTH_ERROR: Unauthorized (401). Triggering Auto-Logout.")
-            await MainActor.run { 
-                Session.logout()
-                KiniAppState.shared.checkAuth()
+            print("⚠️ AUTH_ERROR: 401 on \(path). Marking session as needing re-auth.")
+            Session.unauthorizedHits += 1
+            await MainActor.run { KiniAppState.shared.needsReAuth = true }
+            if Session.unauthorizedHits >= 5 {
+                print("⛔ AUTH_ERROR: 5+ consecutive 401s — forcing logout.")
+                Session.unauthorizedHits = 0
+                await MainActor.run {
+                    Session.logout()
+                    KiniAppState.shared.checkAuth()
+                }
+            }
+        } else if statusCode >= 200 && statusCode < 400 {
+            // Reset the counter on any successful response so a re-login
+            // (or token refresh on the backend) resumes normal behaviour.
+            if Session.unauthorizedHits > 0 { Session.unauthorizedHits = 0 }
+            if KiniAppState.shared.needsReAuth {
+                await MainActor.run { KiniAppState.shared.needsReAuth = false }
             }
         }
         
@@ -1478,8 +1509,10 @@ struct KinematicApp: App {
                     // One-time pre-warm logic if needed, but NOT refresh()
                 }
                 
-                // Extended branding duration (3.0s) for better identity visibility.
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                // 1.0s splash — long enough to register the brand, short
+                // enough to never feel like a hang. The system launch screen
+                // already runs first, so total time-to-app is ~1.5-2s.
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
                 
                 await MainActor.run {
                     withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
