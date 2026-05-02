@@ -13,7 +13,10 @@ private let kParityBaseURL = "https://kinematic-production.up.railway.app/api/v1
 
 private enum ParityAPI {
     /// GET / DELETE / no-body variant.
-    static func request<T: Decodable>(
+    /// `T: Codable` (not just `Decodable`) because the project's
+    /// `ApiResponse<T>` wrapper is declared `<T: Codable>` and we decode
+    /// into it below.
+    static func request<T: Codable>(
         path: String,
         method: String = "GET",
         as: T.Type
@@ -22,10 +25,7 @@ private enum ParityAPI {
     }
 
     /// POST / PATCH / PUT variant — body is a concrete Encodable type.
-    /// Using a separate generic instead of `(any Encodable)?` keeps the
-    /// signature compatible with older Swift toolchains and avoids the
-    /// existential-as-parameter pitfalls that confused the type checker.
-    static func request<T: Decodable, B: Encodable>(
+    static func request<T: Codable, B: Encodable>(
         path: String,
         method: String,
         body: B,
@@ -35,7 +35,7 @@ private enum ParityAPI {
         return await send(path: path, method: method, bodyData: bodyData, as: T.self)
     }
 
-    private static func send<T: Decodable>(
+    private static func send<T: Codable>(
         path: String,
         method: String,
         bodyData: Data?,
