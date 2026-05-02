@@ -31,30 +31,46 @@ struct StoreVisitView: View {
         return today.checkinAt != nil && today.checkoutAt == nil
     }
 
+    // Single source of truth for the page gutter. 20pt phones, 28pt larger.
+    private let H: CGFloat = 20
+
     var body: some View {
         ZStack {
             VibrantBackgroundView()
 
             VStack(spacing: 0) {
-                // Header (Same as before)
-                HStack {
+                // Header
+                HStack(spacing: 12) {
                     Button(action: { appState.selectedOutlet = nil }) {
                         Image(systemName: "chevron.left")
-                            .padding(12).background(Color(uiColor: .label).opacity(0.05)).clipShape(Circle()).foregroundColor(Color(uiColor: .label))
+                            .padding(12)
+                            .background(Color(uiColor: .label).opacity(0.05))
+                            .clipShape(Circle())
+                            .foregroundColor(Color(uiColor: .label))
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(appState.selectedOutlet?.storeName ?? "Store Visit").font(.headline).foregroundColor(Color(uiColor: .label))
-                        Text(appState.selectedOutlet?.address ?? "No address provided").font(.caption).foregroundColor(.gray)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(appState.selectedOutlet?.storeName ?? "Store Visit")
+                            .font(.headline)
+                            .foregroundColor(Color(uiColor: .label))
+                            .lineLimit(1)
+                        Text(appState.selectedOutlet?.address ?? "No address provided")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
                     }
-                    .padding(.leading, 8)
-                    Spacer()
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 28).padding(.top, 60).padding(.bottom, 20)
+                .padding(.horizontal, H)
+                .padding(.top, 60)
+                .padding(.bottom, 20)
 
+                // Single ScrollView with one outer horizontal padding —
+                // children no longer set their own `.padding(.horizontal,…)`,
+                // which is what was producing the inconsistent left edge
+                // (text vs. card vs. header).
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 25) {
+                    VStack(alignment: .leading, spacing: 22) {
 
-                        // Active Session Indicator (Optional top bar)
                         if isVisitActive {
                             HStack {
                                 Image(systemName: "location.fill").foregroundColor(.green)
@@ -66,14 +82,24 @@ struct StoreVisitView: View {
                                 }
                                 .font(.caption).fontWeight(.bold).foregroundColor(.red)
                             }
-                            .padding(12).background(Color.green.opacity(0.1)).cornerRadius(10).padding(.horizontal, 28)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(10)
                         }
 
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("ASSIGNED TASKS").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
-                            Text("Complete the following activities").font(.title3).fontWeight(.black).foregroundColor(Color(uiColor: .label))
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("ASSIGNED TASKS")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.gray)
+                                .tracking(1)
+                            Text("Complete the following activities")
+                                .font(.title3)
+                                .fontWeight(.black)
+                                .foregroundColor(Color(uiColor: .label))
                         }
-                        .padding(.horizontal, 28)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         if !isClockedIn {
                             VStack(spacing: 16) {
@@ -87,12 +113,11 @@ struct StoreVisitView: View {
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 32)
+                                    .padding(.horizontal, 12)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.top, 20)
                         } else {
-                            // Planogram audit card — always shown when clocked in
                             PlanogramAuditCard {
                                 if isVisitActive {
                                     showingPlanogramCapture = true
@@ -102,10 +127,9 @@ struct StoreVisitView: View {
                                     showingPlanogramCapture = true
                                 }
                             }
-                            .padding(.horizontal, 28)
 
                             if !resolvedActivities.isEmpty {
-                                VStack(spacing: 15) {
+                                VStack(spacing: 12) {
                                     ForEach(resolvedActivities) { activity in
                                         TaskCard(activity: activity) {
                                             if isVisitActive {
@@ -113,26 +137,32 @@ struct StoreVisitView: View {
                                                     appState.selectedActivity = activity
                                                 }
                                             } else {
-                                                // Trigger check-in prompt
                                                 self.isStartingVisit = true
                                                 startVisit(andOpen: activity)
                                             }
                                         }
                                     }
                                 }
-                                .padding(.horizontal, 28)
                             } else {
-                                VStack(spacing: 20) {
-                                    Image(systemName: "checklist.checked").font(.system(size: 80)).foregroundColor(.white.opacity(0.1))
-                                    Text("All caught up!\nNo specific tasks assigned for this outlet.").font(.subheadline).multilineTextAlignment(.center).foregroundColor(.gray)
+                                VStack(spacing: 16) {
+                                    Image(systemName: "checklist.checked")
+                                        .font(.system(size: 64))
+                                        .foregroundColor(.white.opacity(0.12))
+                                    Text("All caught up!\nNo specific tasks assigned for this outlet.")
+                                        .font(.subheadline)
+                                        .multilineTextAlignment(.center)
+                                        .foregroundColor(.gray)
                                 }
-                                .frame(maxWidth: .infinity).padding(.top, 40)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 32)
                             }
                         }
 
-                        // Footer padding
                         Spacer().frame(height: 100)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, H)
+                    .padding(.top, 4)
                 }
             }
 
