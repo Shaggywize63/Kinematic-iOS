@@ -23,6 +23,9 @@ struct User: Codable, Identifiable {
 enum SecondaryRoute: String, Identifiable {
     case profile, broadcast, learning, settings, camera
     case leaderboard, notifications, grievance, visitlog, stock, sos, activity
+    // Distribution module
+    case orderHistory, orderCart, orderReview, orderDetail
+    case paymentCollect, returns, distributorStock, secondarySales
     var id: String { rawValue }
 }
 

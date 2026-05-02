@@ -38,6 +38,18 @@ struct SecondaryScreenHost: View {
                             ActivityFeedView()
                         case .camera:
                             EmptyView() // Handled above
+                        case .orderHistory:
+                            OrderHistoryView()
+                        case .orderCart:
+                            OrderCartView(outletId: "", outletName: nil, visitId: nil)
+                        case .orderReview:
+                            // Reached only via NavigationLink from OrderCartView; placeholder for direct opens.
+                            OrderHistoryView()
+                        case .orderDetail:
+                            OrderHistoryView()
+                        case .paymentCollect, .returns, .distributorStock, .secondarySales:
+                            // M2/M3 modules — UI ships in those milestones.
+                            ComingSoonView()
                         }
                     }
                     .navigationBarTitleDisplayMode(.inline)
