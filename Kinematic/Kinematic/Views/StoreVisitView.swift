@@ -31,179 +31,203 @@ struct StoreVisitView: View {
         return today.checkinAt != nil && today.checkoutAt == nil
     }
 
-    // Single source of truth for the page gutter. 20pt phones, 28pt larger.
-    private let H: CGFloat = 20
-
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            VibrantBackgroundView()
+        // GeometryReader pins the layout to the actual visible screen width.
+        // The previous attempts kept failing because StoreVisitView is mounted
+        // as a sibling inside MainTabView's ZStack — that ZStack also holds a
+        // horizontal-paging ScrollView whose LazyHStack has 3 screens of
+        // intrinsic width, and SwiftUI was leaking that wider context into
+        // sibling layout. Explicitly constraining to `geo.size.width` stops
+        // the leak in every case.
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                VibrantBackgroundView()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Header
-                HStack(spacing: 12) {
-                    Button(action: { appState.selectedOutlet = nil }) {
-                        Image(systemName: "chevron.left")
-                            .padding(12)
-                            .background(Color(uiColor: .label).opacity(0.05))
-                            .clipShape(Circle())
-                            .foregroundColor(Color(uiColor: .label))
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(appState.selectedOutlet?.storeName ?? "Store Visit")
-                            .font(.headline)
-                            .foregroundColor(Color(uiColor: .label))
-                            .lineLimit(1)
-                        Text(appState.selectedOutlet?.address ?? "No address provided")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
+                // Single content column — explicit width so children always
+                // know what canvas they're working against.
+                VStack(alignment: .leading, spacing: 0) {
+                    headerRow
+                    scrollContent
                 }
-                .padding(.horizontal, H)
-                .padding(.top, 60)
-                .padding(.bottom, 20)
+                .frame(width: geo.size.width, alignment: .topLeading)
 
-                // Single ScrollView with one outer horizontal padding —
-                // children no longer set their own `.padding(.horizontal,…)`,
-                // which is what was producing the inconsistent left edge
-                // (text vs. card vs. header).
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-
-                        if isVisitActive {
-                            HStack {
-                                Image(systemName: "location.fill").foregroundColor(.green)
-                                Text("Visit Active").font(.caption).fontWeight(.bold).foregroundColor(.green)
-                                Spacer()
-                                Button("END VISIT") {
-                                    appState.activeVisitId = nil
-                                    appState.activeVisitOutletId = nil
-                                }
-                                .font(.caption).fontWeight(.bold).foregroundColor(.red)
-                            }
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.green.opacity(0.1))
-                            .cornerRadius(10)
-                        }
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("ASSIGNED TASKS")
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundColor(.gray)
-                                .tracking(1)
-                            Text("Complete the following activities")
-                                .font(.title3)
-                                .fontWeight(.black)
+                // Loading Overlay
+                if isStartingVisit {
+                    ZStack {
+                        Color(uiColor: .systemBackground).opacity(0.8).ignoresSafeArea()
+                        VStack(spacing: 20) {
+                            ProgressView().tint(.red).scaleEffect(1.5)
+                            Text("Starting Visit & Validating Location...")
                                 .foregroundColor(Color(uiColor: .label))
+                                .font(.headline)
+                            Button("CANCEL") { isStartingVisit = false }
+                                .font(.caption).fontWeight(.bold).foregroundColor(.red)
+                                .padding(.top, 10)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        if !isClockedIn {
-                            VStack(spacing: 16) {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 56))
-                                    .foregroundColor(.secondary)
-                                Text("Clock-in Required")
-                                    .font(.title3).fontWeight(.bold)
-                                    .foregroundColor(Color(uiColor: .label))
-                                Text("Please mark your daily attendance first to perform activities.")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 12)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 20)
-                        } else {
-                            PlanogramAuditCard {
-                                if isVisitActive {
-                                    showingPlanogramCapture = true
-                                } else {
-                                    self.isStartingVisit = true
-                                    startVisit()
-                                    showingPlanogramCapture = true
-                                }
-                            }
-
-                            if !resolvedActivities.isEmpty {
-                                VStack(spacing: 12) {
-                                    ForEach(resolvedActivities) { activity in
-                                        TaskCard(activity: activity) {
-                                            if isVisitActive {
-                                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                                    appState.selectedActivity = activity
-                                                }
-                                            } else {
-                                                self.isStartingVisit = true
-                                                startVisit(andOpen: activity)
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                VStack(spacing: 16) {
-                                    Image(systemName: "checklist.checked")
-                                        .font(.system(size: 64))
-                                        .foregroundColor(.white.opacity(0.12))
-                                    Text("All caught up!\nNo specific tasks assigned for this outlet.")
-                                        .font(.subheadline)
-                                        .multilineTextAlignment(.center)
-                                        .foregroundColor(.gray)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.top, 32)
-                            }
-                        }
-
-                        Spacer().frame(height: 100)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, H)
-                    .padding(.top, 4)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                }
+
+                // Activity Form Overlay
+                if let activity = appState.selectedActivity {
+                    ActivitySubmissionView(activity: activity)
+                        .transition(.move(edge: .trailing))
+                        .zIndex(10)
                 }
             }
-
-            // Loading Overlay when starting visit
-            if isStartingVisit {
-                ZStack {
-                    Color(uiColor: .systemBackground).opacity(0.8).ignoresSafeArea()
-                    VStack(spacing: 20) {
-                        ProgressView().tint(.red).scaleEffect(1.5)
-                        Text("Starting Visit & Validating Location...")
-                            .foregroundColor(Color(uiColor: .label))
-                            .font(.headline)
-
-                        Button("CANCEL") {
-                            isStartingVisit = false
-                        }
-                        .font(.caption).fontWeight(.bold).foregroundColor(.red)
-                        .padding(.top, 10)
-                    }
-                }
-            }
-            // Activity Form Overlay (Proper Screen Transition)
-            if let activity = appState.selectedActivity {
-                ActivitySubmissionView(activity: activity)
-                    .transition(.move(edge: .trailing)) // "Push" from right
-                    .zIndex(10)
-            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .clipped()
         }
-        // Pin to the full screen explicitly. StoreVisitView is presented
-        // as an overlay inside MainTabView's ZStack (which also contains a
-        // horizontal-paging ScrollView whose intrinsic width is multiple
-        // screens wide). Without these constraints the inner content can
-        // inherit a wider sizing context and end up clipped on the left.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .ignoresSafeArea()
         .fullScreenCover(isPresented: $showingPlanogramCapture) {
             PlanogramCaptureView(
                 storeId: appState.selectedOutlet?.id,
                 visitId: appState.activeVisitId,
-                planogramId: nil // backend resolves from store assignment
+                planogramId: nil
             )
+        }
+    }
+
+    // MARK: - Sub-views
+
+    /// Top header row: back chevron + outlet name/address.
+    /// Uses explicit `.padding(.leading, 20)` so the chevron is never
+    /// flush against the screen edge.
+    @ViewBuilder
+    private var headerRow: some View {
+        HStack(spacing: 12) {
+            Button(action: { appState.selectedOutlet = nil }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
+                    .padding(10)
+                    .background(Color(uiColor: .label).opacity(0.06))
+                    .clipShape(Circle())
+                    .foregroundColor(Color(uiColor: .label))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(appState.selectedOutlet?.storeName ?? "Store Visit")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(Color(uiColor: .label))
+                    .lineLimit(1)
+                Text(appState.selectedOutlet?.address ?? "No address provided")
+                    .font(.system(size: 12))
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 20)
+        .padding(.trailing, 20)
+        .padding(.top, 56)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Scrolling content column. Uses explicit `.padding(.leading, 20)` and
+    /// `.padding(.trailing, 20)` so left and right edges are independently
+    /// controlled (some `.padding(.horizontal, …)` propagation issues we
+    /// hit earlier).
+    @ViewBuilder
+    private var scrollContent: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 20) {
+
+                if isVisitActive {
+                    HStack {
+                        Image(systemName: "location.fill").foregroundColor(.green)
+                        Text("Visit Active")
+                            .font(.caption).fontWeight(.bold).foregroundColor(.green)
+                        Spacer()
+                        Button("END VISIT") {
+                            appState.activeVisitId = nil
+                            appState.activeVisitOutletId = nil
+                        }
+                        .font(.caption).fontWeight(.bold).foregroundColor(.red)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(10)
+                }
+
+                // Section heading — explicit alignment so it never sizes to
+                // intrinsic content width.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("ASSIGNED TASKS")
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(1.2)
+                        .foregroundColor(.gray)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Complete the following activities")
+                        .font(.system(size: 20, weight: .heavy))
+                        .foregroundColor(Color(uiColor: .label))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if !isClockedIn {
+                    VStack(spacing: 14) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 52))
+                            .foregroundColor(.secondary)
+                        Text("Clock-in Required")
+                            .font(.title3).fontWeight(.bold)
+                            .foregroundColor(Color(uiColor: .label))
+                        Text("Please mark your daily attendance first to perform activities.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+                } else {
+                    PlanogramAuditCard {
+                        if isVisitActive {
+                            showingPlanogramCapture = true
+                        } else {
+                            self.isStartingVisit = true
+                            startVisit()
+                            showingPlanogramCapture = true
+                        }
+                    }
+
+                    if !resolvedActivities.isEmpty {
+                        VStack(spacing: 12) {
+                            ForEach(resolvedActivities) { activity in
+                                TaskCard(activity: activity) {
+                                    if isVisitActive {
+                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                            appState.selectedActivity = activity
+                                        }
+                                    } else {
+                                        self.isStartingVisit = true
+                                        startVisit(andOpen: activity)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        VStack(spacing: 16) {
+                            Image(systemName: "checklist.checked")
+                                .font(.system(size: 56))
+                                .foregroundColor(.white.opacity(0.12))
+                            Text("All caught up!\nNo specific tasks assigned for this outlet.")
+                                .font(.subheadline)
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(.gray)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 28)
+                    }
+                }
+
+                Spacer().frame(height: 120)
+            }
+            .padding(.leading, 20)
+            .padding(.trailing, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -213,7 +237,7 @@ struct StoreVisitView: View {
         let lng = LocationTrackingService.shared.lastLocation?.coordinate.longitude ?? 0
 
         isStartingVisit = true
-        KiniAppState.shared.visitErrorMessage = nil // Reset error
+        KiniAppState.shared.visitErrorMessage = nil
 
         let visitTask = Task {
             let result = await KinematicRepository.shared.logVisit(outletId: outletId, lat: lat, lng: lng)
@@ -225,7 +249,6 @@ struct StoreVisitView: View {
                             KiniAppState.shared.activeVisitOutletId = outletId
                             self.isStartingVisit = false
                         }
-                        // Non-animated state change for the sheet to ensure reliability
                         if let activity = activity {
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                 appState.selectedActivity = activity
@@ -239,9 +262,8 @@ struct StoreVisitView: View {
             }
         }
 
-        // Timeout Task
         Task {
-            try? await Task.sleep(nanoseconds: 12_000_000_000) // 12 seconds
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
             if self.isStartingVisit {
                 visitTask.cancel()
                 await MainActor.run {
@@ -282,23 +304,32 @@ struct TaskCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 15) {
+            HStack(spacing: 14) {
                 ZStack {
-                    Circle().fill(activity.status == "completed" ? Color.green.opacity(0.1) : Color.red.opacity(0.1)).frame(width: 50, height: 50)
-                    Image(systemName: activity.status == "completed" ? "checkmark.circle.fill" : "doc.text.fill").font(.title3).foregroundColor(activity.status == "completed" ? .green : .red)
+                    Circle()
+                        .fill(activity.status == "completed" ? Color.green.opacity(0.12) : Color.red.opacity(0.12))
+                        .frame(width: 46, height: 46)
+                    Image(systemName: activity.status == "completed" ? "checkmark.circle.fill" : "doc.text.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(activity.status == "completed" ? .green : .red)
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(activity.name ?? "Unknown Activity").font(.headline).foregroundColor(Color(uiColor: .label))
-                    Text((activity.status ?? "pending").uppercased()).font(.system(size: 10, weight: .black)).foregroundColor(activity.status == "completed" ? .green : .orange)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(activity.name ?? "Unknown Activity")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .label))
+                    Text((activity.status ?? "pending").uppercased())
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(activity.status == "completed" ? .green : .orange)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption).foregroundColor(.gray)
             }
-            .padding(20)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(.ultraThinMaterial)
-            .cornerRadius(20)
+            .cornerRadius(18)
             .overlay(
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: 18)
                     .stroke(
                         LinearGradient(
                             colors: [.white.opacity(0.5), .clear, .black.opacity(0.1)],
@@ -310,6 +341,7 @@ struct TaskCard: View {
             )
             .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -318,18 +350,18 @@ private struct PlanogramAuditCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 15) {
+            HStack(spacing: 14) {
                 ZStack {
                     Circle()
                         .fill(Color.blue.opacity(0.12))
-                        .frame(width: 50, height: 50)
+                        .frame(width: 46, height: 46)
                     Image(systemName: "square.grid.3x3.fill")
-                        .font(.title3)
+                        .font(.system(size: 18))
                         .foregroundColor(.blue)
                 }
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("Planogram audit")
-                        .font(.headline)
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Color(uiColor: .label))
                     Text("CAPTURE SHELF · AI COMPLIANCE")
                         .font(.system(size: 10, weight: .black))
@@ -340,11 +372,12 @@ private struct PlanogramAuditCard: View {
                     .font(.caption)
                     .foregroundColor(.gray)
             }
-            .padding(20)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(.ultraThinMaterial)
-            .cornerRadius(20)
+            .cornerRadius(18)
             .overlay(
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: 18)
                     .stroke(
                         LinearGradient(
                             colors: [.white.opacity(0.5), .clear, .black.opacity(0.1)],
@@ -356,5 +389,6 @@ private struct PlanogramAuditCard: View {
             )
             .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
         }
+        .buttonStyle(.plain)
     }
 }
