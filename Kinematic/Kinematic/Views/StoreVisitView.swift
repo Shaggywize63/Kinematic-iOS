@@ -35,7 +35,7 @@ struct StoreVisitView: View {
     private let H: CGFloat = 20
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             VibrantBackgroundView()
 
             VStack(spacing: 0) {
@@ -191,6 +191,13 @@ struct StoreVisitView: View {
                     .zIndex(10)
             }
         }
+        // Pin to the full screen explicitly. StoreVisitView is presented
+        // as an overlay inside MainTabView's ZStack (which also contains a
+        // horizontal-paging ScrollView whose intrinsic width is multiple
+        // screens wide). Without these constraints the inner content can
+        // inherit a wider sizing context and end up clipped on the left.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .ignoresSafeArea()
         .fullScreenCover(isPresented: $showingPlanogramCapture) {
             PlanogramCaptureView(
                 storeId: appState.selectedOutlet?.id,
