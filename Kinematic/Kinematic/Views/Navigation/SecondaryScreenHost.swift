@@ -47,8 +47,10 @@ struct SecondaryScreenHost: View {
                             OrderHistoryView()
                         case .orderDetail:
                             OrderHistoryView()
-                        case .paymentCollect, .returns, .distributorStock, .secondarySales:
-                            // M2/M3 modules — UI ships in those milestones.
+                        case .paymentCollect:
+                            PaymentCollectView(outletId: "", outletName: nil)
+                        case .returns, .distributorStock, .secondarySales:
+                            // M3 modules — UI ships in that milestone.
                             ComingSoonView()
                         }
                     }
