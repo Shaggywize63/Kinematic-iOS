@@ -1,22 +1,47 @@
 import SwiftUI
 import Foundation
+import Combine
 
 // MARK: - API helper for parity views
 // These views need ad-hoc API access. We replicate the auth pattern from
 // KinematicRepository.performRequest (Bearer + X-Org-Id) without coupling to
 // the private method.
 
+/// Production API base. Mirrors `KinematicRepository.baseURL`.
+/// Keep these two constants in sync if the backend host moves.
+private let kParityBaseURL = "https://kinematic-production.up.railway.app/api/v1"
+
 private enum ParityAPI {
+    /// GET / DELETE / no-body variant.
     static func request<T: Decodable>(
         path: String,
         method: String = "GET",
-        body: Encodable? = nil,
         as: T.Type
     ) async -> T? {
-        let baseURL = "https://api.kinematic.app/api/v1"
-        guard var components = URLComponents(string: "\(baseURL)\(path)") else { return nil }
-        guard let url = components.url else { return nil }
+        return await send(path: path, method: method, bodyData: nil, as: T.self)
+    }
 
+    /// POST / PATCH / PUT variant — body is a concrete Encodable type.
+    /// Using a separate generic instead of `(any Encodable)?` keeps the
+    /// signature compatible with older Swift toolchains and avoids the
+    /// existential-as-parameter pitfalls that confused the type checker.
+    static func request<T: Decodable, B: Encodable>(
+        path: String,
+        method: String,
+        body: B,
+        as: T.Type
+    ) async -> T? {
+        let bodyData = try? JSONEncoder().encode(body)
+        return await send(path: path, method: method, bodyData: bodyData, as: T.self)
+    }
+
+    private static func send<T: Decodable>(
+        path: String,
+        method: String,
+        bodyData: Data?,
+        as: T.Type
+    ) async -> T? {
+        guard let url = URL(string: "\(kParityBaseURL)\(path)") else { return nil }
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = 15
@@ -24,31 +49,22 @@ private enum ParityAPI {
         if let orgId = Session.currentUser?.orgId {
             req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
         }
-        if let body = body {
+        if let bodyData = bodyData {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONEncoder().encode(AnyEncodable(body))
+            req.httpBody = bodyData
         }
         do {
             let (data, _) = try await URLSession.shared.data(for: req)
-            // The backend wraps responses as { success, data, ... }
+            // Backend wraps responses as { success, data, ... }
             if let wrapper = try? JSONDecoder().decode(ApiResponse<T>.self, from: data) {
                 return wrapper.data
             }
-            return try JSONDecoder().decode(T.self, from: data)
+            return try? JSONDecoder().decode(T.self, from: data)
         } catch {
             print("ParityAPI \(method) \(path) failed: \(error)")
             return nil
         }
     }
-}
-
-// Type-erased Encodable (Swift's Encodable can't be used directly as a generic
-// constraint inside `request` because closures can't carry existentials cleanly
-// across actor boundaries on older toolchains).
-private struct AnyEncodable: Encodable {
-    private let _encode: (Encoder) throws -> Void
-    init<E: Encodable>(_ wrapped: E) { _encode = wrapped.encode }
-    func encode(to encoder: Encoder) throws { try _encode(encoder) }
 }
 
 // MARK: - Leaderboard
