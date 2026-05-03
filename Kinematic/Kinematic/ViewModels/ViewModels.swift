@@ -284,26 +284,55 @@ class AttendanceViewModel: ObservableObject {
         
         guard await checkSecurity(action: action, lat: loc.coordinate.latitude, lng: loc.coordinate.longitude) else { return }
         
-        await MainActor.run { 
+        // OPTIMISTIC UI — flip `today` to the new state immediately so the
+        // user sees "Checked In" / "Checked Out" the moment they commit, even
+        // while the selfie upload + markAttendance round-trip is in flight.
+        // Saves the perceived 1.5–2 s wait on slow networks. We hold the
+        // previous value so we can revert on failure.
+        let previousToday = await MainActor.run { () -> AttendanceRecord? in
+            return self.today
+        }
+        await MainActor.run {
             isLoading = true
             message = ""
-            // Anticipatory Lock: Set action time START to protect state during upload
             self.lastAttendanceActionTime = Date()
+
+            let nowIso = ISO8601DateFormatter().string(from: Date())
+            var optimistic = previousToday ?? AttendanceRecord(
+                id: nil, date: nil, status: nil,
+                checkinAt: nil, checkoutAt: nil,
+                totalHours: 0, checkinSelfieUrl: nil, checkoutSelfieUrl: nil
+            )
+            if isCheckIn {
+                optimistic.status = "present"
+                if optimistic.firstCheckinAt == nil { optimistic.firstCheckinAt = nowIso }
+                optimistic.checkinAt = nowIso
+                optimistic.checkoutAt = nil
+            } else {
+                optimistic.status = "checked_out"
+                optimistic.checkoutAt = nowIso
+                optimistic.lastCheckoutAt = nowIso
+            }
+            self.today = optimistic
+            KiniAppState.shared.today = optimistic
         }
-        
+
         // Integrate Battery Telemetry safely on MainActor
         let batteryLevel = await MainActor.run {
             UIDevice.current.isBatteryMonitoringEnabled = true
             return Int(UIDevice.current.batteryLevel * 100)
         }
-        
+
         var selfieUrl: String? = nil
         if let img = selfie {
             selfieUrl = await KinematicRepository.shared.uploadImage(image: img, type: "selfie")
             if selfieUrl == nil {
                 await MainActor.run {
+                    self.today = previousToday                       // rollback
+                    KiniAppState.shared.today = previousToday
                     isLoading = false
                     message = "Failed to upload selfie"
+                    self.lastAttendanceActionTime = nil
                 }
                 return
             }
@@ -312,8 +341,11 @@ class AttendanceViewModel: ObservableObject {
             let isExecutive = Session.currentUser?.role.lowercased().contains("executive") ?? false
             if isExecutive {
                 await MainActor.run {
+                    self.today = previousToday                       // rollback
+                    KiniAppState.shared.today = previousToday
                     isLoading = false
                     message = "Selfie is required for Executives"
+                    self.lastAttendanceActionTime = nil
                 }
                 return
             }
@@ -366,6 +398,8 @@ class AttendanceViewModel: ObservableObject {
                     LocationTrackingService.shared.stopTracking()
                 }
             } else {
+                self.today = previousToday                           // rollback optimistic
+                KiniAppState.shared.today = previousToday
                 isLoading = false
                 message = err ?? "Submission failed"
                 self.lastAttendanceActionTime = nil // Release lock on failure
