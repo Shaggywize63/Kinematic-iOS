@@ -201,7 +201,7 @@ final class CRMService {
     }
 
     // MARK: Analytics
-    func dashboardSummary() async throws -> AnalyticsSummary {
+    func dashboardSummary() async throws -> CRMAnalyticsSummary {
         try await get("/api/v1/crm/analytics/dashboard-summary")
     }
     func funnel(pipelineId: String? = nil) async throws -> [FunnelStageMetric] {
