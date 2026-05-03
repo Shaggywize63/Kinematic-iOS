@@ -3,7 +3,12 @@ import SwiftUI
 struct SideMenuView: View {
     @ObservedObject var appState = KiniAppState.shared
     @Binding var isOpen: Bool
-    
+    /// CRM is presented as its own full-screen module (mirrors Distribution).
+    /// We keep a local presentation flag because `SecondaryRoute` lives in
+    /// KinematicApp.swift and we don't want to patch that large file just to
+    /// add one route case.
+    @State private var showCRM = false
+
     var body: some View {
         ZStack {
             if isOpen {
@@ -21,6 +26,16 @@ struct SideMenuView: View {
             }
         }
         .allowsHitTesting(isOpen)
+        .fullScreenCover(isPresented: $showCRM) {
+            NavigationStack {
+                CRMHomeView()
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close") { showCRM = false }
+                        }
+                    }
+            }
+        }
     }
     
     private var sidebarContent: some View {
@@ -41,15 +56,25 @@ struct SideMenuView: View {
             Spacer().frame(height: 32)
             
             // Priority 3: Navigation Menu
-            VStack(spacing: 8) {
-                MenuButton(icon: "house.fill", title: "Dashboard", isSelected: appState.selectedTab == 0, color: .blue) {
-                    withAnimation { isOpen = false; appState.selectedTab = 0 }
-                }
-                
-                MenuButton(icon: "person.fill", title: "My Profile", isSelected: false, color: .orange) {
-                    withAnimation { isOpen = false }
-                    appState.activeSecondaryRoute = ModalRoute(route: .profile)
-                }
+            ScrollView {
+                VStack(spacing: 8) {
+                    MenuButton(icon: "house.fill", title: "Dashboard", isSelected: appState.selectedTab == 0, color: .blue) {
+                        withAnimation { isOpen = false; appState.selectedTab = 0 }
+                    }
+
+                    // ── CRM Module (parity with Android + web) ──────────────
+                    MenuButton(icon: "person.2.crop.square.stack.fill", title: "CRM", isSelected: false, color: .indigo) {
+                        withAnimation { isOpen = false }
+                        // Defer presentation until the menu close animation finishes
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showCRM = true
+                        }
+                    }
+
+                    MenuButton(icon: "person.fill", title: "My Profile", isSelected: false, color: .orange) {
+                        withAnimation { isOpen = false }
+                        appState.activeSecondaryRoute = ModalRoute(route: .profile)
+                    }
                 
                 MenuButton(icon: "megaphone.fill", title: "Broadcasts", isSelected: false, color: .red) {
                     withAnimation { isOpen = false }
@@ -100,11 +125,10 @@ struct SideMenuView: View {
                     withAnimation { isOpen = false }
                     appState.activeSecondaryRoute = ModalRoute(route: .settings)
                 }
+                }
+                .padding(.leading, 44) // 44 + 16 (MenuButton padding) = 60px Leading alignment
+                .padding(.trailing, 12)
             }
-            .padding(.leading, 44) // 44 + 16 (MenuButton padding) = 60px Leading alignment
-            .padding(.trailing, 12)
-            
-            Spacer()
             
             Divider()
                 .padding(.leading, 60)
