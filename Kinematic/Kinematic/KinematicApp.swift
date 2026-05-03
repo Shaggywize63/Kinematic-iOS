@@ -1297,7 +1297,11 @@ class KinematicRepository {
         let boundary = "Boundary-\(UUID().uuidString)"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         
-        guard let imageData = image.jpegData(compressionQuality: 0.5) else { return nil }
+        // Resize + iteratively compress so the upload payload is ~50–150 KB
+        // instead of the 1.5–2 MB an iPhone selfie produces. Cuts upload time
+        // ~5-10× on 3G/4G — selfie upload is the biggest chunk of perceived
+        // attendance latency.
+        guard let imageData = Self.compressForUpload(image, maxDim: 1280, targetKB: 150) else { return nil }
         
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
@@ -1473,6 +1477,37 @@ class KinematicRepository {
             RouteOutlet(rawId: "o2", storeId: "s2", storeName: "Global Mart", address: "Powai, Mumbai", status: "visited", activityId: "form_123", activities: [])
         ]
         return [RoutePlan(id: "p1", planDate: "2024-04-08", status: "active", activityId: "form_123", outlets: outlets)]
+    }
+
+    /// Resize the longest side to `maxDim` and iteratively lower JPEG quality
+    /// until the result is below `targetKB`. iPhone selfies are 12 MP / ~2 MB
+    /// out of the camera; this typically lands at 50–150 KB while staying
+    /// readable for face-recognition / ID purposes. Hot path on attendance.
+    static func compressForUpload(_ image: UIImage, maxDim: CGFloat = 1280, targetKB: Int = 150) -> Data? {
+        // 1. Resize so neither dimension exceeds maxDim. Aspect-ratio preserved.
+        let resized: UIImage
+        let w = image.size.width, h = image.size.height
+        let longest = max(w, h)
+        if longest > maxDim {
+            let scale = maxDim / longest
+            let newSize = CGSize(width: w * scale, height: h * scale)
+            UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+            resized = UIGraphicsGetImageFromCurrentImageContext() ?? image
+            UIGraphicsEndImageContext()
+        } else {
+            resized = image
+        }
+
+        // 2. Iteratively reduce quality until under target, floor at 0.4.
+        var quality: CGFloat = 0.8
+        let targetBytes = targetKB * 1024
+        var data = resized.jpegData(compressionQuality: quality)
+        while let d = data, d.count > targetBytes, quality > 0.4 {
+            quality -= 0.1
+            data = resized.jpegData(compressionQuality: quality)
+        }
+        return data
     }
 }
 
