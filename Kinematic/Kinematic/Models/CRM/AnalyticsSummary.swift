@@ -1,6 +1,8 @@
 import Foundation
 
-struct AnalyticsSummary: Codable, Hashable {
+/// Renamed to avoid collision with the existing `AnalyticsSummary` declared in
+/// `KinematicApp.swift` (used for the field-rep TFF dashboard).
+struct CRMAnalyticsSummary: Codable, Hashable {
     let totalLeads: Int?
     let newLeadsThisWeek: Int?
     let openDeals: Int?

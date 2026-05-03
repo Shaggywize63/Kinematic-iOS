@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class CRMDashboardViewModel: ObservableObject {
-    @Published var summary: AnalyticsSummary?
+    @Published var summary: CRMAnalyticsSummary?
     @Published var funnel: [FunnelStageMetric] = []
     @Published var winRate: [WinRateBucket] = []
     @Published var forecast: [ForecastPoint] = []
