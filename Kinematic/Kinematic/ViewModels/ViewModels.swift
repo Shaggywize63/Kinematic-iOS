@@ -351,14 +351,34 @@ class AttendanceViewModel: ObservableObject {
             }
         }
         
-        let (success, err, record) = await KinematicRepository.shared.markAttendance(
-            isCheckIn: isCheckIn, 
-            lat: loc.coordinate.latitude, 
-            lng: loc.coordinate.longitude, 
+        // Persist the intent to disk BEFORE the network call, with a stable
+        // Idempotency-Key. If the network is up, we sync inline and mark
+        // synced. If it fails, the row stays queued for a foreground/
+        // reachability flush — the user keeps the green "checked in" state
+        // (already optimistic) and never has to retry.
+        let pending = await AttendanceCache.shared.enqueue(
+            kind: isCheckIn ? "checkin" : "checkout",
+            lat: loc.coordinate.latitude,
+            lng: loc.coordinate.longitude,
             selfieUrl: selfieUrl,
-            battery: batteryLevel >= 0 ? batteryLevel : nil // -100 if unknown
+            battery: batteryLevel >= 0 ? batteryLevel : nil
         )
-        
+
+        let (success, err, record) = await KinematicRepository.shared.markAttendance(
+            isCheckIn: isCheckIn,
+            lat: loc.coordinate.latitude,
+            lng: loc.coordinate.longitude,
+            selfieUrl: selfieUrl,
+            battery: batteryLevel >= 0 ? batteryLevel : nil,
+            idempotencyKey: pending.idempotencyKey
+        )
+
+        if success {
+            await AttendanceCache.shared.markSynced(pending.id)
+        } else {
+            await AttendanceCache.shared.recordError(pending.id, error: err ?? "unknown")
+        }
+
         await MainActor.run {
             if success {
                 // ── ATOMIC STATE PROTECTION ─────────────────────────
@@ -398,11 +418,18 @@ class AttendanceViewModel: ObservableObject {
                     LocationTrackingService.shared.stopTracking()
                 }
             } else {
-                self.today = previousToday                           // rollback optimistic
-                KiniAppState.shared.today = previousToday
+                // Don't rollback — the row is queued; the user's intent is
+                // captured and we'll sync on next foreground/reachability.
+                // Just surface a soft toast and clear the local lock.
                 isLoading = false
-                message = err ?? "Submission failed"
-                self.lastAttendanceActionTime = nil // Release lock on failure
+                message = "Saved offline — will sync when network is available"
+                self.selfie = nil
+                self.lastAttendanceActionTime = Date()
+                if isCheckIn {
+                    let stamp = String(format: "%.4f, %.4f", loc.coordinate.latitude, loc.coordinate.longitude)
+                    checkinLocationStamp = stamp
+                    UserDefaults.standard.set(stamp, forKey: "checkin_location_stamp")
+                }
             }
         }
         

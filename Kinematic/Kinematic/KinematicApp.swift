@@ -1041,26 +1041,30 @@ class KinematicRepository {
         _ path: String,
         method: String = "GET",
         body: Data? = nil,
-        queryItems: [URLQueryItem]? = nil
+        queryItems: [URLQueryItem]? = nil,
+        idempotencyKey: String? = nil
     ) async throws -> ApiResponse<T>? {
         var urlComponents = URLComponents(string: "\(baseURL)\(path)")
         if let queryItems = queryItems {
             urlComponents?.queryItems = queryItems
         }
-        
+
         guard let url = urlComponents?.url else {
             print("🚩 ERROR: Invalid URL for path \(path)")
             return nil
         }
-        
+
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = 15.0 // Prevent hangs
         req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
-        
+
         // --- PROD SYNC: Inject X-Org-Id if available ---
         if let orgId = Session.currentUser?.orgId {
             req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
+        }
+        if let key = idempotencyKey {
+            req.setValue(key, forHTTPHeaderField: "Idempotency-Key")
         }
         
         if let body = body {
@@ -1332,19 +1336,20 @@ class KinematicRepository {
         }
     }
     
-    func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil) async -> (Bool, String?, AttendanceRecord?) {
+    func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil, idempotencyKey: String? = nil) async -> (Bool, String?, AttendanceRecord?) {
         let endpoint = isCheckIn ? "/attendance/checkin" : "/attendance/checkout"
-        
+
         do {
             var payload: [String: Any] = ["latitude": lat, "longitude": lng]
             if let selfie = selfieUrl { payload["selfie_url"] = selfie }
             if let battery = battery { payload["battery_percentage"] = battery }
-            
+
             let body = try? JSONSerialization.data(withJSONObject: payload)
             let res: ApiResponse<AttendanceRecord>? = try await performRequest(
                 endpoint,
                 method: "POST",
-                body: body
+                body: body,
+                idempotencyKey: idempotencyKey
             )
             if res?.success == true { return (true, nil, res?.data) }
             return (false, res?.error ?? res?.message ?? "Failed to mark attendance", nil)
@@ -1515,14 +1520,15 @@ class KinematicRepository {
 struct KinematicApp: App {
     @StateObject private var locationService = LocationTrackingService.shared
     @StateObject private var appState = KiniAppState.shared
+    @Environment(\.scenePhase) private var scenePhase
     @State private var isSplashScreenActive = true
     @State private var isDataReady = false
-    
+
     init() {
         print("🚀 APP_LIFE: KinematicApp launched")
         UITabBar.appearance().isHidden = true
     }
-    
+
     var body: some Scene {
         WindowGroup {
             ZStack {
@@ -1536,6 +1542,14 @@ struct KinematicApp: App {
                 }
             }
             .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
+            .onChange(of: scenePhase) { phase in
+                // Drain queued attendance + distribution writes whenever the
+                // app comes back to the foreground. No-ops if the queue is
+                // empty or the user is offline.
+                if phase == .active && Session.isAuthenticated {
+                    Task { await AttendanceCache.shared.flush() }
+                }
+            }
             .task {
                 UIDevice.current.isBatteryMonitoringEnabled = true
                 locationService.requestPermissions()
