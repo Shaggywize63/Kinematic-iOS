@@ -7,7 +7,7 @@ struct EmailComposeView: View {
 
     @State private var to = ""
     @State private var subject = ""
-    @State private var body = ""
+    @State private var messageBody = ""
     @State private var templateId: String? = nil
 
     var body: some View {
@@ -27,14 +27,14 @@ struct EmailComposeView: View {
                         .onChange(of: templateId) { newValue in
                             if let id = newValue, let t = templates.first(where: { $0.id == id }) {
                                 subject = t.subject
-                                body = t.body
+                                messageBody = t.body
                             }
                         }
                     }
                 }
                 Section("Message") {
                     TextField("Subject", text: $subject)
-                    TextEditor(text: $body).frame(minHeight: 160)
+                    TextEditor(text: $messageBody).frame(minHeight: 160)
                 }
             }
             .navigationTitle("New Email")
@@ -43,7 +43,7 @@ struct EmailComposeView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Send") {
                         Task {
-                            await onSend(to, subject, body, templateId)
+                            await onSend(to, subject, messageBody, templateId)
                             dismiss()
                         }
                     }.disabled(to.isEmpty || subject.isEmpty)

@@ -45,29 +45,28 @@ struct DistributionAPI {
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(status) {
-            let serverMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            let serverMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?("error") as? String
             throw DistributionAPIError.http(status, serverMsg)
         }
         return data
     }
 
+    private struct Envelope<U: Decodable>: Decodable {
+        let success: Bool
+        let data: U
+    }
+
     private func decode<T: Decodable>(_ data: Data) throws -> T {
         let decoder = JSONDecoder()
-        struct Envelope<U: Decodable>: Decodable {
-            let success: Bool
-            let data: U
-        }
         do {
             let env = try decoder.decode(Envelope<T>.self, from: data)
             return env.data
         } catch {
-            // Some endpoints respond as `{ data: T }` only — already covered above.
-            // Try direct.
             return try decoder.decode(T.self, from: data)
         }
     }
 
-    // ── Reads ────────────────────────────────────────────────────────
+    // ── Reads ────────────────────────────────────────────────────────────────
     func routeToday() async throws -> RouteToday {
         let data = try await request("/salesman/route/today")
         return try decode(data)
@@ -86,7 +85,7 @@ struct DistributionAPI {
         return try decode(data)
     }
 
-    // ── Mutations ────────────────────────────────────────────────────
+    // ── Mutations ────────────────────────────────────────────────────────────────
     func preview(_ input: OrderInput) async throws -> OrderPreview {
         let data = try await request("/salesman/orders/preview", method: "POST", body: input)
         return try decode(data)
