@@ -178,12 +178,6 @@ final class CRMService {
         return try await get("/api/v1/crm/emails", query: q)
     }
 
-    // MARK: Campaigns
-    func listCampaigns() async throws -> [Campaign] { try await get("/api/v1/crm/campaigns") }
-    func createCampaign(_ body: [String: Any]) async throws -> Campaign {
-        try await postJSON("/api/v1/crm/campaigns", body: body)
-    }
-
     // MARK: Assignment / Territories / Custom Fields (read-mostly)
     func listAssignmentRules() async throws -> [AssignmentRule] {
         try await get("/api/v1/crm/assignment-rules")
