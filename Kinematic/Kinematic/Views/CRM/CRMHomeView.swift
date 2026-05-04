@@ -7,23 +7,29 @@ struct CRMHomeView: View {
     @State private var tab: Int = 0
 
     var body: some View {
-        TabView(selection: $tab) {
-            NavigationStack { CRMDashboardView() }
-                .tabItem { Label("Dashboard", systemImage: "chart.bar.fill") }
-                .tag(0)
-            NavigationStack { LeadsListView() }
-                .tabItem { Label("Leads", systemImage: "person.crop.circle.badge.plus") }
-                .tag(1)
-            NavigationStack { DealKanbanView() }
-                .tabItem { Label("Pipeline", systemImage: "square.stack.3d.up.fill") }
-                .tag(2)
-            NavigationStack { ContactsListView() }
-                .tabItem { Label("Contacts", systemImage: "person.2.fill") }
-                .tag(3)
-            NavigationStack { KiniChatView() }
-                .tabItem { Label("KINI", systemImage: "sparkles") }
-                .tag(4)
+        VStack(spacing: 0) {
+            LocationFilter()
+            TabView(selection: $tab) {
+                NavigationStack { CRMDashboardView() }
+                    .tabItem { Label("Dashboard", systemImage: "chart.bar.fill") }
+                    .tag(0)
+                NavigationStack { LeadsListView() }
+                    .tabItem { Label("Leads", systemImage: "person.crop.circle.badge.plus") }
+                    .tag(1)
+                NavigationStack { DealKanbanView() }
+                    .tabItem { Label("Pipeline", systemImage: "square.stack.3d.up.fill") }
+                    .tag(2)
+                NavigationStack { ContactsListView() }
+                    .tabItem { Label("Contacts", systemImage: "person.2.fill") }
+                    .tag(3)
+                NavigationStack { ProductsListView() }
+                    .tabItem { Label("Products", systemImage: "shippingbox.fill") }
+                    .tag(4)
+                NavigationStack { KiniChatView() }
+                    .tabItem { Label("KINI", systemImage: "sparkles") }
+                    .tag(5)
+            }
+            .accentColor(.indigo)
         }
-        .accentColor(.indigo)
     }
 }

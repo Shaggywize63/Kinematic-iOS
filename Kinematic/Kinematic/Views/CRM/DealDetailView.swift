@@ -27,6 +27,7 @@ struct DealDetailView: View {
                             .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
                         }
                     }
+                    LineItemsCard(dealId: dealId)
                     if let nba = nextAction {
                         NextBestActionCard(action: nba) { }
                     } else {
@@ -63,7 +64,7 @@ struct DealDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(d.name).font(.system(size: 20, weight: .black))
             HStack {
-                Image(systemName: "dollarsign.circle.fill").foregroundColor(.green)
+                Image(systemName: "indianrupeesign.circle.fill").foregroundColor(.green)
                 Text(formattedAmount(d)).font(.headline).foregroundColor(.green)
                 Spacer()
                 if let stage = d.stageName {
@@ -85,8 +86,13 @@ struct DealDetailView: View {
     }
 
     private func formattedAmount(_ d: Deal) -> String {
+        // Default to INR formatting (Indian grouping). Falls back to the
+        // deal's own currency if it isn't INR.
+        if (d.currency ?? "INR").uppercased() == "INR" {
+            return CurrencyFormatter.formatINR(d.amount)
+        }
         let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = d.currency ?? "USD"
-        return f.string(from: NSNumber(value: d.amount ?? 0)) ?? "$\(d.amount ?? 0)"
+        return f.string(from: NSNumber(value: d.amount ?? 0)) ?? "\(d.amount ?? 0)"
     }
 
     private func loadWinProb() async {
