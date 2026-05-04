@@ -45,7 +45,7 @@ struct DistributionAPI {
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(status) {
-            let serverMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?("error") as? String
+            let serverMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
             throw DistributionAPIError.http(status, serverMsg)
         }
         return data
