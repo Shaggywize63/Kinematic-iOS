@@ -33,11 +33,30 @@ struct Lead: Codable, Identifiable, Hashable {
     let createdAt: String?
     let updatedAt: String?
 
+    // B2C / consumer fields
+    let isB2c: Bool?
+    let dateOfBirth: String?
+    let gender: String?
+    let addressLine1: String?
+    let addressLine2: String?
+    let city: String?
+    let state: String?
+    let postalCode: String?
+    let country: String?
+    let preferredContactMethod: String?
+    let marketingConsent: Bool?
+    let whatsappConsent: Bool?
+
     var displayName: String {
         let f = firstName ?? ""
         let l = lastName ?? ""
         let combined = "\(f) \(l)".trimmingCharacters(in: .whitespaces)
         return combined.isEmpty ? (email ?? "Unnamed Lead") : combined
+    }
+
+    var fullAddress: String? {
+        let parts = [addressLine1, addressLine2, city, state, postalCode, country].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
     enum CodingKeys: String, CodingKey {
@@ -65,6 +84,18 @@ struct Lead: Codable, Identifiable, Hashable {
         case notes
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case isB2c = "is_b2c"
+        case dateOfBirth = "date_of_birth"
+        case gender
+        case addressLine1 = "address_line1"
+        case addressLine2 = "address_line2"
+        case city
+        case state
+        case postalCode = "postal_code"
+        case country
+        case preferredContactMethod = "preferred_contact_method"
+        case marketingConsent = "marketing_consent"
+        case whatsappConsent = "whatsapp_consent"
     }
 }
 
