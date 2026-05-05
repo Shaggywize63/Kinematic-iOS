@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SwiftUI
 
 @MainActor
@@ -75,17 +76,14 @@ final class DistributionViewModel: ObservableObject {
         let total = preview?.totals.grand_total
         let input = OrderInput(outlet_id: outletId, distributor_id: nil, visit_id: visitId, items: items, gps: gps, notes: nil, client_total: total)
 
-        // Always queue first; an offline submit is just a queue with no flush.
         let pending = cache.enqueueOrder(input: input, clientTotal: total ?? 0, outletName: outletName, visitId: visitId)
         lastQueuedOrder = pending
 
-        // Best-effort immediate flush.
         do {
             _ = try await api.submitOrder(input, idempotencyKey: pending.idempotencyKey)
             cache.markOrderSynced(pending.id)
         } catch {
             cache.recordOrderError(pending.id, error: error.localizedDescription)
-            // Keep the row queued; user proceeds. We surface a soft toast.
             submitError = "Queued — will sync when network is available."
         }
         clearCart()
@@ -101,7 +99,6 @@ final class DistributionViewModel: ObservableObject {
         do { currentOrder = try await api.order(id: id) } catch { currentOrder = nil }
     }
 
-    /// Drains the cache. Call on app foreground / network recovery.
     func flushQueue() async {
         let p = cache.pendingForCurrentUser()
         for row in p.orders {

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct AISuggestionCard: View {
     let title: String
-    let body: String
+    let message: String
     let onAccept: (() -> Void)?
 
     var body: some View {
@@ -15,7 +15,7 @@ struct AISuggestionCard: View {
                     .tracking(1)
                     .foregroundColor(.indigo)
             }
-            Text(body)
+            Text(message)
                 .font(.system(size: 13))
                 .foregroundColor(Color(uiColor: .label))
             if let onAccept {

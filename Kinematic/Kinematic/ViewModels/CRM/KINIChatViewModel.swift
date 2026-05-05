@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 @MainActor
 final class KINIChatViewModel: ObservableObject {
@@ -11,7 +12,6 @@ final class KINIChatViewModel: ObservableObject {
     private let api = AIChatService.shared
 
     init() {
-        // Greet the user on first launch.
         messages.append(ChatMessage(
             id: UUID().uuidString,
             role: "assistant",
