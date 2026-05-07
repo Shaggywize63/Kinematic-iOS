@@ -15,6 +15,7 @@ struct CRMAccount: Codable, Identifiable, Hashable {
     let parentAccountId: String?
     let territoryId: String?
     let tags: [String]?
+    let description: String?
     let createdAt: String?
     let updatedAt: String?
 
@@ -30,6 +31,7 @@ struct CRMAccount: Codable, Identifiable, Hashable {
         case parentAccountId = "parent_account_id"
         case territoryId = "territory_id"
         case tags
+        case description
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
