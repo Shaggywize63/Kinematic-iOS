@@ -4,6 +4,7 @@
 // canonical record (replays return the original response, never duplicates).
 
 import Foundation
+import Combine
 
 struct PendingAttendance: Codable, Identifiable {
     let id: UUID
@@ -40,7 +41,8 @@ final class AttendanceCache: ObservableObject {
     }
     private func persist() {
         guard let data = try? JSONEncoder().encode(rows) else { return }
-        queue.async { try? data.write(to: self.file, options: .atomic) }
+        let url = file
+        queue.async { try? data.write(to: url, options: .atomic) }
     }
 
     static func userKey() -> String { String(Session.sharedToken.suffix(24)) }
