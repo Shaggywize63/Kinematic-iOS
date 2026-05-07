@@ -50,7 +50,7 @@ final class CRMService {
         try await postJSON("/api/v1/crm/leads", body: body)
     }
     func updateLead(id: String, body: [String: Any]) async throws -> Lead {
-        try await sendJSON("/api/v1/crm/leads/\(id)", method: "PUT", body: body)
+        try await sendJSON("/api/v1/crm/leads/\(id)", method: "PATCH", body: body)
     }
     func deleteLead(id: String) async throws {
         let _: EmptyAck = try await delete("/api/v1/crm/leads/\(id)")
@@ -79,7 +79,7 @@ final class CRMService {
         try await postJSON("/api/v1/crm/contacts", body: body)
     }
     func updateContact(id: String, body: [String: Any]) async throws -> Contact {
-        try await sendJSON("/api/v1/crm/contacts/\(id)", method: "PUT", body: body)
+        try await sendJSON("/api/v1/crm/contacts/\(id)", method: "PATCH", body: body)
     }
 
     // MARK: Accounts
@@ -161,7 +161,7 @@ final class CRMService {
         try await postJSON("/api/v1/crm/tasks", body: body)
     }
     func completeTask(id: String) async throws -> CRMTask {
-        try await sendJSON("/api/v1/crm/tasks/\(id)", method: "PUT", body: ["status": "done"])
+        try await sendJSON("/api/v1/crm/tasks/\(id)", method: "PATCH", body: ["status": "done"])
     }
 
     // MARK: Email

@@ -7,7 +7,6 @@ final class KINIChatViewModel: ObservableObject {
     @Published var draft: String = ""
     @Published var isSending = false
     @Published var errorMessage: String?
-    private(set) var conversationId: String?
 
     private let api = AIChatService.shared
 
@@ -40,13 +39,19 @@ final class KINIChatViewModel: ObservableObject {
         isSending = true
         defer { isSending = false }
 
+        // Backend is stateless: replay the full user/assistant transcript so
+        // Claude has the conversation context. Skip the local tool/system
+        // bubbles — only `user` and `assistant` roles are accepted.
+        let history = messages
+            .filter { $0.role == "user" || $0.role == "assistant" }
+            .map { ChatTurn(role: $0.role, content: $0.content) }
+
         do {
-            let response = try await api.chat(message: text, conversationId: conversationId)
-            if conversationId == nil { conversationId = response.messageId }
+            let response = try await api.chat(messages: history)
             let assistant = ChatMessage(
-                id: response.messageId ?? UUID().uuidString,
+                id: UUID().uuidString,
                 role: "assistant",
-                content: response.reply,
+                content: response.text,
                 createdAt: ISO8601DateFormatter().string(from: Date()),
                 toolName: nil,
                 toolPayload: nil,
