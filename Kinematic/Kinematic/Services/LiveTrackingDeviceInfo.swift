@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Combine
 
 /// Snapshot of the device fields that the dashboard's Live-Tracking page
 /// expects on every heartbeat. This brings iOS to parity with Android, which

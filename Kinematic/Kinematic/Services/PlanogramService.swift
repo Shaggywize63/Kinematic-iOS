@@ -9,6 +9,7 @@
 
 import Foundation
 import UIKit
+import Combine
 
 enum PlanogramServiceError: LocalizedError {
     case missingAuth

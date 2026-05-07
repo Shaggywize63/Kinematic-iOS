@@ -7,6 +7,7 @@
 //   - structured error reporting (so the UI can react to PRICE_MISMATCH 409)
 
 import Foundation
+import Combine
 
 enum DistributionAPIError: Error, LocalizedError {
     case http(Int, String?)

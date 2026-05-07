@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import Combine
 
 extension CRMService {
     func patchLead(id: String, body: [String: Any]) async throws -> Lead {
