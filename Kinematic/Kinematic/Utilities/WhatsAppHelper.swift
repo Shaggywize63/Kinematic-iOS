@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Combine
 
 /// Click-to-chat helpers for WhatsApp.
 /// Builds wa.me deep links and opens them via the system; the app or web
