@@ -17,9 +17,15 @@ final class AIChatService {
     }
 
     /// POST /api/v1/crm/ai/chat — KINI assistant.
-    func chat(message: String, conversationId: String?, context: [String: Any]? = nil) async throws -> AIChatResponse {
-        var body: [String: Any] = ["message": message]
-        if let conversationId { body["conversation_id"] = conversationId }
+    /// Backend expects `{messages: [{role, content}], system?, context?}` and
+    /// responds with `{text, cards, tool_calls}` (matches the dashboard's
+    /// KinematicAI client). Pass the full conversation history each turn —
+    /// the backend is stateless and replays the message log to Claude.
+    func chat(messages: [ChatTurn], system: String? = nil, context: [String: Any]? = nil) async throws -> AIChatResponse {
+        var body: [String: Any] = [
+            "messages": messages.map { ["role": $0.role, "content": $0.content] }
+        ]
+        if let system { body["system"] = system }
         if let context { body["context"] = context }
 
         let data = try JSONSerialization.data(withJSONObject: body, options: [])
