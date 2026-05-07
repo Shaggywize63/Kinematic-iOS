@@ -61,8 +61,8 @@ struct DealDetailView: View {
             if initialDeal == nil {
                 initialDeal = try? await CRMService.shared.getDeal(id: dealId)
             }
-            if let d = initialDeal {
-                stages = (try? await CRMService.shared.listStages(pipelineId: d.pipelineId)) ?? []
+            if let pid = initialDeal?.pipelineId {
+                stages = (try? await CRMService.shared.listStages(pipelineId: pid)) ?? []
             }
         }
     }
