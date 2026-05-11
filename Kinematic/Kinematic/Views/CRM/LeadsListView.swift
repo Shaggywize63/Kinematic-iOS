@@ -4,6 +4,7 @@ struct LeadsListView: View {
     @StateObject var vm = LeadsViewModel()
     @State private var showCreate = false
     @State private var showImport = false
+    @State private var showDateFilter = false
 
     let statusOptions = ["all", "new", "contacted", "qualified", "unqualified", "converted"]
 
@@ -14,6 +15,14 @@ struct LeadsListView: View {
                 TextField("Search leads…", text: $vm.search)
                     .textFieldStyle(.plain)
                     .autocapitalization(.none)
+                if vm.dateFrom != nil || vm.dateTo != nil {
+                    Button { vm.dateFrom = nil; vm.dateTo = nil; Task { await vm.refresh() } } label: {
+                        Image(systemName: "calendar.badge.minus").foregroundColor(.red)
+                    }
+                }
+                Button { showDateFilter = true } label: {
+                    Image(systemName: "calendar").foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? .indigo : .gray)
+                }
             }
             .padding(10)
             .background(Color(uiColor: .secondarySystemBackground))
@@ -87,6 +96,11 @@ struct LeadsListView: View {
         }
         .sheet(isPresented: $showImport) {
             LeadImportView()
+        }
+        .sheet(isPresented: $showDateFilter) {
+            DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Created date") {
+                Task { await vm.refresh() }
+            }
         }
         .task { await vm.refresh() }
         .onChange(of: vm.search) { _ in

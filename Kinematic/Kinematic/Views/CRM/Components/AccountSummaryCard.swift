@@ -26,7 +26,7 @@ struct AccountSummaryCard: View {
                         .font(.caption).foregroundColor(.secondary)
                 }
                 if let rev = account.annualRevenue {
-                    Label(formatCurrency(rev), systemImage: "dollarsign.circle.fill")
+                    Label(CurrencyFormatter.formatINR(rev), systemImage: "indianrupeesign.circle.fill")
                         .font(.caption).foregroundColor(.secondary)
                 }
             }
@@ -41,8 +41,4 @@ struct AccountSummaryCard: View {
         )
     }
 
-    private func formatCurrency(_ v: Double) -> String {
-        let f = NumberFormatter(); f.numberStyle = .currency; f.maximumFractionDigits = 0
-        return f.string(from: NSNumber(value: v)) ?? "$\(Int(v))"
-    }
 }

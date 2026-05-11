@@ -30,16 +30,28 @@ struct CRMDashboardView: View {
     private var kpiGrid: some View {
         let s = vm.summary
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
-            kpi("Total Leads", value: "\(s?.totalLeads ?? 0)", icon: "person.2.fill", color: .blue)
-            kpi("Open Deals", value: "\(s?.openDeals ?? 0)", icon: "square.stack.3d.up.fill", color: .indigo)
-            kpi("Pipeline", value: shortMoney(s?.openPipelineValue ?? 0), icon: "dollarsign.circle.fill", color: .green)
-            kpi("Win Rate", value: "\(Int((s?.winRate ?? 0) * 100))%", icon: "trophy.fill", color: .orange)
-            kpi("Won — Mo.", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: .green)
-            kpi("Tasks Due", value: "\(s?.tasksDue ?? 0)", icon: "checklist", color: .red)
+            NavigationLink(destination: LeadsListView()) {
+                kpiTile("Total Leads", value: "\(s?.totalLeads ?? 0)", icon: "person.2.fill", color: .blue)
+            }.buttonStyle(.plain)
+            NavigationLink(destination: DealsListView()) {
+                kpiTile("Open Deals", value: "\(s?.openDeals ?? 0)", icon: "square.stack.3d.up.fill", color: .indigo)
+            }.buttonStyle(.plain)
+            NavigationLink(destination: DealKanbanView()) {
+                kpiTile("Pipeline", value: CurrencyFormatter.formatINRCompact(s?.openPipelineValue ?? 0), icon: "indianrupeesign.circle.fill", color: .green)
+            }.buttonStyle(.plain)
+            NavigationLink(destination: DealsListView()) {
+                kpiTile("Win Rate", value: "\(Int((s?.winRate ?? 0) * 100))%", icon: "trophy.fill", color: .orange)
+            }.buttonStyle(.plain)
+            NavigationLink(destination: DealsListView()) {
+                kpiTile("Won — Mo.", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: .green)
+            }.buttonStyle(.plain)
+            NavigationLink(destination: TasksView()) {
+                kpiTile("Tasks Due", value: "\(s?.tasksDue ?? 0)", icon: "checklist", color: .red)
+            }.buttonStyle(.plain)
         }
     }
 
-    private func kpi(_ title: String, value: String, icon: String, color: Color) -> some View {
+    private func kpiTile(_ title: String, value: String, icon: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: icon).foregroundColor(color)
             Text(value)
@@ -153,9 +165,4 @@ struct CRMDashboardView: View {
         }
     }
 
-    private func shortMoney(_ v: Double) -> String {
-        if v >= 1_000_000 { return String(format: "$%.1fM", v / 1_000_000) }
-        if v >= 1_000 { return String(format: "$%.1fk", v / 1_000) }
-        return "$\(Int(v))"
-    }
 }

@@ -3,28 +3,42 @@ import SwiftUI
 struct DealsListView: View {
     @StateObject var vm = DealsViewModel()
     @State private var showCreate = false
+    @State private var showDateFilter = false
     let statusOptions = ["open", "won", "lost", "all"]
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(statusOptions, id: \.self) { s in
-                        Button {
-                            vm.statusFilter = s
-                            Task { await vm.refresh() }
-                        } label: {
-                            Text(s.uppercased())
-                                .font(.system(size: 11, weight: .bold))
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(vm.statusFilter == s ? Color.indigo : Color(uiColor: .secondarySystemBackground))
-                                .foregroundColor(vm.statusFilter == s ? .white : .gray)
-                                .cornerRadius(8)
+            HStack {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(statusOptions, id: \.self) { s in
+                            Button {
+                                vm.statusFilter = s
+                                Task { await vm.refresh() }
+                            } label: {
+                                Text(s.uppercased())
+                                    .font(.system(size: 11, weight: .bold))
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    .background(vm.statusFilter == s ? Color.indigo : Color(uiColor: .secondarySystemBackground))
+                                    .foregroundColor(vm.statusFilter == s ? .white : .gray)
+                                    .cornerRadius(8)
+                            }
                         }
                     }
+                    .padding(.leading)
                 }
-                .padding()
+                Button { showDateFilter = true } label: {
+                    Image(systemName: "calendar")
+                        .foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? .indigo : .gray)
+                        .padding(.trailing, 12)
+                }
+                if vm.dateFrom != nil || vm.dateTo != nil {
+                    Button { vm.dateFrom = nil; vm.dateTo = nil; Task { await vm.refresh() } } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.red).padding(.trailing, 8)
+                    }
+                }
             }
+            .padding(.vertical, 8)
 
             ScrollView {
                 LazyVStack(spacing: 10) {
@@ -52,6 +66,11 @@ struct DealsListView: View {
         .sheet(isPresented: $showCreate) {
             DealCreateView { name, accountId, amount in
                 await vm.create(name: name, accountId: accountId, amount: amount, stageId: nil)
+            }
+        }
+        .sheet(isPresented: $showDateFilter) {
+            DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Close date") {
+                Task { await vm.refresh() }
             }
         }
         .task { await vm.refresh() }

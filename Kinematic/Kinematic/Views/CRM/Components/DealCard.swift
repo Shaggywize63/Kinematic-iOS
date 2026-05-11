@@ -11,7 +11,7 @@ struct DealCard: View {
                 .lineLimit(2)
 
             HStack(spacing: 6) {
-                Image(systemName: "dollarsign.circle.fill").font(.system(size: 11)).foregroundColor(.green)
+                Image(systemName: "indianrupeesign.circle.fill").font(.system(size: 11)).foregroundColor(.green)
                 Text(formattedAmount)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.green)
@@ -45,11 +45,7 @@ struct DealCard: View {
     }
 
     private var formattedAmount: String {
-        let v = deal.amount ?? 0
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = deal.currency ?? "USD"
-        return f.string(from: NSNumber(value: v)) ?? "\(v)"
+        CurrencyFormatter.formatINRCompact(deal.amount ?? 0)
     }
 
     private func probColor(_ p: Double) -> Color {
