@@ -5,17 +5,44 @@ import Combine
 final class ContactsViewModel: ObservableObject {
     @Published var contacts: [Contact] = []
     @Published var search: String = ""
+    @Published var dateFrom: Date? = nil
+    @Published var dateTo: Date? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
 
     private let api = CRMService.shared
 
+    /// ISO-8601 parser for `created_at` strings returned by the backend.
+    private static let isoParser: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoParserNoFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseCreatedAt(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
+        return isoParser.date(from: s) ?? isoParserNoFraction.date(from: s)
+    }
+
     var filtered: [Contact] {
-        guard !search.isEmpty else { return contacts }
         let q = search.lowercased()
-        return contacts.filter {
-            $0.displayName.lowercased().contains(q) ||
-            ($0.email ?? "").lowercased().contains(q)
+        let fromStart = dateFrom.map { Calendar.current.startOfDay(for: $0) }
+        let toEnd = dateTo.map { Calendar.current.date(byAdding: DateComponents(day: 1, second: -1), to: Calendar.current.startOfDay(for: $0)) ?? $0 }
+        return contacts.filter { c in
+            let matchesSearch = q.isEmpty ||
+                c.displayName.lowercased().contains(q) ||
+                (c.email ?? "").lowercased().contains(q)
+            guard matchesSearch else { return false }
+            if fromStart == nil && toEnd == nil { return true }
+            guard let created = Self.parseCreatedAt(c.createdAt) else { return false }
+            if let f = fromStart, created < f { return false }
+            if let t = toEnd, created > t { return false }
+            return true
         }
     }
 
