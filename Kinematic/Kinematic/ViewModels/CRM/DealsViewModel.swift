@@ -5,16 +5,26 @@ import Combine
 final class DealsViewModel: ObservableObject {
     @Published var deals: [Deal] = []
     @Published var statusFilter: String = "open"
+    @Published var dateFrom: Date? = nil
+    @Published var dateTo: Date? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
 
     private let api = CRMService.shared
 
+    private static let isoDate: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+
     func refresh() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            deals = try await api.listDeals(status: statusFilter == "all" ? nil : statusFilter)
+            deals = try await api.listDeals(
+                status: statusFilter == "all" ? nil : statusFilter,
+                from: dateFrom.map { Self.isoDate.string(from: $0) },
+                to: dateTo.map { Self.isoDate.string(from: $0) }
+            )
         } catch {
             errorMessage = error.localizedDescription
         }

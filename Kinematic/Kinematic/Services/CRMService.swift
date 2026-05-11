@@ -39,10 +39,14 @@ final class CRMService {
     }
 
     // MARK: Leads
-    func listLeads(status: String? = nil, search: String? = nil) async throws -> [Lead] {
+    func listLeads(status: String? = nil, search: String? = nil, city: String? = nil, state: String? = nil, from: String? = nil, to: String? = nil) async throws -> [Lead] {
         var q: [String: String] = [:]
         if let status { q["status"] = status }
         if let search { q["q"] = search }
+        if let city { q["city"] = city }
+        if let state { q["state"] = state }
+        if let from { q["from"] = from }
+        if let to { q["to"] = to }
         return try await get("/api/v1/crm/leads", query: q)
     }
     func getLead(id: String) async throws -> Lead { try await get("/api/v1/crm/leads/\(id)") }
@@ -94,10 +98,12 @@ final class CRMService {
     }
 
     // MARK: Deals
-    func listDeals(pipelineId: String? = nil, status: String? = nil) async throws -> [Deal] {
+    func listDeals(pipelineId: String? = nil, status: String? = nil, from: String? = nil, to: String? = nil) async throws -> [Deal] {
         var q: [String: String] = [:]
         if let pipelineId { q["pipeline_id"] = pipelineId }
         if let status { q["status"] = status }
+        if let from { q["from"] = from }
+        if let to { q["to"] = to }
         return try await get("/api/v1/crm/deals", query: q)
     }
     func getDeal(id: String) async throws -> Deal { try await get("/api/v1/crm/deals/\(id)") }
