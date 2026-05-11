@@ -3,6 +3,7 @@ import SwiftUI
 struct ContactsListView: View {
     @StateObject var vm = ContactsViewModel()
     @State private var showCreate = false
+    @State private var showDateFilter = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -11,6 +12,15 @@ struct ContactsListView: View {
                 TextField("Search contacts…", text: $vm.search)
                     .textFieldStyle(.plain)
                     .autocapitalization(.none)
+                if vm.dateFrom != nil || vm.dateTo != nil {
+                    Button { vm.dateFrom = nil; vm.dateTo = nil } label: {
+                        Image(systemName: "calendar.badge.minus").foregroundColor(.red)
+                    }
+                }
+                Button { showDateFilter = true } label: {
+                    Image(systemName: "calendar")
+                        .foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? .indigo : .gray)
+                }
             }
             .padding(10)
             .background(Color(uiColor: .secondarySystemBackground))
@@ -47,6 +57,9 @@ struct ContactsListView: View {
                 await vm.create(firstName: f, lastName: l, email: e, phone: p, accountId: a)
             }
         }
+        .sheet(isPresented: $showDateFilter) {
+            DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Created date") {}
+        }
         .task { await vm.refresh() }
     }
 
@@ -61,7 +74,7 @@ struct ContactsListView: View {
                 if let e = c.email { Text(e).font(.caption).foregroundColor(.secondary) }
             }
             Spacer()
-            if let phone = c.phone { Image(systemName: "phone.fill").foregroundColor(.green).font(.caption) }
+            if c.phone != nil { Image(systemName: "phone.fill").foregroundColor(.green).font(.caption) }
         }
         .padding(12)
         .background(
