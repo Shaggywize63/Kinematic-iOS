@@ -2,6 +2,8 @@ import SwiftUI
 
 /// Tile-based CRM home, mirroring the Android CrmHomeScreen tile grid.
 /// Removed: Settings, Templates, Emails (replaced by 10-tile module grid).
+/// KINI is reachable as a sticky red circular FAB at the bottom-right —
+/// the only entry point (no separate toolbar icon).
 struct CRMHomeView: View {
     var onLogout: (() -> Void)? = nil
 
@@ -38,12 +40,6 @@ struct CRMHomeView: View {
                 .navigationTitle("CRM")
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink(value: CRMDestination.kini) {
-                            Image(systemName: "sparkles")
-                                .foregroundColor(.indigo)
-                        }
-                    }
                     if let onLogout {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button(action: onLogout) {
@@ -57,17 +53,17 @@ struct CRMHomeView: View {
                     dest.view
                 }
 
+                // Sticky red KINI FAB — single entry point.
                 NavigationLink(value: CRMDestination.kini) {
-                    HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 56, height: 56)
+                            .shadow(color: .red.opacity(0.4), radius: 12, x: 0, y: 4)
                         Image(systemName: "sparkles")
-                        Text("Ask KINI").fontWeight(.bold)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(.white)
                     }
-                    .padding(.horizontal, 18).padding(.vertical, 14)
-                    .background(
-                        Capsule().fill(Color.indigo)
-                    )
-                    .foregroundColor(.white)
-                    .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
                 }
                 .buttonStyle(.plain)
                 .padding(20)

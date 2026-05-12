@@ -11,7 +11,6 @@ struct CRMDashboardView: View {
                 funnelCard
                 winRateCard
                 forecastCard
-                aiBanner
             }
             .padding(.horizontal)
             .padding(.bottom, 40)
@@ -123,38 +122,6 @@ struct CRMDashboardView: View {
         .background(
             RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground))
         )
-    }
-
-    private var aiBanner: some View {
-        NavigationLink {
-            KiniChatView()
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().fill(LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "sparkles").foregroundColor(.white)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Ask KINI")
-                        .font(.headline)
-                        .foregroundColor(Color(uiColor: .label))
-                    Text("Score a lead, draft a follow-up, or surface deals at risk.")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                        .lineLimit(2)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").foregroundColor(.gray)
-            }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(Color.indigo.opacity(0.08))
-                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.indigo.opacity(0.25), lineWidth: 1))
-            )
-        }
-        .buttonStyle(.plain)
     }
 
     private func sectionHeader(_ title: String, systemImage: String) -> some View {

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DealCard: View {
     let deal: Deal
+    @AppStorage("crm.deals.showWeighted") private var showWeighted: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -11,10 +12,15 @@ struct DealCard: View {
                 .lineLimit(2)
 
             HStack(spacing: 6) {
-                Image(systemName: "indianrupeesign.circle.fill").font(.system(size: 11)).foregroundColor(.green)
+                Image(systemName: "indianrupeesign.circle.fill").font(.system(size: 11)).foregroundColor(showWeighted ? .indigo : .green)
                 Text(formattedAmount)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.green)
+                    .foregroundColor(showWeighted ? .indigo : .green)
+                if showWeighted {
+                    Text("weighted")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundColor(.indigo.opacity(0.7))
+                }
             }
 
             HStack {
@@ -45,7 +51,9 @@ struct DealCard: View {
     }
 
     private var formattedAmount: String {
-        CurrencyFormatter.formatINRCompact(deal.amount ?? 0)
+        let raw = deal.amount ?? 0
+        let value = showWeighted ? raw * (deal.winProbability ?? deal.probability ?? 0) : raw
+        return CurrencyFormatter.formatINRCompact(value)
     }
 
     private func probColor(_ p: Double) -> Color {
