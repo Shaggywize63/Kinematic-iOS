@@ -19,8 +19,11 @@ struct CRMDashboardView: View {
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink(destination: CRMReportsView()) {
-                    Image(systemName: "square.and.arrow.down.on.square")
+                HStack(spacing: 8) {
+                    NotificationBell()
+                    NavigationLink(destination: CRMReportsView()) {
+                        Image(systemName: "square.and.arrow.down.on.square")
+                    }
                 }
             }
         }

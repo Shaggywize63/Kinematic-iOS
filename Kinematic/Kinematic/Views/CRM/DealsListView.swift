@@ -75,8 +75,8 @@ struct DealsListView: View {
             }
         }
         .sheet(isPresented: $showCreate) {
-            DealCreateView { name, accountId, amount in
-                await vm.create(name: name, accountId: accountId, amount: amount, stageId: nil)
+            DealCreateView { body in
+                await vm.create(body: body)
             }
         }
         .sheet(isPresented: $showDateFilter) {

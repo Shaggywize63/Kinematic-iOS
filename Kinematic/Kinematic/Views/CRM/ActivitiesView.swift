@@ -1,9 +1,13 @@
 import SwiftUI
 
 struct ActivitiesView: View {
-    @StateObject var vm = ActivitiesViewModel()
+    @StateObject var vm: ActivitiesViewModel
     @State private var showCompose = false
     let typeOptions = ["all", "call", "email", "meeting", "note", "task"]
+
+    init(initialFilter: String = "all") {
+        _vm = StateObject(wrappedValue: ActivitiesViewModel(initialFilter: initialFilter))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
