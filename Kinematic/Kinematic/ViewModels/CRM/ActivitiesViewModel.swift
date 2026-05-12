@@ -4,11 +4,15 @@ import Combine
 @MainActor
 final class ActivitiesViewModel: ObservableObject {
     @Published var activities: [Activity] = []
-    @Published var typeFilter: String = "all"
+    @Published var typeFilter: String
     @Published var isLoading = false
     @Published var errorMessage: String?
 
     private let api = CRMService.shared
+
+    init(initialFilter: String = "all") {
+        self.typeFilter = initialFilter
+    }
 
     var filtered: [Activity] {
         typeFilter == "all" ? activities : activities.filter { ($0.type ?? "") == typeFilter }

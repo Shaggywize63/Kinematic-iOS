@@ -26,12 +26,8 @@ final class AccountsViewModel: ObservableObject {
         }
     }
 
-    func create(name: String, industry: String, website: String, phone: String) async {
+    func create(body: [String: Any]) async {
         do {
-            let body: [String: Any] = [
-                "name": name, "industry": industry,
-                "website": website, "phone": phone
-            ]
             let a = try await api.createAccount(body)
             accounts.insert(a, at: 0)
         } catch {

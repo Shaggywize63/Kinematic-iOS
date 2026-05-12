@@ -140,6 +140,15 @@ final class CRMService {
     }
 
     // MARK: Activities / Notes / Tasks
+    /// Upcoming/overdue activities for the NotificationBell.
+    /// `from`/`to` are ISO-8601 timestamps; defaults match dashboard (±7 days).
+    func activitiesCalendar(from: String? = nil, to: String? = nil) async throws -> [Activity] {
+        var q: [String: String] = [:]
+        if let from { q["from"] = from }
+        if let to { q["to"] = to }
+        return try await get("/api/v1/crm/activities/calendar", query: q)
+    }
+
     func listActivities(dealId: String? = nil, leadId: String? = nil) async throws -> [Activity] {
         var q: [String: String] = [:]
         if let dealId { q["deal_id"] = dealId }

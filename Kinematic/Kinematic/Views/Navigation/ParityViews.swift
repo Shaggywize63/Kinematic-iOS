@@ -497,6 +497,17 @@ struct SettingsView: View {
                     .cornerRadius(24)
                     .padding(.horizontal)
                 }
+
+                // CRM-only Mode
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("MODULES")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundColor(.gray)
+                        .padding(.horizontal)
+
+                    CRMOnlyToggleCard()
+                        .padding(.horizontal)
+                }
                 
                 // Account Summary
                 VStack(alignment: .leading, spacing: 16) {
@@ -605,5 +616,32 @@ struct AboutRow: View {
         }
         .font(.system(size: 14))
         .padding(16)
+    }
+}
+
+struct CRMOnlyToggleCard: View {
+    @AppStorage("crm_only_mode") private var crmOnlyMode: Bool = false
+
+    var body: some View {
+        Toggle(isOn: $crmOnlyMode) {
+            HStack(spacing: 12) {
+                Image(systemName: "person.crop.rectangle.stack.fill")
+                    .foregroundColor(.red)
+                    .frame(width: 28, height: 28)
+                    .background(Color.red.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CRM-only mode")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Hide attendance + route. Show only CRM screens.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.gray)
+                }
+            }
+        }
+        .tint(.red)
+        .padding(16)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(16)
     }
 }
