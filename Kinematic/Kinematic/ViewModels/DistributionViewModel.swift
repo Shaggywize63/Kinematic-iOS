@@ -99,6 +99,28 @@ final class DistributionViewModel: ObservableObject {
         do { currentOrder = try await api.order(id: id) } catch { currentOrder = nil }
     }
 
+    @Published var cancelling = false
+    @Published var cancelError: String?
+
+    /// Cancel the order currently displayed in detail. Returns true on success
+    /// so the calling view can pop / refresh. Android parity.
+    func cancelCurrentOrder(reason: String? = nil) async -> Bool {
+        guard let id = currentOrder?.id else { return false }
+        cancelling = true; cancelError = nil
+        defer { cancelling = false }
+        do {
+            currentOrder = try await api.cancelOrder(id: id, reason: reason)
+            // Update the order in the list too so the history reflects it.
+            if let idx = orders.firstIndex(where: { $0.id == id }) {
+                orders[idx] = currentOrder!
+            }
+            return true
+        } catch {
+            cancelError = error.localizedDescription
+            return false
+        }
+    }
+
     func flushQueue() async {
         let p = cache.pendingForCurrentUser()
         for row in p.orders {
