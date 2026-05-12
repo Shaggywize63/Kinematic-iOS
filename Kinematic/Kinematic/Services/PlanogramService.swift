@@ -65,7 +65,8 @@ final class PlanogramService {
         visitId: String?,
         planogramId: String?,
         imageURL: String,
-        location: (lat: Double, lng: Double)?
+        location: (lat: Double, lng: Double)?,
+        angleScore: Double? = nil
     ) async throws -> CaptureResponse {
         guard let jpeg = image.jpegData(compressionQuality: 0.85) else {
             throw PlanogramServiceError.server("Could not encode image.")
@@ -80,17 +81,33 @@ final class PlanogramService {
                 "system":   UIDevice.current.systemVersion
             ]
         ]
-        
+
         if let storeId = storeId { body["store_id"] = storeId }
         if let visitId = visitId { body["visit_id"] = visitId }
         if let planogramId = planogramId { body["planogram_id"] = planogramId }
-        
+
         if let location = location {
             body["capture_lat"] = location.lat
             body["capture_lng"] = location.lng
         }
-        
+
+        // Surfaces the AR alignment quality (0..1) computed locally during
+        // capture so the dashboard's image-quality column has a value to
+        // sort/filter on. Backend stores it as `angle_score`.
+        if let s = angleScore { body["angle_score"] = s }
+
         return try await postJSON("/api/v1/planograms/captures", body: body)
+    }
+
+    /// Submit field-rep feedback against an analyzed capture (parity with
+    /// dashboard's POST /planograms/captures/{id}/feedback). Used to flag
+    /// obvious AI mistakes — e.g. "this SKU is actually present".
+    func submitCaptureFeedback(captureId: String,
+                               notes: String,
+                               corrections: [[String: Any]] = []) async throws -> [String: AnyCodableValue] {
+        var body: [String: Any] = ["notes": notes]
+        if !corrections.isEmpty { body["corrections"] = corrections }
+        return try await postJSON("/api/v1/planograms/captures/\(captureId)/feedback", body: body)
     }
 
     // MARK: Internals
