@@ -812,23 +812,33 @@ struct RoutePlan: Codable, Identifiable {
     let planDate: String?
     let status: String?
     let activityId: String? // Added for dashboard parity
+    let totalOutlets: Int?
+    let visitedOutlets: Int?
+    let completionPct: Double?
     var outlets: [RouteOutlet]?
-    
+
     enum CodingKeys: String, CodingKey {
         case id, status, outlets, stores
         case planDate = "plan_date"
         case activityId = "activity_id" // Maps to Android activity_id
+        case totalOutlets = "total_outlets"
+        case visitedOutlets = "visited_outlets"
+        case completionPct = "completion_pct"
         case date
     }
-    
-    init(id: String?, planDate: String?, status: String?, activityId: String?, outlets: [RouteOutlet]?) {
+
+    init(id: String?, planDate: String?, status: String?, activityId: String?, outlets: [RouteOutlet]?,
+         totalOutlets: Int? = nil, visitedOutlets: Int? = nil, completionPct: Double? = nil) {
         self.id = id
         self.planDate = planDate
         self.status = status
         self.activityId = activityId
         self.outlets = outlets
+        self.totalOutlets = totalOutlets
+        self.visitedOutlets = visitedOutlets
+        self.completionPct = completionPct
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(String.self, forKey: .id)
@@ -836,17 +846,35 @@ struct RoutePlan: Codable, Identifiable {
             ?? container.decodeIfPresent(String.self, forKey: .date)
         status = try container.decodeIfPresent(String.self, forKey: .status)
         activityId = try container.decodeIfPresent(String.self, forKey: .activityId)
+        totalOutlets = try container.decodeIfPresent(Int.self, forKey: .totalOutlets)
+        visitedOutlets = try container.decodeIfPresent(Int.self, forKey: .visitedOutlets)
+        completionPct = try container.decodeIfPresent(Double.self, forKey: .completionPct)
         outlets = try container.decodeIfPresent([RouteOutlet].self, forKey: .outlets)
             ?? container.decodeIfPresent([RouteOutlet].self, forKey: .stores)
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(id, forKey: .id)
         try container.encodeIfPresent(planDate, forKey: .planDate)
         try container.encodeIfPresent(status, forKey: .status)
         try container.encodeIfPresent(activityId, forKey: .activityId)
+        try container.encodeIfPresent(totalOutlets, forKey: .totalOutlets)
+        try container.encodeIfPresent(visitedOutlets, forKey: .visitedOutlets)
+        try container.encodeIfPresent(completionPct, forKey: .completionPct)
         try container.encodeIfPresent(outlets, forKey: .outlets)
+    }
+
+    /// Computed completion percentage that prefers the server-supplied value
+    /// but falls back to local counts so the UI is always populated.
+    var derivedCompletionPct: Double {
+        if let pct = completionPct { return pct }
+        let total = totalOutlets ?? outlets?.count ?? 0
+        guard total > 0 else { return 0 }
+        let done = visitedOutlets ?? outlets?.filter {
+            ($0.status ?? "").lowercased() == "completed" || $0.checkoutAt != nil
+        }.count ?? 0
+        return Double(done) / Double(total) * 100.0
     }
 }
 
@@ -858,9 +886,16 @@ struct RouteOutlet: Codable, Identifiable {
     let status: String?
     let activityId: String?
     var activities: [RouteActivity]?
-    
+    let visitOrder: Int?
+    let checkinAt: String?
+    let checkoutAt: String?
+    let geofenceRadius: Double?
+    let isGeofenced: Bool?
+    let storeLat: Double?
+    let storeLng: Double?
+
     var id: String { storeId ?? rawId ?? UUID().uuidString }
-    
+
     enum CodingKeys: String, CodingKey {
         case status, activities, address, tasks
         case rawId = "id"
@@ -868,9 +903,20 @@ struct RouteOutlet: Codable, Identifiable {
         case storeName = "store_name"
         case activityId = "activity_id"
         case name
+        case visitOrder = "visit_order"
+        case checkinAt = "checkin_at"
+        case checkoutAt = "checkout_at"
+        case geofenceRadius = "geofence_radius"
+        case isGeofenced = "is_geofenced"
+        case storeLat = "store_lat"
+        case storeLng = "store_lng"
     }
-    
-    init(rawId: String?, storeId: String?, storeName: String?, address: String?, status: String?, activityId: String?, activities: [RouteActivity]?) {
+
+    init(rawId: String?, storeId: String?, storeName: String?, address: String?, status: String?,
+         activityId: String?, activities: [RouteActivity]?,
+         visitOrder: Int? = nil, checkinAt: String? = nil, checkoutAt: String? = nil,
+         geofenceRadius: Double? = nil, isGeofenced: Bool? = nil,
+         storeLat: Double? = nil, storeLng: Double? = nil) {
         self.rawId = rawId
         self.storeId = storeId
         self.storeName = storeName
@@ -878,8 +924,15 @@ struct RouteOutlet: Codable, Identifiable {
         self.status = status
         self.activityId = activityId
         self.activities = activities
+        self.visitOrder = visitOrder
+        self.checkinAt = checkinAt
+        self.checkoutAt = checkoutAt
+        self.geofenceRadius = geofenceRadius
+        self.isGeofenced = isGeofenced
+        self.storeLat = storeLat
+        self.storeLng = storeLng
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         rawId = try container.decodeIfPresent(String.self, forKey: .rawId)
@@ -891,6 +944,13 @@ struct RouteOutlet: Codable, Identifiable {
         activityId = try container.decodeIfPresent(String.self, forKey: .activityId)
         activities = try container.decodeIfPresent([RouteActivity].self, forKey: .activities)
             ?? container.decodeIfPresent([RouteActivity].self, forKey: .tasks)
+        visitOrder = try container.decodeIfPresent(Int.self, forKey: .visitOrder)
+        checkinAt = try container.decodeIfPresent(String.self, forKey: .checkinAt)
+        checkoutAt = try container.decodeIfPresent(String.self, forKey: .checkoutAt)
+        geofenceRadius = try container.decodeIfPresent(Double.self, forKey: .geofenceRadius)
+        isGeofenced = try container.decodeIfPresent(Bool.self, forKey: .isGeofenced)
+        storeLat = try container.decodeIfPresent(Double.self, forKey: .storeLat)
+        storeLng = try container.decodeIfPresent(Double.self, forKey: .storeLng)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -902,6 +962,13 @@ struct RouteOutlet: Codable, Identifiable {
         try container.encodeIfPresent(status, forKey: .status)
         try container.encodeIfPresent(activityId, forKey: .activityId)
         try container.encodeIfPresent(activities, forKey: .activities)
+        try container.encodeIfPresent(visitOrder, forKey: .visitOrder)
+        try container.encodeIfPresent(checkinAt, forKey: .checkinAt)
+        try container.encodeIfPresent(checkoutAt, forKey: .checkoutAt)
+        try container.encodeIfPresent(geofenceRadius, forKey: .geofenceRadius)
+        try container.encodeIfPresent(isGeofenced, forKey: .isGeofenced)
+        try container.encodeIfPresent(storeLat, forKey: .storeLat)
+        try container.encodeIfPresent(storeLng, forKey: .storeLng)
     }
 }
 
@@ -1358,6 +1425,35 @@ class KinematicRepository {
         }
     }
     
+    // MARK: Route plan outlet update (Android parity — PATCH /route-plan/outlets/{id})
+    /// Update an outlet visit's status / checkin / checkout. `status` is one of
+    /// "pending" | "in_progress" | "completed" | "skipped". Coordinates and
+    /// photo URL are optional and only sent when present.
+    func updateRouteOutlet(outletId: String,
+                           status: String? = nil,
+                           checkinLat: Double? = nil,
+                           checkinLng: Double? = nil,
+                           checkinAt: String? = nil,
+                           checkoutAt: String? = nil,
+                           photoUrl: String? = nil,
+                           notes: String? = nil) async -> (Bool, String?) {
+        var payload: [String: Any] = [:]
+        if let status { payload["status"] = status }
+        if let checkinLat { payload["checkin_lat"] = checkinLat }
+        if let checkinLng { payload["checkin_lng"] = checkinLng }
+        if let checkinAt { payload["checkin_at"] = checkinAt }
+        if let checkoutAt { payload["checkout_at"] = checkoutAt }
+        if let photoUrl { payload["photo_url"] = photoUrl }
+        if let notes { payload["visit_notes"] = notes }
+        do {
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/route-plan/outlets/\(outletId)", method: "PATCH", body: body)
+            if res?.success == true { return (true, nil) }
+            return (false, res?.error ?? res?.message ?? "Failed to update outlet")
+        } catch { return (false, error.localizedDescription) }
+    }
+
     // MARK: Breaks (Android parity — POST /attendance/break/start, /break/end)
     func startBreak() async -> (Bool, String?) {
         do {
