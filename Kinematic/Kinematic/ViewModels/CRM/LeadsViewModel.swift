@@ -54,17 +54,8 @@ final class LeadsViewModel: ObservableObject {
         }
     }
 
-    func create(firstName: String, lastName: String, email: String, company: String, phone: String, source: String) async {
+    func create(body: [String: Any]) async {
         do {
-            let body: [String: Any] = [
-                "first_name": firstName,
-                "last_name":  lastName,
-                "email":      email,
-                "company":    company,
-                "phone":      phone,
-                "source":     source,
-                "status":     "new"
-            ]
             let lead = try await api.createLead(body)
             leads.insert(lead, at: 0)
         } catch {

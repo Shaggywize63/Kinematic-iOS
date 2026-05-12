@@ -90,8 +90,8 @@ struct LeadsListView: View {
             }
         }
         .sheet(isPresented: $showCreate) {
-            LeadCreateView { firstName, lastName, email, company, phone, source in
-                await vm.create(firstName: firstName, lastName: lastName, email: email, company: company, phone: phone, source: source)
+            LeadCreateView { body in
+                await vm.create(body: body)
             }
         }
         .sheet(isPresented: $showImport) {

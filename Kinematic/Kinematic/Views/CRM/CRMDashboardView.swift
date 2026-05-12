@@ -17,6 +17,13 @@ struct CRMDashboardView: View {
         }
         .navigationTitle("CRM")
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(destination: CRMReportsView()) {
+                    Image(systemName: "square.and.arrow.down.on.square")
+                }
+            }
+        }
         .refreshable { await vm.refresh() }
         .task { await vm.refresh() }
         .overlay {
