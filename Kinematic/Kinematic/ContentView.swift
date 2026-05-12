@@ -709,7 +709,14 @@ struct RoutePlansView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         Text("Route Details").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.horizontal, 60)
-                        
+
+                        // PROGRESS HEADER — surfaces the totals/percent fields
+                        // that Android + dashboard already show. Sums across
+                        // all plans for the day; falls back to local counts.
+                        if !vm.plans.isEmpty {
+                            RoutePlanProgressHeader(plans: vm.plans).padding(.horizontal, 60)
+                        }
+
                         let isShiftEnded = appState.today?.checkoutAt != nil
                         if appState.today?.checkinAt == nil {
                             VStack(spacing: 20) {
@@ -733,7 +740,7 @@ struct RoutePlansView: View {
                                 }
                                 .padding(.horizontal, 60).padding(.top, 10)
                                 
-                                ForEach(vm.plans) { plan in ForEach(plan.outlets ?? []) { outlet in OutletCard(outlet: outlet) } }
+                                ForEach(vm.plans) { plan in ForEach(orderedOutlets(plan)) { outlet in OutletCard(outlet: outlet) } }
                              }
                         }
                         else if vm.isLoading && vm.plans.isEmpty { ProgressView().tint(.red).frame(maxWidth: .infinity).padding(.top, 50) }
@@ -749,27 +756,162 @@ struct RoutePlansView: View {
             }
         }.onAppear { Task { await vm.refresh() } }
     }
+
+    /// Sort outlets by visit_order (Android parity). Outlets without an
+    /// order are appended at the end in their decoded sequence.
+    private func orderedOutlets(_ plan: RoutePlan) -> [RouteOutlet] {
+        // Stable sort: outlets with a visit_order come first in ascending
+        // order; outlets without one fall back to their decoded sequence.
+        (plan.outlets ?? []).enumerated()
+            .sorted { lhs, rhs in
+                switch (lhs.element.visitOrder, rhs.element.visitOrder) {
+                case let (l?, r?): return l < r
+                case (.some, .none): return true
+                case (.none, .some): return false
+                case (.none, .none): return lhs.offset < rhs.offset
+                }
+            }
+            .map { $0.element }
+    }
+}
+
+/// Mirrors the dashboard / Android progress strip: total / visited counts
+/// and a horizontal completion bar. Sums across all plans for the day.
+struct RoutePlanProgressHeader: View {
+    let plans: [RoutePlan]
+
+    private var totals: (total: Int, visited: Int, pct: Double) {
+        let total = plans.reduce(0) { $0 + ($1.totalOutlets ?? $1.outlets?.count ?? 0) }
+        let visited = plans.reduce(0) { sum, p in
+            sum + (p.visitedOutlets ?? (p.outlets ?? []).filter {
+                ($0.status ?? "").lowercased() == "completed" ||
+                ($0.status ?? "").lowercased() == "visited" ||
+                $0.checkoutAt != nil
+            }.count)
+        }
+        let pct = total > 0 ? Double(visited) / Double(total) * 100.0 : 0
+        return (total, visited, pct)
+    }
+
+    var body: some View {
+        let t = totals
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(t.visited)").font(.system(size: 28, weight: .black))
+                Text("of \(t.total) visited").font(.caption).foregroundColor(.gray)
+                Spacer()
+                Text(String(format: "%.0f%%", t.pct))
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundColor(t.pct >= 100 ? .green : .indigo)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08)).frame(height: 6)
+                    Capsule()
+                        .fill(LinearGradient(colors: [.indigo, .purple], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: max(6, geo.size.width * CGFloat(t.pct / 100.0)), height: 6)
+                }
+            }.frame(height: 6)
+        }
+        .padding(16)
+        .liquidGlass()
+    }
 }
 
 struct OutletCard: View {
     @EnvironmentObject var appState: KiniAppState
     let outlet: RouteOutlet
+
+    private var isDone: Bool {
+        let s = (outlet.status ?? "").lowercased()
+        return s == "visited" || s == "completed" || outlet.checkoutAt != nil
+    }
+
+    private static let isoParser: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "h:mm a"; return f
+    }()
+
+    private func shortTime(_ iso: String?) -> String? {
+        guard let iso else { return nil }
+        let date = Self.isoParser.date(from: iso)
+            ?? ISO8601DateFormatter().date(from: iso)
+        return date.map { Self.timeFmt.string(from: $0) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(outlet.storeName ?? "Unknown Store").font(.headline).foregroundColor(Color(uiColor: .label))
+            HStack(alignment: .top, spacing: 10) {
+                // Visit-order badge (Android parity)
+                if let order = outlet.visitOrder {
+                    ZStack {
+                        Circle().fill(isDone ? Color.green.opacity(0.2) : Color.indigo.opacity(0.2))
+                            .frame(width: 28, height: 28)
+                        Text("\(order)")
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundColor(isDone ? .green : .indigo)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(outlet.storeName ?? "Unknown Store")
+                        .font(.headline).foregroundColor(Color(uiColor: .label))
+                    Text(outlet.address ?? "No address provided")
+                        .font(.caption).foregroundColor(.gray)
+                }
                 Spacer()
-                if outlet.status == "visited" { Text("COMPLETED").font(.system(size: 8, weight: .bold)).padding(5).background(Color.green.opacity(0.2)).foregroundColor(.green).cornerRadius(5) }
+                if isDone {
+                    Text("COMPLETED").font(.system(size: 8, weight: .bold))
+                        .padding(5).background(Color.green.opacity(0.2))
+                        .foregroundColor(.green).cornerRadius(5)
+                }
             }
-            Text(outlet.address ?? "No address provided").font(.caption).foregroundColor(.gray)
-            HStack {
-                HStack(spacing: 4) { Image(systemName: "list.clipboard").font(.caption); Text("\((outlet.activities ?? []).count) Tasks").font(.caption).fontWeight(.bold) }.foregroundColor(.purple)
+
+            // Check-in / out times — surfaced now that we decode them
+            if outlet.checkinAt != nil || outlet.checkoutAt != nil {
+                HStack(spacing: 14) {
+                    if let t = shortTime(outlet.checkinAt) {
+                        Label(t, systemImage: "arrow.right.circle.fill")
+                            .labelStyle(.titleAndIcon).font(.caption2).foregroundColor(.green)
+                    }
+                    if let t = shortTime(outlet.checkoutAt) {
+                        Label(t, systemImage: "arrow.left.circle.fill")
+                            .labelStyle(.titleAndIcon).font(.caption2).foregroundColor(.red)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "list.clipboard").font(.caption)
+                    Text("\((outlet.activities ?? []).count) Tasks").font(.caption).fontWeight(.bold)
+                }.foregroundColor(.purple)
+
+                // Geofence pill
+                if outlet.isGeofenced == true, let r = outlet.geofenceRadius, r > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "location.circle.fill").font(.caption2)
+                        Text("\(Int(r))m geofence").font(.caption2).fontWeight(.bold)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.15)).foregroundColor(.orange)
+                    .cornerRadius(10)
+                }
+
                 Spacer()
                 let isShiftEnded = appState.today?.checkoutAt != nil
-                Button(action: { if !isShiftEnded || outlet.status == "visited" { appState.selectedOutlet = outlet } }) {
-                    Text(outlet.status == "visited" ? "View Details" : (isShiftEnded ? "Shift Ended" : "Start Visit")).font(.caption2).fontWeight(.black).padding(.horizontal, 12).padding(.vertical, 6).background(outlet.status == "visited" ? Color.gray.opacity(0.2) : (isShiftEnded ? Color.gray.opacity(0.4) : Color.red)).foregroundColor(.white).cornerRadius(15)
+                Button(action: { if !isShiftEnded || isDone { appState.selectedOutlet = outlet } }) {
+                    Text(isDone ? "View Details" : (isShiftEnded ? "Shift Ended" : "Start Visit"))
+                        .font(.caption2).fontWeight(.black)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(isDone ? Color.gray.opacity(0.2) : (isShiftEnded ? Color.gray.opacity(0.4) : Color.red))
+                        .foregroundColor(.white).cornerRadius(15)
                 }
-                .disabled(isShiftEnded && outlet.status != "visited")
+                .disabled(isShiftEnded && !isDone)
             }.padding(.top, 5)
         }.padding(20).liquidGlass().padding(.horizontal, 60)
     }
