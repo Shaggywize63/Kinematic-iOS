@@ -84,7 +84,7 @@ private struct NotificationListSheet: View {
                     Text("No upcoming activities.").foregroundColor(.secondary).font(.caption)
                 } else {
                     ForEach(activities, id: \.id) { a in
-                        ActivityRow(activity: a)
+                        NotificationActivityRow(activity: a)
                     }
                 }
             }
@@ -104,7 +104,7 @@ private struct NotificationListSheet: View {
     }
 }
 
-private struct ActivityRow: View {
+private struct NotificationActivityRow: View {
     let activity: Activity
 
     var body: some View {
