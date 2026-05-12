@@ -96,7 +96,7 @@ private enum CRMDestination: Hashable {
         case .products:   ProductsListView()
         case .activities: ActivitiesView()
         case .tasks:      TasksView()
-        case .reports:    ReportsView()
+        case .reports:    CRMReportsView()
         case .kini:       KiniChatView()
         }
     }
