@@ -5,17 +5,51 @@ struct DealCreateView: View {
     @State private var name = ""
     @State private var accountId = ""
     @State private var amount: Double = 0
+    @State private var hasCloseDate = false
+    @State private var expectedCloseDate = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()
+    @State private var pipelines: [Pipeline] = []
+    @State private var stages: [Stage] = []
+    @State private var pipelineId: String = ""
+    @State private var stageId: String = ""
 
-    let onSubmit: (String, String?, Double) async -> Void
+    let onSubmit: ([String: Any]) async -> Void
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Deal") {
                     TextField("Deal name", text: $name)
-                    TextField("Amount", value: $amount, format: .number)
-                        .keyboardType(.decimalPad)
+                    HStack {
+                        Text("Amount (₹)")
+                        Spacer()
+                        TextField("0", value: $amount, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                    }
                     TextField("Account ID (optional)", text: $accountId)
+                }
+
+                if !pipelines.isEmpty {
+                    Section("Pipeline") {
+                        Picker("Pipeline", selection: $pipelineId) {
+                            ForEach(pipelines) { p in Text(p.name).tag(p.id) }
+                        }
+                        .onChange(of: pipelineId) { newId in
+                            Task { await loadStages(pipelineId: newId) }
+                        }
+                        if !stages.isEmpty {
+                            Picker("Stage", selection: $stageId) {
+                                ForEach(stages) { s in Text(s.name).tag(s.id) }
+                            }
+                        }
+                    }
+                }
+
+                Section("Close date") {
+                    Toggle("Set expected close date", isOn: $hasCloseDate)
+                    if hasCloseDate {
+                        DatePicker("Expected close", selection: $expectedCloseDate, displayedComponents: .date)
+                    }
                 }
             }
             .navigationTitle("New Deal")
@@ -24,12 +58,36 @@ struct DealCreateView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
-                            await onSubmit(name, accountId.isEmpty ? nil : accountId, amount)
+                            await onSubmit(buildBody())
                             dismiss()
                         }
                     }.disabled(name.isEmpty)
                 }
             }
+            .task { await loadPipelines() }
         }
+    }
+
+    private func loadPipelines() async {
+        pipelines = (try? await CRMService.shared.listPipelines()) ?? []
+        if pipelineId.isEmpty, let first = pipelines.first { pipelineId = first.id }
+        if !pipelineId.isEmpty { await loadStages(pipelineId: pipelineId) }
+    }
+
+    private func loadStages(pipelineId: String) async {
+        stages = (try? await CRMService.shared.listStages(pipelineId: pipelineId)) ?? []
+        if stageId.isEmpty, let first = stages.first { stageId = first.id }
+    }
+
+    private func buildBody() -> [String: Any] {
+        var body: [String: Any] = ["name": name, "amount": amount, "status": "open"]
+        if !accountId.isEmpty { body["account_id"] = accountId }
+        if !pipelineId.isEmpty { body["pipeline_id"] = pipelineId }
+        if !stageId.isEmpty { body["stage_id"] = stageId }
+        if hasCloseDate {
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+            body["expected_close_date"] = f.string(from: expectedCloseDate)
+        }
+        return body
     }
 }

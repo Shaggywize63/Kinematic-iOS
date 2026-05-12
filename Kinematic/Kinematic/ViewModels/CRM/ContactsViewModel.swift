@@ -29,13 +29,8 @@ final class ContactsViewModel: ObservableObject {
         }
     }
 
-    func create(firstName: String, lastName: String, email: String, phone: String, accountId: String?) async {
+    func create(body: [String: Any]) async {
         do {
-            var body: [String: Any] = [
-                "first_name": firstName, "last_name": lastName,
-                "email": email, "phone": phone
-            ]
-            if let accountId { body["account_id"] = accountId }
             let c = try await api.createContact(body)
             contacts.insert(c, at: 0)
         } catch {

@@ -6,8 +6,11 @@ struct AccountCreateView: View {
     @State private var industry = ""
     @State private var website = ""
     @State private var phone = ""
+    @State private var annualRevenue: Double = 0
+    @State private var employees: Int = 0
+    @State private var description = ""
 
-    let onSubmit: (String, String, String, String) async -> Void
+    let onSubmit: ([String: Any]) async -> Void
 
     var body: some View {
         NavigationStack {
@@ -15,8 +18,28 @@ struct AccountCreateView: View {
                 Section("Account") {
                     TextField("Company name", text: $name)
                     TextField("Industry", text: $industry)
-                    TextField("Website", text: $website).autocapitalization(.none)
+                    TextField("Website", text: $website).autocapitalization(.none).keyboardType(.URL)
                     TextField("Phone", text: $phone).keyboardType(.phonePad)
+                }
+                Section("Profile") {
+                    HStack {
+                        Text("Annual revenue (₹)")
+                        Spacer()
+                        TextField("0", value: $annualRevenue, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    Stepper(value: $employees, in: 0...1_000_000) {
+                        HStack {
+                            Text("Employees")
+                            Spacer()
+                            Text("\(employees)").foregroundColor(.secondary)
+                        }
+                    }
+                }
+                Section("Description") {
+                    TextField("Notes about this account…", text: $description, axis: .vertical)
+                        .lineLimit(3...6)
                 }
             }
             .navigationTitle("New Account")
@@ -25,12 +48,23 @@ struct AccountCreateView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
-                            await onSubmit(name, industry, website, phone)
+                            await onSubmit(buildBody())
                             dismiss()
                         }
                     }.disabled(name.isEmpty)
                 }
             }
         }
+    }
+
+    private func buildBody() -> [String: Any] {
+        var body: [String: Any] = ["name": name]
+        if !industry.isEmpty { body["industry"] = industry }
+        if !website.isEmpty  { body["website"]  = website }
+        if !phone.isEmpty    { body["phone"]    = phone }
+        if annualRevenue > 0 { body["annual_revenue"] = annualRevenue }
+        if employees > 0     { body["employees"] = employees }
+        if !description.isEmpty { body["description"] = description }
+        return body
     }
 }

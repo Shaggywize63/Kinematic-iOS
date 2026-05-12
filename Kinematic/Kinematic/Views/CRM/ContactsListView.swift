@@ -43,8 +43,8 @@ struct ContactsListView: View {
             }
         }
         .sheet(isPresented: $showCreate) {
-            ContactCreateView { f, l, e, p, a in
-                await vm.create(firstName: f, lastName: l, email: e, phone: p, accountId: a)
+            ContactCreateView { body in
+                await vm.create(body: body)
             }
         }
         .task { await vm.refresh() }

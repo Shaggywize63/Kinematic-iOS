@@ -30,11 +30,8 @@ final class DealsViewModel: ObservableObject {
         }
     }
 
-    func create(name: String, accountId: String?, amount: Double, stageId: String?) async {
+    func create(body: [String: Any]) async {
         do {
-            var body: [String: Any] = ["name": name, "amount": amount, "status": "open"]
-            if let accountId { body["account_id"] = accountId }
-            if let stageId { body["stage_id"] = stageId }
             let d = try await api.createDeal(body)
             deals.insert(d, at: 0)
         } catch {

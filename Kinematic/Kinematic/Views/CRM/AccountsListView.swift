@@ -45,8 +45,8 @@ struct AccountsListView: View {
             }
         }
         .sheet(isPresented: $showCreate) {
-            AccountCreateView { name, industry, website, phone in
-                await vm.create(name: name, industry: industry, website: website, phone: phone)
+            AccountCreateView { body in
+                await vm.create(body: body)
             }
         }
         .task { await vm.refresh() }
