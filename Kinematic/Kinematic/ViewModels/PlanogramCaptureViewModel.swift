@@ -89,7 +89,8 @@ final class PlanogramCaptureViewModel: ObservableObject {
                 visitId: visitId,
                 planogramId: planogramId,
                 imageURL: finalURL,
-                location: coords
+                location: coords,
+                angleScore: alignmentScore
             )
             phase = .complete(response)
         } catch let error as PlanogramServiceError {

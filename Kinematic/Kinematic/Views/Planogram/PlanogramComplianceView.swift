@@ -14,6 +14,11 @@ struct PlanogramComplianceView: View {
     let image: UIImage?
 
     @Environment(\.dismiss) private var dismiss
+    @State private var showFeedback = false
+    @State private var feedbackText = ""
+    @State private var feedbackBusy = false
+    @State private var feedbackSent = false
+    @State private var feedbackError: String?
 
     var body: some View {
         NavigationView {
@@ -56,6 +61,11 @@ struct PlanogramComplianceView: View {
                             }
                         }
                     }
+
+                    // FEEDBACK — Android/dashboard parity. Lets the field rep
+                    // flag an obvious AI mistake (e.g. "this SKU is actually
+                    // present") so supervisors can correct the model.
+                    feedbackPanel
                 }
                 .padding(16)
             }
@@ -66,6 +76,81 @@ struct PlanogramComplianceView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showFeedback) {
+                feedbackSheet
+            }
+        }
+    }
+
+    private var feedbackPanel: some View {
+        Group {
+            if feedbackSent {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill").foregroundColor(.green)
+                    Text("Thanks — feedback recorded").font(.subheadline)
+                    Spacer()
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.1)))
+            } else {
+                Button {
+                    showFeedback = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.bubble.fill")
+                        Text("Report inaccuracy").bold()
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption)
+                    }
+                    .padding(14)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.orange.opacity(0.1)))
+                    .foregroundColor(.orange)
+                }
+            }
+        }
+    }
+
+    private var feedbackSheet: some View {
+        NavigationStack {
+            Form {
+                Section("What looks wrong?") {
+                    TextEditor(text: $feedbackText)
+                        .frame(minHeight: 120)
+                }
+                if let err = feedbackError {
+                    Section { Text(err).foregroundColor(.red).font(.caption) }
+                }
+            }
+            .navigationTitle("Report inaccuracy")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { showFeedback = false }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if feedbackBusy {
+                        ProgressView()
+                    } else {
+                        Button("Send") { Task { await sendFeedback() } }
+                            .disabled(feedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+        }
+    }
+
+    private func sendFeedback() async {
+        let notes = feedbackText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !notes.isEmpty else { return }
+        feedbackBusy = true; feedbackError = nil
+        defer { feedbackBusy = false }
+        do {
+            _ = try await PlanogramService.shared.submitCaptureFeedback(
+                captureId: response.capture_id, notes: notes)
+            feedbackSent = true
+            showFeedback = false
+        } catch {
+            feedbackError = error.localizedDescription
         }
     }
 
