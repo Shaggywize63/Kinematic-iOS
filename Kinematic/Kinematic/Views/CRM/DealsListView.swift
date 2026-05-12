@@ -4,10 +4,21 @@ struct DealsListView: View {
     @StateObject var vm = DealsViewModel()
     @State private var showCreate = false
     @State private var showDateFilter = false
+    @AppStorage("crm.deals.showWeighted") private var showWeighted: Bool = false
     let statusOptions = ["open", "won", "lost", "all"]
 
     var body: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
+                    .foregroundColor(showWeighted ? .indigo : .green)
+                    .font(.caption)
+                Text(showWeighted ? "Weighted" : "Cost")
+                    .font(.caption2).foregroundColor(.secondary)
+                Spacer()
+                Toggle("", isOn: $showWeighted).labelsHidden().tint(.indigo)
+            }
+            .padding(.horizontal).padding(.top, 8)
             HStack {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {

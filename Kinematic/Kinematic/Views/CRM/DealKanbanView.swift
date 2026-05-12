@@ -3,6 +3,7 @@ import SwiftUI
 struct DealKanbanView: View {
     @StateObject var vm = DealKanbanViewModel()
     @State private var movingDeal: Deal?
+    @AppStorage("crm.deals.showWeighted") private var showWeighted: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +29,18 @@ struct DealKanbanView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             }
+
+            // Cost / Weighted toggle
+            HStack(spacing: 8) {
+                Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
+                    .foregroundColor(showWeighted ? .indigo : .green)
+                    .font(.caption)
+                Text(showWeighted ? "Weighted value (amount × win prob)" : "Cost (raw amount)")
+                    .font(.caption2).foregroundColor(.secondary)
+                Spacer()
+                Toggle("", isOn: $showWeighted).labelsHidden().tint(.indigo)
+            }
+            .padding(.horizontal).padding(.bottom, 6)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
