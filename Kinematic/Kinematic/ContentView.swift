@@ -107,8 +107,19 @@ struct ContentView: View {
 struct MainTabView: View {
     @EnvironmentObject var appState: KiniAppState
     @Namespace private var animation // For Matched Geometry (Liquid Pod)
-    
+    @AppStorage("crm_only_mode") private var crmOnlyMode: Bool = false
+
     var body: some View {
+        // CRM-only deployments (e.g. Tata Tiscon) hide the attendance + route
+        // tabs entirely and surface CRM as the whole app.
+        if crmOnlyMode {
+            NavigationStack { CRMHomeView() }
+        } else {
+            mainTabBody
+        }
+    }
+
+    private var mainTabBody: some View {
         ZStack(alignment: .bottom) {
             // GLOBAL CONTENT PAGING (Definitive Safe Isolation)
             ScrollView(.horizontal, showsIndicators: false) {
