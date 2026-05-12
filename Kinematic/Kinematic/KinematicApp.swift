@@ -1358,6 +1358,34 @@ class KinematicRepository {
         }
     }
     
+    // MARK: Breaks (Android parity — POST /attendance/break/start, /break/end)
+    func startBreak() async -> (Bool, String?) {
+        do {
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/attendance/break/start", method: "POST", body: Data("{}".utf8))
+            if res?.success == true { return (true, nil) }
+            return (false, res?.error ?? res?.message ?? "Failed to start break")
+        } catch { return (false, error.localizedDescription) }
+    }
+
+    func endBreak() async -> (Bool, String?) {
+        do {
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/attendance/break/end", method: "POST", body: Data("{}".utf8))
+            if res?.success == true { return (true, nil) }
+            return (false, res?.error ?? res?.message ?? "Failed to end break")
+        } catch { return (false, error.localizedDescription) }
+    }
+
+    // MARK: History (Android parity — GET /attendance/history)
+    func getAttendanceHistory(page: Int = 1, limit: Int = 30) async -> [AttendanceRecord] {
+        do {
+            let res: ApiResponse<[AttendanceRecord]>? = try await performRequest(
+                "/attendance/history?page=\(page)&limit=\(limit)")
+            return res?.data ?? []
+        } catch { return [] }
+    }
+
     func logSecurityViolation(type: String, action: String, lat: Double?, lng: Double?) async {
         do {
             let payload: [String: Any?] = ["type": type, "action": action, "lat": lat, "lng": lng]

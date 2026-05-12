@@ -781,6 +781,7 @@ struct AttendanceView: View {
     @EnvironmentObject var locationService: LocationTrackingService
     @State private var currentTime = Date()
     @State private var showCheckoutAlert = false
+    @State private var showHistory = false
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     var body: some View {
         ZStack {
@@ -861,6 +862,28 @@ struct AttendanceView: View {
                                 }
                             }
                             .frame(maxWidth: .infinity).padding().background(isShiftEnded ? Color.gray : (isCheckInIntent ? (needsSelfie ? Color.blue : Color.green) : Color.red)).foregroundColor(.white).cornerRadius(18).disabled(vm.isLoading || isShiftEnded)
+
+                            // BREAK TOGGLE — Android parity. Only available
+                            // mid-shift (checked in but not checked out).
+                            if !isCheckInIntent && !isShiftEnded {
+                                Button(action: { Task { await vm.toggleBreak() } }) {
+                                    HStack(spacing: 10) {
+                                        if vm.breakBusy { ProgressView().tint(.white) }
+                                        else if vm.isOnBreak {
+                                            Image(systemName: "play.fill")
+                                            Text("END BREAK").fontWeight(.black)
+                                        } else {
+                                            Image(systemName: "pause.fill")
+                                            Text("START BREAK").fontWeight(.black)
+                                        }
+                                    }
+                                }
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                .background(vm.isOnBreak ? Color.orange : Color.white.opacity(0.08))
+                                .foregroundColor(.white)
+                                .cornerRadius(14)
+                                .disabled(vm.breakBusy)
+                            }
                         }.padding(30).liquidGlass().padding(.horizontal, 60)
                         .alert("Confirm Checkout", isPresented: $showCheckoutAlert) {
                             Button("Cancel", role: .cancel) { }
@@ -877,7 +900,13 @@ struct AttendanceView: View {
                         
                         SessionCard(record: appState.today).padding(.horizontal, 60)
                         
-                        Text("RECENT HISTORY").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 60)
+                        HStack {
+                            Text("RECENT HISTORY").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
+                            Spacer()
+                            Button { showHistory = true } label: {
+                                Text("View all").font(.caption).fontWeight(.bold).foregroundColor(.indigo)
+                            }
+                        }.padding(.horizontal, 60)
                         VStack(spacing: 12) {
                             if let t = appState.today { AttendanceHistoryRow(record: t, localLocationStamp: vm.checkinLocationStamp) }
                             else { EmptyHistoryRow() }
@@ -888,6 +917,9 @@ struct AttendanceView: View {
             }
         }.onReceive(timer) { _ in currentTime = Date() }
         .onAppear { Task { await vm.refresh() }; LocationTrackingService.shared.startTracking() }
+        .sheet(isPresented: $showHistory) {
+            NavigationStack { AttendanceHistoryView() }
+        }
     }
 }
 

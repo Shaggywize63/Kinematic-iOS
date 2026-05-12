@@ -129,6 +129,24 @@ class AttendanceViewModel: ObservableObject {
     @Published var today: AttendanceRecord?
     @Published var isLoading = false
     @Published var message = ""
+    @Published var isOnBreak: Bool = false
+    @Published var breakBusy: Bool = false
+
+    @MainActor
+    func toggleBreak() async {
+        guard !breakBusy else { return }
+        breakBusy = true; message = ""
+        let (ok, err) = isOnBreak
+            ? await KinematicRepository.shared.endBreak()
+            : await KinematicRepository.shared.startBreak()
+        if ok {
+            isOnBreak.toggle()
+            message = isOnBreak ? "Break started" : "Back to work"
+        } else {
+            message = err ?? "Break action failed"
+        }
+        breakBusy = false
+    }
     /// Locally persisted check-in location stamp (lat,lng string) shown when the
     /// server does not return location coordinates in the AttendanceRecord.
     @Published var checkinLocationStamp: String? = UserDefaults.standard.string(forKey: "checkin_location_stamp")
