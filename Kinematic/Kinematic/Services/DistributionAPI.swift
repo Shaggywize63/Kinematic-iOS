@@ -108,6 +108,29 @@ struct DistributionAPI {
         let data = try await request("/salesman/uploads/sign", method: "POST", body: Body(kind: kind, ext: ext), idempotencyKey: UUID().uuidString)
         return try decode(data)
     }
+
+    /// Cancel an order (Android parity — POST /salesman/orders/{id}/cancel).
+    /// Optional reason is sent as JSON body; idempotency-key prevents
+    /// double-fire when the user mashes the button on a slow network.
+    func cancelOrder(id: String, reason: String? = nil) async throws -> DistOrder {
+        struct Body: Encodable { let reason: String? }
+        let key = "cancel-\(id)-\(UUID().uuidString.prefix(8))"
+        let data = try await request("/salesman/orders/\(id)/cancel",
+                                     method: "POST",
+                                     body: Body(reason: reason),
+                                     idempotencyKey: String(key))
+        return try decode(data)
+    }
+
+    /// Mark a visit checkin (Android parity — POST /salesman/visits/{id}/checkin).
+    /// Drives the server-side geofence pass flag for any orders booked next.
+    func visitCheckin(visitId: String, lat: Double, lng: Double) async throws {
+        struct Body: Encodable { let lat: Double; let lng: Double }
+        _ = try await request("/salesman/visits/\(visitId)/checkin",
+                              method: "POST",
+                              body: Body(lat: lat, lng: lng),
+                              idempotencyKey: "checkin-\(visitId)")
+    }
 }
 
 /// Erases the static type so request() can encode any Encodable. Apple's
