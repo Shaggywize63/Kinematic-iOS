@@ -1,0 +1,119 @@
+name: Build iOS Simulator app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build for iOS Simulator
+    # macos-15 ships Xcode 16. Xcode 26 (required for iOS 26 SDK) lives on
+    # macos-15-xlarge or future macos-26 images — switch when GA.
+    runs-on: macos-15
+
+    env:
+      SCHEME: Kinematic
+      PROJECT_DIR: Kinematic
+      PROJECT: Kinematic.xcodeproj
+      CONFIGURATION: Debug
+      # Cap the simulator destination at a runtime the runner has installed.
+      # iPhone 15 / latest available iOS runtime — xcodebuild will pick the
+      # newest available simulator destination matching this name.
+      SIM_DEVICE: iPhone 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        # Pick the newest Xcode available on the runner so iOS 26 SDK is
+        # used when the image rolls. Falls back gracefully.
+        run: |
+          set -e
+          ls /Applications | grep -i 'Xcode.*\.app' || true
+          latest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n1 || echo "")
+          if [ -n "$latest" ]; then
+            sudo xcode-select -s "$latest/Contents/Developer"
+          fi
+          xcodebuild -version
+          xcrun simctl list runtimes | head -n 20
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: deriveddata-${{ runner.os }}-${{ hashFiles('Kinematic/Kinematic.xcodeproj/project.pbxproj') }}
+          restore-keys: deriveddata-${{ runner.os }}-
+
+      - name: Build for iOS Simulator (unsigned)
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -eo pipefail
+          # CODE_SIGNING_ALLOWED=NO so we can build without an Apple Dev
+          # cert. Output sits at $BUILD_DIR/Build/Products/Debug-iphonesimulator
+          # which we collect below.
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
+            build | tee xcodebuild.log
+
+      - name: Package simulator .app as zip
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+          APP_DIR=$(find build/Build/Products -type d -name 'Kinematic.app' | head -n1)
+          if [ -z "$APP_DIR" ]; then
+            echo "Kinematic.app not found"
+            ls -laR build/Build/Products || true
+            exit 1
+          fi
+          mkdir -p ../dist
+          (cd "$(dirname "$APP_DIR")" && zip -ry "../../../dist/Kinematic-simulator-${GITHUB_SHA::7}.zip" "$(basename "$APP_DIR")")
+          ls -la ../dist
+
+      - name: Upload simulator .app as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kinematic-simulator-app
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish to GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          short_sha="${SHA:0:7}"
+          tag="build-${short_sha}"
+          title="Auto-build ${short_sha}"
+          notes="Auto-built iOS Simulator bundle from ${SHA}. To install: unzip, then drag Kinematic.app onto an open iOS Simulator window. Real-device (.ipa) builds require Apple Developer signing — not configured."
+          asset="$(ls dist/*.zip | head -n1)"
+          gh release create "$tag" "$asset" \
+            --repo "$REPO" \
+            --title "$title" \
+            --notes "$notes" \
+            --target "$SHA" \
+            || gh release upload "$tag" "$asset" --repo "$REPO" --clobber
+
+      - name: Upload xcodebuild log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: ${{ env.PROJECT_DIR }}/xcodebuild.log
+          retention-days: 14
