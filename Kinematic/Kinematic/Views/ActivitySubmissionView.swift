@@ -11,6 +11,12 @@ struct ActivitySubmissionView: View {
     @State private var isSubmitting = false
     @State private var isLoading = true
     @State private var cachedImages: [String: [UIImage]] = [:]
+    // How many times this activity has been submitted in the current visit.
+    // Users can submit the same activity multiple times per outlet (e.g. one
+    // submission per shelf for a planogram audit); we surface the count in
+    // the submit button so they know their last save landed.
+    @State private var submissionsThisVisit: Int = 0
+    @State private var lastSubmitFlashed: Bool = false
 
     private var progress: Double {
         guard let fields = template?.fields else { return 0 }
@@ -139,12 +145,33 @@ struct ActivitySubmissionView: View {
     private var submitBar: some View {
         VStack(spacing: 0) {
             Divider()
+            if submissionsThisVisit > 0 {
+                // Subtle running tally so users know previous submissions
+                // landed and the form is ready for the next entry.
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    Text("\(submissionsThisVisit) submission\(submissionsThisVisit == 1 ? "" : "s") for this activity")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button("Done") {
+                        appState.selectedActivity = nil
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.red)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+            }
             Button(action: { submit() }) {
                 HStack(spacing: 8) {
                     if isSubmitting {
                         ProgressView().tint(.white).scaleEffect(0.85)
+                    } else if lastSubmitFlashed {
+                        Image(systemName: "checkmark.circle.fill")
                     }
-                    Text(isSubmitting ? "Submitting…" : "Submit Audit")
+                    Text(submitLabel)
                         .font(.headline.weight(.semibold))
                         .foregroundColor(.white)
                 }
@@ -152,14 +179,21 @@ struct ActivitySubmissionView: View {
                 .padding(.vertical, 16)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(activity.status == "completed" ? Color.gray : Color.red)
+                        .fill(isSubmitting ? Color.red.opacity(0.7) : Color.red)
                 )
                 .padding(.horizontal, 20)
             }
-            .disabled(activity.status == "completed" || isSubmitting)
+            .disabled(isSubmitting)
             .padding(.vertical, 12)
         }
         .background(.ultraThinMaterial)
+    }
+
+    private var submitLabel: String {
+        if isSubmitting { return "Submitting…" }
+        if lastSubmitFlashed { return "Saved — submit another?" }
+        if submissionsThisVisit > 0 { return "Submit Another" }
+        return "Submit Audit"
     }
 
     private func shouldShow(field: FormField) -> Bool {
@@ -224,14 +258,37 @@ struct ActivitySubmissionView: View {
             await MainActor.run {
                 isSubmitting = false
                 if success {
+                    // Field reps can submit the same activity multiple times
+                    // per visit (e.g. one entry per shelf / aisle). After a
+                    // successful save we:
+                    //   1. mark the activity completed in app state so the
+                    //      timeline reflects at least one submission landed,
+                    //   2. reset all field values + cached images so the
+                    //      form is a blank slate for the next entry,
+                    //   3. flash a success state on the submit button for
+                    //      ~1.5s so the user knows it landed,
+                    //   4. leave the form open. The "Done" button + the
+                    //      running tally above the submit button let the
+                    //      user close the form when they're finished.
                     if let index = KiniAppState.shared.selectedOutlet?.activities?.firstIndex(where: { $0.id == activity.id }) {
                         KiniAppState.shared.selectedOutlet?.activities?[index].status = "completed"
                     }
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        appState.selectedActivity = nil
+                    submissionsThisVisit += 1
+                    resetForm()
+                    withAnimation(.easeInOut(duration: 0.2)) { lastSubmitFlashed = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        withAnimation(.easeInOut(duration: 0.2)) { lastSubmitFlashed = false }
                     }
                 }
             }
+        }
+    }
+
+    private func resetForm() {
+        guard let fields = template?.fields else { return }
+        for field in fields {
+            responses[field.id] = ""
+            cachedImages[field.id] = []
         }
     }
 }
