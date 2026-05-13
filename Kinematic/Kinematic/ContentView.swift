@@ -509,9 +509,9 @@ struct SelfieStatusCard: View {
             }
             .shadow(color: .black.opacity(0.1), radius: 20, x: 0, y: 10)
         }
-        .alert("Confirm Checkout", isPresented: $showCheckoutAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Proceed to Checkout", role: .destructive) {
+        .alert("End shift?", isPresented: $showCheckoutAlert) {
+            Button("Stay clocked in", role: .cancel) { }
+            Button("Clock out", role: .destructive) {
                 let isExecutive = Session.currentUser?.role.lowercased().contains("executive") ?? false
                 if isExecutive {
                     appState.attendanceVM.startFlow()
@@ -522,7 +522,7 @@ struct SelfieStatusCard: View {
                 }
             }
         } message: {
-            Text("You wish to checkout? After checkout you won't be able to do any task.")
+            Text("Once you clock out you won't be able to clock in again today. Make sure you've finished all visits and submissions.")
         }
     }
 }
@@ -924,7 +924,10 @@ struct AttendanceView: View {
     @State private var currentTime = Date()
     @State private var showCheckoutAlert = false
     @State private var showHistory = false
-    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    // Update the on-screen clock once per minute instead of once per second
+    // — the seconds digit isn't visible anyway and the per-second tick was
+    // re-laying out the whole card every render.
+    let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     var body: some View {
         ZStack {
             VibrantBackgroundView()
@@ -946,90 +949,151 @@ struct AttendanceView: View {
                     VStack(spacing: 25) {
                         Text("Attendance").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 10).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 60)
                         
-                        VStack(spacing: 24) {
-                            let isIn = appState.today?.isIn ?? false
-                            VStack(spacing: 4) {
-                                Text(currentTime.formatted(date: .omitted, time: .shortened)).font(.system(size: 44, weight: .black, design: .rounded)).foregroundColor(Color(uiColor: .label))
-                                Text(currentTime.formatted(date: .complete, time: .omitted)).font(.caption).fontWeight(.bold).foregroundColor(.gray).textCase(.uppercase)
-                            }
-                            VStack(spacing: 12) {
-                                Button(action: { 
+                        VStack(spacing: 20) {
+                            let isCheckInIntent = appState.today?.checkinAt == nil
+                            let isShiftEnded = appState.today?.checkoutAt != nil
+                            let isExecutive = Session.currentUser?.role.lowercased().contains("executive") ?? false
+                            let needsSelfie = vm.selfie == nil && (isCheckInIntent || isExecutive)
+
+                            // ── 1. Completed state — short, clear summary.
+                            //       No more selfie / button cycle; the day is
+                            //       locked.
+                            if isShiftEnded {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "checkmark.seal.fill")
+                                        .font(.system(size: 56))
+                                        .foregroundColor(.green)
+                                    Text("Shift Completed")
+                                        .font(.title2).fontWeight(.black)
+                                        .foregroundColor(Color(uiColor: .label))
+                                    if let hrs = appState.today?.totalHours, hrs > 0 {
+                                        Text(String(format: "%.1f hours logged today", hrs))
+                                            .font(.subheadline)
+                                            .foregroundColor(.gray)
+                                    }
+                                    Text("Come back tomorrow to clock in again.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .padding(.top, 4)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                            } else {
+                                // ── 2. Active or pre-shift state.
+                                VStack(spacing: 4) {
+                                    Text(currentTime.formatted(date: .omitted, time: .shortened))
+                                        .font(.system(size: 44, weight: .black, design: .rounded))
+                                        .foregroundColor(Color(uiColor: .label))
+                                    Text(currentTime.formatted(date: .complete, time: .omitted))
+                                        .font(.caption).fontWeight(.bold)
+                                        .foregroundColor(.gray).textCase(.uppercase)
+                                }
+
+                                Button(action: {
                                     print("📸 [AttendanceView] Take Selfie Button Tapped")
-                                    vm.startFlow() 
+                                    vm.startFlow()
                                 }) {
                                     ZStack {
-                                        Circle().fill(Color.white.opacity(0.05)).frame(width: 140, height: 140)
-                                        if let img = vm.selfie { Image(uiImage: img).resizable().aspectRatio(contentMode: .fill).frame(width: 130, height: 130).clipShape(Circle()) }
-                                        else if let selfieUrl = appState.today?.checkinSelfieUrl, let url = URL(string: selfieUrl) { AsyncImage(url: url) { image in image.resizable().aspectRatio(contentMode: .fill).frame(width: 130, height: 130).clipShape(Circle()) } placeholder: { ProgressView().tint(.gray).frame(width: 130, height: 130) } }
-                                        else { VStack(spacing: 8) { Image(systemName: "camera.fill").font(.title).foregroundColor(.red); Text("Take Selfie").font(.caption2).fontWeight(.bold).foregroundColor(.gray) } }
+                                        Circle().fill(Color.white.opacity(0.05)).frame(width: 130, height: 130)
+                                        if let img = vm.selfie {
+                                            Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
+                                                .frame(width: 120, height: 120).clipShape(Circle())
+                                        } else if let selfieUrl = appState.today?.checkinSelfieUrl,
+                                                  let url = URL(string: selfieUrl) {
+                                            AsyncImage(url: url) { image in
+                                                image.resizable().aspectRatio(contentMode: .fill)
+                                                    .frame(width: 120, height: 120).clipShape(Circle())
+                                            } placeholder: {
+                                                ProgressView().tint(.gray).frame(width: 120, height: 120)
+                                            }
+                                        } else {
+                                            VStack(spacing: 6) {
+                                                Image(systemName: "camera.fill").font(.title2).foregroundColor(.red)
+                                                Text("Take Selfie").font(.caption2).fontWeight(.bold).foregroundColor(.gray)
+                                            }
+                                        }
                                     }.overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
                                 }
                                 .contentShape(Circle())
-                            }
-                            VStack(spacing: 8) {
-                                HStack(spacing: 6) { 
-                                    Circle().fill(isIn ? Color.green : Color.red).frame(width: 8, height: 8)
-                                    Text(isIn ? "Shift: Active" : "Shift: Offline")
-                                        .font(.headline)
-                                        .foregroundColor(Color(uiColor: .label)) 
-                                }
-                                if let loc = locationService.lastLocation { Text(String(format: "Location: %.4f, %.4f", loc.coordinate.latitude, loc.coordinate.longitude)).font(.system(size: 10, design: .monospaced)).foregroundColor(.gray) }
-                                else { Text("Waiting for GPS...").font(.caption2).foregroundColor(.red.opacity(0.8)) }
-                            }
-                            if !vm.message.isEmpty { Text(vm.message).font(.caption).foregroundColor(vm.message.contains("Success") ? .green : .red).padding(.horizontal, 12).padding(.vertical, 4).background(Color.white.opacity(0.05)).cornerRadius(8) }
-                            
-                            let isCheckInIntent = appState.today?.checkinAt == nil
-                            let isExecutive = Session.currentUser?.role.lowercased().contains("executive") ?? false
-                            let needsSelfie = vm.selfie == nil && (isCheckInIntent || isExecutive)
-                            let isShiftEnded = appState.today?.checkoutAt != nil
-                            
-                            Button(action: { 
-                                if isShiftEnded { return }
-                                
-                                if isCheckInIntent {
-                                    if needsSelfie { vm.startFlow() }
-                                    else if let loc = locationService.lastLocation { Task { await vm.toggleAttendance(loc: loc) } }
-                                } else {
-                                    // Trigger Checkout Alert in the tab too if needed, but for simplicity we can use the same logic
-                                    // However, AttendanceView needs its own @State for the alert
-                                    showCheckoutAlert = true
-                                }
-                            }) {
-                                HStack(spacing: 10) {
-                                    if vm.isLoading { ProgressView().tint(.white) }
-                                    else if isShiftEnded { Image(systemName: "checkmark.seal.fill"); Text("SHIFT COMPLETED").fontWeight(.black) }
-                                    else if needsSelfie && isCheckInIntent { Image(systemName: "camera.fill"); Text("TAKE SELFIE TO CHECK IN").fontWeight(.black) }
-                                    else if isCheckInIntent { Image(systemName: "arrow.right.circle.fill"); Text("CHECK IN NOW").fontWeight(.black) }
-                                    else { Image(systemName: "arrow.left.circle.fill"); Text("CHECK OUT NOW").fontWeight(.black) }
-                                }
-                            }
-                            .frame(maxWidth: .infinity).padding().background(isShiftEnded ? Color.gray : (isCheckInIntent ? (needsSelfie ? Color.blue : Color.green) : Color.red)).foregroundColor(.white).cornerRadius(18).disabled(vm.isLoading || isShiftEnded)
 
-                            // BREAK TOGGLE — Android parity. Only available
-                            // mid-shift (checked in but not checked out).
-                            if !isCheckInIntent && !isShiftEnded {
-                                Button(action: { Task { await vm.toggleBreak() } }) {
+                                // Status + GPS condensed to a single line.
+                                let isIn = appState.today?.isIn ?? false
+                                HStack(spacing: 8) {
+                                    Circle().fill(isIn ? Color.green : Color.red).frame(width: 8, height: 8)
+                                    Text(isIn ? "Shift active" : "Not clocked in")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                        .foregroundColor(Color(uiColor: .label))
+                                    if locationService.lastLocation == nil {
+                                        Text("· Waiting for GPS")
+                                            .font(.caption2).foregroundColor(.red.opacity(0.8))
+                                    }
+                                }
+
+                                if !vm.message.isEmpty {
+                                    Text(vm.message)
+                                        .font(.caption)
+                                        .foregroundColor(vm.message.contains("Success") ? .green : .red)
+                                        .padding(.horizontal, 12).padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.05))
+                                        .cornerRadius(8)
+                                }
+
+                                Button(action: {
+                                    if isCheckInIntent {
+                                        if needsSelfie { vm.startFlow() }
+                                        else if let loc = locationService.lastLocation {
+                                            Task { await vm.toggleAttendance(loc: loc) }
+                                        }
+                                    } else {
+                                        showCheckoutAlert = true
+                                    }
+                                }) {
                                     HStack(spacing: 10) {
-                                        if vm.breakBusy { ProgressView().tint(.white) }
-                                        else if vm.isOnBreak {
-                                            Image(systemName: "play.fill")
-                                            Text("END BREAK").fontWeight(.black)
-                                        } else {
-                                            Image(systemName: "pause.fill")
-                                            Text("START BREAK").fontWeight(.black)
+                                        if vm.isLoading { ProgressView().tint(.white) }
+                                        else if needsSelfie && isCheckInIntent {
+                                            Image(systemName: "camera.fill")
+                                            Text("TAKE SELFIE TO CHECK IN").fontWeight(.black)
+                                        }
+                                        else if isCheckInIntent {
+                                            Image(systemName: "arrow.right.circle.fill")
+                                            Text("CHECK IN NOW").fontWeight(.black)
+                                        }
+                                        else {
+                                            Image(systemName: "arrow.left.circle.fill")
+                                            Text("CHECK OUT").fontWeight(.black)
                                         }
                                     }
                                 }
-                                .frame(maxWidth: .infinity).padding(.vertical, 12)
-                                .background(vm.isOnBreak ? Color.orange : Color.white.opacity(0.08))
-                                .foregroundColor(.white)
-                                .cornerRadius(14)
-                                .disabled(vm.breakBusy)
+                                .frame(maxWidth: .infinity).padding()
+                                .background(isCheckInIntent ? (needsSelfie ? Color.blue : Color.green) : Color.red)
+                                .foregroundColor(.white).cornerRadius(18)
+                                .disabled(vm.isLoading)
+
+                                // BREAK TOGGLE — only mid-shift.
+                                if !isCheckInIntent {
+                                    Button(action: { Task { await vm.toggleBreak() } }) {
+                                        HStack(spacing: 10) {
+                                            if vm.breakBusy { ProgressView().tint(.white) }
+                                            else if vm.isOnBreak {
+                                                Image(systemName: "play.fill")
+                                                Text("END BREAK").fontWeight(.black)
+                                            } else {
+                                                Image(systemName: "pause.fill")
+                                                Text("START BREAK").fontWeight(.black)
+                                            }
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                    .background(vm.isOnBreak ? Color.orange : Color.white.opacity(0.08))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(14)
+                                    .disabled(vm.breakBusy)
+                                }
                             }
-                        }.padding(30).liquidGlass().padding(.horizontal, 60)
-                        .alert("Confirm Checkout", isPresented: $showCheckoutAlert) {
-                            Button("Cancel", role: .cancel) { }
-                            Button("Proceed to Checkout", role: .destructive) {
+                        }.padding(28).liquidGlass().padding(.horizontal, 60)
+                        .alert("End shift?", isPresented: $showCheckoutAlert) {
+                            Button("Stay clocked in", role: .cancel) { }
+                            Button("Clock out", role: .destructive) {
                                 if let loc = locationService.lastLocation {
                                     Task { await vm.toggleAttendance(loc: loc) }
                                 } else {
@@ -1037,9 +1101,9 @@ struct AttendanceView: View {
                                 }
                             }
                         } message: {
-                            Text("You wish to checkout? After checkout you won't be able to do any task.")
+                            Text("Once you clock out you won't be able to clock in again today. Make sure you've finished all visits and submissions.")
                         }
-                        
+
                         SessionCard(record: appState.today).padding(.horizontal, 60)
                         
                         HStack {
