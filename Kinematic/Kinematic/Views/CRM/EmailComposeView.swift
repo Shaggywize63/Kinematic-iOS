@@ -24,7 +24,7 @@ struct EmailComposeView: View {
                                 Text(t.name).tag(String?.some(t.id))
                             }
                         }
-                        .onChange(of: templateId) { newValue in
+                        .onChange(of: templateId) { _, newValue in
                             if let id = newValue, let t = templates.first(where: { $0.id == id }) {
                                 subject = t.subject
                                 messageBody = t.body

@@ -25,7 +25,7 @@ struct KiniChatView: View {
                     .padding(.top, 12)
                     .padding(.bottom, 8)
                 }
-                .onChange(of: vm.messages.count) { _ in
+                .onChange(of: vm.messages.count) { _, _ in
                     if let last = vm.messages.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }

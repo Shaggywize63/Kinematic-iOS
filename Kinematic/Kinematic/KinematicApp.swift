@@ -1665,7 +1665,7 @@ struct KinematicApp: App {
                 }
             }
             .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
-            .onChange(of: scenePhase) { phase in
+            .onChange(of: scenePhase) { _, phase in
                 // Drain queued attendance + distribution writes whenever the
                 // app comes back to the foreground. No-ops if the queue is
                 // empty or the user is offline.

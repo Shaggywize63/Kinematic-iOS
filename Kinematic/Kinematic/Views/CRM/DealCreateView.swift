@@ -34,7 +34,7 @@ struct DealCreateView: View {
                         Picker("Pipeline", selection: $pipelineId) {
                             ForEach(pipelines) { p in Text(p.name).tag(p.id) }
                         }
-                        .onChange(of: pipelineId) { newId in
+                        .onChange(of: pipelineId) { _, newId in
                             Task { await loadStages(pipelineId: newId) }
                         }
                         if !stages.isEmpty {
