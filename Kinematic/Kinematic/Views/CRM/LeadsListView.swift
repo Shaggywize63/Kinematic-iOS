@@ -103,7 +103,7 @@ struct LeadsListView: View {
             }
         }
         .task { await vm.refresh() }
-        .onChange(of: vm.search) { _ in
+        .onChange(of: vm.search) { _, _ in
             Task { await vm.refresh() }
         }
     }
