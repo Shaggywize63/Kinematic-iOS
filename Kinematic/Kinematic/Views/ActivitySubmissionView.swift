@@ -258,6 +258,9 @@ struct ActivitySubmissionView: View {
         let unmet = unmetRequiredFields
         if !unmet.isEmpty {
             missingRequiredLabels = unmet.map { $0.label }
+            // Warning haptic when validation fails so the rep feels the
+            // block, not just sees the banner.
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return
         }
         missingRequiredLabels = []
@@ -322,6 +325,10 @@ struct ActivitySubmissionView: View {
                     }
                     submissionsThisVisit += 1
                     resetForm()
+                    // Success haptic — sharp single tap so the rep gets
+                    // tactile confirmation that the submission landed
+                    // without needing to check the screen.
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                     withAnimation(.easeInOut(duration: 0.2)) { lastSubmitFlashed = true }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         withAnimation(.easeInOut(duration: 0.2)) { lastSubmitFlashed = false }
