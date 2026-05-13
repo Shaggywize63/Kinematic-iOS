@@ -32,28 +32,15 @@ struct StoreVisitView: View {
     }
 
     var body: some View {
-        // GeometryReader pins the layout to the actual visible screen width.
-        // The previous attempts kept failing because StoreVisitView is mounted
-        // as a sibling inside MainTabView's ZStack — that ZStack also holds a
-        // horizontal-paging ScrollView whose LazyHStack has 3 screens of
-        // intrinsic width, and SwiftUI was leaking that wider context into
-        // sibling layout. Explicitly constraining to `geo.size.width` stops
-        // the leak in every case.
-        GeometryReader { geo in
-            ZStack(alignment: .topLeading) {
-                VibrantBackgroundView()
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .ignoresSafeArea()
+        // Presented from MainTabView via .fullScreenCover so we get a real,
+        // isolated full-screen canvas — no more leaking width from the
+        // horizontal pager sibling. NavigationStack gives us a standard
+        // toolbar (close button, large title) per Apple HIG.
+        NavigationStack {
+            ZStack {
+                VibrantBackgroundView().ignoresSafeArea()
+                scrollContent
 
-                // Single content column — explicit width so children always
-                // know what canvas they're working against.
-                VStack(alignment: .leading, spacing: 0) {
-                    headerRow
-                    scrollContent
-                }
-                .frame(width: geo.size.width, alignment: .topLeading)
-
-                // Loading Overlay
                 if isStartingVisit {
                     ZStack {
                         Color(uiColor: .systemBackground).opacity(0.8).ignoresSafeArea()
@@ -67,20 +54,33 @@ struct StoreVisitView: View {
                                 .padding(.top, 10)
                         }
                     }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                }
-
-                // Activity Form Overlay
-                if let activity = appState.selectedActivity {
-                    ActivitySubmissionView(activity: activity)
-                        .transition(.move(edge: .trailing))
-                        .zIndex(10)
                 }
             }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-            .clipped()
+            .navigationTitle(appState.selectedOutlet?.storeName ?? "Store Visit")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        appState.selectedOutlet = nil
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .accessibilityLabel("Close")
+                }
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text(appState.selectedOutlet?.storeName ?? "Store Visit")
+                            .font(.system(size: 16, weight: .semibold))
+                            .lineLimit(1)
+                        Text(appState.selectedOutlet?.address ?? "No address provided")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
         }
-        .ignoresSafeArea()
         .fullScreenCover(isPresented: $showingPlanogramCapture) {
             PlanogramCaptureView(
                 storeId: appState.selectedOutlet?.id,
@@ -88,47 +88,20 @@ struct StoreVisitView: View {
                 planogramId: nil
             )
         }
+        // Activity form is its own full screen — no more transition overlay
+        // inside this view. Dismissed by clearing selectedActivity from the
+        // form's toolbar close button.
+        .fullScreenCover(item: $appState.selectedActivity) { activity in
+            ActivitySubmissionView(activity: activity)
+                .environmentObject(appState)
+        }
     }
 
     // MARK: - Sub-views
 
-    /// Top header row: back chevron + outlet name/address.
-    /// Uses explicit `.padding(.leading, 20)` so the chevron is never
-    /// flush against the screen edge.
-    @ViewBuilder
-    private var headerRow: some View {
-        HStack(spacing: 12) {
-            Button(action: { appState.selectedOutlet = nil }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
-                    .padding(10)
-                    .background(Color(uiColor: .label).opacity(0.06))
-                    .clipShape(Circle())
-                    .foregroundColor(Color(uiColor: .label))
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(appState.selectedOutlet?.storeName ?? "Store Visit")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Color(uiColor: .label))
-                    .lineLimit(1)
-                Text(appState.selectedOutlet?.address ?? "No address provided")
-                    .font(.system(size: 12))
-                    .foregroundColor(.gray)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.leading, 20)
-        .padding(.trailing, 20)
-        .padding(.top, 56)
-        .padding(.bottom, 18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Scrolling content column. Uses explicit `.padding(.leading, 20)` and
-    /// `.padding(.trailing, 20)` so left and right edges are independently
-    /// controlled (some `.padding(.horizontal, …)` propagation issues we
-    /// hit earlier).
+    /// Scrolling content column. Now mounted inside a real NavigationStack
+    /// so safe-area + horizontal padding behave correctly without manual
+    /// width pinning.
     @ViewBuilder
     private var scrollContent: some View {
         ScrollView(showsIndicators: false) {
@@ -225,8 +198,7 @@ struct StoreVisitView: View {
 
                 Spacer().frame(height: 120)
             }
-            .padding(.leading, 20)
-            .padding(.trailing, 20)
+            .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

@@ -12,12 +12,6 @@ struct ActivitySubmissionView: View {
     @State private var isLoading = true
     @State private var cachedImages: [String: [UIImage]] = [:]
 
-    private var screenWidth: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.screen.bounds.width }
-            .first ?? 390 // Fallback for iOS 26+ compatibility
-    }
-
     private var progress: Double {
         guard let fields = template?.fields else { return 0 }
         let requiredFields = fields.filter { $0.isRequired && $0.fieldType != "section_header" }
@@ -31,41 +25,16 @@ struct ActivitySubmissionView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+        // Presented as a real .fullScreenCover from StoreVisitView, so we
+        // wrap in NavigationStack for a system nav bar (title, close button)
+        // instead of the previous hand-rolled header with manual 60pt
+        // top-padding for the safe area.
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                HStack {
-                    Button(action: {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            appState.selectedActivity = nil
-                        }
-                    }) {
-                        Image(systemName: "chevron.left.circle.fill")
-                            .symbolRenderingMode(.hierarchical)
-                            .font(.title2)
-                            .foregroundColor(.red)
-                    }
-                    Spacer()
-                    Text(activity.name ?? "Audit")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.left.circle.fill")
-                        .opacity(0)
-                        .font(.title2)
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 60)
-                .padding(.bottom, 12)
-                .frame(maxWidth: .infinity)
-                .background {
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .ignoresSafeArea(edges: .top)
-                }
-
-                if isLoading {
+                VStack(spacing: 0) {
+                    if isLoading {
                     VStack(spacing: 12) {
                         ProgressView().tint(.red).scaleEffect(1.2)
                         Text("Loading form...").font(.footnote).foregroundColor(.secondary)
@@ -152,37 +121,49 @@ struct ActivitySubmissionView: View {
                 }
             }
 
-            if template != nil && !isLoading {
-                VStack(spacing: 0) {
-                    Divider()
-                    Button(action: { submit() }) {
-                        HStack(spacing: 8) {
-                            if isSubmitting {
-                                ProgressView().tint(.white).scaleEffect(0.85)
+                if template != nil && !isLoading {
+                    VStack(spacing: 0) {
+                        Divider()
+                        Button(action: { submit() }) {
+                            HStack(spacing: 8) {
+                                if isSubmitting {
+                                    ProgressView().tint(.white).scaleEffect(0.85)
+                                }
+                                Text(isSubmitting ? "Submitting..." : "Submit Audit")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
                             }
-                            Text(isSubmitting ? "Submitting..." : "Submit Audit")
-                                .font(.headline)
-                                .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(activity.status == "completed" ? Color.gray : Color.red)
+                            .cornerRadius(14)
+                            .padding(.horizontal, 24)
                         }
-                        .frame(maxWidth: .infinity)
+                        .disabled(activity.status == "completed" || isSubmitting)
                         .padding(.vertical, 16)
-                        .background(activity.status == "completed" ? Color.gray : Color.red)
-                        .cornerRadius(14)
-                        .padding(.horizontal, 24)
                     }
-                    .disabled(activity.status == "completed" || isSubmitting)
-                    .padding(.vertical, 16)
-                }
-                .background {
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .ignoresSafeArea(edges: .bottom)
+                    .background {
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                            .ignoresSafeArea(edges: .bottom)
+                    }
                 }
             }
+            .navigationTitle(activity.name ?? "Audit")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        appState.selectedActivity = nil
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .accessibilityLabel("Close")
+                }
+            }
+            .task { await loadTemplate() }
         }
-        .frame(width: screenWidth)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .task { await loadTemplate() }
     }
 
     private func shouldShow(field: FormField) -> Bool {
