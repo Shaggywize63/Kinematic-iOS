@@ -120,7 +120,14 @@ struct MainTabView: View {
         // rather than an overlay so it gets standard iOS modal behaviour
         // (slide-in, safe-area handling, NavigationStack chrome) and the
         // left-edge text cropping seen in the prior overlay layout is gone.
-        .fullScreenCover(item: $appState.selectedOutlet) { _ in
+        // Using `isPresented` (not `item:`) because @Published optionals have
+        // tripped the SwiftUI presentation machinery in some iOS 18 builds,
+        // which manifested as the app hanging on splash after the previous
+        // PR landed.
+        .fullScreenCover(isPresented: Binding(
+            get: { appState.selectedOutlet != nil },
+            set: { presented in if !presented { appState.selectedOutlet = nil } }
+        )) {
             StoreVisitView()
                 .environmentObject(appState)
         }
@@ -129,10 +136,14 @@ struct MainTabView: View {
             appState.triggerCamera()
         }
         .onChange(of: appState.capturedSelfie) { _, newSelfie in
+            // Single, post-migration onChange handler. The previous code had
+            // a duplicate zero-param `.onChange(of: capturedSelfie)` left over
+            // from PR #46's deprecation migration; both fired on every change
+            // and the second one always saw nil (since the first nilled the
+            // value), but the doubled render churn was a real cost.
             guard let img = newSelfie else { return }
             print("📸 [Root] Captured Selfie handoff. Triggering attendance logic...")
-            // Clear global IMMEDIATELY to prevent double-firing during async handoff
-            appState.capturedSelfie = nil 
+            appState.capturedSelfie = nil
             appState.attendanceVM.selfie = img
             if let loc = LocationTrackingService.shared.lastLocation {
                 Task { await appState.attendanceVM.toggleAttendance(loc: loc) }
@@ -145,19 +156,11 @@ struct MainTabView: View {
             // We fetch dashboard data ONLY ONCE when the main UI settles.
             print("📡 [MainTab] Performing Initial Dashboard Refresh")
             await appState.attendanceVM.refresh()
-            
+
             // Auto-start tracking if session restored
             if appState.today?.isIn == true {
                 appState.startTrackingTimer()
                 LocationTrackingService.shared.startTracking()
-            }
-        }
-        .onChange(of: appState.capturedSelfie) {
-            if let img = appState.capturedSelfie {
-                print("📸 [MainTab] Image captured, handing off...")
-                appState.attendanceVM.processCapturedSelfie(image: img)
-                appState.capturedSelfie = nil // Reset path
-                appState.activeSecondaryRoute = nil // Reset modal
             }
         }
     }

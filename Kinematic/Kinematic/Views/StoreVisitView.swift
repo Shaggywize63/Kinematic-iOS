@@ -68,17 +68,6 @@ struct StoreVisitView: View {
                     }
                     .accessibilityLabel("Close")
                 }
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 1) {
-                        Text(appState.selectedOutlet?.storeName ?? "Store Visit")
-                            .font(.system(size: 16, weight: .semibold))
-                            .lineLimit(1)
-                        Text(appState.selectedOutlet?.address ?? "No address provided")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
             }
         }
         .fullScreenCover(isPresented: $showingPlanogramCapture) {
@@ -88,12 +77,18 @@ struct StoreVisitView: View {
                 planogramId: nil
             )
         }
-        // Activity form is its own full screen — no more transition overlay
-        // inside this view. Dismissed by clearing selectedActivity from the
-        // form's toolbar close button.
-        .fullScreenCover(item: $appState.selectedActivity) { activity in
-            ActivitySubmissionView(activity: activity)
-                .environmentObject(appState)
+        // Activity form is its own full screen — driven by an isPresented
+        // Binding so we never run into iOS 18 .fullScreenCover(item:)
+        // lifecycle quirks (the previous form was implicated in the splash
+        // hang).
+        .fullScreenCover(isPresented: Binding(
+            get: { appState.selectedActivity != nil },
+            set: { presented in if !presented { appState.selectedActivity = nil } }
+        )) {
+            if let activity = appState.selectedActivity {
+                ActivitySubmissionView(activity: activity)
+                    .environmentObject(appState)
+            }
         }
     }
 
