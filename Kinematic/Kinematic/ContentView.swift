@@ -13,63 +13,26 @@ extension View {
 struct LiquidGlassModifier: ViewModifier {
     var cornerRadius: CGFloat
     var opacity: Double
+    // Slimmed down from the original 6-layer stack (ultraThinMaterial +
+    // diagonal gradient + soft inner blur + GeometryReader-driven
+    // specular glint + prismatic stroke + 20pt shadow). The
+    // GeometryReader was reading `frame(in: .global).minY` to slide a
+    // glint with scroll position, which invalidated layout for every
+    // card on every scroll tick. With 6+ cards on Home, that was the
+    // cause of the home-screen freeze the user reported.
+    //
+    // Current stack: ultraThinMaterial fill (the actual glass) + a soft
+    // hairline stroke for definition + a smaller shadow. Reads as
+    // "glass" but renders cheaply enough that scrolling stays at 60fps.
     func body(content: Content) -> some View {
         content
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.12), .clear],
-                            startPoint: UnitPoint(x: 0.1, y: 0.1),
-                            endPoint: UnitPoint(x: 0.9, y: 0.9)
-                        )
-                    )
-            )
-            .background {
-                // Aura Bloom (Soft inner glow)
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.white.opacity(0.03))
-                    .blur(radius: 10)
-            }
-            .overlay {
-                // Dynamic Specular Glint (Parallax Effect)
-                GeometryReader { geo in
-                    let scrollY = geo.frame(in: .global).minY
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [.clear, .white.opacity(0.2), .clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .offset(x: -scrollY * 0.04, y: -scrollY * 0.04)
-                        .mask(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                        .opacity(0.6)
-                }
-                .allowsHitTesting(false)
-            }
             .overlay(
-                // Prismatic Refraction Border
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.9), location: 0),
-                                .init(color: .white.opacity(0.2), location: 0.3),
-                                .init(color: .red.opacity(0.3), location: 0.5),
-                                .init(color: .white.opacity(0.1), location: 0.7),
-                                .init(color: .white.opacity(0.4), location: 1)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
                     .allowsHitTesting(false)
             )
-            .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 10)
+            .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
     }
 }
 
