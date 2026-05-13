@@ -1677,6 +1677,21 @@ struct KinematicApp: App {
                 }
             }
             .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
+            .onAppear {
+                // WATCHDOG: belt-and-braces splash dismissal. Some users
+                // reported the splash hanging indefinitely; if any of the
+                // setup calls inside `.task` throws/blocks, the splash flag
+                // never flipped. This DispatchQueue timer is independent of
+                // the SwiftUI task lifecycle and unconditionally hands off
+                // to ContentView after 800ms.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    if isSplashScreenActive {
+                        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                            isSplashScreenActive = false
+                        }
+                    }
+                }
+            }
             .onChange(of: scenePhase) { _, phase in
                 // Drain queued attendance + distribution writes whenever the
                 // app comes back to the foreground. No-ops if the queue is
@@ -1695,15 +1710,16 @@ struct KinematicApp: App {
                 if Session.isAuthenticated {
                     // One-time pre-warm logic if needed, but NOT refresh()
                 }
-                
+
                 // 500ms splash — the SwiftUI brand-mark animation is 450ms
                 // (`.easeOut(duration: 0.45)` in SplashView), so this just
                 // covers the animation, then we transition immediately. The
                 // system launch screen plays first, so total time-to-app is
                 // ~1s. Keeps the splash from feeling like a hang on devices
-                // with cached data.
+                // with cached data. The .onAppear watchdog above is the
+                // safety net if this task is cancelled before it gets here.
                 try? await Task.sleep(nanoseconds: 500_000_000)
-                
+
                 await MainActor.run {
                     withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
                         isSplashScreenActive = false
