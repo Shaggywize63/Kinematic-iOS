@@ -1049,10 +1049,26 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
         }
     }
     
-    func requestPermissions() { 
+    func requestPermissions() {
+        // Apple guidance: request the cheapest permission tier on launch
+        // (WhenInUse). Upgrade to Always *only* when the user does
+        // something that needs it (e.g. starts a visit / attendance).
+        // Calling requestAlwaysAuthorization() immediately after
+        // requestWhenInUseAuthorization() on a fresh install was found to
+        // deadlock the SwiftUI launch path on iOS 26: the second prompt
+        // never appeared, but the app stayed stuck on the launch screen
+        // until the user force-quit and reopened. Removing the eager
+        // Always request fixes that first-install hang.
         locationManager.requestWhenInUseAuthorization()
-        // Modern background tracking requires 'Always' permission for high reliability
-        locationManager.requestAlwaysAuthorization() 
+    }
+
+    func upgradeToAlwaysIfPossible() {
+        // Call this from a user-initiated moment (visit start, attendance
+        // check-in) — iOS only allows the Always upgrade prompt to
+        // appear once the WhenInUse decision is settled.
+        if locationManager.authorizationStatus == .authorizedWhenInUse {
+            locationManager.requestAlwaysAuthorization()
+        }
     }
     
     func startTracking() { locationManager.startUpdatingLocation() }
@@ -1685,9 +1701,20 @@ struct KinematicApp: App {
                 }
                 .task {
                     UIDevice.current.isBatteryMonitoringEnabled = true
-                    locationService.requestPermissions()
-                    // Pre-warm camera permission so the selfie sheet opens instantly
-                    AVCaptureDevice.requestAccess(for: .video) { _ in }
+                    // Deferred to the next runloop tick so the launch
+                    // screen has handed off to ContentView before any
+                    // permission alert can appear over it. On first
+                    // install, the camera + location prompts being
+                    // requested synchronously inside `.task` was causing
+                    // the SwiftUI window to stay behind the alerts and
+                    // the user perceived it as "stuck on splash".
+                    DispatchQueue.main.async {
+                        locationService.requestPermissions()
+                    }
+                    // Camera permission is now requested lazily, the
+                    // first time the user opens the selfie sheet — see
+                    // AttendanceViewModel.captureSelfie. Pre-warming on
+                    // launch was part of the first-install hang.
                 }
         }
     }
