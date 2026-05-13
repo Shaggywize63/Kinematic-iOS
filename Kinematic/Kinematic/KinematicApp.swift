@@ -1657,8 +1657,6 @@ struct KinematicApp: App {
     @StateObject private var locationService = LocationTrackingService.shared
     @StateObject private var appState = KiniAppState.shared
     @Environment(\.scenePhase) private var scenePhase
-    @State private var isSplashScreenActive = true
-    @State private var isDataReady = false
 
     init() {
         print("🚀 APP_LIFE: KinematicApp launched")
@@ -1666,66 +1664,31 @@ struct KinematicApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                if isSplashScreenActive {
-                    SplashView()
-                        .transition(.opacity)
-                } else {
-                    ContentView()
-                        .environmentObject(locationService)
-                        .environmentObject(appState)
-                }
-            }
-            .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
-            .onAppear {
-                // WATCHDOG: belt-and-braces splash dismissal. Some users
-                // reported the splash hanging indefinitely; if any of the
-                // setup calls inside `.task` throws/blocks, the splash flag
-                // never flipped. This DispatchQueue timer is independent of
-                // the SwiftUI task lifecycle and unconditionally hands off
-                // to ContentView after 800ms.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    if isSplashScreenActive {
-                        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                            isSplashScreenActive = false
-                        }
+            // The iOS UILaunchScreen (configured in Info.plist with
+            // UIImageName=LaunchLogo + UIColorName=DeepNavy) is the single
+            // splash. We previously layered a SwiftUI SplashView on top,
+            // which caused two visible loaders AND was implicated in the
+            // splash-hang the user reported (the SwiftUI flag could fail
+            // to flip if the awaited setup task got cancelled). ContentView
+            // now mounts directly — the system launch screen seamlessly
+            // hands off to our app.
+            ContentView()
+                .environmentObject(locationService)
+                .environmentObject(appState)
+                .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
+                .onChange(of: scenePhase) { _, phase in
+                    // Drain queued attendance + distribution writes whenever
+                    // the app comes back to the foreground.
+                    if phase == .active && Session.isAuthenticated {
+                        Task { await AttendanceCache.shared.flush() }
                     }
                 }
-            }
-            .onChange(of: scenePhase) { _, phase in
-                // Drain queued attendance + distribution writes whenever the
-                // app comes back to the foreground. No-ops if the queue is
-                // empty or the user is offline.
-                if phase == .active && Session.isAuthenticated {
-                    Task { await AttendanceCache.shared.flush() }
+                .task {
+                    UIDevice.current.isBatteryMonitoringEnabled = true
+                    locationService.requestPermissions()
+                    // Pre-warm camera permission so the selfie sheet opens instantly
+                    AVCaptureDevice.requestAccess(for: .video) { _ in }
                 }
-            }
-            .task {
-                UIDevice.current.isBatteryMonitoringEnabled = true
-                locationService.requestPermissions()
-                // Pre-warm camera permission so the selfie sheet opens instantly
-                AVCaptureDevice.requestAccess(for: .video) { _ in }
-
-                // --- PERFORMANCE: Background Sync moved to ContentView to avoid root loop ---
-                if Session.isAuthenticated {
-                    // One-time pre-warm logic if needed, but NOT refresh()
-                }
-
-                // 500ms splash — the SwiftUI brand-mark animation is 450ms
-                // (`.easeOut(duration: 0.45)` in SplashView), so this just
-                // covers the animation, then we transition immediately. The
-                // system launch screen plays first, so total time-to-app is
-                // ~1s. Keeps the splash from feeling like a hang on devices
-                // with cached data. The .onAppear watchdog above is the
-                // safety net if this task is cancelled before it gets here.
-                try? await Task.sleep(nanoseconds: 500_000_000)
-
-                await MainActor.run {
-                    withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                        isSplashScreenActive = false
-                    }
-                }
-            }
         }
     }
 }
