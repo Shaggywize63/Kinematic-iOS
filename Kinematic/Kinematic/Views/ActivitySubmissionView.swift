@@ -17,17 +17,34 @@ struct ActivitySubmissionView: View {
     // the submit button so they know their last save landed.
     @State private var submissionsThisVisit: Int = 0
     @State private var lastSubmitFlashed: Bool = false
+    // Labels of unmet required fields when the user taps Submit on an
+    // incomplete form. Surfaced inline above the submit button.
+    @State private var missingRequiredLabels: [String] = []
+
+    /// Required fields the user hasn't satisfied yet. A field is
+    /// satisfied when it has a non-empty text response OR (for image /
+    /// photo / signature / file types) at least one attached asset.
+    private var unmetRequiredFields: [FormField] {
+        guard let fields = template?.fields else { return [] }
+        return fields.filter { field in
+            guard field.isRequired, field.fieldType != "section_header" else { return false }
+            let val = (responses[field.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasImages = cachedImages[field.id]?.isEmpty == false
+            let assetTypes: Set<String> = ["image", "photo", "camera", "signature", "file"]
+            if assetTypes.contains(field.fieldType.lowercased()) {
+                return val.isEmpty && !hasImages
+            }
+            return val.isEmpty
+        }
+    }
 
     private var progress: Double {
         guard let fields = template?.fields else { return 0 }
         let requiredFields = fields.filter { $0.isRequired && $0.fieldType != "section_header" }
         if requiredFields.isEmpty { return 0.5 }
-        let filledRequired = requiredFields.filter { field in
-            let val = responses[field.id] ?? ""
-            let hasImages = cachedImages[field.id]?.isEmpty == false
-            return !val.isEmpty || hasImages
-        }
-        return Double(filledRequired.count) / Double(requiredFields.count)
+        let unmet = unmetRequiredFields.count
+        let satisfied = requiredFields.count - unmet
+        return Double(satisfied) / Double(requiredFields.count)
     }
 
     var body: some View {
@@ -164,6 +181,26 @@ struct ActivitySubmissionView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
             }
+            if !missingRequiredLabels.isEmpty {
+                // Surface unmet required-field validation inline so the
+                // user knows exactly what to fill before the next attempt.
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundColor(.red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Fill these required field\(missingRequiredLabels.count == 1 ? "" : "s") first")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.red)
+                        Text(missingRequiredLabels.joined(separator: " • "))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(3)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+            }
             Button(action: { submit() }) {
                 HStack(spacing: 8) {
                     if isSubmitting {
@@ -214,6 +251,16 @@ struct ActivitySubmissionView: View {
     }
 
     private func submit() {
+        // Block submission until every required field has a value (or
+        // for asset-type fields, at least one attachment). The submit
+        // button previously bypassed this entirely — empty submissions
+        // were landing in form_submissions.
+        let unmet = unmetRequiredFields
+        if !unmet.isEmpty {
+            missingRequiredLabels = unmet.map { $0.label }
+            return
+        }
+        missingRequiredLabels = []
         isSubmitting = true
         Task {
             var finalResponses: [String: FormResponse] = [:]
