@@ -41,10 +41,21 @@
 		<key>UISceneConfigurations</key>
 		<dict/>
 	</dict>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>location</string>
-	</array>
+	<!-- UIBackgroundModes:[location] removed temporarily so a free
+	     Apple ID (without the paid Apple Developer Program) can sign
+	     dev builds. The background-modes entitlement is gated behind
+	     the paid program; with the key present, automatic signing
+	     fails at install with "missing entitlement" / install retries
+	     loop. Re-add when you upgrade to the paid program:
+	         <key>UIBackgroundModes</key>
+	         <array>
+	             <string>location</string>
+	         </array>
+	     LocationTrackingService already skips
+	     allowsBackgroundLocationUpdates on simulator and degrades to
+	     foreground-only when the entitlement isn't present, so the
+	     live-tracking ping pauses cleanly when the app is
+	     backgrounded — no crash. -->
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
