@@ -1027,12 +1027,24 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 10 // Update every 10 meters if moving fast
         
-        // Defer background update activation to prevent launch-time crashes
+        // Defer background update activation to prevent launch-time crashes.
+        //
+        // CLLocationManager.allowsBackgroundLocationUpdates = true throws
+        // at runtime if UIBackgroundModes:[location] isn't in Info.plist
+        // (which is the case on free-Apple-ID dev builds — the entitlement
+        // is gated behind the paid Apple Developer Program). We probe the
+        // Info.plist at runtime and only enable background updates when
+        // the entitlement is actually present.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             #if !targetEnvironment(simulator)
-            self.locationManager.allowsBackgroundLocationUpdates = true
-            self.locationManager.pausesLocationUpdatesAutomatically = false
-            self.locationManager.showsBackgroundLocationIndicator = true
+            let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+            if modes.contains("location") {
+                self.locationManager.allowsBackgroundLocationUpdates = true
+                self.locationManager.pausesLocationUpdatesAutomatically = false
+                self.locationManager.showsBackgroundLocationIndicator = true
+            } else {
+                print("📍 [LocationTrackingService] Skipping allowsBackgroundLocationUpdates — UIBackgroundModes:location not in Info.plist (free Apple ID dev build). Live tracking will pause when app is backgrounded.")
+            }
             #endif
         }
     }
