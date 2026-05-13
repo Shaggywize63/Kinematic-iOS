@@ -114,12 +114,15 @@ struct MainTabView: View {
             }
         }
         .overlay {
-            if appState.selectedOutlet != nil {
-                StoreVisitView()
-                    .transition(.move(edge: .bottom))
-                    .zIndex(100)
-            }
             SideMenuView(isOpen: $appState.showSideMenu)
+        }
+        // Outlet detail is presented as a real full-screen cover (Apple HIG)
+        // rather than an overlay so it gets standard iOS modal behaviour
+        // (slide-in, safe-area handling, NavigationStack chrome) and the
+        // left-edge text cropping seen in the prior overlay layout is gone.
+        .fullScreenCover(item: $appState.selectedOutlet) { _ in
+            StoreVisitView()
+                .environmentObject(appState)
         }
         .onReceive(NotificationCenter.default.publisher(for: .triggerCamera)) { _ in
             print("📸 [MainTab] Caught Broadcast Signal - Forcing Camera Presentation")
@@ -1085,53 +1088,52 @@ struct ActivityFeedView: View {
     private let H: CGFloat = 20
 
     var body: some View {
-        if appState.selectedOutlet != nil { StoreVisitView() }
-        else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Work Feed")
-                                .font(.system(size: 28, weight: .black))
-                                .foregroundColor(Color(uiColor: .label))
-                            Text("Recent submissions and check-ins")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
+        // StoreVisitView is now presented globally via MainTabView's
+        // .fullScreenCover, so no in-place mount needed here.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Work Feed")
+                            .font(.system(size: 28, weight: .black))
+                            .foregroundColor(Color(uiColor: .label))
+                        Text("Recent submissions and check-ins")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
-                    .padding(.top, 12)
-                    .padding(.horizontal, H)
-
-                    if vm.isLoading && vm.items.isEmpty {
-                        ProgressView().tint(.red)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 60)
-                    } else if vm.items.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
-                                .font(.system(size: 44))
-                                .foregroundColor(.gray.opacity(0.5))
-                            Text("No recent activity")
-                                .font(.subheadline).foregroundColor(.gray)
-                            Text("Pull down to refresh")
-                                .font(.caption2).foregroundColor(.gray.opacity(0.7))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 80)
-                    } else {
-                        VStack(spacing: 10) {
-                            ForEach(vm.items) { item in ActivityRow(item: item) }
-                        }
-                        .padding(.horizontal, H)
-                    }
-
-                    Spacer().frame(height: 100)
+                    Spacer()
                 }
+                .padding(.top, 12)
+                .padding(.horizontal, H)
+
+                if vm.isLoading && vm.items.isEmpty {
+                    ProgressView().tint(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 60)
+                } else if vm.items.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
+                            .font(.system(size: 44))
+                            .foregroundColor(.gray.opacity(0.5))
+                        Text("No recent activity")
+                            .font(.subheadline).foregroundColor(.gray)
+                        Text("Pull down to refresh")
+                            .font(.caption2).foregroundColor(.gray.opacity(0.7))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 80)
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(vm.items) { item in ActivityRow(item: item) }
+                    }
+                    .padding(.horizontal, H)
+                }
+
+                Spacer().frame(height: 100)
             }
-            .refreshable { await vm.refresh() }
-            .onAppear { Task { await vm.refresh() } }
         }
+        .refreshable { await vm.refresh() }
+        .onAppear { Task { await vm.refresh() } }
     }
 }
 
