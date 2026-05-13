@@ -25,130 +25,25 @@ struct ActivitySubmissionView: View {
     }
 
     var body: some View {
-        // Presented as a real .fullScreenCover from StoreVisitView, so we
-        // wrap in NavigationStack for a system nav bar (title, close button)
-        // instead of the previous hand-rolled header with manual 60pt
-        // top-padding for the safe area.
+        // Clean Apple-HIG full-screen page: NavigationStack hosts the
+        // scrolling form; the system grouped background is applied via
+        // .background() rather than stacked in a ZStack (which had been
+        // causing layout offset). Submit bar is .safeAreaInset(.bottom)
+        // so it floats above the keyboard and respects the home
+        // indicator automatically.
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    if isLoading {
+            Group {
+                if isLoading {
                     VStack(spacing: 12) {
                         ProgressView().tint(.red).scaleEffect(1.2)
-                        Text("Loading form...").font(.footnote).foregroundColor(.secondary)
+                        Text("Loading form…").font(.footnote).foregroundColor(.secondary)
                     }
-                    .frame(maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let t = template {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 28) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(t.name)
-                                    .font(.largeTitle)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.primary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                if let desc = t.description, !desc.isEmpty {
-                                    Text(desc)
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 24)
-                            .padding(.top, 24)
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Completion")
-                                        .font(.footnote)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Text("\(Int(progress * 100))%")
-                                        .font(.footnote)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.red)
-                                }
-                                GeometryReader { geo in
-                                    ZStack(alignment: .leading) {
-                                        Capsule()
-                                            .fill(Color.gray.opacity(0.15))
-                                            .frame(height: 5)
-                                        Capsule()
-                                            .fill(Color.red)
-                                            .frame(width: geo.size.width * CGFloat(progress), height: 5)
-                                            .animation(.easeInOut(duration: 0.3), value: progress)
-                                    }
-                                }
-                                .frame(height: 5)
-                            }
-                            .padding(.horizontal, 24)
-
-                            if let fields = t.fields {
-                                VStack(spacing: 16) {
-                                    ForEach(fields) { field in
-                                        if shouldShow(field: field) {
-                                            if field.fieldType == "section_header" {
-                                                SectionHeaderRow(label: field.label)
-                                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                                    .padding(.top, 8)
-                                            } else {
-                                                FieldCard(
-                                                    field: field,
-                                                    value: Binding(
-                                                        get: { responses[field.id] ?? "" },
-                                                        set: { responses[field.id] = $0 }
-                                                    ),
-                                                    images: Binding(
-                                                        get: { cachedImages[field.id] ?? [] },
-                                                        set: { cachedImages[field.id] = $0 }
-                                                    )
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 24)
-                            }
-
-                            Spacer().frame(height: 120)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    formScroll(template: t)
                 }
             }
-
-                if template != nil && !isLoading {
-                    VStack(spacing: 0) {
-                        Divider()
-                        Button(action: { submit() }) {
-                            HStack(spacing: 8) {
-                                if isSubmitting {
-                                    ProgressView().tint(.white).scaleEffect(0.85)
-                                }
-                                Text(isSubmitting ? "Submitting..." : "Submit Audit")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(activity.status == "completed" ? Color.gray : Color.red)
-                            .cornerRadius(14)
-                            .padding(.horizontal, 24)
-                        }
-                        .disabled(activity.status == "completed" || isSubmitting)
-                        .padding(.vertical, 16)
-                    }
-                    .background {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                            .ignoresSafeArea(edges: .bottom)
-                    }
-                }
-            }
+            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .navigationTitle(activity.name ?? "Audit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -162,8 +57,109 @@ struct ActivitySubmissionView: View {
                     .accessibilityLabel("Close")
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                if template != nil && !isLoading {
+                    submitBar
+                }
+            }
             .task { await loadTemplate() }
         }
+    }
+
+    @ViewBuilder
+    private func formScroll(template t: FormTemplate) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(t.name)
+                        .font(.largeTitle.weight(.bold))
+                        .foregroundColor(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let desc = t.description, !desc.isEmpty {
+                        Text(desc)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Completion")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(Int(progress * 100))%")
+                            .font(.footnote.weight(.bold))
+                            .foregroundColor(.red)
+                    }
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.gray.opacity(0.15)).frame(height: 5)
+                            Capsule().fill(Color.red)
+                                .frame(width: geo.size.width * CGFloat(progress), height: 5)
+                                .animation(.easeInOut(duration: 0.3), value: progress)
+                        }
+                    }
+                    .frame(height: 5)
+                }
+
+                if let fields = t.fields {
+                    LazyVStack(spacing: 16) {
+                        ForEach(fields) { field in
+                            if shouldShow(field: field) {
+                                if field.fieldType == "section_header" {
+                                    SectionHeaderRow(label: field.label)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.top, 8)
+                                } else {
+                                    FieldCard(
+                                        field: field,
+                                        value: Binding(
+                                            get: { responses[field.id] ?? "" },
+                                            set: { responses[field.id] = $0 }
+                                        ),
+                                        images: Binding(
+                                            get: { cachedImages[field.id] ?? [] },
+                                            set: { cachedImages[field.id] = $0 }
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+        }
+    }
+
+    private var submitBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button(action: { submit() }) {
+                HStack(spacing: 8) {
+                    if isSubmitting {
+                        ProgressView().tint(.white).scaleEffect(0.85)
+                    }
+                    Text(isSubmitting ? "Submitting…" : "Submit Audit")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(activity.status == "completed" ? Color.gray : Color.red)
+                )
+                .padding(.horizontal, 20)
+            }
+            .disabled(activity.status == "completed" || isSubmitting)
+            .padding(.vertical, 12)
+        }
+        .background(.ultraThinMaterial)
     }
 
     private func shouldShow(field: FormField) -> Bool {

@@ -32,43 +32,46 @@ struct StoreVisitView: View {
     }
 
     var body: some View {
-        // Presented from MainTabView via .fullScreenCover so we get a real,
-        // isolated full-screen canvas — no more leaking width from the
-        // horizontal pager sibling. NavigationStack gives us a standard
-        // toolbar (close button, large title) per Apple HIG.
+        // Apple HIG full-screen modal: NavigationStack hosting the scroll
+        // content, with a system .background() instead of stacking
+        // VibrantBackgroundView inside a ZStack. The previous structure
+        // let VibrantBackgroundView's 500pt offset circles influence the
+        // ZStack's intrinsic size, which is what was clipping the body
+        // text on the left edge in QA screenshots.
         NavigationStack {
-            ZStack {
-                VibrantBackgroundView().ignoresSafeArea()
-                scrollContent
-
-                if isStartingVisit {
-                    ZStack {
-                        Color(uiColor: .systemBackground).opacity(0.8).ignoresSafeArea()
-                        VStack(spacing: 20) {
-                            ProgressView().tint(.red).scaleEffect(1.5)
-                            Text("Starting Visit & Validating Location...")
-                                .foregroundColor(Color(uiColor: .label))
-                                .font(.headline)
-                            Button("CANCEL") { isStartingVisit = false }
-                                .font(.caption).fontWeight(.bold).foregroundColor(.red)
-                                .padding(.top, 10)
+            scrollContent
+                .background(Brand.navy.ignoresSafeArea())
+                .overlay {
+                    if isStartingVisit {
+                        Color(uiColor: .systemBackground).opacity(0.8)
+                            .overlay {
+                                VStack(spacing: 20) {
+                                    ProgressView().tint(.red).scaleEffect(1.5)
+                                    Text("Starting Visit & Validating Location…")
+                                        .foregroundColor(Color(uiColor: .label))
+                                        .font(.headline)
+                                    Button("CANCEL") { isStartingVisit = false }
+                                        .font(.caption).fontWeight(.bold)
+                                        .foregroundColor(.red)
+                                        .padding(.top, 10)
+                                }
+                            }
+                            .ignoresSafeArea()
+                    }
+                }
+                .navigationTitle(appState.selectedOutlet?.storeName ?? "Store Visit")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            appState.selectedOutlet = nil
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 15, weight: .semibold))
                         }
+                        .accessibilityLabel("Close")
                     }
                 }
-            }
-            .navigationTitle(appState.selectedOutlet?.storeName ?? "Store Visit")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        appState.selectedOutlet = nil
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .accessibilityLabel("Close")
-                }
-            }
         }
         .fullScreenCover(isPresented: $showingPlanogramCapture) {
             PlanogramCaptureView(
