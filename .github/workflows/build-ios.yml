@@ -1,8 +1,21 @@
 name: Build iOS Simulator app
 
+# Manual-trigger only for now.
+#
+# The project's deployment target is iOS 26 and the codebase uses iOS 26
+# SwiftUI APIs (e.g. .tabBarMinimizeBehavior(.onScrollDown), the
+# `Tab(...value:...) { }` closure form, the new TabView Liquid Glass
+# treatment). GitHub Actions hosted macOS runners (macos-15 and earlier)
+# only ship Xcode 16, which carries the iOS 18 SDK — so `xcodebuild` here
+# fails with exit code 65 the moment it hits any iOS 26 API.
+#
+# Until GitHub publishes a macos-26 runner image (or macos-latest is
+# upgraded to one with Xcode 26), running this on every push to main
+# just generates a failed-build email per merge. So we keep the workflow
+# file in place but trigger it only on workflow_dispatch — click "Run
+# workflow" on the Actions tab if you want to retest. Once Xcode 26 is
+# on the runners, flip the trigger back to `push: branches: [main]`.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
