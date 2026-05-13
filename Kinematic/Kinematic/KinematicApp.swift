@@ -1650,7 +1650,6 @@ struct KinematicApp: App {
 
     init() {
         print("🚀 APP_LIFE: KinematicApp launched")
-        UITabBar.appearance().isHidden = true
     }
 
     var body: some Scene {
@@ -1685,10 +1684,13 @@ struct KinematicApp: App {
                     // One-time pre-warm logic if needed, but NOT refresh()
                 }
                 
-                // 1.0s splash — long enough to register the brand, short
-                // enough to never feel like a hang. The system launch screen
-                // already runs first, so total time-to-app is ~1.5-2s.
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                // 500ms splash — the SwiftUI brand-mark animation is 450ms
+                // (`.easeOut(duration: 0.45)` in SplashView), so this just
+                // covers the animation, then we transition immediately. The
+                // system launch screen plays first, so total time-to-app is
+                // ~1s. Keeps the splash from feeling like a hang on devices
+                // with cached data.
+                try? await Task.sleep(nanoseconds: 500_000_000)
                 
                 await MainActor.run {
                     withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {

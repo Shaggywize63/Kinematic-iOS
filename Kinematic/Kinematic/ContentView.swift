@@ -120,91 +120,42 @@ struct MainTabView: View {
     }
 
     private var mainTabBody: some View {
-        ZStack(alignment: .bottom) {
-            // GLOBAL CONTENT PAGING (Definitive Safe Isolation)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    HomeView()
-                        .id(0)
-                        .tag(0)
-                        .containerRelativeFrame(.horizontal, count: 1, spacing: 0)
-                    
-                    AttendanceView()
-                        .id(1)
-                        .tag(1)
-                        .containerRelativeFrame(.horizontal, count: 1, spacing: 0)
-                    
-                    RoutePlansView()
-                        .id(2)
-                        .tag(2)
-                        .containerRelativeFrame(.horizontal, count: 1, spacing: 0)
-                }
-                .scrollTargetLayout()
+        // iOS 26 native TabView. The system gives us:
+        //   - Liquid Glass tab bar background for free
+        //   - Lazy tab loading (only the active tab renders, the previous
+        //     LazyHStack pagination eagerly built all three screens at once,
+        //     which was the main reason Home felt like it was hanging)
+        //   - .tabBarMinimizeBehavior(.onScrollDown) auto-hides the bar
+        //     when the user scrolls down, the native iOS 26 gesture
+        TabView(selection: $appState.selectedTab) {
+            Tab("Home", systemImage: "house", value: 0) {
+                HomeView()
             }
-            .scrollPosition(id: .init(get: { appState.selectedTab }, set: { if let v = $0 { appState.selectedTab = v } }))
-            .scrollTargetBehavior(.viewAligned)
-            .safeAreaPadding(.horizontal, 0)
-            
+            Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
+                AttendanceView()
+            }
+            Tab("Route", systemImage: "map", value: 2) {
+                RoutePlansView()
+            }
+        }
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .tint(Brand.red)
+        .overlay(alignment: .bottom) {
             if appState.showGlobalSuccess {
                 SuccessOverlay(message: appState.lastSuccessMessage) {
                     withAnimation { appState.showGlobalSuccess = false }
                 }
                 .transition(.asymmetric(insertion: .move(edge: .bottom), removal: .opacity))
+                .padding(.bottom, 90)
                 .zIndex(200)
             }
-            
-            // iOS 26 "Liquid Glass" Navigation (Unified Capsule)
-            HStack(spacing: 0) {
-                TabBtn(i: "house", l: "Home", s: appState.selectedTab == 0, ns: animation) { 
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { appState.selectedTab = 0 }
-                }
-                TabBtn(i: "person.text.rectangle", l: "Attendance", s: appState.selectedTab == 1, ns: animation) { 
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { appState.selectedTab = 1 }
-                }
-                TabBtn(i: "map", l: "Route", s: appState.selectedTab == 2, ns: animation) { 
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { appState.selectedTab = 2 }
-                }
-            }
-            .padding(.vertical, 14)
-            .background {
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        // Specular Rim (Top Highlight)
-                        Capsule()
-                            .stroke(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.6), .clear, .white.opacity(0.1)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                    }
-                    .shadow(color: .black.opacity(0.15), radius: 25, x: 0, y: 15)
-            }
-            .overlay {
-                // Outer Prismatic Bloom
-                Capsule()
-                    .stroke(
-                        LinearGradient(
-                            colors: [.white.opacity(0.1), .red.opacity(0.05), .white.opacity(0.1)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        lineWidth: 0.5
-                    )
-            }
-            .padding(.horizontal, 40)
-            .padding(.bottom, 24)
-            .zIndex(10) // Prioritize hit testing for taps
-            
+        }
+        .overlay {
             if appState.selectedOutlet != nil {
                 StoreVisitView()
                     .transition(.move(edge: .bottom))
                     .zIndex(100)
             }
-            
             SideMenuView(isOpen: $appState.showSideMenu)
         }
         .onReceive(NotificationCenter.default.publisher(for: .triggerCamera)) { _ in
@@ -688,11 +639,12 @@ struct RoutePlansView: View {
     @EnvironmentObject var appState: KiniAppState
     @StateObject var vm = RoutePlansViewModel()
     var body: some View {
+        // Root ContentView already lays VibrantBackgroundView on the global
+        // canvas; a second one stacked here just doubled the blur cost.
         ZStack {
-            VibrantBackgroundView()
             VStack(spacing: 0) {
                 HStack {
-                    Button(action: { withAnimation { appState.showSideMenu = true } }) { 
+                    Button(action: { withAnimation { appState.showSideMenu = true } }) {
                         Image(systemName: "line.3.horizontal")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Color(uiColor: .label))
@@ -929,11 +881,12 @@ struct AttendanceView: View {
     // re-laying out the whole card every render.
     let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     var body: some View {
+        // Root ContentView already lays VibrantBackgroundView on the global
+        // canvas; a second one stacked here just doubled the blur cost.
         ZStack {
-            VibrantBackgroundView()
             VStack(spacing: 0) {
                 HStack {
-                    Button(action: { withAnimation { appState.showSideMenu = true } }) { 
+                    Button(action: { withAnimation { appState.showSideMenu = true } }) {
                         Image(systemName: "line.3.horizontal")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Color(uiColor: .label))
