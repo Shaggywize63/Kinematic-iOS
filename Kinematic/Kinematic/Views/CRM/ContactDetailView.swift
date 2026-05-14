@@ -3,6 +3,11 @@ import SwiftUI
 struct ContactDetailView: View {
     @State var contact: Contact
     @State private var editing = false
+    @State private var deals: [Deal] = []
+    @State private var activities: [Activity] = []
+    @State private var isLoadingRelations = false
+
+    private let api = CRMService.shared
 
     var body: some View {
         ScrollView {
@@ -31,14 +36,79 @@ struct ContactDetailView: View {
                 if contact.isB2c != true, let dept = contact.department {
                     detailRow("Department", value: dept, icon: "building.2.fill", color: .orange)
                 }
+                dealsSection
+                activitiesSection
             }
             .padding()
         }
         .navigationTitle("Contact")
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } } }
         .sheet(isPresented: $editing) {
-            ContactEditView(contact: contact) { updated in contact = updated }
+            ContactEditView(contact: contact) { updated in contact = updated; Task { await loadRelations() } }
         }
+        .task { await loadRelations() }
+        .refreshable { await loadRelations() }
+    }
+
+    private var dealsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("DEALS", count: deals.count)
+            if deals.isEmpty {
+                emptyRow("No deals linked", icon: "briefcase")
+            } else {
+                ForEach(deals) { d in
+                    NavigationLink(destination: DealDetailView(dealId: d.id, initialDeal: d)) {
+                        DealCard(deal: d)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var activitiesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("ACTIVITY", count: activities.count)
+            if activities.isEmpty {
+                emptyRow("No activity logged", icon: "clock")
+            } else {
+                ForEach(activities.prefix(10)) { a in ActivityTimelineItem(activity: a) }
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: String, count: Int) -> some View {
+        HStack(spacing: 6) {
+            Text(title).font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .black))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.gray.opacity(0.15))
+                    .foregroundColor(.secondary)
+                    .clipShape(Capsule())
+            }
+            Spacer()
+            if isLoadingRelations { ProgressView().controlSize(.mini) }
+        }
+    }
+
+    private func emptyRow(_ text: String, icon: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).foregroundColor(.gray.opacity(0.5))
+            Text(text).font(.caption).foregroundColor(.gray)
+            Spacer()
+        }
+        .padding(.vertical, 6).padding(.horizontal, 4)
+    }
+
+    private func loadRelations() async {
+        isLoadingRelations = true
+        defer { isLoadingRelations = false }
+        async let d = (try? api.contactDeals(id: contact.id)) ?? []
+        async let a = (try? api.contactActivities(id: contact.id)) ?? []
+        deals = await d
+        activities = await a
     }
 
     private var headerCard: some View {

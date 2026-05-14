@@ -85,6 +85,12 @@ final class CRMService {
     func updateContact(id: String, body: [String: Any]) async throws -> Contact {
         try await sendJSON("/api/v1/crm/contacts/\(id)", method: "PATCH", body: body)
     }
+    func contactDeals(id: String) async throws -> [Deal] {
+        try await get("/api/v1/crm/contacts/\(id)/deals")
+    }
+    func contactActivities(id: String) async throws -> [Activity] {
+        try await get("/api/v1/crm/contacts/\(id)/activities")
+    }
 
     // MARK: Accounts
     func listAccounts(search: String? = nil) async throws -> [CRMAccount] {
@@ -95,6 +101,15 @@ final class CRMService {
     func getAccount(id: String) async throws -> CRMAccount { try await get("/api/v1/crm/accounts/\(id)") }
     func createAccount(_ body: [String: Any]) async throws -> CRMAccount {
         try await postJSON("/api/v1/crm/accounts", body: body)
+    }
+    func accountContacts(id: String) async throws -> [Contact] {
+        try await get("/api/v1/crm/accounts/\(id)/contacts")
+    }
+    func accountDeals(id: String) async throws -> [Deal] {
+        try await get("/api/v1/crm/accounts/\(id)/deals")
+    }
+    func accountActivities(id: String) async throws -> [Activity] {
+        try await get("/api/v1/crm/accounts/\(id)/activities")
     }
 
     // MARK: Deals
