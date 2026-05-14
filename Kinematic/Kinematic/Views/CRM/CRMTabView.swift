@@ -44,9 +44,26 @@ struct CRMTabView: View {
 /// fit in the bottom-tab budget. Mirrors the dashboard's CRM sidebar.
 struct CRMMoreMenu: View {
     var onExit: (() -> Void)? = nil
+    @EnvironmentObject var appState: KiniAppState
+    @State private var showLogoutConfirm: Bool = false
 
     var body: some View {
         List {
+            // Profile sits at the top so the user has a one-tap way into
+            // their account from the CRM module without having to bounce
+            // through the side menu (which CRM-only deployments don't show).
+            Section {
+                Button {
+                    appState.activeSecondaryRoute = ModalRoute(route: .profile)
+                } label: {
+                    HStack {
+                        MoreRow(icon: "person.crop.circle.fill", title: Session.currentUser?.name ?? "Profile", tint: .indigo)
+                        Spacer()
+                    }
+                }
+                .foregroundColor(.primary)
+            }
+
             // CRM module surfaces only what's actually available on the
             // dashboard. Email Templates was removed from web; CRM Settings
             // is intentionally a web-console-only control. Keep the mobile
@@ -78,10 +95,29 @@ struct CRMMoreMenu: View {
                     .foregroundColor(.primary)
                 }
             }
+            // Sign out — always visible. CRM-only clients (Tata Tiscon-style)
+            // have no other way to leave the CRM shell, so this is required.
+            Section {
+                Button {
+                    showLogoutConfirm = true
+                } label: {
+                    HStack {
+                        MoreRow(icon: "rectangle.portrait.and.arrow.right", title: "Sign Out", tint: .red)
+                        Spacer()
+                    }
+                }
+                .foregroundColor(.red)
+            }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("More")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Sign out?", isPresented: $showLogoutConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Sign Out", role: .destructive) { appState.logout() }
+        } message: {
+            Text("You'll need to sign back in to access your CRM data.")
+        }
     }
 }
 
