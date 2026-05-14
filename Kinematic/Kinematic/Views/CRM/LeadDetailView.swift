@@ -20,6 +20,13 @@ struct LeadDetailView: View {
     @State private var showAssignSheet = false
     @State private var confirmDeactivate = false
     @State private var confirmDelete = false
+    /// Activity composer presentation. Driven by both the "+ Log" button
+    /// in the ACTIVITY section header and the tap-to-call flow on the
+    /// phone field. Prefill state lets the call path open the composer
+    /// with type=call + subject="Call with <Name>" already populated.
+    @State private var loggingActivity = false
+    @State private var composerInitialType: String = "call"
+    @State private var composerInitialSubject: String = ""
 
     init(leadId: String) {
         _vm = StateObject(wrappedValue: LeadDetailViewModel(leadId: leadId))
@@ -87,6 +94,26 @@ struct LeadDetailView: View {
         .sheet(isPresented: $showAssignSheet) {
             assignSheet
         }
+        .sheet(
+            isPresented: $loggingActivity,
+            onDismiss: {
+                // If the rep tapped Call, the dialer connected, and they
+                // dismissed without saving, fire-and-forget a minimal call
+                // activity so the timeline still reflects reality.
+                // autoLogCallIfNeeded checks the CallObserver — returns
+                // early when no call connected, or when the save path
+                // already consumed the duration.
+                let prefill = composerInitialSubject
+                Task { await vm.autoLogCallIfNeeded(prefillSubject: prefill) }
+            }
+        ) {
+            ActivityComposeView(
+                initialType: composerInitialType,
+                initialSubject: composerInitialSubject
+            ) { type, subject, description, imageUrl in
+                await vm.logActivity(type: type, subject: subject, description: description, imageUrl: imageUrl)
+            }
+        }
         .confirmationDialog(
             "Mark this lead as unqualified?",
             isPresented: $confirmDeactivate,
@@ -139,9 +166,24 @@ struct LeadDetailView: View {
                         .font(.caption).foregroundColor(Brand.red)
                 }
             }
-            if let phone = lead.phone, WhatsAppHelper.canOpen(phone: phone) {
-                let prefill = "Hi \(lead.firstName ?? lead.displayName.split(separator: " ").first.map(String.init) ?? "there"), "
-                WhatsAppButton(phone: phone, prefillText: prefill, compact: false)
+            if let phone = lead.phone, !phone.isEmpty {
+                let firstName = lead.firstName ?? lead.displayName.split(separator: " ").first.map(String.init) ?? "there"
+                let prefill = "Hi \(firstName), "
+                HStack(spacing: 8) {
+                    CallButton(
+                        phone: phone,
+                        prefillSubject: "Call with \(lead.displayName)",
+                        onCallInitiated: {
+                            composerInitialType = "call"
+                            composerInitialSubject = "Call with \(lead.displayName)"
+                            loggingActivity = true
+                        },
+                        compact: false
+                    )
+                    if WhatsAppHelper.canOpen(phone: phone) {
+                        WhatsAppButton(phone: phone, prefillText: prefill, compact: false)
+                    }
+                }
             }
             if let status = lead.status {
                 Text(status.uppercased())
@@ -415,17 +457,36 @@ struct LeadDetailView: View {
     // MARK: - Activities
 
     private var activitiesSection: some View {
-        Card(title: "ACTIVITY") {
-            VStack(alignment: .leading, spacing: 8) {
-                if vm.activities.isEmpty {
-                    Text("No activity logged.").font(.caption).foregroundColor(.secondary)
-                } else {
-                    ForEach(vm.activities) { a in
-                        ActivityTimelineItem(activity: a)
-                    }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("ACTIVITY")
+                    .font(.system(size: 11, weight: .black))
+                    .tracking(0.8)
+                    .foregroundColor(Brand.red)
+                Spacer()
+                Button(action: {
+                    composerInitialType = "call"
+                    composerInitialSubject = ""
+                    loggingActivity = true
+                }) {
+                    Label("Log", systemImage: "plus.circle.fill")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Brand.red)
+            }
+            if vm.activities.isEmpty {
+                Text("No activity logged.").font(.caption).foregroundColor(.secondary)
+            } else {
+                ForEach(vm.activities) { a in
+                    ActivityTimelineItem(activity: a)
                 }
             }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
     }
 
     // MARK: - Assign sheet

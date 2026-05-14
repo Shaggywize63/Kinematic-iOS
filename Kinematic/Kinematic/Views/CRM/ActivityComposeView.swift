@@ -2,9 +2,20 @@ import SwiftUI
 
 struct ActivityComposeView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var type = "call"
-    @State private var subject = ""
-    @State private var desc = ""
+
+    /// Optional prefill — call buttons pass `initialType="call"` and a
+    /// subject like "Call with <Name>". Default to "call" type + empty
+    /// subject so existing callers (e.g. ActivitiesView's "Add" button)
+    /// keep their previous behavior.
+    let initialType: String
+    let initialSubject: String
+    /// Callback receives type, subject, description, and optional imageUrl
+    /// for the uploaded photo.
+    let onSubmit: (String, String, String, String?) async -> Void
+
+    @State private var type: String
+    @State private var subject: String
+    @State private var desc: String = ""
 
     // Image attachment state — mirrors the web activity composer.
     @State private var pickedImage: UIImage? = nil
@@ -14,8 +25,17 @@ struct ActivityComposeView: View {
     @State private var imageUrl: String? = nil
     @State private var showSourceSheet: Bool = false
 
-    /// Callback now also receives an optional `imageUrl` for the uploaded photo.
-    let onSubmit: (String, String, String, String?) async -> Void
+    init(
+        initialType: String = "call",
+        initialSubject: String = "",
+        onSubmit: @escaping (String, String, String, String?) async -> Void
+    ) {
+        self.initialType = initialType
+        self.initialSubject = initialSubject
+        self.onSubmit = onSubmit
+        _type = State(initialValue: initialType)
+        _subject = State(initialValue: initialSubject)
+    }
 
     var body: some View {
         NavigationStack {

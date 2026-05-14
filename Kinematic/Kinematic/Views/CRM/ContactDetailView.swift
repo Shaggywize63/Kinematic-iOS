@@ -3,6 +3,14 @@ import SwiftUI
 struct ContactDetailView: View {
     @State var contact: Contact
     @State private var editing = false
+    @State private var deals: [Deal] = []
+    @State private var activities: [Activity] = []
+    @State private var isLoadingRelations = false
+    @State private var loggingActivity = false
+    @State private var composerInitialType: String = "call"
+    @State private var composerInitialSubject: String = ""
+
+    private let api = CRMService.shared
 
     var body: some View {
         ScrollView {
@@ -11,35 +19,171 @@ struct ContactDetailView: View {
                 if contact.isB2c == true { customer360Card; customerProfileCard }
                 if let e = contact.email { detailRow("Email", value: e, icon: "envelope.fill", color: Brand.red) }
                 if let p = contact.phone {
-                    HStack(spacing: 12) {
-                        Image(systemName: "phone.fill").foregroundColor(Brand.red).frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) { Text("Phone").font(.caption).foregroundColor(.gray); Text(p).font(.system(size: 14)) }
-                        Spacer()
-                        WhatsAppButton(phone: p, prefillText: "Hi \(contact.firstName ?? ""), ", compact: true)
-                    }
-                    .padding(12).background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+                    phoneRow(label: "Phone", value: p, icon: "phone.fill")
                 }
                 if let m = contact.mobile {
-                    HStack(spacing: 12) {
-                        Image(systemName: "iphone").foregroundColor(Brand.red).frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) { Text("Mobile").font(.caption).foregroundColor(.gray); Text(m).font(.system(size: 14)) }
-                        Spacer()
-                        WhatsAppButton(phone: m, prefillText: "Hi \(contact.firstName ?? ""), ", compact: true)
-                    }
-                    .padding(12).background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+                    phoneRow(label: "Mobile", value: m, icon: "iphone")
                 }
                 if contact.isB2c != true, let dept = contact.department {
                     detailRow("Department", value: dept, icon: "building.2.fill", color: Brand.red)
                 }
+                dealsSection
+                activitiesSection
             }
             .padding()
         }
         .navigationTitle("Contact")
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } } }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true }.tint(Brand.red) } }
         .sheet(isPresented: $editing) {
-            ContactEditView(contact: contact) { updated in contact = updated }
+            ContactEditView(contact: contact) { updated in contact = updated; Task { await loadRelations() } }
+        }
+        .sheet(
+            isPresented: $loggingActivity,
+            onDismiss: { Task { await autoLogCallIfNeeded() } }
+        ) {
+            ActivityComposeView(
+                initialType: composerInitialType,
+                initialSubject: composerInitialSubject
+            ) { type, subject, description, imageUrl in
+                await logActivity(type: type, subject: subject, description: description, imageUrl: imageUrl)
+            }
+        }
+        .task { await loadRelations() }
+        .refreshable { await loadRelations() }
+    }
+
+    // MARK: - Phone row with tap-to-call
+
+    private func phoneRow(label: String, value: String, icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundColor(Brand.red).frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.caption).foregroundColor(.gray)
+                Text(value).font(.system(size: 14))
+            }
+            Spacer()
+            CallButton(
+                phone: value,
+                prefillSubject: "Call with \(contact.displayName)",
+                onCallInitiated: {
+                    composerInitialType = "call"
+                    composerInitialSubject = "Call with \(contact.displayName)"
+                    loggingActivity = true
+                }
+            )
+            WhatsAppButton(phone: value, prefillText: "Hi \(contact.firstName ?? ""), ", compact: true)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    // MARK: - Relation sections
+
+    private var dealsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("DEALS", count: deals.count)
+            if deals.isEmpty {
+                emptyRow("No deals linked", icon: "briefcase")
+            } else {
+                ForEach(deals) { d in
+                    NavigationLink(destination: DealDetailView(dealId: d.id, initialDeal: d)) {
+                        DealCard(deal: d)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
+
+    private var activitiesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("ACTIVITY", count: activities.count)
+            if activities.isEmpty {
+                emptyRow("No activity logged", icon: "clock")
+            } else {
+                ForEach(activities.prefix(10)) { a in ActivityTimelineItem(activity: a) }
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: String, count: Int) -> some View {
+        HStack(spacing: 6) {
+            Text(title).font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(Brand.red)
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .black))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.gray.opacity(0.15))
+                    .foregroundColor(.secondary)
+                    .clipShape(Capsule())
+            }
+            Spacer()
+            if isLoadingRelations { ProgressView().controlSize(.mini) }
+        }
+    }
+
+    private func emptyRow(_ text: String, icon: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).foregroundColor(.gray.opacity(0.5))
+            Text(text).font(.caption).foregroundColor(.gray)
+            Spacer()
+        }
+        .padding(.vertical, 6).padding(.horizontal, 4)
+    }
+
+    // MARK: - Activity logging
+
+    private func logActivity(type: String, subject: String, description: String, imageUrl: String?) async {
+        let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var body: [String: Any] = [
+            "type": type,
+            "subject": trimmed,
+            "description": description,
+            "contact_id": contact.id,
+        ]
+        if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
+        if type != "task" {
+            body["completed_at"] = ISO8601DateFormatter().string(from: Date())
+            body["status"] = "completed"
+        }
+        if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+            body["duration_seconds"] = duration
+        }
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
+        }
+    }
+
+    private func autoLogCallIfNeeded() async {
+        guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
+        let subject = composerInitialSubject.isEmpty ? "Call (auto-logged)" : composerInitialSubject
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "description": "",
+            "contact_id": contact.id,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+            "duration_seconds": duration,
+        ]
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
+        }
+    }
+
+    // MARK: - Loading
+
+    private func loadRelations() async {
+        isLoadingRelations = true
+        defer { isLoadingRelations = false }
+        async let d = (try? api.contactDeals(id: contact.id)) ?? []
+        async let a = (try? api.contactActivities(id: contact.id)) ?? []
+        deals = await d
+        activities = await a
+    }
+
+    // MARK: - Header + customer cards (unchanged from main)
 
     private var headerCard: some View {
         VStack(alignment: .leading, spacing: 6) {
