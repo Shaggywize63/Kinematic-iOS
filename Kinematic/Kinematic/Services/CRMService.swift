@@ -193,6 +193,11 @@ final class CRMService {
     func completeTask(id: String) async throws -> CRMTask {
         try await sendJSON("/api/v1/crm/tasks/\(id)", method: "PATCH", body: ["status": "done"])
     }
+    /// Flip a task between done and open. Backend stamps completed_at when
+    /// status flips to 'done'.
+    func setTaskStatus(id: String, status: String) async throws -> CRMTask {
+        try await sendJSON("/api/v1/crm/tasks/\(id)", method: "PATCH", body: ["status": status])
+    }
 
     // MARK: Email
     func listEmailTemplates() async throws -> [EmailTemplate] {
