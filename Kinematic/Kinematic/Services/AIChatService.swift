@@ -33,6 +33,19 @@ final class AIChatService {
         return try await perform(req)
     }
 
+    /// GET /api/v1/crm/ai/usage — current month's AI quota for the caller.
+    /// Best-effort: returns nil on any failure so the FAB chip can quietly hide
+    /// instead of surfacing a transient error.
+    func fetchUsage() async -> KiniUsage? {
+        do {
+            let req = try makeRequest(path: "/api/v1/crm/ai/usage", method: "GET", body: nil)
+            let usage: KiniUsage = try await perform(req)
+            return usage
+        } catch {
+            return nil
+        }
+    }
+
     private var authToken: String? {
         let token = Session.sharedToken
         if !token.isEmpty { return token }

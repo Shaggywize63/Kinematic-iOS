@@ -48,21 +48,52 @@ func formatTime(_ iso: String?) -> String {
 // --- MAIN VIEWS ---
 struct ContentView: View {
     @EnvironmentObject var appState: KiniAppState
-    
+    @State private var showKini: Bool = false
+    @State private var kiniUsage: KiniUsage? = nil
+
+    /// Whether the persistent KINI launcher should appear. Hidden pre-login,
+    /// hidden for clients without the CRM SKU (Field-Force-only deployments).
+    private var canShowKiniFab: Bool {
+        guard appState.isAuthenticated else { return false }
+        return Session.currentUser?.hasCrm ?? false
+    }
+
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottomTrailing) {
             // GLOBAL CANVAS (Root-Level Atmospheric Background)
             VibrantBackgroundView()
                 .ignoresSafeArea()
-            
+
             if !appState.isAuthenticated {
                 LoginView(onSuccess: { appState.checkAuth() })
             } else {
                 MainTabView()
             }
+
+            // Persistent KINI launcher. Matches the web KinematicAI FAB and
+            // floats above every screen except the chat itself (the
+            // fullScreenCover hosting the chat masks it automatically).
+            if canShowKiniFab {
+                KiniFAB(usage: kiniUsage) { showKini = true }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 28)
+                    .transition(.scale.combined(with: .opacity))
+            }
         }
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
+        }
+        .fullScreenCover(isPresented: $showKini, onDismiss: {
+            // Pick up the latest quota when the user closes the chat so the
+            // chip on the FAB reflects whatever was spent inside the sheet.
+            Task { kiniUsage = await AIChatService.shared.fetchUsage() ?? kiniUsage }
+        }) {
+            KiniChatView(onClose: { showKini = false })
+        }
+        .task(id: appState.isAuthenticated) {
+            // Prefetch on auth so the chip is populated on first paint.
+            guard appState.isAuthenticated else { kiniUsage = nil; return }
+            kiniUsage = await AIChatService.shared.fetchUsage()
         }
     }
 }
