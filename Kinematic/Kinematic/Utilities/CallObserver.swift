@@ -51,10 +51,14 @@ final class CallObserver: NSObject, CXCallObserverDelegate {
         endedAt.removeAll()
     }
 
-    /// Return the duration in whole seconds of the most recent outgoing
-    /// call that ended during the tracking window. Returns nil if no call
-    /// connected (e.g. user backed out of the dialer without dialing).
-    /// Clears state so subsequent invocations don't return stale data.
+    /// Return the duration in whole seconds of the outgoing call connected
+    /// during the tracking window. Returns nil if no call connected (rep
+    /// backed out of the dialer without dialing).
+    ///
+    /// If the call ended before consume, we use start→end. If it's still
+    /// in progress when the rep saves (uncommon but possible — they might
+    /// type notes while on speaker), we report elapsed-so-far instead of
+    /// silently dropping the duration. Clears state regardless.
     func consumeDuration() -> Int? {
         defer {
             isTracking = false
@@ -62,12 +66,18 @@ final class CallObserver: NSObject, CXCallObserverDelegate {
             connectedAt.removeAll()
             endedAt.removeAll()
         }
-        // Pick the most recent ended call. Most flows have exactly one.
-        guard let (id, end) = endedAt.max(by: { $0.value < $1.value }),
-              let start = connectedAt[id]
-        else { return nil }
-        let seconds = Int(end.timeIntervalSince(start).rounded())
-        return max(0, seconds)
+        // Prefer the most recent ENDED call (it's the cleanest signal:
+        // start + end timestamps in hand).
+        if let (id, end) = endedAt.max(by: { $0.value < $1.value }),
+           let start = connectedAt[id] {
+            return max(0, Int(end.timeIntervalSince(start).rounded()))
+        }
+        // No ended call — but if one connected and is still running, fall
+        // back to elapsed-so-far rather than dropping the data.
+        if let (_, start) = connectedAt.max(by: { $0.value < $1.value }) {
+            return max(0, Int(Date().timeIntervalSince(start).rounded()))
+        }
+        return nil
     }
 
     /// Stop without consuming — used if the parent view disappears
