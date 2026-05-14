@@ -8,32 +8,41 @@ private let fabGradient = LinearGradient(
     endPoint: .bottomTrailing
 )
 
-/// The persistent KINI launcher — a red gradient circular button anchored
-/// to the bottom-right of every screen (except the chat itself). Mirrors
-/// the web `KinematicAI` FAB. Tapping opens KiniChatView as a fullScreenCover.
+/// The persistent KINI launcher — a red gradient circular button that
+/// **the user can drag anywhere on screen**. Position is persisted in
+/// UserDefaults so dragging stays put across screen / tab changes.
 ///
-/// Surfaces a small `used/cap` credits chip in the top-right corner so the
-/// user always sees their monthly KINI quota at a glance, even without
-/// opening the chat. The chip hides for `exempt` callers (super-admin).
+/// Tapping opens KiniChatView as a fullScreenCover. The `used/cap` credits
+/// chip overlays the top-right corner of the FAB; hidden for `exempt`
+/// callers (super-admin).
 struct KiniFAB: View {
     let usage: KiniUsage?
     let onTap: () -> Void
 
+    // Persist drag offset across screen changes so the FAB doesn't snap
+    // back to the bottom-right corner every time the user navigates.
+    @AppStorage("kini_fab_offset_x") private var savedOffsetX: Double = 0
+    @AppStorage("kini_fab_offset_y") private var savedOffsetY: Double = 0
+    @State private var dragOffset: CGSize = .zero
+
     var body: some View {
+        let totalOffset = CGSize(
+            width: savedOffsetX + dragOffset.width,
+            height: savedOffsetY + dragOffset.height
+        )
+
         ZStack(alignment: .topTrailing) {
-            Button(action: onTap) {
-                ZStack {
-                    Circle()
-                        .fill(fabGradient)
-                        .frame(width: 56, height: 56)
-                        .shadow(color: brandRed.opacity(0.45), radius: 14, x: 0, y: 8)
-                    Text("✦")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(.white)
-                }
+            ZStack {
+                Circle()
+                    .fill(fabGradient)
+                    .frame(width: 56, height: 56)
+                    .shadow(color: brandRed.opacity(0.45), radius: 14, x: 0, y: 8)
+                Text("✦")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.white)
             }
-            .buttonStyle(.plain)
             .accessibilityLabel("Ask KINI")
+            .onTapGesture(perform: onTap)
 
             if let u = usage, !u.exempt {
                 Text("\(u.used)/\(u.cap)")
@@ -47,5 +56,15 @@ struct KiniFAB: View {
             }
         }
         .frame(width: 72, height: 72, alignment: .bottomTrailing)
+        .offset(totalOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { v in dragOffset = v.translation }
+                .onEnded { _ in
+                    savedOffsetX += dragOffset.width
+                    savedOffsetY += dragOffset.height
+                    dragOffset = .zero
+                }
+        )
     }
 }

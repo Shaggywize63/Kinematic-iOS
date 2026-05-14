@@ -16,6 +16,7 @@ private let headerGradient = LinearGradient(
 /// - Gradient user bubbles + bordered assistant bubbles
 struct KiniChatView: View {
     @StateObject var vm = KINIChatViewModel()
+    @StateObject private var voice = KiniVoiceRecognizer()
     var onClose: (() -> Void)? = nil
 
     private var capped: Bool {
@@ -74,6 +75,29 @@ struct KiniChatView: View {
                     .padding(10)
                     .background(Color(uiColor: .secondarySystemBackground))
                     .cornerRadius(12)
+
+                // Hold-to-talk voice mic. Tap to start, tap again to stop;
+                // partial transcripts stream into `vm.draft` as the user
+                // speaks. Mirrors the web KinematicAI mic.
+                if voice.isAvailable {
+                    Button {
+                        if voice.isListening {
+                            voice.stop()
+                        } else {
+                            voice.start { text in vm.draft = text }
+                        }
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(voice.isListening ? brandRed : Color(uiColor: .secondarySystemBackground))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: voice.isListening ? "mic.fill" : "mic")
+                                .foregroundColor(voice.isListening ? .white : .primary)
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                    }
+                    .disabled(capped || vm.isSending)
+                }
 
                 Button {
                     Task { await vm.send() }
