@@ -53,15 +53,56 @@ struct LeadsListView: View {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     if vm.isLoading && vm.leads.isEmpty {
-                        ProgressView().padding(.top, 40)
+                        ProgressView().tint(Brand.red).padding(.top, 40)
+                    } else if let err = vm.errorMessage, vm.leads.isEmpty {
+                        // Surface fetch failures (most often 401 from a
+                        // stale token) instead of falling through to the
+                        // "No leads yet" empty state — the silent failure
+                        // was the bug Hemanth ran into when his session
+                        // expired and the list looked empty.
+                        VStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 36))
+                                .foregroundColor(Brand.red)
+                            Text("Couldn't load leads")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(Color(uiColor: .label))
+                            Text(err)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                            Button {
+                                Task { await vm.refresh() }
+                            } label: {
+                                Text("Retry")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .padding(.horizontal, 18).padding(.vertical, 10)
+                                    .background(Brand.red)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                            }
+                            Text("If this keeps happening, sign out and back in.")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .padding(.top, 4)
+                        }
+                        .padding(.top, 60)
                     } else if vm.filtered.isEmpty {
+                        // Real empty state — auth + fetch worked, the
+                        // client just has no leads matching the current
+                        // filters.
                         VStack(spacing: 12) {
                             Image(systemName: "person.crop.circle.badge.plus")
                                 .font(.system(size: 40))
-                                .foregroundColor(.gray.opacity(0.4))
-                            Text("No leads yet.").foregroundColor(.gray)
+                                .foregroundColor(Brand.red.opacity(0.5))
+                            Text(vm.statusFilter == "all" && vm.search.isEmpty
+                                 ? "No leads yet."
+                                 : "No leads match your filters.")
+                                .foregroundColor(.secondary)
                             Button("Create lead") { showCreate = true }
                                 .buttonStyle(.borderedProminent)
+                                .tint(Brand.red)
                         }
                         .padding(.top, 60)
                     } else {
