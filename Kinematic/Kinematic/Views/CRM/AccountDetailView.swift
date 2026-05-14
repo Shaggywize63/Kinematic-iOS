@@ -37,7 +37,10 @@ struct AccountDetailView: View {
                 Task { await loadRelations() }
             }
         }
-        .sheet(isPresented: $loggingActivity) {
+        .sheet(
+            isPresented: $loggingActivity,
+            onDismiss: { Task { await autoLogCallIfNeeded() } }
+        ) {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject
@@ -88,6 +91,27 @@ struct AccountDetailView: View {
             body["completed_at"] = ISO8601DateFormatter().string(from: Date())
             body["status"] = "completed"
         }
+        if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+            body["duration_seconds"] = duration
+        }
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
+        }
+    }
+
+    /// Auto-log fallback for cancel-after-dial.
+    private func autoLogCallIfNeeded() async {
+        guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
+        let subject = composerInitialSubject.isEmpty ? "Call (auto-logged)" : composerInitialSubject
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "description": "",
+            "account_id": account.id,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+            "duration_seconds": duration,
+        ]
         if let created = try? await api.createActivity(body) {
             activities.insert(created, at: 0)
         }

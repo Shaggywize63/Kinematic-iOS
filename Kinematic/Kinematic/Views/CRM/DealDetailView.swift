@@ -66,7 +66,10 @@ struct DealDetailView: View {
                 DealEditView(deal: d, stages: stages) { updated in initialDeal = updated }
             }
         }
-        .sheet(isPresented: $loggingActivity) {
+        .sheet(
+            isPresented: $loggingActivity,
+            onDismiss: { Task { await autoLogCallIfNeeded() } }
+        ) {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject
@@ -126,6 +129,25 @@ struct DealDetailView: View {
             body["completed_at"] = ISO8601DateFormatter().string(from: Date())
             body["status"] = "completed"
         }
+        if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+            body["duration_seconds"] = duration
+        }
+        _ = try? await CRMService.shared.createActivity(body)
+    }
+
+    /// Auto-log fallback for the cancel-after-dial case.
+    private func autoLogCallIfNeeded() async {
+        guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
+        let subject = composerInitialSubject.isEmpty ? "Call (auto-logged)" : composerInitialSubject
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "description": "",
+            "deal_id": dealId,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+            "duration_seconds": duration,
+        ]
         _ = try? await CRMService.shared.createActivity(body)
     }
 

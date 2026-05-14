@@ -45,7 +45,18 @@ struct LeadDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $loggingActivity) {
+        .sheet(
+            isPresented: $loggingActivity,
+            onDismiss: {
+                // If the rep tapped Call, the dialer connected, and they
+                // dismissed without saving, fire-and-forget a minimal
+                // call activity so the timeline still reflects reality.
+                // consumeDuration returns nil if the save path already
+                // grabbed it, so this only runs on a genuine cancel.
+                let prefill = composerInitialSubject
+                Task { await vm.autoLogCallIfNeeded(prefillSubject: prefill) }
+            }
+        ) {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject

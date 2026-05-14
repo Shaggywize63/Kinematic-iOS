@@ -37,7 +37,10 @@ struct ContactDetailView: View {
         .sheet(isPresented: $editing) {
             ContactEditView(contact: contact) { updated in contact = updated; Task { await loadRelations() } }
         }
-        .sheet(isPresented: $loggingActivity) {
+        .sheet(
+            isPresented: $loggingActivity,
+            onDismiss: { Task { await autoLogCallIfNeeded() } }
+        ) {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject
@@ -89,6 +92,28 @@ struct ContactDetailView: View {
             body["completed_at"] = ISO8601DateFormatter().string(from: Date())
             body["status"] = "completed"
         }
+        if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+            body["duration_seconds"] = duration
+        }
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
+        }
+    }
+
+    /// Auto-log fallback when the rep dials but dismisses the composer
+    /// without saving. Only fires for calls that actually connected.
+    private func autoLogCallIfNeeded() async {
+        guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
+        let subject = composerInitialSubject.isEmpty ? "Call (auto-logged)" : composerInitialSubject
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "description": "",
+            "contact_id": contact.id,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+            "duration_seconds": duration,
+        ]
         if let created = try? await api.createActivity(body) {
             activities.insert(created, at: 0)
         }

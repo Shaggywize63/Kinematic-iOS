@@ -49,6 +49,9 @@ final class LeadDetailViewModel: ObservableObject {
 
     /// Log a new activity bound to this lead. Non-task kinds are marked
     /// completed at save time so they show up in the timeline immediately.
+    /// If a tap-to-call was the trigger and the call connected, the
+    /// captured duration is included on the activity so reports can split
+    /// "real conversations" from "no-answers".
     func logActivity(type: String, subject: String, description: String) async {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return }
@@ -63,11 +66,35 @@ final class LeadDetailViewModel: ObservableObject {
             body["completed_at"] = now
             body["status"] = "completed"
         }
+        if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+            body["duration_seconds"] = duration
+        }
         do {
             let created = try await api.createActivity(body)
             activities.insert(created, at: 0)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Auto-log fallback: called when the rep dialed via the Call button
+    /// but dismissed the composer without saving. We only fire if the
+    /// CallObserver recorded a connected call (>0s) so a pocket-dial /
+    /// no-answer doesn't pollute the timeline.
+    func autoLogCallIfNeeded(prefillSubject: String) async {
+        guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
+        let subject = prefillSubject.isEmpty ? "Call (auto-logged)" : prefillSubject
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "description": "",
+            "lead_id": leadId,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+            "duration_seconds": duration,
+        ]
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
         }
     }
 }
