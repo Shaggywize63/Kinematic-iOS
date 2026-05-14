@@ -89,6 +89,9 @@ private extension CRMService {
         if let orgId = Session.currentUser?.orgId {
             req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
         }
+        if let cid = CRMClientScope.selectedClientId() {
+            req.setValue(cid, forHTTPHeaderField: "X-Client-Id")
+        }
     }
 
     static func validate(_ response: URLResponse) throws {

@@ -254,6 +254,13 @@ final class CRMService {
 
     private var orgId: String? { Session.currentUser?.orgId }
 
+    /// Admin client-picker selection (mirrors the dashboard's
+    /// `kinematic_selected_client` localStorage entry). Returned only when
+    /// the value parses as a UUID — anything else (legacy literal "Kinematic",
+    /// empty strings) is dropped so we never stamp garbage into the header.
+    /// Client-level users keep this nil because their JWT already pins them.
+    private var selectedClientId: String? { CRMClientScope.selectedClientId() }
+
     private func get<T: Codable>(_ path: String, query: [String: String] = [:]) async throws -> T {
         let req = try makeRequest(path: path, method: "GET", body: nil, query: query)
         return try await perform(req)
@@ -292,6 +299,7 @@ final class CRMService {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
+        if let cid = selectedClientId { req.setValue(cid, forHTTPHeaderField: "X-Client-Id") }
         req.httpBody = body
         req.timeoutInterval = 30
         return req
