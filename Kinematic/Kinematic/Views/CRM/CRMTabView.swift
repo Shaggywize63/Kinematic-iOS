@@ -47,6 +47,10 @@ struct CRMMoreMenu: View {
 
     var body: some View {
         List {
+            // CRM module surfaces only what's actually available on the
+            // dashboard. Email Templates was removed from web; CRM Settings
+            // is intentionally a web-console-only control. Keep the mobile
+            // CRM More menu lean — Accounts / Contacts / Products / Reports.
             Section("Records") {
                 NavigationLink {
                     AccountsListView()
@@ -58,20 +62,10 @@ struct CRMMoreMenu: View {
                     ProductsListView()
                 } label: { MoreRow(icon: "shippingbox.fill", title: "Products", tint: .brown) }
             }
-            Section("Communication") {
-                NavigationLink {
-                    EmailTemplatesView()
-                } label: { MoreRow(icon: "envelope.fill", title: "Email Templates", tint: .blue) }
-            }
             Section("Insights") {
                 NavigationLink {
                     CRMReportsView()
                 } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: .purple) }
-            }
-            Section("Settings") {
-                NavigationLink {
-                    CRMSettingsView()
-                } label: { MoreRow(icon: "gearshape.fill", title: "CRM Settings", tint: .gray) }
             }
             if let onExit {
                 Section {

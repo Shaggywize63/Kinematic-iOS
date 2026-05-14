@@ -93,6 +93,13 @@ struct ContentView: View {
         .task(id: appState.isAuthenticated) {
             // Prefetch on auth so the chip is populated on first paint.
             guard appState.isAuthenticated else { kiniUsage = nil; return }
+            // Re-pull /auth/me so entitlements (enabled_modules /
+            // enabled_packages) refresh from the server. Without this,
+            // sessions cached before entitlements rolled out have empty
+            // arrays — the User model treats that as a legacy session and
+            // grants full access, which is why CRM-only Hemanth was seeing
+            // Field Force tabs.
+            await KinematicRepository.shared.refreshMe()
             kiniUsage = await AIChatService.shared.fetchUsage()
         }
     }
