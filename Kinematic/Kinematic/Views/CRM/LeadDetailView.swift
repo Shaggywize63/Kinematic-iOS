@@ -4,6 +4,11 @@ struct LeadDetailView: View {
     @StateObject var vm: LeadDetailViewModel
     @State private var editing = false
     @State private var loggingActivity = false
+    /// Prefill values for the activity composer. Reset to defaults
+    /// whenever the user opens the composer manually; overridden when the
+    /// CallButton presents the sheet after a tap-to-call.
+    @State private var composerInitialType: String = "call"
+    @State private var composerInitialSubject: String = ""
 
     init(leadId: String) {
         _vm = StateObject(wrappedValue: LeadDetailViewModel(leadId: leadId))
@@ -41,7 +46,10 @@ struct LeadDetailView: View {
             }
         }
         .sheet(isPresented: $loggingActivity) {
-            ActivityComposeView { type, subject, description in
+            ActivityComposeView(
+                initialType: composerInitialType,
+                initialSubject: composerInitialSubject
+            ) { type, subject, description in
                 await vm.logActivity(type: type, subject: subject, description: description)
             }
         }
@@ -62,9 +70,23 @@ struct LeadDetailView: View {
                 if let e = lead.email { Label(e, systemImage: "envelope.fill").font(.caption).foregroundColor(.blue) }
                 if let p = lead.phone { Label(p, systemImage: "phone.fill").font(.caption).foregroundColor(.green) }
             }
-            if let phone = lead.phone, WhatsAppHelper.canOpen(phone: phone) {
+            if let phone = lead.phone, !phone.isEmpty {
                 let prefill = "Hi \(lead.firstName ?? lead.displayName.split(separator: " ").first.map(String.init) ?? "there"), "
-                WhatsAppButton(phone: phone, prefillText: prefill, compact: false)
+                HStack(spacing: 8) {
+                    CallButton(
+                        phone: phone,
+                        prefillSubject: "Call with \(lead.displayName)",
+                        onCallInitiated: {
+                            composerInitialType = "call"
+                            composerInitialSubject = "Call with \(lead.displayName)"
+                            loggingActivity = true
+                        },
+                        compact: false
+                    )
+                    if WhatsAppHelper.canOpen(phone: phone) {
+                        WhatsAppButton(phone: phone, prefillText: prefill, compact: false)
+                    }
+                }
             }
         }
         .padding(16)
@@ -140,7 +162,11 @@ struct LeadDetailView: View {
             HStack {
                 Text("ACTIVITY").font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
                 Spacer()
-                Button(action: { loggingActivity = true }) {
+                Button(action: {
+                    composerInitialType = "call"
+                    composerInitialSubject = ""
+                    loggingActivity = true
+                }) {
                     Label("Log", systemImage: "plus.circle.fill")
                         .font(.system(size: 12, weight: .bold))
                 }

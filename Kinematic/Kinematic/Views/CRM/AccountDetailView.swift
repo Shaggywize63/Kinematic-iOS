@@ -7,6 +7,9 @@ struct AccountDetailView: View {
     @State private var deals: [Deal] = []
     @State private var activities: [Activity] = []
     @State private var isLoadingRelations = false
+    @State private var loggingActivity = false
+    @State private var composerInitialType: String = "call"
+    @State private var composerInitialSubject: String = ""
 
     private let api = CRMService.shared
 
@@ -17,7 +20,7 @@ struct AccountDetailView: View {
 
                 Text("DETAILS").font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
                 if let addr = account.billingAddress { detailRow("Billing", addr, icon: "mappin.and.ellipse", color: .red) }
-                if let phone = account.phone { detailRow("Phone", phone, icon: "phone.fill", color: .green) }
+                if let phone = account.phone, !phone.isEmpty { phoneRow(phone) }
                 if let site = account.website { detailRow("Website", site, icon: "globe", color: .blue) }
 
                 contactsSection
@@ -34,8 +37,60 @@ struct AccountDetailView: View {
                 Task { await loadRelations() }
             }
         }
+        .sheet(isPresented: $loggingActivity) {
+            ActivityComposeView(
+                initialType: composerInitialType,
+                initialSubject: composerInitialSubject
+            ) { type, subject, description in
+                await logActivity(type: type, subject: subject, description: description)
+            }
+        }
         .task { await loadRelations() }
         .refreshable { await loadRelations() }
+    }
+
+    /// Phone row with tap-to-call. Replaces the static detailRow rendering
+    /// for the phone field so the rep can dial without copy-pasting.
+    private func phoneRow(_ phone: String) -> some View {
+        HStack {
+            Image(systemName: "phone.fill").foregroundColor(.green).frame(width: 24)
+            VStack(alignment: .leading) {
+                Text("Phone").font(.caption).foregroundColor(.gray)
+                Text(phone).font(.system(size: 14))
+            }
+            Spacer()
+            CallButton(
+                phone: phone,
+                prefillSubject: "Call with \(account.name)",
+                onCallInitiated: {
+                    composerInitialType = "call"
+                    composerInitialSubject = "Call with \(account.name)"
+                    loggingActivity = true
+                }
+            )
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    /// POSTs an activity bound to this account. Mirrors the contact / lead
+    /// detail composer behavior so call captures land in the account timeline.
+    private func logActivity(type: String, subject: String, description: String) async {
+        let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var body: [String: Any] = [
+            "type": type,
+            "subject": trimmed,
+            "description": description,
+            "account_id": account.id,
+        ]
+        if type != "task" {
+            body["completed_at"] = ISO8601DateFormatter().string(from: Date())
+            body["status"] = "completed"
+        }
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
+        }
     }
 
     // MARK: Sections

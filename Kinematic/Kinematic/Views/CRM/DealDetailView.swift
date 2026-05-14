@@ -8,12 +8,21 @@ struct DealDetailView: View {
     @State private var aiBusy = false
     @State private var editing = false
     @State private var stages: [Stage] = []
+    /// Primary contact loaded lazily from `Deal.contactId` so the deal
+    /// header can offer tap-to-call without a separate navigation.
+    @State private var primaryContact: Contact?
+    @State private var loggingActivity = false
+    @State private var composerInitialType: String = "call"
+    @State private var composerInitialSubject: String = ""
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let d = initialDeal {
                     headerCard(d)
+                    if let contact = primaryContact, let phone = contact.phone ?? contact.mobile, !phone.isEmpty {
+                        primaryContactCard(contact: contact, phone: phone, dealName: d.name)
+                    }
                     HStack(alignment: .top, spacing: 16) {
                         if let wp = winProb {
                             WinProbabilityGauge(probability: wp.probability, label: wp.band?.uppercased())
@@ -57,6 +66,14 @@ struct DealDetailView: View {
                 DealEditView(deal: d, stages: stages) { updated in initialDeal = updated }
             }
         }
+        .sheet(isPresented: $loggingActivity) {
+            ActivityComposeView(
+                initialType: composerInitialType,
+                initialSubject: composerInitialSubject
+            ) { type, subject, description in
+                await logActivity(type: type, subject: subject, description: description)
+            }
+        }
         .task {
             if initialDeal == nil {
                 initialDeal = try? await CRMService.shared.getDeal(id: dealId)
@@ -64,7 +81,52 @@ struct DealDetailView: View {
             if let pid = initialDeal?.pipelineId {
                 stages = (try? await CRMService.shared.listStages(pipelineId: pid)) ?? []
             }
+            if let cid = initialDeal?.contactId, primaryContact == nil {
+                primaryContact = try? await CRMService.shared.getContact(id: cid)
+            }
         }
+    }
+
+    private func primaryContactCard(contact: Contact, phone: String, dealName: String) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(Color.orange.opacity(0.2)).frame(width: 40, height: 40)
+                Image(systemName: "person.fill").foregroundColor(.orange)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(contact.displayName).font(.system(size: 14, weight: .bold))
+                Text(phone).font(.caption).foregroundColor(.secondary)
+            }
+            Spacer()
+            CallButton(
+                phone: phone,
+                prefillSubject: "Call about \(dealName)",
+                onCallInitiated: {
+                    composerInitialType = "call"
+                    composerInitialSubject = "Call about \(dealName)"
+                    loggingActivity = true
+                }
+            )
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    /// POST an activity bound to this deal. Used by the call composer.
+    private func logActivity(type: String, subject: String, description: String) async {
+        let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var body: [String: Any] = [
+            "type": type,
+            "subject": trimmed,
+            "description": description,
+            "deal_id": dealId,
+        ]
+        if type != "task" {
+            body["completed_at"] = ISO8601DateFormatter().string(from: Date())
+            body["status"] = "completed"
+        }
+        _ = try? await CRMService.shared.createActivity(body)
     }
 
     private func headerCard(_ d: Deal) -> some View {
