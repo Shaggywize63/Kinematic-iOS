@@ -7,6 +7,8 @@ final class KINIChatViewModel: ObservableObject {
     @Published var draft: String = ""
     @Published var isSending = false
     @Published var errorMessage: String?
+    /// Latest monthly KINI quota — drives the credits chip in the header.
+    @Published var usage: KiniUsage?
 
     private let api = AIChatService.shared
 
@@ -20,6 +22,21 @@ final class KINIChatViewModel: ObservableObject {
             toolPayload: nil,
             cards: nil
         ))
+        Task { await refreshUsage() }
+    }
+
+    func refreshUsage() async {
+        if let u = await api.fetchUsage() { usage = u }
+    }
+
+    func reset() {
+        messages = [ChatMessage(
+            id: UUID().uuidString,
+            role: "assistant",
+            content: "Conversation cleared. What’s next?",
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            toolName: nil, toolPayload: nil, cards: nil
+        )]
     }
 
     func send() async {
@@ -58,6 +75,8 @@ final class KINIChatViewModel: ObservableObject {
                 cards: response.cards
             )
             messages.append(assistant)
+            // Backend stamps the freshest quota on every successful reply.
+            if let u = response.usage { usage = u }
         } catch {
             errorMessage = error.localizedDescription
             messages.append(ChatMessage(

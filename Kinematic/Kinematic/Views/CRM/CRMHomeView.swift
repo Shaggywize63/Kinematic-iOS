@@ -66,21 +66,9 @@ struct CRMHomeView: View {
                 .navigationDestination(for: CRMDestination.self) { dest in
                     dest.view
                 }
-
-                // Sticky red KINI FAB — single entry point.
-                NavigationLink(value: CRMDestination.kini) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.red)
-                            .frame(width: 56, height: 56)
-                            .shadow(color: .red.opacity(0.4), radius: 12, x: 0, y: 4)
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                }
-                .buttonStyle(.plain)
-                .padding(20)
+                // The local KINI FAB previously rendered here has been removed —
+                // ContentView now overlays the global KiniFAB on every screen so
+                // CRM matches the dashboard's KinematicAI pattern.
             }
         }
         .accentColor(.indigo)
