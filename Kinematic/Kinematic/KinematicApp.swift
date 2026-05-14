@@ -1410,7 +1410,28 @@ class KinematicRepository {
             return []
         }
     }
-    
+
+    /// Re-pull `/auth/me` and overwrite the cached `Session.currentUser` so
+    /// entitlement-driven UI gating (CRM-only mode, FF tabs, etc.) reflects
+    /// the latest server-side SKU state. Critical for users whose session was
+    /// stored before `enabled_modules` / `enabled_packages` rolled out — those
+    /// stale rows have empty arrays which the User model treats as a "legacy
+    /// session" (i.e. full access), so a CRM-only client like Hemanth was
+    /// seeing Field Force tabs until this refresh ran.
+    @discardableResult
+    func refreshMe() async -> User? {
+        guard !Session.sharedToken.isEmpty else { return nil }
+        do {
+            let res: ApiResponse<User>? = try await performRequest("/auth/me")
+            guard let user = res?.data else { return nil }
+            await MainActor.run { Session.currentUser = user }
+            return user
+        } catch {
+            print("🚩 refreshMe failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     func login(email: String, phone: String?, pass: String) async -> (Bool, String?) {
         guard let url = URL(string: "\(baseURL)/auth/login") else { return (false, "Invalid URL") }
         let identifier = (phone != nil && !phone!.isEmpty) ? phone! : email
