@@ -18,7 +18,7 @@ struct EmailsView: View {
                                 if let s = e.status {
                                     Text(s.uppercased()).font(.system(size: 9, weight: .black))
                                         .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .background(Color.blue.opacity(0.15)).foregroundColor(.blue).cornerRadius(4)
+                                        .background(Brand.red.opacity(0.15)).foregroundColor(Brand.red).cornerRadius(4)
                                 }
                             }
                             if let to = e.toAddress { Text("To: \(to)").font(.caption).foregroundColor(.secondary) }

@@ -17,11 +17,12 @@ struct LeadsListView: View {
                     .autocapitalization(.none)
                 if vm.dateFrom != nil || vm.dateTo != nil {
                     Button { vm.dateFrom = nil; vm.dateTo = nil; Task { await vm.refresh() } } label: {
-                        Image(systemName: "calendar.badge.minus").foregroundColor(.red)
+                        Image(systemName: "calendar.badge.minus").foregroundColor(Brand.red)
                     }
                 }
                 Button { showDateFilter = true } label: {
-                    Image(systemName: "calendar").foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? .indigo : .gray)
+                    Image(systemName: "calendar")
+                        .foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? Brand.red : .secondary)
                 }
             }
             .padding(10)
@@ -39,8 +40,8 @@ struct LeadsListView: View {
                             Text(s.uppercased())
                                 .font(.system(size: 11, weight: .bold))
                                 .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(vm.statusFilter == s ? Color.blue : Color(uiColor: .secondarySystemBackground))
-                                .foregroundColor(vm.statusFilter == s ? .white : .gray)
+                                .background(vm.statusFilter == s ? Brand.red : Color(uiColor: .secondarySystemBackground))
+                                .foregroundColor(vm.statusFilter == s ? .white : .secondary)
                                 .cornerRadius(8)
                         }
                     }

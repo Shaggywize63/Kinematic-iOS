@@ -54,10 +54,10 @@ struct ActivityTimelineItem: View {
 
     private var color: Color {
         switch (activity.type ?? "").lowercased() {
-        case "call":    return .green
-        case "email":   return .blue
-        case "meeting": return .orange
-        case "note":    return .purple
+        case "call":    return Brand.red
+        case "email":   return Brand.red
+        case "meeting": return Brand.red
+        case "note":    return Brand.red
         case "task":    return .red
         default:        return .gray
         }

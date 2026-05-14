@@ -17,7 +17,7 @@ struct LineItemsCard: View {
                 if !items.isEmpty {
                     Text(CurrencyFormatter.formatINR(total))
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.green)
+                        .foregroundColor(Brand.red)
                 }
             }
             if loading {

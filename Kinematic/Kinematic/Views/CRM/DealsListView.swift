@@ -11,12 +11,12 @@ struct DealsListView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
-                    .foregroundColor(showWeighted ? .indigo : .green)
+                    .foregroundColor(showWeighted ? Brand.red : Brand.red)
                     .font(.caption)
                 Text(showWeighted ? "Weighted" : "Cost")
                     .font(.caption2).foregroundColor(.secondary)
                 Spacer()
-                Toggle("", isOn: $showWeighted).labelsHidden().tint(.indigo)
+                Toggle("", isOn: $showWeighted).labelsHidden().tint(Brand.red)
             }
             .padding(.horizontal).padding(.top, 8)
             HStack {
@@ -30,7 +30,7 @@ struct DealsListView: View {
                                 Text(s.uppercased())
                                     .font(.system(size: 11, weight: .bold))
                                     .padding(.horizontal, 12).padding(.vertical, 6)
-                                    .background(vm.statusFilter == s ? Color.indigo : Color(uiColor: .secondarySystemBackground))
+                                    .background(vm.statusFilter == s ? Brand.red : Color(uiColor: .secondarySystemBackground))
                                     .foregroundColor(vm.statusFilter == s ? .white : .gray)
                                     .cornerRadius(8)
                             }
@@ -40,7 +40,7 @@ struct DealsListView: View {
                 }
                 Button { showDateFilter = true } label: {
                     Image(systemName: "calendar")
-                        .foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? .indigo : .gray)
+                        .foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? Brand.red : .gray)
                         .padding(.trailing, 12)
                 }
                 if vm.dateFrom != nil || vm.dateTo != nil {

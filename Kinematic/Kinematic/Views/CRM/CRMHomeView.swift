@@ -50,7 +50,7 @@ struct CRMHomeView: View {
                         ToolbarItem(placement: .topBarLeading) {
                             Button(action: onClose) {
                                 HStack(spacing: 4) { Image(systemName: "chevron.left"); Text("Close") }
-                                    .foregroundColor(.blue)
+                                    .foregroundColor(Brand.red)
                             }
                         }
                     }
@@ -71,7 +71,7 @@ struct CRMHomeView: View {
                 // CRM matches the dashboard's KinematicAI pattern.
             }
         }
-        .accentColor(.indigo)
+        .accentColor(Brand.red)
     }
 }
 

@@ -18,7 +18,7 @@ struct ActivitiesView: View {
                             Text(t.uppercased())
                                 .font(.system(size: 11, weight: .bold))
                                 .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(vm.typeFilter == t ? Color.blue : Color(uiColor: .secondarySystemBackground))
+                                .background(vm.typeFilter == t ? Brand.red : Color(uiColor: .secondarySystemBackground))
                                 .foregroundColor(vm.typeFilter == t ? .white : .gray)
                                 .cornerRadius(8)
                         }

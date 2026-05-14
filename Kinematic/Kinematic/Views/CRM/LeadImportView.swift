@@ -21,7 +21,7 @@ struct LeadImportView: View {
                     .frame(minHeight: 200)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.3)))
                 if !status.isEmpty {
-                    Text(status).font(.caption).foregroundColor(.blue)
+                    Text(status).font(.caption).foregroundColor(Brand.red)
                 }
                 Button {
                     Task { await runImport() }
@@ -32,7 +32,7 @@ struct LeadImportView: View {
                     }
                     .font(.headline).foregroundColor(.white)
                     .frame(maxWidth: .infinity).padding()
-                    .background(Color.blue).cornerRadius(12)
+                    .background(Brand.red).cornerRadius(12)
                 }
                 Spacer()
             }

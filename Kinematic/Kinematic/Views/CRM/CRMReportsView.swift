@@ -26,7 +26,7 @@ struct CRMReportsView: View {
                     title: "Leads",
                     subtitle: "All leads with status, score, contact info",
                     icon: "person.crop.circle.badge.plus",
-                    color: .blue,
+                    color: Brand.red,
                     action: exportLeads
                 )
 
@@ -34,7 +34,7 @@ struct CRMReportsView: View {
                     title: "Contacts",
                     subtitle: "All contacts with email, phone, account",
                     icon: "person.2.fill",
-                    color: .purple,
+                    color: Brand.red,
                     action: exportContacts
                 )
 
@@ -42,14 +42,14 @@ struct CRMReportsView: View {
                     title: "Deals",
                     subtitle: "Open + won + lost deals with amount, stage",
                     icon: "square.stack.3d.up.fill",
-                    color: .green,
+                    color: Brand.red,
                     action: exportDeals
                 )
 
                 if let msg = statusMessage {
                     Label(msg, systemImage: statusIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundColor(statusIsError ? .red : .green)
+                        .foregroundColor(statusIsError ? .red : Brand.red)
                         .multilineTextAlignment(.center)
                         .padding(.top, 12)
                 }
@@ -81,10 +81,10 @@ struct CRMReportsView: View {
     private var dateRangeRow: some View {
         HStack(spacing: 8) {
             Image(systemName: "calendar")
-                .foregroundColor(dateFrom != nil || dateTo != nil ? .indigo : .secondary)
+                .foregroundColor(dateFrom != nil || dateTo != nil ? Brand.red : .secondary)
             Text(dateRangeLabel)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(dateFrom != nil || dateTo != nil ? .indigo : .secondary)
+                .foregroundColor(dateFrom != nil || dateTo != nil ? Brand.red : .secondary)
             Spacer()
             if dateFrom != nil || dateTo != nil {
                 Button {
@@ -96,7 +96,7 @@ struct CRMReportsView: View {
             Button("Change") { showDateFilter = true }
                 .font(.system(size: 13, weight: .bold))
                 .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(Color.indigo)
+                .background(Brand.red)
                 .foregroundColor(.white)
                 .clipShape(Capsule())
         }

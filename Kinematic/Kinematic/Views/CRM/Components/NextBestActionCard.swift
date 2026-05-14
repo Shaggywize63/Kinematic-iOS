@@ -8,11 +8,11 @@ struct NextBestActionCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
-                    .foregroundColor(.purple)
+                    .foregroundColor(Brand.red)
                 Text("NEXT BEST ACTION")
                     .font(.system(size: 10, weight: .black))
                     .tracking(1)
-                    .foregroundColor(.purple)
+                    .foregroundColor(Brand.red)
             }
             Text(action.action)
                 .font(.system(size: 16, weight: .bold))
@@ -29,15 +29,15 @@ struct NextBestActionCard: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(Color.purple)
+                .background(Brand.red)
                 .cornerRadius(10)
             }
         }
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.purple.opacity(0.08))
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.purple.opacity(0.25), lineWidth: 1))
+                .fill(Brand.red.opacity(0.08))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.red.opacity(0.25), lineWidth: 1))
         )
     }
 }

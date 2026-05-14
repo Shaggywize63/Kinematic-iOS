@@ -68,8 +68,26 @@ final class CRMService {
     func leadActivities(id: String) async throws -> [Activity] {
         try await get("/api/v1/crm/leads/\(id)/activities")
     }
+    /// Backend exposes `/leads/{id}/deals` to fetch every deal linked to a
+    /// lead (the converted deal plus any later opportunities seeded from
+    /// it). Mirrors `crmLeads.deals(id)` in the web client.
+    func leadDeals(id: String) async throws -> [Deal] {
+        try await get("/api/v1/crm/leads/\(id)/deals")
+    }
     func convertLead(id: String, body: [String: Any]) async throws -> Lead {
         try await postJSON("/api/v1/crm/leads/\(id)/convert", body: body)
+    }
+
+    /// Backend `/users` endpoint is gated by admin/supervisor/hr roles. Client-
+    /// role users (CRM-only deployments) will get a 403; we treat that as an
+    /// empty list so the assign button hides quietly instead of erroring.
+    func listAssignableUsers() async -> [AssignableUser] {
+        do {
+            let list: [AssignableUser] = try await get("/api/v1/users")
+            return list
+        } catch {
+            return []
+        }
     }
 
     // MARK: Contacts

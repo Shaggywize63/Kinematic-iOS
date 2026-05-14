@@ -9,7 +9,7 @@ struct ChatBubble: View {
         HStack(alignment: .top, spacing: 8) {
             if !isUser {
                 ZStack {
-                    Circle().fill(LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    Circle().fill(LinearGradient(colors: [Brand.red, Brand.red], startPoint: .topLeading, endPoint: .bottomTrailing))
                         .frame(width: 32, height: 32)
                     Image(systemName: "sparkles").foregroundColor(.white).font(.system(size: 12))
                 }
@@ -23,7 +23,7 @@ struct ChatBubble: View {
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 16)
-                            .fill(isUser ? AnyShapeStyle(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .fill(isUser ? AnyShapeStyle(LinearGradient(colors: [Brand.red, Brand.red], startPoint: .topLeading, endPoint: .bottomTrailing))
                                           : AnyShapeStyle(Color(uiColor: .secondarySystemBackground)))
                     )
 
@@ -36,11 +36,11 @@ struct ChatBubble: View {
 
             if isUser {
                 ZStack {
-                    Circle().fill(Color.blue.opacity(0.2))
+                    Circle().fill(Brand.red.opacity(0.2))
                         .frame(width: 32, height: 32)
                     Text(Session.currentUser?.name.prefix(1).uppercased() ?? "U")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.blue)
+                        .foregroundColor(Brand.red)
                 }
             } else { Spacer(minLength: 40) }
         }

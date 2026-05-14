@@ -56,7 +56,7 @@ private struct ProductRow: View {
                 .frame(width: 44, height: 44)
                 .overlay(
                     Image(systemName: "shippingbox.fill")
-                        .foregroundColor(.indigo)
+                        .foregroundColor(Brand.red)
                 )
             VStack(alignment: .leading, spacing: 4) {
                 Text(product.name)

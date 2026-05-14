@@ -32,7 +32,7 @@ struct NotificationBell: View {
                         .font(.system(size: 10, weight: .black))
                         .foregroundColor(.white)
                         .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(overdueCount > 0 ? Color.red : Color.blue)
+                        .background(overdueCount > 0 ? Color.red : Brand.red)
                         .clipShape(Capsule())
                         .offset(x: 8, y: -6)
                 }
@@ -122,7 +122,7 @@ private struct NotificationActivityRow: View {
             Spacer()
             Text(relativeDue(activity.dueAt))
                 .font(.caption2).fontWeight(.bold)
-                .foregroundColor(isOverdue(activity.dueAt) ? .red : .blue)
+                .foregroundColor(isOverdue(activity.dueAt) ? .red : Brand.red)
         }
         .padding(.vertical, 4)
     }

@@ -16,8 +16,8 @@ struct PipelineView: View {
                             if p.isDefault == true {
                                 Text("DEFAULT").font(.system(size: 10, weight: .black))
                                     .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(Color.green.opacity(0.15))
-                                    .foregroundColor(.green).cornerRadius(4)
+                                    .background(Brand.red.opacity(0.15))
+                                    .foregroundColor(Brand.red).cornerRadius(4)
                             }
                         }
                         if let stages = p.stages {

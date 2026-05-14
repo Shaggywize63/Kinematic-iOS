@@ -11,7 +11,7 @@ struct FunnelChartView: View {
                     x: .value("Count", stage.count),
                     y: .value("Stage", stage.stageName)
                 )
-                .foregroundStyle(LinearGradient(colors: [.blue, .indigo], startPoint: .leading, endPoint: .trailing))
+                .foregroundStyle(LinearGradient(colors: [Brand.red, Brand.red], startPoint: .leading, endPoint: .trailing))
                 .cornerRadius(4)
                 .annotation(position: .trailing) {
                     Text("\(stage.count)")
@@ -27,7 +27,7 @@ struct FunnelChartView: View {
                         Text(s.stageName).font(.caption).frame(width: 100, alignment: .leading)
                         GeometryReader { geo in
                             Rectangle()
-                                .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .leading, endPoint: .trailing))
+                                .fill(LinearGradient(colors: [Brand.red, Brand.red], startPoint: .leading, endPoint: .trailing))
                                 .frame(width: geo.size.width * widthFactor(for: s))
                                 .cornerRadius(4)
                         }.frame(height: 16)

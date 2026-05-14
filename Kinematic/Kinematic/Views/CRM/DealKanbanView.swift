@@ -34,12 +34,12 @@ struct DealKanbanView: View {
             // Cost / Weighted toggle
             HStack(spacing: 8) {
                 Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
-                    .foregroundColor(showWeighted ? .indigo : .green)
+                    .foregroundColor(showWeighted ? Brand.red : Brand.red)
                     .font(.caption)
                 Text(showWeighted ? "Weighted value (amount × win prob)" : "Cost (raw amount)")
                     .font(.caption2).foregroundColor(.secondary)
                 Spacer()
-                Toggle("", isOn: $showWeighted).labelsHidden().tint(.indigo)
+                Toggle("", isOn: $showWeighted).labelsHidden().tint(Brand.red)
             }
             .padding(.horizontal).padding(.bottom, 6)
 
@@ -65,11 +65,11 @@ struct DealKanbanView: View {
                             .padding(.vertical, 8)
                             .background(
                                 RoundedRectangle(cornerRadius: 999)
-                                    .fill(selectedStageId == stage.id ? Color.indigo.opacity(0.18) : Color(uiColor: .secondarySystemBackground))
+                                    .fill(selectedStageId == stage.id ? Brand.red.opacity(0.18) : Color(uiColor: .secondarySystemBackground))
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 999)
-                                    .stroke(selectedStageId == stage.id ? Color.indigo : Color.clear, lineWidth: 1.5)
+                                    .stroke(selectedStageId == stage.id ? Brand.red : Color.clear, lineWidth: 1.5)
                             )
                         }
                         .buttonStyle(.plain)
@@ -100,7 +100,7 @@ struct DealKanbanView: View {
                                 .buttonStyle(.plain)
                                 HStack {
                                     Button("Move to another stage") { movingDeal = deal }
-                                        .font(.caption).foregroundColor(.indigo)
+                                        .font(.caption).foregroundColor(Brand.red)
                                     Spacer()
                                 }
                                 .padding(.horizontal, 14)

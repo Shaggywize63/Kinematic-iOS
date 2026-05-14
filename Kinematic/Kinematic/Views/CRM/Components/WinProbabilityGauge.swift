@@ -29,8 +29,8 @@ struct WinProbabilityGauge: View {
     }
 
     private var color: Color {
-        if probability >= 0.7 { return .green }
-        if probability >= 0.4 { return .orange }
+        if probability >= 0.7 { return Brand.red }
+        if probability >= 0.4 { return Brand.red }
         return .red
     }
 }
