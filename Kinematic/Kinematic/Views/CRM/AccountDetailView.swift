@@ -10,8 +10,8 @@ struct AccountDetailView: View {
                 AccountSummaryCard(account: account)
                 Text("DETAILS").font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
                 if let addr = account.billingAddress { detailRow("Billing", addr, icon: "mappin.and.ellipse", color: .red) }
-                if let phone = account.phone { detailRow("Phone", phone, icon: "phone.fill", color: .green) }
-                if let site = account.website { detailRow("Website", site, icon: "globe", color: .blue) }
+                if let phone = account.phone { detailRow("Phone", phone, icon: "phone.fill", color: Brand.red) }
+                if let site = account.website { detailRow("Website", site, icon: "globe", color: Brand.red) }
             }
             .padding()
         }

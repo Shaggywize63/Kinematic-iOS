@@ -7,7 +7,7 @@ struct AccountSummaryCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: "building.2.fill")
-                    .foregroundColor(.blue)
+                    .foregroundColor(Brand.red)
                 Text(account.name)
                     .font(.headline)
                 Spacer()
@@ -15,8 +15,8 @@ struct AccountSummaryCard: View {
                     Text(industry.uppercased())
                         .font(.system(size: 10, weight: .black))
                         .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color.blue.opacity(0.15))
-                        .foregroundColor(.blue)
+                        .background(Brand.red.opacity(0.15))
+                        .foregroundColor(Brand.red)
                         .cornerRadius(4)
                 }
             }
@@ -31,7 +31,7 @@ struct AccountSummaryCard: View {
                 }
             }
             if let site = account.website {
-                Text(site).font(.caption2).foregroundColor(.blue).lineLimit(1)
+                Text(site).font(.caption2).foregroundColor(Brand.red).lineLimit(1)
             }
         }
         .padding(14)

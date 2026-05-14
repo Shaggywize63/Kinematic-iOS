@@ -35,7 +35,7 @@ struct CRMTabView: View {
                 NavigationStack { CRMMoreMenu(onExit: onExit) }
             }
         }
-        .tint(.indigo)
+        .tint(Brand.red)
         .tabBarMinimizeBehavior(.onScrollDown)
     }
 }
@@ -57,7 +57,7 @@ struct CRMMoreMenu: View {
                     appState.activeSecondaryRoute = ModalRoute(route: .profile)
                 } label: {
                     HStack {
-                        MoreRow(icon: "person.crop.circle.fill", title: Session.currentUser?.name ?? "Profile", tint: .indigo)
+                        MoreRow(icon: "person.crop.circle.fill", title: Session.currentUser?.name ?? "Profile", tint: Brand.red)
                         Spacer()
                     }
                 }
@@ -71,18 +71,18 @@ struct CRMMoreMenu: View {
             Section("Records") {
                 NavigationLink {
                     AccountsListView()
-                } label: { MoreRow(icon: "building.2.fill", title: "Accounts", tint: .teal) }
+                } label: { MoreRow(icon: "building.2.fill", title: "Accounts", tint: Brand.red) }
                 NavigationLink {
                     ContactsListView()
-                } label: { MoreRow(icon: "person.2.fill", title: "Contacts", tint: .purple) }
+                } label: { MoreRow(icon: "person.2.fill", title: "Contacts", tint: Brand.red) }
                 NavigationLink {
                     ProductsListView()
-                } label: { MoreRow(icon: "shippingbox.fill", title: "Products", tint: .brown) }
+                } label: { MoreRow(icon: "shippingbox.fill", title: "Products", tint: Brand.red) }
             }
             Section("Insights") {
                 NavigationLink {
                     CRMReportsView()
-                } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: .purple) }
+                } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
             }
             if let onExit {
                 Section {

@@ -16,9 +16,12 @@ struct ScoreBadge: View {
         .cornerRadius(6)
     }
 
+    // Single-accent scoring: hot leads are saturated red, mid-tier are a
+    // softer red, cold are grey so the row signal stays legible at a
+    // glance.
     private var color: Color {
-        if score >= 70 { return .red }
-        if score >= 40 { return .orange }
-        return .blue
+        if score >= 70 { return Brand.red }
+        if score >= 40 { return Brand.red.opacity(0.75) }
+        return .secondary
     }
 }

@@ -7,7 +7,10 @@ struct LeadRow: View {
         HStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .fill(LinearGradient(
+                        colors: [Brand.red, Brand.red.opacity(0.75)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ))
                     .frame(width: 44, height: 44)
                 Text(initials)
                     .font(.system(size: 14, weight: .black))
@@ -51,14 +54,13 @@ struct LeadRow: View {
         return s.isEmpty ? "L" : s
     }
 
+    // Single-accent status palette: every "live" status reads as red; only
+    // unqualified / muted states drop to neutral grey so the row still
+    // signals that the lead's pipeline activity has stalled.
     private var statusColor: Color {
         switch (lead.status ?? "").lowercased() {
-        case "new": return .blue
-        case "qualified": return .green
-        case "contacted": return .orange
-        case "unqualified": return .red
-        case "converted": return .purple
-        default: return .gray
+        case "unqualified", "lost": return .secondary
+        default: return Brand.red
         }
     }
 }

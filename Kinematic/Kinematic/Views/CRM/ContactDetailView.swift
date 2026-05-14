@@ -9,10 +9,10 @@ struct ContactDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 headerCard
                 if contact.isB2c == true { customer360Card; customerProfileCard }
-                if let e = contact.email { detailRow("Email", value: e, icon: "envelope.fill", color: .blue) }
+                if let e = contact.email { detailRow("Email", value: e, icon: "envelope.fill", color: Brand.red) }
                 if let p = contact.phone {
                     HStack(spacing: 12) {
-                        Image(systemName: "phone.fill").foregroundColor(.green).frame(width: 24)
+                        Image(systemName: "phone.fill").foregroundColor(Brand.red).frame(width: 24)
                         VStack(alignment: .leading, spacing: 2) { Text("Phone").font(.caption).foregroundColor(.gray); Text(p).font(.system(size: 14)) }
                         Spacer()
                         WhatsAppButton(phone: p, prefillText: "Hi \(contact.firstName ?? ""), ", compact: true)
@@ -21,7 +21,7 @@ struct ContactDetailView: View {
                 }
                 if let m = contact.mobile {
                     HStack(spacing: 12) {
-                        Image(systemName: "iphone").foregroundColor(.indigo).frame(width: 24)
+                        Image(systemName: "iphone").foregroundColor(Brand.red).frame(width: 24)
                         VStack(alignment: .leading, spacing: 2) { Text("Mobile").font(.caption).foregroundColor(.gray); Text(m).font(.system(size: 14)) }
                         Spacer()
                         WhatsAppButton(phone: m, prefillText: "Hi \(contact.firstName ?? ""), ", compact: true)
@@ -29,7 +29,7 @@ struct ContactDetailView: View {
                     .padding(12).background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
                 }
                 if contact.isB2c != true, let dept = contact.department {
-                    detailRow("Department", value: dept, icon: "building.2.fill", color: .orange)
+                    detailRow("Department", value: dept, icon: "building.2.fill", color: Brand.red)
                 }
             }
             .padding()
@@ -46,8 +46,8 @@ struct ContactDetailView: View {
             HStack {
                 Text(contact.displayName).font(.system(size: 24, weight: .black))
                 Spacer()
-                if contact.isB2c == true { badge("CUSTOMER", color: .purple) } else { badge("B2B", color: .blue) }
-                if let tier = contact.loyaltyTier { badge(tier.uppercased(), color: .orange) }
+                if contact.isB2c == true { badge("CUSTOMER", color: Brand.red) } else { badge("B2B", color: Brand.red) }
+                if let tier = contact.loyaltyTier { badge(tier.uppercased(), color: Brand.red) }
             }
             if contact.isB2c != true, let t = contact.title { Text(t).foregroundColor(.secondary) }
             if contact.isB2c == true, let addr = contact.fullAddress { Text(addr).font(.caption).foregroundColor(.secondary) }
@@ -58,7 +58,7 @@ struct ContactDetailView: View {
 
     private var customer360Card: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("CUSTOMER 360").font(.system(size: 10, weight: .black)).tracking(1).foregroundColor(.purple)
+            Text("CUSTOMER 360").font(.system(size: 10, weight: .black)).tracking(1).foregroundColor(Brand.red)
             HStack(spacing: 10) {
                 stat("Lifetime Value", value: CurrencyFormatter.formatINR(contact.lifetimeValue))
                 stat("Total Orders", value: "\(contact.totalOrders ?? 0)")
@@ -66,12 +66,12 @@ struct ContactDetailView: View {
             if let last = contact.lastPurchaseAt { Text("Last purchase: \(last)").font(.caption).foregroundColor(.secondary) }
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18).fill(Color.purple.opacity(0.06)).overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.purple.opacity(0.18), lineWidth: 1)))
+        .background(RoundedRectangle(cornerRadius: 18).fill(Brand.red.opacity(0.06)).overlay(RoundedRectangle(cornerRadius: 18).stroke(Brand.red.opacity(0.18), lineWidth: 1)))
     }
 
     private var customerProfileCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("CUSTOMER PROFILE").font(.system(size: 10, weight: .black)).tracking(1).foregroundColor(.purple)
+            Text("CUSTOMER PROFILE").font(.system(size: 10, weight: .black)).tracking(1).foregroundColor(Brand.red)
             if let dob = contact.dateOfBirth { profileRow("Date of Birth", value: dob) }
             if let g = contact.gender { profileRow("Gender", value: g.replacingOccurrences(of: "_", with: " ").capitalized) }
             if let pcm = contact.preferredContactMethod { profileRow("Preferred Channel", value: pcm.capitalized) }

@@ -52,23 +52,27 @@ struct CRMDashboardView: View {
     private var kpiGrid: some View {
         let s = vm.summary
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
+            // All KPI tile accents standardised to Brand.red per the
+            // single-accent product directive. Previously each tile carried
+            // its own colour (blue/indigo/green/orange) which clashed with
+            // the brand palette.
             NavigationLink(destination: LeadsListView()) {
-                kpiTile("Total Leads", value: "\(s?.totalLeads ?? 0)", icon: "person.2.fill", color: .blue)
+                kpiTile("Total Leads", value: "\(s?.totalLeads ?? 0)", icon: "person.2.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: DealsListView()) {
-                kpiTile("Open Deals", value: "\(s?.openDeals ?? 0)", icon: "square.stack.3d.up.fill", color: .indigo)
+                kpiTile("Open Deals", value: "\(s?.openDeals ?? 0)", icon: "square.stack.3d.up.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: DealKanbanView()) {
-                kpiTile("Pipeline", value: CurrencyFormatter.formatINRCompact(s?.openPipelineValue ?? 0), icon: "indianrupeesign.circle.fill", color: .green)
+                kpiTile("Pipeline", value: CurrencyFormatter.formatINRCompact(s?.openPipelineValue ?? 0), icon: "indianrupeesign.circle.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: DealsListView()) {
-                kpiTile("Win Rate", value: "\(Int((s?.winRate ?? 0) * 100))%", icon: "trophy.fill", color: .orange)
+                kpiTile("Win Rate", value: "\(Int((s?.winRate ?? 0) * 100))%", icon: "trophy.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: DealsListView()) {
-                kpiTile("Won — Mo.", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: .green)
+                kpiTile("Won — Mo.", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: TasksView()) {
-                kpiTile("Tasks Due", value: "\(s?.tasksDue ?? 0)", icon: "checklist", color: .red)
+                kpiTile("Tasks Due", value: "\(s?.tasksDue ?? 0)", icon: "checklist", color: Brand.red)
             }.buttonStyle(.plain)
         }
     }
@@ -131,11 +135,11 @@ struct CRMDashboardView: View {
                 Chart(vm.forecast) { p in
                     if let weighted = p.weighted {
                         LineMark(x: .value("Period", p.period), y: .value("Weighted", weighted))
-                            .foregroundStyle(.indigo)
+                            .foregroundStyle(Brand.red)
                     }
                     if let bestCase = p.bestCase {
                         LineMark(x: .value("Period", p.period), y: .value("Best", bestCase))
-                            .foregroundStyle(.green.opacity(0.7))
+                            .foregroundStyle(Brand.red.opacity(0.45))
                     }
                 }
                 .frame(height: 180)
@@ -149,7 +153,7 @@ struct CRMDashboardView: View {
 
     private func sectionHeader(_ title: String, systemImage: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: systemImage).foregroundColor(.indigo)
+            Image(systemName: systemImage).foregroundColor(Brand.red)
             Text(title).font(.system(size: 14, weight: .black))
             Spacer()
         }

@@ -37,7 +37,7 @@ struct DealDetailView: View {
                                 Text("Suggest next action")
                             }
                             .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10)
-                            .background(Color.purple).foregroundColor(.white).cornerRadius(10)
+                            .background(Brand.red).foregroundColor(.white).cornerRadius(10)
                         }
                     }
                 } else {
@@ -71,13 +71,13 @@ struct DealDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(d.name).font(.system(size: 20, weight: .black))
             HStack {
-                Image(systemName: "indianrupeesign.circle.fill").foregroundColor(.green)
-                Text(formattedAmount(d)).font(.headline).foregroundColor(.green)
+                Image(systemName: "indianrupeesign.circle.fill").foregroundColor(Brand.red)
+                Text(formattedAmount(d)).font(.headline).foregroundColor(Brand.red)
                 Spacer()
                 if let stage = d.stageName {
                     Text(stage.uppercased()).font(.system(size: 10, weight: .black))
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.indigo.opacity(0.15)).foregroundColor(.indigo).cornerRadius(4)
+                        .background(Brand.red.opacity(0.15)).foregroundColor(Brand.red).cornerRadius(4)
                 }
             }
             if let close = d.expectedCloseDate?.prefix(10) {

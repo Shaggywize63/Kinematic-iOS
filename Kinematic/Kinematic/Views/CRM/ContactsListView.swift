@@ -19,7 +19,7 @@ struct ContactsListView: View {
                 }
                 Button { showDateFilter = true } label: {
                     Image(systemName: "calendar")
-                        .foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? .indigo : .gray)
+                        .foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? Brand.red : .gray)
                 }
             }
             .padding(10)
@@ -66,15 +66,15 @@ struct ContactsListView: View {
     private func contactRow(_ c: Contact) -> some View {
         HStack(spacing: 12) {
             ZStack {
-                Circle().fill(Color.orange.opacity(0.2)).frame(width: 40, height: 40)
-                Text(initials(c)).font(.system(size: 13, weight: .black)).foregroundColor(.orange)
+                Circle().fill(Brand.red.opacity(0.2)).frame(width: 40, height: 40)
+                Text(initials(c)).font(.system(size: 13, weight: .black)).foregroundColor(Brand.red)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(c.displayName).font(.system(size: 14, weight: .semibold))
                 if let e = c.email { Text(e).font(.caption).foregroundColor(.secondary) }
             }
             Spacer()
-            if c.phone != nil { Image(systemName: "phone.fill").foregroundColor(.green).font(.caption) }
+            if c.phone != nil { Image(systemName: "phone.fill").foregroundColor(Brand.red).font(.caption) }
         }
         .padding(12)
         .background(

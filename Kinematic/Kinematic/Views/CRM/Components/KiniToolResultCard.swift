@@ -60,11 +60,11 @@ struct KiniToolResultCard: View {
 
     private var color: Color {
         switch (card.kind ?? "").lowercased() {
-        case "lead": return .blue
-        case "deal": return .green
-        case "contact": return .orange
-        case "chart": return .indigo
-        case "action": return .purple
+        case "lead": return Brand.red
+        case "deal": return Brand.red
+        case "contact": return Brand.red
+        case "chart": return Brand.red
+        case "action": return Brand.red
         default: return .gray
         }
     }

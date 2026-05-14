@@ -35,7 +35,7 @@ struct KiniChatView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange.opacity(0.12))
+                    .background(Brand.red.opacity(0.12))
             }
 
             ScrollViewReader { proxy in

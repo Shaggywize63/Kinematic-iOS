@@ -55,7 +55,7 @@ struct LocationFilter: View {
             .font(.system(size: 12, weight: .semibold))
             .padding(.horizontal, 10).padding(.vertical, 4)
             .foregroundColor(isActive ? .white : .primary)
-            .background(isActive ? Color.indigo : Color(uiColor: .tertiarySystemBackground))
+            .background(isActive ? Brand.red : Color(uiColor: .tertiarySystemBackground))
             .cornerRadius(6)
     }
 

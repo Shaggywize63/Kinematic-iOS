@@ -12,14 +12,14 @@ struct DealCard: View {
                 .lineLimit(2)
 
             HStack(spacing: 6) {
-                Image(systemName: "indianrupeesign.circle.fill").font(.system(size: 11)).foregroundColor(showWeighted ? .indigo : .green)
+                Image(systemName: "indianrupeesign.circle.fill").font(.system(size: 11)).foregroundColor(showWeighted ? Brand.red : Brand.red)
                 Text(formattedAmount)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(showWeighted ? .indigo : .green)
+                    .foregroundColor(showWeighted ? Brand.red : Brand.red)
                 if showWeighted {
                     Text("weighted")
                         .font(.system(size: 8, weight: .black))
-                        .foregroundColor(.indigo.opacity(0.7))
+                        .foregroundColor(Brand.red.opacity(0.7))
                 }
             }
 
@@ -57,8 +57,8 @@ struct DealCard: View {
     }
 
     private func probColor(_ p: Double) -> Color {
-        if p > 0.7 { return .green }
-        if p > 0.4 { return .orange }
+        if p > 0.7 { return Brand.red }
+        if p > 0.4 { return Brand.red }
         return .red
     }
 }
