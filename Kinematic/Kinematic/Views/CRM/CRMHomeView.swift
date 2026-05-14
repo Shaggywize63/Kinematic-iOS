@@ -6,6 +6,12 @@ import SwiftUI
 /// the only entry point (no separate toolbar icon).
 struct CRMHomeView: View {
     var onLogout: (() -> Void)? = nil
+    /// Optional close callback. When provided (e.g. when CRMHomeView is hosted
+    /// inside a fullScreenCover from SideMenuView), a Close button is rendered
+    /// in the leading toolbar slot. Lets the caller dismiss without wrapping
+    /// CRMHomeView in another NavigationStack — nested NavigationStacks hang
+    /// iOS 26 SwiftUI.
+    var onClose: (() -> Void)? = nil
 
     private let tiles: [CRMTile] = [
         .init(label: "Dashboard",  icon: "chart.bar.fill",                  color: Color(red: 0.12, green: 0.53, blue: 0.90), destination: .dashboard),
@@ -40,6 +46,14 @@ struct CRMHomeView: View {
                 .navigationTitle("CRM")
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
+                    if let onClose {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button(action: onClose) {
+                                HStack(spacing: 4) { Image(systemName: "chevron.left"); Text("Close") }
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
                     if let onLogout {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button(action: onLogout) {

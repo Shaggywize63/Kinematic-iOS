@@ -32,14 +32,11 @@ struct SideMenuView: View {
         }
         .allowsHitTesting(isOpen)
         .fullScreenCover(isPresented: $showCRM) {
-            NavigationStack {
-                CRMHomeView()
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button("Close") { showCRM = false }
-                        }
-                    }
-            }
+            // CRMHomeView wraps its body in NavigationStack itself; nesting
+            // another one here causes iOS 26 SwiftUI to hang post-presentation.
+            // The Close button is provided via the onClose callback so it's
+            // rendered inside CRMHomeView's own NavigationStack toolbar.
+            CRMHomeView(onClose: { showCRM = false })
         }
     }
     

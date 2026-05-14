@@ -90,8 +90,10 @@ struct MainTabView: View {
     var body: some View {
         // CRM-only deployments (e.g. Tata Tiscon, or any client with a CRM-only SKU)
         // hide the attendance + route tabs entirely and surface CRM as the whole app.
+        // Note: CRMHomeView wraps its body in NavigationStack itself; nesting another
+        // one here causes iOS 26 SwiftUI to deadlock (post-login hang, blank screen).
         if crmOnlyMode {
-            NavigationStack { CRMHomeView() }
+            CRMHomeView()
         } else {
             mainTabBody
         }
