@@ -13,6 +13,12 @@ final class LeadDetailViewModel: ObservableObject {
     @Published var convertedContact: Contact?
     @Published var convertedAccount: CRMAccount?
     @Published var convertedDeal: Deal?
+    /// Next Best Action for the lead's converted deal. Lead-scoped NBA
+    /// doesn't exist server-side (the backend endpoint is per-deal), so
+    /// we surface the converted deal's NBA on the lead detail when one
+    /// is available. Mirrors how the web lead page hosts the card.
+    @Published var nextBestAction: NextBestAction?
+    @Published var nbaBusy = false
     @Published var products: [Product] = []
     @Published var assignableUsers: [AssignableUser] = []
     @Published var isLoading = false
@@ -70,6 +76,24 @@ final class LeadDetailViewModel: ObservableObject {
         relatedDeals = (try? await api.leadDeals(id: lead.id)) ?? []
         // Assignable users — silent 403 → empty.
         assignableUsers = await api.listAssignableUsers()
+        // Next Best Action for the converted deal, if any. Backend NBA
+        // is deal-scoped; we mirror the web behaviour by surfacing it on
+        // the lead detail when the lead has a converted deal.
+        if let did = lead.convertedDealId {
+            nextBestAction = try? await api.aiNextBestAction(dealId: did)
+        } else {
+            nextBestAction = nil
+        }
+    }
+
+    /// Manual refresh of the converted-deal's NBA. Only meaningful when the
+    /// lead has been converted; no-op otherwise. Used by the "Refresh" button
+    /// on the lead detail's NBA card.
+    func refreshNextBestAction() async {
+        guard let did = lead?.convertedDealId else { return }
+        nbaBusy = true
+        defer { nbaBusy = false }
+        nextBestAction = try? await api.aiNextBestAction(dealId: did)
     }
 
     func loadProductsIfNeeded() async {
