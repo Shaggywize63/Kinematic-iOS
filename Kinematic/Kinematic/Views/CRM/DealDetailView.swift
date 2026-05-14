@@ -14,6 +14,9 @@ struct DealDetailView: View {
     @State private var loggingActivity = false
     @State private var composerInitialType: String = "call"
     @State private var composerInitialSubject: String = ""
+    /// Set after a tap-to-call POSTs the minimal call row. Composer save
+    /// PATCHes this id; cancel leaves the minimal record on the timeline.
+    @State private var pendingCallActivityId: String?
 
     var body: some View {
         ScrollView {
@@ -108,8 +111,10 @@ struct DealDetailView: View {
                 phone: phone,
                 prefillSubject: "Call about \(dealName)",
                 onCallInitiated: {
+                    let subject = "Call about \(dealName)"
                     composerInitialType = "call"
-                    composerInitialSubject = "Call about \(dealName)"
+                    composerInitialSubject = subject
+                    Task { await startCallActivity(subject: subject) }
                     loggingActivity = true
                 }
             )
@@ -120,9 +125,35 @@ struct DealDetailView: View {
 
     // MARK: - Activity logging
 
+    private func startCallActivity(subject: String) async {
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "deal_id": dealId,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+        ]
+        if let created = try? await CRMService.shared.createActivity(body) {
+            pendingCallActivityId = created.id
+        }
+    }
+
     private func logActivity(type: String, subject: String, description: String, imageUrl: String?, completedAt: Date) async {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if type == "call", let id = pendingCallActivityId {
+            var patch: [String: Any] = ["subject": trimmed]
+            let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedDesc.isEmpty { patch["description"] = trimmedDesc }
+            if let imageUrl, !imageUrl.isEmpty { patch["image_url"] = imageUrl }
+            patch["completed_at"] = ISO8601DateFormatter().string(from: completedAt)
+            if let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+                patch["duration_seconds"] = duration
+            }
+            _ = try? await CRMService.shared.updateActivity(id: id, body: patch)
+            pendingCallActivityId = nil
+            return
+        }
         var body: [String: Any] = [
             "type": type,
             "subject": trimmed,
@@ -144,18 +175,10 @@ struct DealDetailView: View {
     }
 
     private func autoLogCallIfNeeded() async {
+        guard let id = pendingCallActivityId else { return }
+        defer { pendingCallActivityId = nil }
         guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
-        let subject = composerInitialSubject.isEmpty ? "Call (auto-logged)" : composerInitialSubject
-        let body: [String: Any] = [
-            "type": "call",
-            "subject": subject,
-            "description": "",
-            "deal_id": dealId,
-            "completed_at": ISO8601DateFormatter().string(from: Date()),
-            "status": "completed",
-            "duration_seconds": duration,
-        ]
-        _ = try? await CRMService.shared.createActivity(body)
+        _ = try? await CRMService.shared.updateActivity(id: id, body: ["duration_seconds": duration])
     }
 
     private func headerCard(_ d: Deal) -> some View {

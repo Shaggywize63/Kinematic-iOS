@@ -9,6 +9,10 @@ struct ContactDetailView: View {
     @State private var loggingActivity = false
     @State private var composerInitialType: String = "call"
     @State private var composerInitialSubject: String = ""
+    /// Set after a tap-to-call POSTs the minimal call row. The composer
+    /// that opens after will PATCH this same id instead of creating a
+    /// duplicate; cancelling leaves the minimal record on the timeline.
+    @State private var pendingCallActivityId: String?
 
     private let api = CRMService.shared
 
@@ -69,8 +73,10 @@ struct ContactDetailView: View {
                 phone: value,
                 prefillSubject: "Call with \(contact.displayName)",
                 onCallInitiated: {
+                    let subject = "Call with \(contact.displayName)"
                     composerInitialType = "call"
-                    composerInitialSubject = "Call with \(contact.displayName)"
+                    composerInitialSubject = subject
+                    Task { await startCallActivity(subject: subject) }
                     loggingActivity = true
                 }
             )
@@ -136,9 +142,43 @@ struct ContactDetailView: View {
 
     // MARK: - Activity logging
 
+    /// Tap-to-call entry: POST a minimal call row right away so the
+    /// timeline reflects the call. Stash the id so the composer save
+    /// PATCHes the same row.
+    private func startCallActivity(subject: String) async {
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "contact_id": contact.id,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+        ]
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
+            pendingCallActivityId = created.id
+        }
+    }
+
     private func logActivity(type: String, subject: String, description: String, imageUrl: String?, completedAt: Date) async {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // Tap-to-call save → PATCH the already-created minimal row.
+        if type == "call", let id = pendingCallActivityId {
+            var patch: [String: Any] = ["subject": trimmed]
+            let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedDesc.isEmpty { patch["description"] = trimmedDesc }
+            if let imageUrl, !imageUrl.isEmpty { patch["image_url"] = imageUrl }
+            patch["completed_at"] = ISO8601DateFormatter().string(from: completedAt)
+            if let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+                patch["duration_seconds"] = duration
+            }
+            if let updated = try? await api.updateActivity(id: id, body: patch),
+               let i = activities.firstIndex(where: { $0.id == id }) {
+                activities[i] = updated
+            }
+            pendingCallActivityId = nil
+            return
+        }
         var body: [String: Any] = [
             "type": type,
             "subject": trimmed,
@@ -161,20 +201,15 @@ struct ContactDetailView: View {
         }
     }
 
+    /// Composer dismissed without save. If there's a pending call row,
+    /// flush the captured duration onto it. Otherwise no-op.
     private func autoLogCallIfNeeded() async {
+        guard let id = pendingCallActivityId else { return }
+        defer { pendingCallActivityId = nil }
         guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
-        let subject = composerInitialSubject.isEmpty ? "Call (auto-logged)" : composerInitialSubject
-        let body: [String: Any] = [
-            "type": "call",
-            "subject": subject,
-            "description": "",
-            "contact_id": contact.id,
-            "completed_at": ISO8601DateFormatter().string(from: Date()),
-            "status": "completed",
-            "duration_seconds": duration,
-        ]
-        if let created = try? await api.createActivity(body) {
-            activities.insert(created, at: 0)
+        if let updated = try? await api.updateActivity(id: id, body: ["duration_seconds": duration]),
+           let i = activities.firstIndex(where: { $0.id == id }) {
+            activities[i] = updated
         }
     }
 

@@ -10,6 +10,9 @@ struct AccountDetailView: View {
     @State private var loggingActivity = false
     @State private var composerInitialType: String = "call"
     @State private var composerInitialSubject: String = ""
+    /// Set after a tap-to-call POSTs the minimal call row. Composer save
+    /// PATCHes this id; cancel leaves the minimal record on the timeline.
+    @State private var pendingCallActivityId: String?
 
     private let api = CRMService.shared
 
@@ -69,8 +72,10 @@ struct AccountDetailView: View {
                 phone: phone,
                 prefillSubject: "Call with \(account.name)",
                 onCallInitiated: {
+                    let subject = "Call with \(account.name)"
                     composerInitialType = "call"
-                    composerInitialSubject = "Call with \(account.name)"
+                    composerInitialSubject = subject
+                    Task { await startCallActivity(subject: subject) }
                     loggingActivity = true
                 }
             )
@@ -187,9 +192,39 @@ struct AccountDetailView: View {
 
     // MARK: - Activity logging
 
+    private func startCallActivity(subject: String) async {
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "account_id": account.id,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+        ]
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
+            pendingCallActivityId = created.id
+        }
+    }
+
     private func logActivity(type: String, subject: String, description: String, imageUrl: String?, completedAt: Date) async {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if type == "call", let id = pendingCallActivityId {
+            var patch: [String: Any] = ["subject": trimmed]
+            let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedDesc.isEmpty { patch["description"] = trimmedDesc }
+            if let imageUrl, !imageUrl.isEmpty { patch["image_url"] = imageUrl }
+            patch["completed_at"] = ISO8601DateFormatter().string(from: completedAt)
+            if let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+                patch["duration_seconds"] = duration
+            }
+            if let updated = try? await api.updateActivity(id: id, body: patch),
+               let i = activities.firstIndex(where: { $0.id == id }) {
+                activities[i] = updated
+            }
+            pendingCallActivityId = nil
+            return
+        }
         var body: [String: Any] = [
             "type": type,
             "subject": trimmed,
@@ -213,19 +248,12 @@ struct AccountDetailView: View {
     }
 
     private func autoLogCallIfNeeded() async {
+        guard let id = pendingCallActivityId else { return }
+        defer { pendingCallActivityId = nil }
         guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
-        let subject = composerInitialSubject.isEmpty ? "Call (auto-logged)" : composerInitialSubject
-        let body: [String: Any] = [
-            "type": "call",
-            "subject": subject,
-            "description": "",
-            "account_id": account.id,
-            "completed_at": ISO8601DateFormatter().string(from: Date()),
-            "status": "completed",
-            "duration_seconds": duration,
-        ]
-        if let created = try? await api.createActivity(body) {
-            activities.insert(created, at: 0)
+        if let updated = try? await api.updateActivity(id: id, body: ["duration_seconds": duration]),
+           let i = activities.firstIndex(where: { $0.id == id }) {
+            activities[i] = updated
         }
     }
 
