@@ -32,6 +32,7 @@ struct LeadDetailView: View {
                     headerCard(lead: lead)
                     actionsBar(lead: lead)
                     if vm.isConverted { convertedToCard }
+                    if let nba = vm.nextBestAction { nextBestActionSection(nba: nba) }
                     if lead.isB2c == true { b2cProfileCard(lead: lead) }
                     if let score = vm.score { scoreCard(score: score) }
                     if !vm.relatedDeals.isEmpty { relatedDealsCard }
@@ -281,6 +282,54 @@ struct LeadDetailView: View {
         .background(Brand.red.opacity(0.08))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.red.opacity(0.20), lineWidth: 1))
         .cornerRadius(8)
+    }
+
+    // MARK: - Next Best Action
+
+    /// NBA card on the lead detail. Sourced from the converted deal's NBA
+    /// (backend has no lead-scoped NBA). Auto-loads when the lead has a
+    /// converted_deal_id; the refresh button re-runs the inference.
+    private func nextBestActionSection(nba: NextBestAction) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles").foregroundColor(Brand.red)
+                    Text("NEXT BEST ACTION")
+                        .font(.system(size: 11, weight: .black))
+                        .tracking(0.8)
+                        .foregroundColor(Brand.red)
+                }
+                Spacer()
+                Button {
+                    Task { await vm.refreshNextBestAction() }
+                } label: {
+                    HStack(spacing: 4) {
+                        if vm.nbaBusy {
+                            ProgressView().tint(Brand.red).scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        Text("Refresh")
+                    }
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Brand.red)
+                }
+                .disabled(vm.nbaBusy)
+            }
+            Text(nba.action)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Color(uiColor: .label))
+            if let r = nba.rationale, !r.isEmpty {
+                Text(r).font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Brand.red.opacity(0.08))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.red.opacity(0.25), lineWidth: 1))
+        )
     }
 
     // MARK: - B2C profile
