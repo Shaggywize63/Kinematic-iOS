@@ -12,10 +12,52 @@ struct User: Codable, Identifiable {
     let email: String?
     let mobile: String?
     let orgId: String?
-    
+    let clientId: String?
+    /// Per-client SKU module IDs (Field Force / CRM / Distribution + universal).
+    /// Empty list = legacy session, treat as full access for backwards compat.
+    let enabledModules: [String]
+    /// Package SKUs the client owns: field_force, distribution, crm, business, system, people, audit.
+    let enabledPackages: [String]
+    /// Legacy per-user RBAC grants from user_module_permissions.
+    let permissions: [String]
+
     enum CodingKeys: String, CodingKey {
-        case id, name, email, role, mobile
+        case id, name, email, role, mobile, permissions
         case orgId = "org_id"
+        case clientId = "client_id"
+        case enabledModules = "enabled_modules"
+        case enabledPackages = "enabled_packages"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id              = try c.decode(String.self, forKey: .id)
+        name            = try c.decode(String.self, forKey: .name)
+        role            = try c.decode(String.self, forKey: .role)
+        email           = try c.decodeIfPresent(String.self, forKey: .email)
+        mobile          = try c.decodeIfPresent(String.self, forKey: .mobile)
+        orgId           = try c.decodeIfPresent(String.self, forKey: .orgId)
+        clientId        = try c.decodeIfPresent(String.self, forKey: .clientId)
+        enabledModules  = (try? c.decode([String].self, forKey: .enabledModules)) ?? []
+        enabledPackages = (try? c.decode([String].self, forKey: .enabledPackages)) ?? []
+        permissions     = (try? c.decode([String].self, forKey: .permissions)) ?? []
+    }
+}
+
+// MARK: - Entitlement helpers
+extension User {
+    /// True for legacy sessions stored before /auth/me started returning entitlements.
+    /// Treated as full access so we never lock out an existing user mid-deploy.
+    var isLegacySession: Bool { enabledModules.isEmpty && enabledPackages.isEmpty }
+    func hasModule(_ id: String)  -> Bool { isLegacySession || enabledModules.contains(id) }
+    func hasPackage(_ pkg: String) -> Bool { isLegacySession || enabledPackages.contains(pkg) }
+    var hasFieldForce:  Bool { hasPackage("field_force") }
+    var hasCrm:         Bool { hasPackage("crm") }
+    var hasDistribution: Bool { hasPackage("distribution") }
+    /// True when a client purchased only CRM. Replaces the manual `crm_only_mode`
+    /// AppStorage hack; the app auto-flips into CRM-only mode when this is true.
+    var isCrmOnly: Bool {
+        !isLegacySession && hasCrm && !hasFieldForce && !hasDistribution
     }
 }
 
@@ -27,6 +69,29 @@ enum SecondaryRoute: String, Identifiable {
     case orderHistory, orderCart, orderReview, orderDetail
     case paymentCollect, returns, distributorStock, secondarySales
     var id: String { rawValue }
+
+    /// Which package SKU this route belongs to. Universal routes return `nil`
+    /// and are always available. Used by SecondaryScreenHost + SideMenuView to
+    /// hide / block sheets the user's client hasn't purchased.
+    var requiredPackage: String? {
+        switch self {
+        // Universal — every client gets these
+        case .profile, .settings, .learning, .notifications, .sos:
+            return nil
+        // Field Force
+        case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:
+            return "field_force"
+        // Distribution / Supply Chain
+        case .orderHistory, .orderCart, .orderReview, .orderDetail,
+             .paymentCollect, .returns, .distributorStock, .secondarySales:
+            return "distribution"
+        }
+    }
+
+    func isAvailable(for user: User?) -> Bool {
+        guard let pkg = requiredPackage else { return true }
+        return user?.hasPackage(pkg) ?? true   // missing user → assume legacy / open
+    }
 }
 
 struct ModalRoute: Identifiable {

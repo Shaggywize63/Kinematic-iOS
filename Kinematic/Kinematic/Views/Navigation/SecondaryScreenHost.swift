@@ -7,7 +7,32 @@ struct SecondaryScreenHost: View {
     
     var body: some View {
         Group {
-            if route.route == .camera {
+            // Per-client SKU gate. Block sheets for any module the client hasn't purchased.
+            if !route.route.isAvailable(for: Session.currentUser) {
+                NavigationView {
+                    VStack(spacing: 14) {
+                        Image(systemName: "lock.shield")
+                            .font(.system(size: 56))
+                            .foregroundColor(.secondary)
+                        Text("Module not enabled")
+                            .font(.title3.bold())
+                        Text("This feature isn't part of your account's plan. Contact your administrator to enable it.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button(action: { dismiss() }) {
+                                HStack(spacing: 4) { Image(systemName: "chevron.left"); Text("Close") }
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
+                }
+            } else if route.route == .camera {
                 ImagePicker(image: $appState.capturedSelfie)
                     .ignoresSafeArea()
             } else {

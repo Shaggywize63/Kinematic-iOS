@@ -9,6 +9,11 @@ struct SideMenuView: View {
     /// add one route case.
     @State private var showCRM = false
 
+    /// Per-client SKU snapshot for nav gating. Refreshes whenever Session.currentUser changes.
+    private var hasCrm: Bool         { Session.currentUser?.hasCrm ?? true }
+    private var hasFieldForce: Bool  { Session.currentUser?.hasFieldForce ?? true }
+    private func hasModule(_ id: String) -> Bool { Session.currentUser?.hasModule(id) ?? true }
+
     var body: some View {
         ZStack {
             if isOpen {
@@ -62,12 +67,14 @@ struct SideMenuView: View {
                         withAnimation { isOpen = false; appState.selectedTab = 0 }
                     }
 
-                    // ── CRM Module (parity with Android + web) ──────────────
-                    MenuButton(icon: "person.2.crop.square.stack.fill", title: "CRM", isSelected: false, color: .indigo) {
-                        withAnimation { isOpen = false }
-                        // Defer presentation until the menu close animation finishes
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            showCRM = true
+                    // ── CRM Module — only visible to clients who own the CRM SKU ──
+                    if hasCrm {
+                        MenuButton(icon: "person.2.crop.square.stack.fill", title: "CRM", isSelected: false, color: .indigo) {
+                            withAnimation { isOpen = false }
+                            // Defer presentation until the menu close animation finishes
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                showCRM = true
+                            }
                         }
                     }
 
@@ -75,10 +82,12 @@ struct SideMenuView: View {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .profile)
                     }
-                
-                MenuButton(icon: "megaphone.fill", title: "Broadcasts", isSelected: false, color: .red) {
-                    withAnimation { isOpen = false }
-                    appState.activeSecondaryRoute = ModalRoute(route: .broadcast)
+
+                if hasModule("broadcast") {
+                    MenuButton(icon: "megaphone.fill", title: "Broadcasts", isSelected: false, color: .red) {
+                        withAnimation { isOpen = false }
+                        appState.activeSecondaryRoute = ModalRoute(route: .broadcast)
+                    }
                 }
 
                 MenuButton(icon: "bell.fill", title: "Notifications", isSelected: false, color: .indigo) {
@@ -86,29 +95,33 @@ struct SideMenuView: View {
                     appState.activeSecondaryRoute = ModalRoute(route: .notifications)
                 }
 
-                MenuButton(icon: "trophy.fill", title: "Leaderboard", isSelected: false, color: .yellow) {
-                    withAnimation { isOpen = false }
-                    appState.activeSecondaryRoute = ModalRoute(route: .leaderboard)
+                if hasFieldForce {
+                    MenuButton(icon: "trophy.fill", title: "Leaderboard", isSelected: false, color: .yellow) {
+                        withAnimation { isOpen = false }
+                        appState.activeSecondaryRoute = ModalRoute(route: .leaderboard)
+                    }
+
+                    MenuButton(icon: "doc.text.fill", title: "Activity Feed", isSelected: false, color: .teal) {
+                        withAnimation { isOpen = false }
+                        appState.activeSecondaryRoute = ModalRoute(route: .activity)
+                    }
+
+                    MenuButton(icon: "list.bullet.rectangle", title: "Visit Log", isSelected: false, color: .green) {
+                        withAnimation { isOpen = false }
+                        appState.activeSecondaryRoute = ModalRoute(route: .visitlog)
+                    }
+
+                    MenuButton(icon: "shippingbox.fill", title: "Stock", isSelected: false, color: .brown) {
+                        withAnimation { isOpen = false }
+                        appState.activeSecondaryRoute = ModalRoute(route: .stock)
+                    }
                 }
 
-                MenuButton(icon: "doc.text.fill", title: "Activity Feed", isSelected: false, color: .teal) {
-                    withAnimation { isOpen = false }
-                    appState.activeSecondaryRoute = ModalRoute(route: .activity)
-                }
-
-                MenuButton(icon: "list.bullet.rectangle", title: "Visit Log", isSelected: false, color: .green) {
-                    withAnimation { isOpen = false }
-                    appState.activeSecondaryRoute = ModalRoute(route: .visitlog)
-                }
-
-                MenuButton(icon: "shippingbox.fill", title: "Stock", isSelected: false, color: .brown) {
-                    withAnimation { isOpen = false }
-                    appState.activeSecondaryRoute = ModalRoute(route: .stock)
-                }
-
-                MenuButton(icon: "exclamationmark.bubble.fill", title: "Grievance", isSelected: false, color: .pink) {
-                    withAnimation { isOpen = false }
-                    appState.activeSecondaryRoute = ModalRoute(route: .grievance)
+                if hasModule("grievances") {
+                    MenuButton(icon: "exclamationmark.bubble.fill", title: "Grievance", isSelected: false, color: .pink) {
+                        withAnimation { isOpen = false }
+                        appState.activeSecondaryRoute = ModalRoute(route: .grievance)
+                    }
                 }
 
                 MenuButton(icon: "sparkles", title: "Learning Hub", isSelected: false, color: .purple) {
