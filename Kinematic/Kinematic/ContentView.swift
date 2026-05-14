@@ -70,11 +70,26 @@ struct ContentView: View {
 struct MainTabView: View {
     @EnvironmentObject var appState: KiniAppState
     @Namespace private var animation // For Matched Geometry (Liquid Pod)
-    @AppStorage("crm_only_mode") private var crmOnlyMode: Bool = false
+    /// Legacy manual override (Tata Tiscon-era hack). Kept so existing
+    /// installs continue to work, but the SKU-derived `User.isCrmOnly`
+    /// computed property is the new source of truth.
+    @AppStorage("crm_only_mode") private var crmOnlyModeOverride: Bool = false
+
+    /// True when the app should run in CRM-only mode — either because the
+    /// client only purchased the CRM SKU, or the manual override is on.
+    private var crmOnlyMode: Bool {
+        if crmOnlyModeOverride { return true }
+        return Session.currentUser?.isCrmOnly ?? false
+    }
+
+    /// Whether the Field Force tabs (Attendance, Route) should be visible.
+    private var hasFieldForce: Bool {
+        Session.currentUser?.hasFieldForce ?? true
+    }
 
     var body: some View {
-        // CRM-only deployments (e.g. Tata Tiscon) hide the attendance + route
-        // tabs entirely and surface CRM as the whole app.
+        // CRM-only deployments (e.g. Tata Tiscon, or any client with a CRM-only SKU)
+        // hide the attendance + route tabs entirely and surface CRM as the whole app.
         if crmOnlyMode {
             NavigationStack { CRMHomeView() }
         } else {
@@ -90,15 +105,20 @@ struct MainTabView: View {
         //     which was the main reason Home felt like it was hanging)
         //   - .tabBarMinimizeBehavior(.onScrollDown) auto-hides the bar
         //     when the user scrolls down, the native iOS 26 gesture
+        //
+        // Attendance + Route are Field Force features; clients without that
+        // SKU only see the Home tab.
         TabView(selection: $appState.selectedTab) {
             Tab("Home", systemImage: "house", value: 0) {
                 HomeView()
             }
-            Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
-                AttendanceView()
-            }
-            Tab("Route", systemImage: "map", value: 2) {
-                RoutePlansView()
+            if hasFieldForce {
+                Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
+                    AttendanceView()
+                }
+                Tab("Route", systemImage: "map", value: 2) {
+                    RoutePlansView()
+                }
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
