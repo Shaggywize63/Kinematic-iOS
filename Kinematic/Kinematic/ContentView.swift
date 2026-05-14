@@ -302,8 +302,8 @@ struct HomeView: View {
                                 .background(.regularMaterial, in: Circle())
                         }
                     }
-                    .padding(.horizontal, 60)
-                    .padding(.top, 60)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
 
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
@@ -318,9 +318,9 @@ struct HomeView: View {
                             Image(systemName: "power").font(.system(size: 14, weight: .medium)).frame(width: 36, height: 36).background(Color.red.opacity(0.12), in: Circle()).foregroundColor(.red)
                         }
                     }
-                    .padding(.horizontal, 60)
+                    .padding(.horizontal, 20)
 
-                    SelfieStatusCard(record: appState.today).padding(.horizontal, 60)
+                    SelfieStatusCard(record: appState.today).padding(.horizontal, 20)
 
                     VStack(spacing: 12) {
                         HStack(spacing: 12) {
@@ -329,9 +329,9 @@ struct HomeView: View {
                         }
                         StatTile(label: "Data Forms Submitted Today", value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: .purple)
                     }
-                    .padding(.horizontal, 60)
+                    .padding(.horizontal, 20)
 
-                    SessionCard(record: appState.today).padding(.horizontal, 60)
+                    SessionCard(record: appState.today).padding(.horizontal, 20)
 
                     if vm.showSubmissionSuccess {
                         HStack(spacing: 15) {
@@ -350,7 +350,7 @@ struct HomeView: View {
                         BroadcastCard(broadcast: b) { selectedIndex in
                             Task { await vm.submitBroadcastAnswer(id: b.id, selectedIndex: selectedIndex) }
                         }
-                        .padding(.horizontal, 60)
+                        .padding(.horizontal, 20)
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
@@ -382,7 +382,7 @@ struct HomeView: View {
                             Text("No stores assigned for today").font(.subheadline).foregroundColor(.secondary).padding(.vertical, 8)
                         }
                     }
-                    .padding(20).liquidGlass().padding(.horizontal, 60)
+                    .padding(20).liquidGlass().padding(.horizontal, 20)
 
                     Spacer().frame(height: 110)
                 }
@@ -526,7 +526,8 @@ struct StatTile: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 20).padding(.vertical, 16).liquidGlass()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16).padding(.vertical, 16).liquidGlass()
     }
 }
 
@@ -688,19 +689,19 @@ struct RoutePlansView: View {
                     Text("Today's Route").font(.title3).fontWeight(.bold).foregroundColor(Color(uiColor: .label)).padding(.leading, 8)
                     Spacer()
                 }
-                .padding(.horizontal, 60)
-                .padding(.top, 60)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
                 .padding(.bottom, 8)
                 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        Text("Route Details").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.horizontal, 60)
+                        Text("Route Details").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.horizontal, 20)
 
                         // PROGRESS HEADER — surfaces the totals/percent fields
                         // that Android + dashboard already show. Sums across
                         // all plans for the day; falls back to local counts.
                         if !vm.plans.isEmpty {
-                            RoutePlanProgressHeader(plans: vm.plans).padding(.horizontal, 60)
+                            RoutePlanProgressHeader(plans: vm.plans).padding(.horizontal, 20)
                         }
 
                         let isShiftEnded = appState.today?.checkoutAt != nil
@@ -712,7 +713,7 @@ struct RoutePlansView: View {
                                     .padding(.bottom, 10)
                                 Text("SHIFT RESTRICTED").font(.system(size: 12, weight: .black)).tracking(2).foregroundColor(.red)
                                 Text("Checkpoint Required").font(.title2).fontWeight(.black).foregroundColor(Color(uiColor: .label))
-                                Text("Your route plans and store tasks are locked until your first check-in of the day is completed.").font(.subheadline).multilineTextAlignment(.center).foregroundColor(.secondary).padding(.horizontal, 60)
+                                Text("Your route plans and store tasks are locked until your first check-in of the day is completed.").font(.subheadline).multilineTextAlignment(.center).foregroundColor(.secondary).padding(.horizontal, 20)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.top, 80)
@@ -724,7 +725,7 @@ struct RoutePlansView: View {
                                     Text("SHIFT COMPLETED").font(.system(size: 10, weight: .black)).tracking(1).foregroundColor(.gray)
                                     Spacer()
                                 }
-                                .padding(.horizontal, 60).padding(.top, 10)
+                                .padding(.horizontal, 20).padding(.top, 10)
                                 
                                 ForEach(vm.plans) { plan in ForEach(orderedOutlets(plan)) { outlet in OutletCard(outlet: outlet) } }
                              }
@@ -899,7 +900,7 @@ struct OutletCard: View {
                 }
                 .disabled(isShiftEnded && !isDone)
             }.padding(.top, 5)
-        }.padding(20).liquidGlass().padding(.horizontal, 60)
+        }.padding(20).liquidGlass().padding(.horizontal, 20)
     }
 }
 
@@ -929,12 +930,12 @@ struct AttendanceView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 60)
-                .padding(.top, 60)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
                 
                 ScrollView {
                     VStack(spacing: 25) {
-                        Text("Attendance").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 10).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 60)
+                        Text("Attendance").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 10).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20)
                         
                         VStack(spacing: 20) {
                             let isCheckInIntent = appState.today?.checkinAt == nil
@@ -1077,7 +1078,7 @@ struct AttendanceView: View {
                                     .disabled(vm.breakBusy)
                                 }
                             }
-                        }.padding(28).liquidGlass().padding(.horizontal, 60)
+                        }.padding(28).liquidGlass().padding(.horizontal, 20)
                         .alert("End shift?", isPresented: $showCheckoutAlert) {
                             Button("Stay clocked in", role: .cancel) { }
                             Button("Clock out", role: .destructive) {
@@ -1091,7 +1092,7 @@ struct AttendanceView: View {
                             Text("Once you clock out you won't be able to clock in again today. Make sure you've finished all visits and submissions.")
                         }
 
-                        SessionCard(record: appState.today).padding(.horizontal, 60)
+                        SessionCard(record: appState.today).padding(.horizontal, 20)
                         
                         HStack {
                             Text("RECENT HISTORY").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
@@ -1099,11 +1100,11 @@ struct AttendanceView: View {
                             Button { showHistory = true } label: {
                                 Text("View all").font(.caption).fontWeight(.bold).foregroundColor(.indigo)
                             }
-                        }.padding(.horizontal, 60)
+                        }.padding(.horizontal, 20)
                         VStack(spacing: 12) {
                             if let t = appState.today { AttendanceHistoryRow(record: t, localLocationStamp: vm.checkinLocationStamp) }
                             else { EmptyHistoryRow() }
-                        }.padding(.horizontal, 60)
+                        }.padding(.horizontal, 20)
                         Spacer().frame(height: 120)
                     }
                 }
@@ -1177,7 +1178,7 @@ struct ActivityFeedView: View {
                 if vm.isLoading && vm.items.isEmpty {
                     ProgressView().tint(.red)
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 60)
+                        .padding(.top, 8)
                 } else if vm.items.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
