@@ -32,11 +32,12 @@ struct SideMenuView: View {
         }
         .allowsHitTesting(isOpen)
         .fullScreenCover(isPresented: $showCRM) {
-            // CRMHomeView wraps its body in NavigationStack itself; nesting
-            // another one here causes iOS 26 SwiftUI to hang post-presentation.
-            // The Close button is provided via the onClose callback so it's
-            // rendered inside CRMHomeView's own NavigationStack toolbar.
-            CRMHomeView(onClose: { showCRM = false })
+            // CRMTabView is the dedicated CRM module shell — 5 bottom tabs
+            // (Dashboard / Leads / Pipeline / Activities / More). The "More"
+            // tab's "Switch to Field Force" row uses the onExit callback
+            // below to dismiss the sheet, mirroring the dashboard's CRM
+            // section behaviour.
+            CRMTabView(onExit: { showCRM = false })
         }
     }
     
