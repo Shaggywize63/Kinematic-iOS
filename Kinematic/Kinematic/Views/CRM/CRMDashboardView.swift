@@ -5,42 +5,31 @@ struct CRMDashboardView: View {
     @StateObject var vm = CRMDashboardViewModel()
 
     var body: some View {
-        // iOS 26 Tab(value:) → NavigationStack → ScrollView was dropping
-        // every `.padding(.horizontal, X)` modifier applied below the
-        // ScrollView, which clipped the left KPI column off-screen and
-        // pushed toolbar items past the right edge. GeometryReader-based
-        // sizing locks the content to the real available width, and the
-        // explicit `.frame(width:)` on the inner VStack bypasses whatever
-        // SwiftUI was doing to absorb the padding earlier.
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(spacing: 18) {
-                    // Kinematic brand mark at the top so the product identity
-                    // reads even when CRM is the whole app (CRM-only clients).
-                    HStack(spacing: 10) {
-                        Image("KinematicMark")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 36, height: 36)
-                        Text("Kinematic CRM")
-                            .font(.title3.bold())
-                        Spacer()
-                    }
-                    .padding(.top, 4)
-
-                    kpiGrid
-                    funnelCard
-                    winRateCard
-                    forecastCard
+        ScrollView {
+            VStack(spacing: 18) {
+                // Kinematic brand mark at the top so the product identity
+                // reads even when CRM is the whole app (CRM-only clients).
+                HStack(spacing: 10) {
+                    Image("KinematicMark")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 36, height: 36)
+                    Text("Kinematic CRM")
+                        .font(.title3.bold())
+                    Spacer()
                 }
-                .frame(width: max(proxy.size.width - 32, 0), alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 40)
+                .padding(.top, 4)
+
+                kpiGrid
+                funnelCard
+                winRateCard
+                forecastCard
             }
-            .frame(width: proxy.size.width)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 40)
         }
         .navigationTitle("CRM")
-        .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 8) {
