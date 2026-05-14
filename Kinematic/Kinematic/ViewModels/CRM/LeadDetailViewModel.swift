@@ -189,24 +189,47 @@ final class LeadDetailViewModel: ObservableObject {
 
     // MARK: - Activity logging (from "+ Log" + tap-to-call)
 
+    /// ID of the activity created by the most recent tap-to-call. When the
+    /// composer sheet that opens after the dial gets saved, we PATCH this
+    /// row instead of creating a duplicate.
+    @Published var pendingCallActivityId: String?
+
     /// Log a new activity bound to this lead. Non-task kinds are marked
     /// completed at save time so they show up in the timeline immediately.
-    /// If a tap-to-call was the trigger and the call connected, the
-    /// captured duration is included on the activity so reports can split
-    /// "real conversations" from "no-answers".
-    func logActivity(type: String, subject: String, description: String, imageUrl: String? = nil) async {
+    /// Defensive: optional fields (description, image, duration) are only
+    /// included when they actually carry data so the backend zod validator
+    /// never sees empty-string-vs-null ambiguity.
+    ///
+    /// `completedAtOverride` lets the manual composer's "When" picker stamp
+    /// a custom time (defaults to "now" when nil).
+    func logActivity(
+        type: String,
+        subject: String,
+        description: String,
+        imageUrl: String? = nil,
+        completedAtOverride: Date? = nil
+    ) async {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return }
+
+        // If this composer dismissal is a save-after-tap-to-call, PATCH the
+        // pre-created activity rather than POSTing a new one.
+        if type == "call", let id = pendingCallActivityId {
+            await patchPendingCall(id: id, subject: trimmedSubject, description: description, imageUrl: imageUrl, completedAtOverride: completedAtOverride)
+            return
+        }
+
         var body: [String: Any] = [
             "type": type,
             "subject": trimmedSubject,
-            "description": description,
             "lead_id": leadId,
         ]
+        let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedDesc.isEmpty { body["description"] = trimmedDesc }
         if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
         if type != "task" {
-            let now = ISO8601DateFormatter().string(from: Date())
-            body["completed_at"] = now
+            let now = (completedAtOverride ?? Date())
+            body["completed_at"] = ISO8601DateFormatter().string(from: now)
             body["status"] = "completed"
         }
         if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
@@ -220,24 +243,75 @@ final class LeadDetailViewModel: ObservableObject {
         }
     }
 
-    /// Auto-log fallback: called when the rep dialed via the Call button
-    /// but dismissed the composer without saving. We only fire if the
-    /// CallObserver recorded a connected call (>0s) so a pocket-dial /
-    /// no-answer doesn't pollute the timeline.
-    func autoLogCallIfNeeded(prefillSubject: String) async {
-        guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
-        let subject = prefillSubject.isEmpty ? "Call (auto-logged)" : prefillSubject
+    /// Tap-to-call entry point. POSTs a minimal call activity immediately
+    /// (subject + completed_at=now) so the rep sees the call on the timeline
+    /// the moment they hit dial. The composer that opens after is an EDIT
+    /// surface for this row — saving PATCHes it; cancelling leaves the
+    /// minimal record intact.
+    func startCallActivity(prefillSubject: String) async -> String? {
+        let subject = prefillSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Call from CRM" : prefillSubject
         let body: [String: Any] = [
             "type": "call",
             "subject": subject,
-            "description": "",
             "lead_id": leadId,
             "completed_at": ISO8601DateFormatter().string(from: Date()),
             "status": "completed",
-            "duration_seconds": duration,
         ]
-        if let created = try? await api.createActivity(body) {
+        do {
+            let created = try await api.createActivity(body)
             activities.insert(created, at: 0)
+            pendingCallActivityId = created.id
+            return created.id
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// PATCH the auto-created call activity with notes / duration / time
+    /// the rep added in the composer.
+    private func patchPendingCall(
+        id: String,
+        subject: String,
+        description: String,
+        imageUrl: String?,
+        completedAtOverride: Date?
+    ) async {
+        var body: [String: Any] = ["subject": subject]
+        let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedDesc.isEmpty { body["description"] = trimmedDesc }
+        if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
+        if let completedAtOverride {
+            body["completed_at"] = ISO8601DateFormatter().string(from: completedAtOverride)
+        }
+        if let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+            body["duration_seconds"] = duration
+        }
+        do {
+            let updated = try await api.updateActivity(id: id, body: body)
+            if let i = activities.firstIndex(where: { $0.id == id }) {
+                activities[i] = updated
+            }
+        } catch {
+            // Swallow — the minimal version is still on the timeline.
+            // Surfacing an error here would confuse the rep into thinking
+            // the call didn't get logged.
+        }
+        pendingCallActivityId = nil
+    }
+
+    /// Called when the composer sheet dismisses without an explicit save.
+    /// If there's a pending call activity and the CallObserver captured a
+    /// duration, flush it onto the minimal record so reports stay accurate.
+    /// Pocket-dials / no-answers leave the activity as-is.
+    func finalizePendingCall() async {
+        guard let id = pendingCallActivityId else { return }
+        defer { pendingCallActivityId = nil }
+        guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
+        if let updated = try? await api.updateActivity(id: id, body: ["duration_seconds": duration]),
+           let i = activities.firstIndex(where: { $0.id == id }) {
+            activities[i] = updated
         }
     }
 }

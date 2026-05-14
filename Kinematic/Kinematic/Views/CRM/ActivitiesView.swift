@@ -46,8 +46,11 @@ struct ActivitiesView: View {
             }
         }
         .sheet(isPresented: $showCompose) {
-            ActivityComposeView { type, subject, desc, imageUrl in
-                await vm.log(type: type, subject: subject, description: desc, dealId: nil, leadId: nil, imageUrl: imageUrl)
+            ActivityComposeView { type, subject, desc, imageUrl, when in
+                await vm.log(
+                    type: type, subject: subject, description: desc,
+                    dealId: nil, leadId: nil, imageUrl: imageUrl, completedAt: when
+                )
             }
         }
         .task { await vm.refresh() }

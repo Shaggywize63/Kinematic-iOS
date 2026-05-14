@@ -30,6 +30,21 @@ struct CRMHomeView: View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
                 ScrollView {
+                    // Single brand wordmark at the top — replaces the
+                    // navigation bar's "CRM" title so reps don't see two
+                    // headings stacked on the same screen.
+                    HStack(spacing: 10) {
+                        Image("KinematicMark")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 36, height: 36)
+                        Text("Kinematic CRM")
+                            .font(.title3.bold())
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
+
                     LazyVGrid(
                         columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
                         spacing: 12
@@ -43,8 +58,8 @@ struct CRMHomeView: View {
                     }
                     .padding(12)
                 }
-                .navigationTitle("CRM")
-                .navigationBarTitleDisplayMode(.large)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
                 .toolbar {
                     if let onClose {
                         ToolbarItem(placement: .topBarLeading) {

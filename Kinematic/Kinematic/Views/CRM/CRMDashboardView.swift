@@ -28,7 +28,11 @@ struct CRMDashboardView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 40)
         }
-        .navigationTitle("CRM")
+        // No navigationTitle — the "Kinematic CRM" mark + wordmark inside
+        // the scroll content is the single source of identity. Setting a
+        // navigationTitle here would render a second "CRM" header above it.
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

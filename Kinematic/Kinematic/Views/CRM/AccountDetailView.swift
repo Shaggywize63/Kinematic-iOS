@@ -44,8 +44,11 @@ struct AccountDetailView: View {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject
-            ) { type, subject, description, imageUrl in
-                await logActivity(type: type, subject: subject, description: description, imageUrl: imageUrl)
+            ) { type, subject, description, imageUrl, when in
+                await logActivity(
+                    type: type, subject: subject, description: description,
+                    imageUrl: imageUrl, completedAt: when
+                )
             }
         }
         .task { await loadRelations() }
@@ -184,19 +187,22 @@ struct AccountDetailView: View {
 
     // MARK: - Activity logging
 
-    private func logActivity(type: String, subject: String, description: String, imageUrl: String?) async {
+    private func logActivity(type: String, subject: String, description: String, imageUrl: String?, completedAt: Date) async {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         var body: [String: Any] = [
             "type": type,
             "subject": trimmed,
-            "description": description,
             "account_id": account.id,
         ]
+        let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedDesc.isEmpty { body["description"] = trimmedDesc }
         if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
         if type != "task" {
-            body["completed_at"] = ISO8601DateFormatter().string(from: Date())
+            body["completed_at"] = ISO8601DateFormatter().string(from: completedAt)
             body["status"] = "completed"
+        } else {
+            body["due_at"] = ISO8601DateFormatter().string(from: completedAt)
         }
         if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
             body["duration_seconds"] = duration

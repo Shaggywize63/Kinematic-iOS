@@ -9,13 +9,18 @@ struct ActivityComposeView: View {
     /// keep their previous behavior.
     let initialType: String
     let initialSubject: String
-    /// Callback receives type, subject, description, and optional imageUrl
-    /// for the uploaded photo.
-    let onSubmit: (String, String, String, String?) async -> Void
+    /// Callback receives type, subject, description, optional imageUrl,
+    /// and the chosen "when" date so callers can stamp completed_at /
+    /// due_at appropriately.
+    let onSubmit: (String, String, String, String?, Date) async -> Void
 
     @State private var type: String
     @State private var subject: String
     @State private var desc: String = ""
+    /// Editable timestamp for the activity. Defaults to now so the common
+    /// case (logging right after the action) is one tap. The picker is
+    /// surfaced for every non-task type; tasks reuse this as `due_at`.
+    @State private var when: Date = Date()
 
     // Image attachment state — mirrors the web activity composer.
     @State private var pickedImage: UIImage? = nil
@@ -28,7 +33,7 @@ struct ActivityComposeView: View {
     init(
         initialType: String = "call",
         initialSubject: String = "",
-        onSubmit: @escaping (String, String, String, String?) async -> Void
+        onSubmit: @escaping (String, String, String, String?, Date) async -> Void
     ) {
         self.initialType = initialType
         self.initialSubject = initialSubject
@@ -50,6 +55,14 @@ struct ActivityComposeView: View {
                 Section("Details") {
                     TextField("Subject", text: $subject)
                     TextField("Description", text: $desc, axis: .vertical).lineLimit(3...6)
+                    // Editable time. Default is now; tap to change. Reps
+                    // who log a call after the fact want to back-date it,
+                    // and tasks want a future due date.
+                    DatePicker(
+                        type == "task" ? "Due" : "When",
+                        selection: $when,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
                 }
                 Section("Attachment") {
                     if let img = pickedImage {
@@ -96,7 +109,7 @@ struct ActivityComposeView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Log") {
                         Task {
-                            await onSubmit(type, subject, desc, imageUrl)
+                            await onSubmit(type, subject, desc, imageUrl, when)
                             dismiss()
                         }
                     }.disabled(subject.isEmpty || uploading)

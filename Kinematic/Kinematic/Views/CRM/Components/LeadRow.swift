@@ -21,10 +21,12 @@ struct LeadRow: View {
                 Text(lead.displayName)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color(uiColor: .label))
-                Text(lead.company ?? lead.email ?? "—")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -45,6 +47,16 @@ struct LeadRow: View {
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color(uiColor: .secondarySystemBackground))
         )
+    }
+
+    /// Subtitle falls back through the most-useful identifier the lead has.
+    /// Returns nil when nothing's set so the row hides the line entirely
+    /// instead of showing a useless "—" placeholder.
+    private var subtitle: String? {
+        let candidates: [String?] = [lead.company, lead.email, lead.phone, lead.city]
+        return candidates
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 
     private var initials: String {

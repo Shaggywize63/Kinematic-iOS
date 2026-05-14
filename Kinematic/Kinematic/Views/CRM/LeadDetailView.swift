@@ -97,21 +97,23 @@ struct LeadDetailView: View {
         .sheet(
             isPresented: $loggingActivity,
             onDismiss: {
-                // If the rep tapped Call, the dialer connected, and they
-                // dismissed without saving, fire-and-forget a minimal call
-                // activity so the timeline still reflects reality.
-                // autoLogCallIfNeeded checks the CallObserver — returns
-                // early when no call connected, or when the save path
-                // already consumed the duration.
-                let prefill = composerInitialSubject
-                Task { await vm.autoLogCallIfNeeded(prefillSubject: prefill) }
+                // The composer dismissed without an explicit save (rep hit
+                // Cancel or swiped down). For a tap-to-call flow, the
+                // minimal activity was already POSTed when the rep tapped
+                // dial — we just need to flush any captured duration onto
+                // it. For manual "+ Log" dismissals there's no pending row
+                // so this is a no-op.
+                Task { await vm.finalizePendingCall() }
             }
         ) {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject
-            ) { type, subject, description, imageUrl in
-                await vm.logActivity(type: type, subject: subject, description: description, imageUrl: imageUrl)
+            ) { type, subject, description, imageUrl, when in
+                await vm.logActivity(
+                    type: type, subject: subject, description: description,
+                    imageUrl: imageUrl, completedAtOverride: when
+                )
             }
         }
         .confirmationDialog(
@@ -174,8 +176,15 @@ struct LeadDetailView: View {
                         phone: phone,
                         prefillSubject: "Call with \(lead.displayName)",
                         onCallInitiated: {
+                            let subject = "Call with \(lead.displayName)"
                             composerInitialType = "call"
-                            composerInitialSubject = "Call with \(lead.displayName)"
+                            composerInitialSubject = subject
+                            // POST the minimal call activity *immediately* so
+                            // the rep sees the call land on the timeline the
+                            // moment they hit dial. The composer that opens
+                            // a moment later is an edit surface — saving
+                            // PATCHes this same row instead of duplicating.
+                            Task { _ = await vm.startCallActivity(prefillSubject: subject) }
                             loggingActivity = true
                         },
                         compact: false

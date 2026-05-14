@@ -191,6 +191,12 @@ final class CRMService {
     func createActivity(_ body: [String: Any]) async throws -> Activity {
         try await postJSON("/api/v1/crm/activities", body: body)
     }
+    /// Update an existing activity (used by the auto-log-then-edit path on
+    /// the call button: tap dials + creates a minimal activity, composer
+    /// opens to optionally add notes/duration, save PATCHes the same row).
+    func updateActivity(id: String, body: [String: Any]) async throws -> Activity {
+        try await sendJSON("/api/v1/crm/activities/\(id)", method: "PATCH", body: body)
+    }
     func listNotes(leadId: String? = nil, dealId: String? = nil) async throws -> [CRMNote] {
         var q: [String: String] = [:]
         if let leadId { q["lead_id"] = leadId }
