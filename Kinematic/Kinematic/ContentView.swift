@@ -59,11 +59,14 @@ struct ContentView: View {
     }
 
     var body: some View {
+        // GLOBAL CANVAS (Root-Level Atmospheric Background). Moved from a
+        // ZStack sibling to a `.background()` modifier — the previous
+        // structure let VibrantBackgroundView's 500x500 offset circles
+        // inflate the ZStack's intrinsic size, which combined with
+        // `.bottomTrailing` alignment pushed the entire `MainTabView` /
+        // `CRMTabView` frame off the left edge of the viewport. Same fix
+        // already applied in StoreVisitView (see comment there).
         ZStack(alignment: .bottomTrailing) {
-            // GLOBAL CANVAS (Root-Level Atmospheric Background)
-            VibrantBackgroundView()
-                .ignoresSafeArea()
-
             if !appState.isAuthenticated {
                 LoginView(onSuccess: { appState.checkAuth() })
             } else {
@@ -80,6 +83,7 @@ struct ContentView: View {
                     .transition(.scale.combined(with: .opacity))
             }
         }
+        .background(VibrantBackgroundView().ignoresSafeArea())
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
         }
