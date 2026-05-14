@@ -7,6 +7,19 @@ struct CRMDashboardView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
+                // Kinematic brand mark at the top so the product identity
+                // reads even when CRM is the whole app (CRM-only clients).
+                HStack(spacing: 10) {
+                    Image("KinematicMark")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 36, height: 36)
+                    Text("Kinematic CRM")
+                        .font(.title3.bold())
+                    Spacer()
+                }
+                .padding(.top, 4)
+
                 kpiGrid
                 funnelCard
                 winRateCard

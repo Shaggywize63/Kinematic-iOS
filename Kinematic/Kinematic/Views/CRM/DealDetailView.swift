@@ -89,9 +89,10 @@ struct DealDetailView: View {
     }
 
     private func formattedAmount(_ d: Deal) -> String {
-        if (d.currency ?? "INR").uppercased() == "INR" { return CurrencyFormatter.formatINR(d.amount) }
-        let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = d.currency ?? "USD"
-        return f.string(from: NSNumber(value: d.amount ?? 0)) ?? "\(d.amount ?? 0)"
+        // Kinematic is INR-only — always render ₹ regardless of the
+        // currency stamp on the row (legacy data sometimes carries "USD"
+        // from imports and we never want $ to appear in-app).
+        CurrencyFormatter.formatINR(d.amount)
     }
 
     private func loadWinProb() async {
