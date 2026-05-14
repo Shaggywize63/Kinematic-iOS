@@ -25,8 +25,14 @@ struct CRMDashboardView: View {
                 winRateCard
                 forecastCard
             }
-            .padding(.horizontal)
+            // Explicit 16pt insets. The default `.padding(.horizontal)` (no
+            // value) was rendering as 0 inside iOS 26's new
+            // `Tab(value:)` → NavigationStack → ScrollView chain, which
+            // clipped the left column of the KPI grid off-screen and pushed
+            // toolbar trailing items past the right edge.
+            .padding(.horizontal, 16)
             .padding(.bottom, 40)
+            .frame(maxWidth: .infinity)
         }
         .navigationTitle("CRM")
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
