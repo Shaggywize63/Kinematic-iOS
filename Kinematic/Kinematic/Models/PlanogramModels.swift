@@ -127,9 +127,53 @@ struct CaptureResponse: Codable {
 
 // MARK: - API envelope
 
+/// Structured server error: some endpoints return `error` as `{code,message}`
+/// instead of a plain string. We decode either shape transparently — old
+/// `error` access still returns the string for legacy callers; `errorObject`
+/// exposes the structured form.
+struct APIErrorObject: Codable {
+    let code: String?
+    let message: String?
+}
+
 struct APIEnvelope<T: Codable>: Codable {
     let success: Bool
     let data: T?
     let error: String?
+    let errorObject: APIErrorObject?
     let message: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case success, data, error, message
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.success = try c.decodeIfPresent(Bool.self, forKey: .success) ?? false
+        self.data    = try c.decodeIfPresent(T.self,   forKey: .data)
+        self.message = try c.decodeIfPresent(String.self, forKey: .message)
+        // `error` may be a string OR an object {code,message}; try both.
+        if let s = try? c.decodeIfPresent(String.self, forKey: .error) {
+            self.error = s
+            self.errorObject = nil
+        } else if let o = try? c.decodeIfPresent(APIErrorObject.self, forKey: .error) {
+            self.errorObject = o
+            self.error = o.message
+        } else {
+            self.error = nil
+            self.errorObject = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(success, forKey: .success)
+        try c.encodeIfPresent(data, forKey: .data)
+        try c.encodeIfPresent(message, forKey: .message)
+        if let errorObject {
+            try c.encode(errorObject, forKey: .error)
+        } else {
+            try c.encodeIfPresent(error, forKey: .error)
+        }
+    }
 }

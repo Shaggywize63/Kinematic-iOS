@@ -28,6 +28,10 @@
 	<string>Continuous location is required for background visit verification and field safety.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We need your location to verify store visits and attendance.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kinematic uses your mic for KINI voice mode.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>KINI transcribes your voice to text for chat.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We need gallery access if you choose to upload an existing photo.</string>
 	<key>NSSupportsLiveActivities</key>
