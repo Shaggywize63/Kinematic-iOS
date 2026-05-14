@@ -46,4 +46,28 @@ final class LeadDetailViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+
+    /// Log a new activity bound to this lead. Non-task kinds are marked
+    /// completed at save time so they show up in the timeline immediately.
+    func logActivity(type: String, subject: String, description: String) async {
+        let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSubject.isEmpty else { return }
+        var body: [String: Any] = [
+            "type": type,
+            "subject": trimmedSubject,
+            "description": description,
+            "lead_id": leadId,
+        ]
+        if type != "task" {
+            let now = ISO8601DateFormatter().string(from: Date())
+            body["completed_at"] = now
+            body["status"] = "completed"
+        }
+        do {
+            let created = try await api.createActivity(body)
+            activities.insert(created, at: 0)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }

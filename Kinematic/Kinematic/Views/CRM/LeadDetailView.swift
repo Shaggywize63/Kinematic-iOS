@@ -3,6 +3,7 @@ import SwiftUI
 struct LeadDetailView: View {
     @StateObject var vm: LeadDetailViewModel
     @State private var editing = false
+    @State private var loggingActivity = false
 
     init(leadId: String) {
         _vm = StateObject(wrappedValue: LeadDetailViewModel(leadId: leadId))
@@ -37,6 +38,11 @@ struct LeadDetailView: View {
                     vm.lead = updated
                     Task { await vm.load() }
                 }
+            }
+        }
+        .sheet(isPresented: $loggingActivity) {
+            ActivityComposeView { type, subject, description in
+                await vm.logActivity(type: type, subject: subject, description: description)
             }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -131,7 +137,16 @@ struct LeadDetailView: View {
 
     private var activitiesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("ACTIVITY").font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
+            HStack {
+                Text("ACTIVITY").font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
+                Spacer()
+                Button(action: { loggingActivity = true }) {
+                    Label("Log", systemImage: "plus.circle.fill")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
             if vm.activities.isEmpty { Text("No activity logged.").font(.caption).foregroundColor(.gray) }
             else { ForEach(vm.activities) { a in ActivityTimelineItem(activity: a) } }
         }
