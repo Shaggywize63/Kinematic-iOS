@@ -54,6 +54,14 @@ final class AIChatService {
         return try await perform(req)
     }
 
+    /// GET /api/v1/crm/ai/usage — caller's per-user monthly usage.
+    /// This is what the dashboard's KINI pill displays. Cap respects the
+    /// per-client override (e.g. Tata Tiscon users see 20).
+    func getUsage() async throws -> KiniUsage {
+        let req = try makeRequest(path: "/api/v1/crm/ai/usage", method: "GET", body: nil)
+        return try await perform(req)
+    }
+
     private var authToken: String? {
         let token = Session.sharedToken
         if !token.isEmpty { return token }
@@ -113,6 +121,17 @@ final class AIChatService {
 }
 
 // MARK: - Models
+
+/// Response payload for /api/v1/crm/ai/usage — per-user counters.
+/// `exempt = true` for super_admin and the demo placeholder; the UI
+/// hides the pill in that case (matches dashboard behaviour).
+struct KiniUsage: Codable {
+    let used: Int
+    let cap: Int
+    let remaining: Int
+    let month: String
+    let exempt: Bool
+}
 
 /// Response payload for /api/v1/crm/ai/credits.
 struct KiniCredits: Codable {
