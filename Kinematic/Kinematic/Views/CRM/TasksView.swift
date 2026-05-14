@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// Tasks inbox grouped by urgency. Replaces the older wrapper that just
 /// delegated to ActivitiesView with a type filter — that gave a flat list
