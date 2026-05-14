@@ -28,11 +28,12 @@ final class ActivitiesViewModel: ObservableObject {
         }
     }
 
-    func log(type: String, subject: String, description: String, dealId: String?, leadId: String?) async {
+    func log(type: String, subject: String, description: String, dealId: String?, leadId: String?, imageUrl: String? = nil) async {
         do {
             var body: [String: Any] = ["type": type, "subject": subject, "description": description]
             if let dealId { body["deal_id"] = dealId }
             if let leadId { body["lead_id"] = leadId }
+            if let imageUrl { body["image_url"] = imageUrl }
             let a = try await api.createActivity(body)
             activities.insert(a, at: 0)
         } catch {
