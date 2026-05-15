@@ -816,6 +816,11 @@ struct RoutePlan: Codable, Identifiable {
     let visitedOutlets: Int?
     let completionPct: Double?
     var outlets: [RouteOutlet]?
+    let vehicleType: String?
+    let co2KgPlanned: Double?
+    let co2KgActual: Double?
+    let totalDistanceKm: Double?
+    let actualDistanceKm: Double?
 
     enum CodingKeys: String, CodingKey {
         case id, status, outlets, stores
@@ -825,10 +830,17 @@ struct RoutePlan: Codable, Identifiable {
         case visitedOutlets = "visited_outlets"
         case completionPct = "completion_pct"
         case date
+        case vehicleType = "vehicle_type"
+        case co2KgPlanned = "co2_kg_planned"
+        case co2KgActual = "co2_kg_actual"
+        case totalDistanceKm = "total_distance_km"
+        case actualDistanceKm = "actual_distance_km"
     }
 
     init(id: String?, planDate: String?, status: String?, activityId: String?, outlets: [RouteOutlet]?,
-         totalOutlets: Int? = nil, visitedOutlets: Int? = nil, completionPct: Double? = nil) {
+         totalOutlets: Int? = nil, visitedOutlets: Int? = nil, completionPct: Double? = nil,
+         vehicleType: String? = nil, co2KgPlanned: Double? = nil, co2KgActual: Double? = nil,
+         totalDistanceKm: Double? = nil, actualDistanceKm: Double? = nil) {
         self.id = id
         self.planDate = planDate
         self.status = status
@@ -837,6 +849,11 @@ struct RoutePlan: Codable, Identifiable {
         self.totalOutlets = totalOutlets
         self.visitedOutlets = visitedOutlets
         self.completionPct = completionPct
+        self.vehicleType = vehicleType
+        self.co2KgPlanned = co2KgPlanned
+        self.co2KgActual = co2KgActual
+        self.totalDistanceKm = totalDistanceKm
+        self.actualDistanceKm = actualDistanceKm
     }
 
     init(from decoder: Decoder) throws {
@@ -851,6 +868,11 @@ struct RoutePlan: Codable, Identifiable {
         completionPct = try container.decodeIfPresent(Double.self, forKey: .completionPct)
         outlets = try container.decodeIfPresent([RouteOutlet].self, forKey: .outlets)
             ?? container.decodeIfPresent([RouteOutlet].self, forKey: .stores)
+        vehicleType = try container.decodeIfPresent(String.self, forKey: .vehicleType)
+        co2KgPlanned = try container.decodeIfPresent(Double.self, forKey: .co2KgPlanned)
+        co2KgActual = try container.decodeIfPresent(Double.self, forKey: .co2KgActual)
+        totalDistanceKm = try container.decodeIfPresent(Double.self, forKey: .totalDistanceKm)
+        actualDistanceKm = try container.decodeIfPresent(Double.self, forKey: .actualDistanceKm)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -863,6 +885,11 @@ struct RoutePlan: Codable, Identifiable {
         try container.encodeIfPresent(visitedOutlets, forKey: .visitedOutlets)
         try container.encodeIfPresent(completionPct, forKey: .completionPct)
         try container.encodeIfPresent(outlets, forKey: .outlets)
+        try container.encodeIfPresent(vehicleType, forKey: .vehicleType)
+        try container.encodeIfPresent(co2KgPlanned, forKey: .co2KgPlanned)
+        try container.encodeIfPresent(co2KgActual, forKey: .co2KgActual)
+        try container.encodeIfPresent(totalDistanceKm, forKey: .totalDistanceKm)
+        try container.encodeIfPresent(actualDistanceKm, forKey: .actualDistanceKm)
     }
 
     /// Computed completion percentage that prefers the server-supplied value
@@ -893,6 +920,8 @@ struct RouteOutlet: Codable, Identifiable {
     let isGeofenced: Bool?
     let storeLat: Double?
     let storeLng: Double?
+    let legDistanceKm: Double?
+    let legCo2Kg: Double?
 
     var id: String { storeId ?? rawId ?? UUID().uuidString }
 
@@ -910,13 +939,16 @@ struct RouteOutlet: Codable, Identifiable {
         case isGeofenced = "is_geofenced"
         case storeLat = "store_lat"
         case storeLng = "store_lng"
+        case legDistanceKm = "leg_distance_km"
+        case legCo2Kg = "leg_co2_kg"
     }
 
     init(rawId: String?, storeId: String?, storeName: String?, address: String?, status: String?,
          activityId: String?, activities: [RouteActivity]?,
          visitOrder: Int? = nil, checkinAt: String? = nil, checkoutAt: String? = nil,
          geofenceRadius: Double? = nil, isGeofenced: Bool? = nil,
-         storeLat: Double? = nil, storeLng: Double? = nil) {
+         storeLat: Double? = nil, storeLng: Double? = nil,
+         legDistanceKm: Double? = nil, legCo2Kg: Double? = nil) {
         self.rawId = rawId
         self.storeId = storeId
         self.storeName = storeName
@@ -931,6 +963,8 @@ struct RouteOutlet: Codable, Identifiable {
         self.isGeofenced = isGeofenced
         self.storeLat = storeLat
         self.storeLng = storeLng
+        self.legDistanceKm = legDistanceKm
+        self.legCo2Kg = legCo2Kg
     }
 
     init(from decoder: Decoder) throws {
@@ -951,6 +985,8 @@ struct RouteOutlet: Codable, Identifiable {
         isGeofenced = try container.decodeIfPresent(Bool.self, forKey: .isGeofenced)
         storeLat = try container.decodeIfPresent(Double.self, forKey: .storeLat)
         storeLng = try container.decodeIfPresent(Double.self, forKey: .storeLng)
+        legDistanceKm = try container.decodeIfPresent(Double.self, forKey: .legDistanceKm)
+        legCo2Kg = try container.decodeIfPresent(Double.self, forKey: .legCo2Kg)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -969,6 +1005,8 @@ struct RouteOutlet: Codable, Identifiable {
         try container.encodeIfPresent(isGeofenced, forKey: .isGeofenced)
         try container.encodeIfPresent(storeLat, forKey: .storeLat)
         try container.encodeIfPresent(storeLng, forKey: .storeLng)
+        try container.encodeIfPresent(legDistanceKm, forKey: .legDistanceKm)
+        try container.encodeIfPresent(legCo2Kg, forKey: .legCo2Kg)
     }
 }
 
