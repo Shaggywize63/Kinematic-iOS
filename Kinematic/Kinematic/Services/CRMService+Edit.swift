@@ -37,7 +37,7 @@ private extension CRMService {
             : try JSONSerialization.data(withJSONObject: body, options: [])
         req.httpBody = payload
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await CRMHTTP.send(req)
         try EditHelpers.validate(resp, data: data)
         return try EditHelpers.decodeEnvelope(T.self, from: data)
     }

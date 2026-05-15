@@ -245,9 +245,14 @@ struct LoginResponseModel: Codable {
 
 struct LoginData: Codable {
     let accessToken: String
+    /// Supabase refresh token. Long-lived (30 days, rotating). We persist
+    /// it so the access token can be silently refreshed before/after it
+    /// expires, keeping the user signed in until they explicitly log out.
+    let refreshToken: String?
     let user: User
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
+        case refreshToken = "refresh_token"
         case user
     }
 }
@@ -1051,15 +1056,24 @@ class Session: ObservableObject {
         get { UserDefaults.standard.string(forKey: "auth_token") ?? "" }
         set { UserDefaults.standard.set(newValue, forKey: "auth_token") }
     }
-    
+
+    /// Supabase refresh token. Long-lived. Used by `KinematicRepository.refreshAccessToken`
+    /// to silently swap a stale access token for a fresh one, so the user
+    /// never gets kicked out unless they explicitly log out.
+    static var refreshToken: String {
+        get { UserDefaults.standard.string(forKey: "refresh_token") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "refresh_token") }
+    }
+
     static var isDemoMode: Bool {
         get { UserDefaults.standard.bool(forKey: "is_demo_mode") }
         set { UserDefaults.standard.set(newValue, forKey: "is_demo_mode") }
     }
-    
-    /// Number of consecutive 401s seen by the API client. Used to decide
-    /// when to give up and force-logout instead of kicking the user out
-    /// on the very first transient 401.
+
+    /// Number of consecutive 401s where refresh ALSO failed. Stays 0 in
+    /// the normal case because each 401 is now resolved by a silent refresh.
+    /// We only surface a re-auth prompt once the refresh token itself is
+    /// rejected — we no longer force-logout based on this counter.
     static var unauthorizedHits: Int = 0
 
     static var isAuthenticated: Bool { !sharedToken.isEmpty || isDemoMode }
@@ -1074,8 +1088,9 @@ class Session: ObservableObject {
             }
         }
     }
-    static func logout() { 
+    static func logout() {
         sharedToken = ""
+        refreshToken = ""
         currentUser = nil
         isDemoMode = false
     }
@@ -1196,13 +1211,83 @@ class KinematicRepository {
         }
     }
     
+    /// Silently swap the stored access token for a fresh one using the
+    /// long-lived refresh token. Returns true on success. Serialised via
+    /// `refreshLock` so a burst of concurrent 401s only triggers one POST
+    /// to `/auth/refresh`.
+    private static let refreshLock = NSLock()
+    private static var refreshInFlight: Task<Bool, Never>?
+
+    func refreshAccessToken() async -> Bool {
+        let saved = Session.refreshToken
+        guard !saved.isEmpty else { return false }
+
+        // Coalesce — if another caller already kicked off a refresh, await
+        // its result instead of issuing a second POST.
+        Self.refreshLock.lock()
+        if let inflight = Self.refreshInFlight {
+            Self.refreshLock.unlock()
+            return await inflight.value
+        }
+        let task = Task<Bool, Never> {
+            defer {
+                Self.refreshLock.lock()
+                Self.refreshInFlight = nil
+                Self.refreshLock.unlock()
+            }
+            guard let url = URL(string: "\(baseURL)/auth/refresh") else { return false }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.timeoutInterval = 15
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONEncoder().encode(["refresh_token": saved])
+            do {
+                let (data, response) = try await URLSession.shared.data(for: req)
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                guard code == 200 else {
+                    print("🚩 REFRESH_FAILED: status \(code)")
+                    return false
+                }
+                struct Body: Codable {
+                    let success: Bool
+                    let data: Inner?
+                    struct Inner: Codable {
+                        let accessToken: String
+                        let refreshToken: String?
+                        enum CodingKeys: String, CodingKey {
+                            case accessToken = "access_token"
+                            case refreshToken = "refresh_token"
+                        }
+                    }
+                }
+                let parsed = try JSONDecoder().decode(Body.self, from: data)
+                guard parsed.success, let newAccess = parsed.data?.accessToken else { return false }
+                Session.sharedToken = newAccess
+                if let newRefresh = parsed.data?.refreshToken, !newRefresh.isEmpty {
+                    Session.refreshToken = newRefresh
+                }
+                print("✅ REFRESH_OK")
+                return true
+            } catch {
+                print("🚩 REFRESH_ERROR: \(error.localizedDescription)")
+                return false
+            }
+        }
+        Self.refreshInFlight = task
+        Self.refreshLock.unlock()
+        return await task.value
+    }
+
     // --- New Deep Diagnostic Helper ---
     private func performRequest<T: Codable>(
         _ path: String,
         method: String = "GET",
         body: Data? = nil,
         queryItems: [URLQueryItem]? = nil,
-        idempotencyKey: String? = nil
+        idempotencyKey: String? = nil,
+        // Internal — set on the recursive retry after a silent refresh so
+        // we never spin in an infinite refresh loop.
+        _retryingAfterRefresh: Bool = false
     ) async throws -> ApiResponse<T>? {
         var urlComponents = URLComponents(string: "\(baseURL)\(path)")
         if let queryItems = queryItems {
@@ -1226,44 +1311,48 @@ class KinematicRepository {
         if let key = idempotencyKey {
             req.setValue(key, forHTTPHeaderField: "Idempotency-Key")
         }
-        
+
         if let body = body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = body
         }
-        
+
         print("🚀 API_START: \(method) \(url.absoluteString)")
         if let orgId = req.value(forHTTPHeaderField: "X-Org-Id") {
             print("🔑 ORG_ID: \(orgId)")
         }
-        
+
         let (data, response) = try await URLSession.shared.data(for: req)
-        
+
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
         print("📡 API_END: Status \(statusCode) for \(path)")
-        
-        
+
+
         // Session resilience:
-        //   The previous behaviour was to wipe the session on the *first*
-        //   401, which kicked field executives out mid-shift the moment
-        //   their JWT expired. We now keep the local session intact and
-        //   only force-logout if 401s keep happening. This way:
-        //     1) Cached attendance/check-in UI stays visible
-        //     2) Transient 401s (network/clock skew) don't blow up auth
-        //     3) After repeated 401s we surface a "session expired" flag
-        //        the UI can act on without losing state
+        //   On 401 we silently refresh the access token using the long-lived
+        //   refresh token and replay the request once. The user never gets
+        //   kicked out unless they explicitly hit Sign Out OR the refresh
+        //   token itself is rejected (revoked / 30d-stale). Only in that
+        //   final case do we set `needsReAuth` so the UI can offer a
+        //   gentle re-login — we no longer wipe the local session
+        //   automatically.
         if statusCode == 401 {
-            print("⚠️ AUTH_ERROR: 401 on \(path). Marking session as needing re-auth.")
-            Session.unauthorizedHits += 1
-            await MainActor.run { KiniAppState.shared.needsReAuth = true }
-            if Session.unauthorizedHits >= 5 {
-                print("⛔ AUTH_ERROR: 5+ consecutive 401s — forcing logout.")
-                Session.unauthorizedHits = 0
-                await MainActor.run {
-                    Session.logout()
-                    KiniAppState.shared.checkAuth()
+            if !_retryingAfterRefresh {
+                print("⚠️ AUTH_ERROR: 401 on \(path). Attempting silent refresh.")
+                let refreshed = await refreshAccessToken()
+                if refreshed {
+                    Session.unauthorizedHits = 0
+                    return try await performRequest(
+                        path, method: method, body: body,
+                        queryItems: queryItems, idempotencyKey: idempotencyKey,
+                        _retryingAfterRefresh: true
+                    )
                 }
             }
+            // Refresh failed (or this IS the retry hitting 401 again).
+            // Surface a flag the UI can prompt on, but DO NOT auto-logout.
+            Session.unauthorizedHits += 1
+            await MainActor.run { KiniAppState.shared.needsReAuth = true }
         } else if statusCode >= 200 && statusCode < 400 {
             // Reset the counter on any successful response so a re-login
             // (or token refresh on the backend) resumes normal behaviour.
@@ -1452,8 +1541,14 @@ class KinematicRepository {
             do {
                 let result = try JSONDecoder().decode(LoginResponseModel.self, from: data)
                 if result.success, let t = result.data?.accessToken {
-                    await MainActor.run { 
+                    await MainActor.run {
                         Session.sharedToken = t
+                        // Persist the refresh token so the access token can
+                        // be silently swapped when it expires (~1h Supabase
+                        // default), keeping the user signed in for the full
+                        // refresh-token lifetime (~30d, rolling) without a
+                        // re-login prompt.
+                        Session.refreshToken = result.data?.refreshToken ?? ""
                         Session.currentUser = result.data?.user
                         KiniAppState.shared.checkAuth()
                     }

@@ -341,10 +341,23 @@ final class CRMService {
         return req
     }
 
-    private func perform<T: Codable>(_ req: URLRequest) async throws -> T {
+    private func perform<T: Codable>(_ req: URLRequest, retryAfterRefresh: Bool = true) async throws -> T {
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else {
             throw CRMServiceError.badResponse(0)
+        }
+        // 401 → silently refresh the access token and replay once, so the
+        // user stays signed in across the ~1h Supabase access-token expiry
+        // without ever seeing a re-login prompt. We never auto-logout from
+        // here — that only happens when the user explicitly hits Sign Out.
+        if http.statusCode == 401, retryAfterRefresh {
+            let refreshed = await KinematicRepository.shared.refreshAccessToken()
+            if refreshed {
+                // Rebuild the request with the freshly-rotated Bearer token.
+                var retry = req
+                retry.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+                return try await perform(retry, retryAfterRefresh: false)
+            }
         }
         if !(200..<300).contains(http.statusCode) {
             if let env = try? decoder.decode(APIEnvelope<EmptyAck>.self, from: data),
@@ -368,3 +381,22 @@ final class CRMService {
 
 /// Used as a placeholder when we don't care about the response payload.
 struct EmptyAck: Codable {}
+
+/// Shared authenticated URLSession call used by every CRM HTTP path
+/// (CRMService + its extensions). Handles silent refresh-on-401 once so
+/// CRM screens never get kicked out mid-session — mirrors what the main
+/// `KinematicRepository.performRequest` does for field-ops endpoints.
+enum CRMHTTP {
+    static func send(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        let (data, response) = try await URLSession.shared.data(for: req)
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 {
+            let refreshed = await KinematicRepository.shared.refreshAccessToken()
+            if refreshed {
+                var retry = req
+                retry.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+                return try await URLSession.shared.data(for: retry)
+            }
+        }
+        return (data, response)
+    }
+}
