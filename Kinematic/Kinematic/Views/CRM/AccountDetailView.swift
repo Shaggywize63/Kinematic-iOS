@@ -10,9 +10,6 @@ struct AccountDetailView: View {
     @State private var loggingActivity = false
     @State private var composerInitialType: String = "call"
     @State private var composerInitialSubject: String = ""
-    /// Set after a tap-to-call POSTs the minimal call row. Composer save
-    /// PATCHes this id; cancel leaves the minimal record on the timeline.
-    @State private var pendingCallActivityId: String?
 
     private let api = CRMService.shared
 
@@ -22,9 +19,9 @@ struct AccountDetailView: View {
                 AccountSummaryCard(account: account)
 
                 Text("DETAILS").font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
-                if let addr = account.billingAddress { detailRow("Billing", addr, icon: "mappin.and.ellipse", color: Brand.red) }
+                if let addr = account.billingAddress { detailRow("Billing", addr, icon: "mappin.and.ellipse", color: .red) }
                 if let phone = account.phone, !phone.isEmpty { phoneRow(phone) }
-                if let site = account.website { detailRow("Website", site, icon: "globe", color: Brand.red) }
+                if let site = account.website { detailRow("Website", site, icon: "globe", color: .blue) }
 
                 contactsSection
                 dealsSection
@@ -33,7 +30,7 @@ struct AccountDetailView: View {
             .padding()
         }
         .navigationTitle(account.name)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true }.tint(Brand.red) } }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } } }
         .sheet(isPresented: $editing) {
             AccountEditView(account: account) { updated in
                 account = updated
@@ -47,22 +44,19 @@ struct AccountDetailView: View {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject
-            ) { type, subject, description, imageUrl, when in
-                await logActivity(
-                    type: type, subject: subject, description: description,
-                    imageUrl: imageUrl, completedAt: when
-                )
+            ) { type, subject, description in
+                await logActivity(type: type, subject: subject, description: description)
             }
         }
         .task { await loadRelations() }
         .refreshable { await loadRelations() }
     }
 
-    // MARK: - Phone row with tap-to-call
-
+    /// Phone row with tap-to-call. Replaces the static detailRow rendering
+    /// for the phone field so the rep can dial without copy-pasting.
     private func phoneRow(_ phone: String) -> some View {
         HStack {
-            Image(systemName: "phone.fill").foregroundColor(Brand.red).frame(width: 24)
+            Image(systemName: "phone.fill").foregroundColor(.green).frame(width: 24)
             VStack(alignment: .leading) {
                 Text("Phone").font(.caption).foregroundColor(.gray)
                 Text(phone).font(.system(size: 14))
@@ -72,10 +66,8 @@ struct AccountDetailView: View {
                 phone: phone,
                 prefillSubject: "Call with \(account.name)",
                 onCallInitiated: {
-                    let subject = "Call with \(account.name)"
                     composerInitialType = "call"
-                    composerInitialSubject = subject
-                    Task { await startCallActivity(subject: subject) }
+                    composerInitialSubject = "Call with \(account.name)"
                     loggingActivity = true
                 }
             )
@@ -84,7 +76,48 @@ struct AccountDetailView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
     }
 
-    // MARK: - Relation sections
+    /// POSTs an activity bound to this account. Mirrors the contact / lead
+    /// detail composer behavior so call captures land in the account timeline.
+    private func logActivity(type: String, subject: String, description: String) async {
+        let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var body: [String: Any] = [
+            "type": type,
+            "subject": trimmed,
+            "description": description,
+            "account_id": account.id,
+        ]
+        if type != "task" {
+            body["completed_at"] = ISO8601DateFormatter().string(from: Date())
+            body["status"] = "completed"
+        }
+        if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
+            body["duration_seconds"] = duration
+        }
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
+        }
+    }
+
+    /// Auto-log fallback for cancel-after-dial.
+    private func autoLogCallIfNeeded() async {
+        guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
+        let subject = composerInitialSubject.isEmpty ? "Call (auto-logged)" : composerInitialSubject
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "description": "",
+            "account_id": account.id,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+            "duration_seconds": duration,
+        ]
+        if let created = try? await api.createActivity(body) {
+            activities.insert(created, at: 0)
+        }
+    }
+
+    // MARK: Sections
 
     private var contactsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -129,9 +162,11 @@ struct AccountDetailView: View {
         }
     }
 
+    // MARK: Helpers
+
     private func sectionHeader(_ title: String, count: Int) -> some View {
         HStack(spacing: 6) {
-            Text(title).font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(Brand.red)
+            Text(title).font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
             if count > 0 {
                 Text("\(count)")
                     .font(.system(size: 10, weight: .black))
@@ -148,8 +183,8 @@ struct AccountDetailView: View {
     private func contactRow(_ c: Contact) -> some View {
         HStack(spacing: 12) {
             ZStack {
-                Circle().fill(Brand.red.opacity(0.15)).frame(width: 36, height: 36)
-                Text(initials(c)).font(.system(size: 12, weight: .black)).foregroundColor(Brand.red)
+                Circle().fill(Color.orange.opacity(0.2)).frame(width: 36, height: 36)
+                Text(initials(c)).font(.system(size: 12, weight: .black)).foregroundColor(.orange)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(c.displayName).font(.system(size: 14, weight: .semibold)).foregroundColor(Color(uiColor: .label))
@@ -190,74 +225,7 @@ struct AccountDetailView: View {
         return s.isEmpty ? "C" : s
     }
 
-    // MARK: - Activity logging
-
-    private func startCallActivity(subject: String) async {
-        let body: [String: Any] = [
-            "type": "call",
-            "subject": subject,
-            "account_id": account.id,
-            "completed_at": ISO8601DateFormatter().string(from: Date()),
-            "status": "completed",
-        ]
-        if let created = try? await api.createActivity(body) {
-            activities.insert(created, at: 0)
-            pendingCallActivityId = created.id
-        }
-    }
-
-    private func logActivity(type: String, subject: String, description: String, imageUrl: String?, completedAt: Date) async {
-        let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        if type == "call", let id = pendingCallActivityId {
-            var patch: [String: Any] = ["subject": trimmed]
-            let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedDesc.isEmpty { patch["description"] = trimmedDesc }
-            if let imageUrl, !imageUrl.isEmpty { patch["image_url"] = imageUrl }
-            patch["completed_at"] = ISO8601DateFormatter().string(from: completedAt)
-            if let duration = CallObserver.shared.consumeDuration(), duration > 0 {
-                patch["duration_seconds"] = duration
-            }
-            if let updated = try? await api.updateActivity(id: id, body: patch),
-               let i = activities.firstIndex(where: { $0.id == id }) {
-                activities[i] = updated
-            }
-            pendingCallActivityId = nil
-            return
-        }
-        var body: [String: Any] = [
-            "type": type,
-            "subject": trimmed,
-            "account_id": account.id,
-        ]
-        let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedDesc.isEmpty { body["description"] = trimmedDesc }
-        if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
-        if type != "task" {
-            body["completed_at"] = ISO8601DateFormatter().string(from: completedAt)
-            body["status"] = "completed"
-        } else {
-            body["due_at"] = ISO8601DateFormatter().string(from: completedAt)
-        }
-        if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
-            body["duration_seconds"] = duration
-        }
-        if let created = try? await api.createActivity(body) {
-            activities.insert(created, at: 0)
-        }
-    }
-
-    private func autoLogCallIfNeeded() async {
-        guard let id = pendingCallActivityId else { return }
-        defer { pendingCallActivityId = nil }
-        guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
-        if let updated = try? await api.updateActivity(id: id, body: ["duration_seconds": duration]),
-           let i = activities.firstIndex(where: { $0.id == id }) {
-            activities[i] = updated
-        }
-    }
-
-    // MARK: - Loading
+    // MARK: Loading
 
     private func loadRelations() async {
         isLoadingRelations = true

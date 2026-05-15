@@ -61,7 +61,9 @@ enum CallHelper {
     static func dial(normalized: String) {
         guard let url = URL(string: "tel:\(normalized)") else { return }
         // Arm the CallKit observer *before* we hand off to the system
-        // dialer so it catches the connect event that follows.
+        // dialer so it catches the connect event that follows. If
+        // CallObserver isn't on the build (older SDK), this is a no-op
+        // since the symbol is in the same module.
         CallObserver.shared.startTracking()
         UIApplication.shared.open(url)
     }
