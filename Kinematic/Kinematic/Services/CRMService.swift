@@ -146,9 +146,10 @@ final class CRMService {
     func moveDealStage(id: String, stageId: String) async throws -> Deal {
         try await postJSON("/api/v1/crm/deals/\(id)/move-stage", body: ["stage_id": stageId])
     }
-    func winDeal(id: String, amount: Double? = nil) async throws -> Deal {
+    func winDeal(id: String, amount: Double? = nil, reason: String? = nil) async throws -> Deal {
         var body: [String: Any] = [:]
         if let amount { body["amount"] = amount }
+        if let reason, !reason.isEmpty { body["reason"] = reason }
         return try await postJSON("/api/v1/crm/deals/\(id)/win", body: body)
     }
     func loseDeal(id: String, reason: String) async throws -> Deal {
