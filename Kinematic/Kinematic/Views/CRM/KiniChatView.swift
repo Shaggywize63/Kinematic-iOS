@@ -41,17 +41,14 @@ struct KiniChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        if vm.messages.isEmpty && !vm.isSending {
+                            emptyState
+                        }
                         ForEach(vm.messages) { m in
                             bubble(for: m).id(m.id)
                         }
                         if vm.isSending {
-                            HStack(spacing: 8) {
-                                ProgressView().scaleEffect(0.7)
-                                Text("KINI is thinking…")
-                                    .font(.caption).foregroundColor(.gray)
-                                Spacer()
-                            }
-                            .padding(.horizontal)
+                            typingIndicator
                         }
                     }
                     .padding(.horizontal)
@@ -184,6 +181,97 @@ struct KiniChatView: View {
         .background(headerGradient)
     }
 
+    // MARK: - Empty state + suggestions
+
+    /// What reps see the first time they open KINI in a session. The four
+    /// suggested prompts are the queries Hemanth-style reps actually run
+    /// (per the dashboard analytics) — tapping fills the draft so they can
+    /// edit before sending. Removes the "blank box, what do I type?" hurdle.
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(colors: [brandRed, brandRedLight, brandBlue],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 64, height: 64)
+                Text("✦")
+                    .font(.system(size: 28))
+                    .foregroundColor(.white)
+            }
+            .padding(.top, 32)
+
+            VStack(spacing: 4) {
+                Text("Ask KINI anything")
+                    .font(.system(size: 18, weight: .black))
+                Text("Pipeline, leads, follow-ups — your CRM copilot.")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 8) {
+                suggestionChip("Show me overdue tasks",        icon: "exclamationmark.triangle.fill")
+                suggestionChip("Which deals are stuck > 14 days?", icon: "clock.fill")
+                suggestionChip("Top 5 leads I should call today", icon: "phone.fill")
+                suggestionChip("Draft a follow-up for my best deal", icon: "envelope.fill")
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+
+    private func suggestionChip(_ prompt: String, icon: String) -> some View {
+        Button {
+            vm.draft = prompt
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .foregroundColor(brandRed)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 24)
+                Text(prompt)
+                    .font(.system(size: 13))
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "arrow.up.right")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: 11))
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color(uiColor: .secondarySystemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(brandRed.opacity(0.18), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Three pulsing dots animation that replaces the static "KINI is
+    /// thinking…" — feels alive in a way ProgressView doesn't.
+    private var typingIndicator: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(brandRed.opacity(0.12)).frame(width: 32, height: 32)
+                Text("✦").font(.system(size: 14)).foregroundColor(brandRed)
+            }
+            HStack(spacing: 4) {
+                TypingDot(delay: 0.0)
+                TypingDot(delay: 0.2)
+                TypingDot(delay: 0.4)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(Color(uiColor: .secondarySystemBackground))
+            .cornerRadius(18)
+            Spacer(minLength: 40)
+        }
+    }
+
     @ViewBuilder
     private func bubble(for m: ChatMessage) -> some View {
         let isUser = m.role == "user"
@@ -216,5 +304,22 @@ struct KiniChatView: View {
             }
             if !isUser { Spacer(minLength: 40) }
         }
+    }
+}
+
+/// One pulsing dot used by the typing indicator. Three of these in a row,
+/// staggered by a constant delay, gives a clean "···" cadence that reads
+/// as "thinking" without spinning a generic ProgressView.
+private struct TypingDot: View {
+    let delay: Double
+    @State private var on = false
+
+    var body: some View {
+        Circle()
+            .fill(Color.secondary)
+            .frame(width: 6, height: 6)
+            .opacity(on ? 1.0 : 0.3)
+            .animation(.easeInOut(duration: 0.6).repeatForever().delay(delay), value: on)
+            .onAppear { on = true }
     }
 }

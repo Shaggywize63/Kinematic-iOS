@@ -45,15 +45,21 @@ final class LeadDetailViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            // Lead + its activities load eagerly. Related entities (deals,
-            // converted-to) and assignable users load opportunistically so a
-            // slow /users call (403 for client-role users) never blocks the
-            // main lead render.
+            // Lead is the only blocking fetch — we need it to know which
+            // auxiliary calls to make (convertedDealId etc). Everything
+            // else fires in parallel so the screen lands as a single
+            // refresh rather than 6 sequential round-trips.
             async let leadTask = api.getLead(id: leadId)
             async let actsTask = api.leadActivities(id: leadId)
+            async let dealsTask = api.leadDeals(id: leadId)
+            async let assignableTask = api.listAssignableUsers()
             let lead = try await leadTask
             self.lead = lead
             self.activities = (try? await actsTask) ?? []
+            self.relatedDeals = (try? await dealsTask) ?? []
+            self.assignableUsers = await assignableTask
+            // Auxiliary fetches that depend on lead fields (converted IDs)
+            // fan out in parallel too.
             await loadAuxiliary(lead: lead)
         } catch {
             errorMessage = error.localizedDescription
@@ -61,29 +67,30 @@ final class LeadDetailViewModel: ObservableObject {
     }
 
     private func loadAuxiliary(lead: Lead) async {
-        // Convert links — best-effort, each independently.
-        if let cid = lead.convertedContactId {
-            convertedContact = try? await api.getContact(id: cid)
+        // Run every convert-link + NBA call concurrently. Each one is
+        // independent, so there's no reason to await them in sequence
+        // (the previous implementation was up to 4 sequential round-trips
+        // — visible as a "spinner stays for ages" on slower connections).
+        let contact = Task<Contact?, Never> {
+            guard let cid = lead.convertedContactId else { return nil }
+            return try? await api.getContact(id: cid)
         }
-        if let aid = lead.convertedAccountId {
-            convertedAccount = try? await api.getAccount(id: aid)
+        let account = Task<CRMAccount?, Never> {
+            guard let aid = lead.convertedAccountId else { return nil }
+            return try? await api.getAccount(id: aid)
         }
-        if let did = lead.convertedDealId {
-            convertedDeal = try? await api.getDeal(id: did)
+        let deal = Task<Deal?, Never> {
+            guard let did = lead.convertedDealId else { return nil }
+            return try? await api.getDeal(id: did)
         }
-        // Related deals — backend has a dedicated `/leads/{id}/deals` route
-        // that returns every deal linked to this lead.
-        relatedDeals = (try? await api.leadDeals(id: lead.id)) ?? []
-        // Assignable users — silent 403 → empty.
-        assignableUsers = await api.listAssignableUsers()
-        // Next Best Action for the converted deal, if any. Backend NBA
-        // is deal-scoped; we mirror the web behaviour by surfacing it on
-        // the lead detail when the lead has a converted deal.
-        if let did = lead.convertedDealId {
-            nextBestAction = try? await api.aiNextBestAction(dealId: did)
-        } else {
-            nextBestAction = nil
+        let nba = Task<NextBestAction?, Never> {
+            guard let did = lead.convertedDealId else { return nil }
+            return try? await api.aiNextBestAction(dealId: did)
         }
+        convertedContact = await contact.value
+        convertedAccount = await account.value
+        convertedDeal = await deal.value
+        nextBestAction = await nba.value
     }
 
     /// Manual refresh of the converted-deal's NBA. Only meaningful when the

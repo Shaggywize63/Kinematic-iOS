@@ -84,6 +84,14 @@ struct CRMMoreMenu: View {
                     CRMReportsView()
                 } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
             }
+            // Help & lifecycle — single-tap onboarding so any new rep can
+            // understand how a Lead → Contact → Deal flows through the CRM
+            // without needing a training session.
+            Section("Learn") {
+                NavigationLink {
+                    CRMHelpView()
+                } label: { MoreRow(icon: "books.vertical.fill", title: "How CRM works", tint: Brand.red) }
+            }
             if let onExit {
                 Section {
                     Button(action: onExit) {
