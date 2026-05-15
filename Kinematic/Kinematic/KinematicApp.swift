@@ -12,52 +12,10 @@ struct User: Codable, Identifiable {
     let email: String?
     let mobile: String?
     let orgId: String?
-    let clientId: String?
-    /// Per-client SKU module IDs (Field Force / CRM / Distribution + universal).
-    /// Empty list = legacy session, treat as full access for backwards compat.
-    let enabledModules: [String]
-    /// Package SKUs the client owns: field_force, distribution, crm, business, system, people, audit.
-    let enabledPackages: [String]
-    /// Legacy per-user RBAC grants from user_module_permissions.
-    let permissions: [String]
-
+    
     enum CodingKeys: String, CodingKey {
-        case id, name, email, role, mobile, permissions
+        case id, name, email, role, mobile
         case orgId = "org_id"
-        case clientId = "client_id"
-        case enabledModules = "enabled_modules"
-        case enabledPackages = "enabled_packages"
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id              = try c.decode(String.self, forKey: .id)
-        name            = try c.decode(String.self, forKey: .name)
-        role            = try c.decode(String.self, forKey: .role)
-        email           = try c.decodeIfPresent(String.self, forKey: .email)
-        mobile          = try c.decodeIfPresent(String.self, forKey: .mobile)
-        orgId           = try c.decodeIfPresent(String.self, forKey: .orgId)
-        clientId        = try c.decodeIfPresent(String.self, forKey: .clientId)
-        enabledModules  = (try? c.decode([String].self, forKey: .enabledModules)) ?? []
-        enabledPackages = (try? c.decode([String].self, forKey: .enabledPackages)) ?? []
-        permissions     = (try? c.decode([String].self, forKey: .permissions)) ?? []
-    }
-}
-
-// MARK: - Entitlement helpers
-extension User {
-    /// True for legacy sessions stored before /auth/me started returning entitlements.
-    /// Treated as full access so we never lock out an existing user mid-deploy.
-    var isLegacySession: Bool { enabledModules.isEmpty && enabledPackages.isEmpty }
-    func hasModule(_ id: String)  -> Bool { isLegacySession || enabledModules.contains(id) }
-    func hasPackage(_ pkg: String) -> Bool { isLegacySession || enabledPackages.contains(pkg) }
-    var hasFieldForce:  Bool { hasPackage("field_force") }
-    var hasCrm:         Bool { hasPackage("crm") }
-    var hasDistribution: Bool { hasPackage("distribution") }
-    /// True when a client purchased only CRM. Replaces the manual `crm_only_mode`
-    /// AppStorage hack; the app auto-flips into CRM-only mode when this is true.
-    var isCrmOnly: Bool {
-        !isLegacySession && hasCrm && !hasFieldForce && !hasDistribution
     }
 }
 
@@ -69,29 +27,6 @@ enum SecondaryRoute: String, Identifiable {
     case orderHistory, orderCart, orderReview, orderDetail
     case paymentCollect, returns, distributorStock, secondarySales
     var id: String { rawValue }
-
-    /// Which package SKU this route belongs to. Universal routes return `nil`
-    /// and are always available. Used by SecondaryScreenHost + SideMenuView to
-    /// hide / block sheets the user's client hasn't purchased.
-    var requiredPackage: String? {
-        switch self {
-        // Universal — every client gets these
-        case .profile, .settings, .learning, .notifications, .sos:
-            return nil
-        // Field Force
-        case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:
-            return "field_force"
-        // Distribution / Supply Chain
-        case .orderHistory, .orderCart, .orderReview, .orderDetail,
-             .paymentCollect, .returns, .distributorStock, .secondarySales:
-            return "distribution"
-        }
-    }
-
-    func isAvailable(for user: User?) -> Bool {
-        guard let pkg = requiredPackage else { return true }
-        return user?.hasPackage(pkg) ?? true   // missing user → assume legacy / open
-    }
 }
 
 struct ModalRoute: Identifiable {
@@ -245,14 +180,9 @@ struct LoginResponseModel: Codable {
 
 struct LoginData: Codable {
     let accessToken: String
-    /// Supabase refresh token. Long-lived (30 days, rotating). We persist
-    /// it so the access token can be silently refreshed before/after it
-    /// expires, keeping the user signed in until they explicitly log out.
-    let refreshToken: String?
     let user: User
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
-        case refreshToken = "refresh_token"
         case user
     }
 }
@@ -886,6 +816,11 @@ struct RoutePlan: Codable, Identifiable {
     let visitedOutlets: Int?
     let completionPct: Double?
     var outlets: [RouteOutlet]?
+    let vehicleType: String?
+    let co2KgPlanned: Double?
+    let co2KgActual: Double?
+    let totalDistanceKm: Double?
+    let actualDistanceKm: Double?
 
     enum CodingKeys: String, CodingKey {
         case id, status, outlets, stores
@@ -895,10 +830,17 @@ struct RoutePlan: Codable, Identifiable {
         case visitedOutlets = "visited_outlets"
         case completionPct = "completion_pct"
         case date
+        case vehicleType = "vehicle_type"
+        case co2KgPlanned = "co2_kg_planned"
+        case co2KgActual = "co2_kg_actual"
+        case totalDistanceKm = "total_distance_km"
+        case actualDistanceKm = "actual_distance_km"
     }
 
     init(id: String?, planDate: String?, status: String?, activityId: String?, outlets: [RouteOutlet]?,
-         totalOutlets: Int? = nil, visitedOutlets: Int? = nil, completionPct: Double? = nil) {
+         totalOutlets: Int? = nil, visitedOutlets: Int? = nil, completionPct: Double? = nil,
+         vehicleType: String? = nil, co2KgPlanned: Double? = nil, co2KgActual: Double? = nil,
+         totalDistanceKm: Double? = nil, actualDistanceKm: Double? = nil) {
         self.id = id
         self.planDate = planDate
         self.status = status
@@ -907,6 +849,11 @@ struct RoutePlan: Codable, Identifiable {
         self.totalOutlets = totalOutlets
         self.visitedOutlets = visitedOutlets
         self.completionPct = completionPct
+        self.vehicleType = vehicleType
+        self.co2KgPlanned = co2KgPlanned
+        self.co2KgActual = co2KgActual
+        self.totalDistanceKm = totalDistanceKm
+        self.actualDistanceKm = actualDistanceKm
     }
 
     init(from decoder: Decoder) throws {
@@ -921,6 +868,11 @@ struct RoutePlan: Codable, Identifiable {
         completionPct = try container.decodeIfPresent(Double.self, forKey: .completionPct)
         outlets = try container.decodeIfPresent([RouteOutlet].self, forKey: .outlets)
             ?? container.decodeIfPresent([RouteOutlet].self, forKey: .stores)
+        vehicleType = try container.decodeIfPresent(String.self, forKey: .vehicleType)
+        co2KgPlanned = try container.decodeIfPresent(Double.self, forKey: .co2KgPlanned)
+        co2KgActual = try container.decodeIfPresent(Double.self, forKey: .co2KgActual)
+        totalDistanceKm = try container.decodeIfPresent(Double.self, forKey: .totalDistanceKm)
+        actualDistanceKm = try container.decodeIfPresent(Double.self, forKey: .actualDistanceKm)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -933,6 +885,11 @@ struct RoutePlan: Codable, Identifiable {
         try container.encodeIfPresent(visitedOutlets, forKey: .visitedOutlets)
         try container.encodeIfPresent(completionPct, forKey: .completionPct)
         try container.encodeIfPresent(outlets, forKey: .outlets)
+        try container.encodeIfPresent(vehicleType, forKey: .vehicleType)
+        try container.encodeIfPresent(co2KgPlanned, forKey: .co2KgPlanned)
+        try container.encodeIfPresent(co2KgActual, forKey: .co2KgActual)
+        try container.encodeIfPresent(totalDistanceKm, forKey: .totalDistanceKm)
+        try container.encodeIfPresent(actualDistanceKm, forKey: .actualDistanceKm)
     }
 
     /// Computed completion percentage that prefers the server-supplied value
@@ -963,6 +920,8 @@ struct RouteOutlet: Codable, Identifiable {
     let isGeofenced: Bool?
     let storeLat: Double?
     let storeLng: Double?
+    let legDistanceKm: Double?
+    let legCo2Kg: Double?
 
     var id: String { storeId ?? rawId ?? UUID().uuidString }
 
@@ -980,13 +939,16 @@ struct RouteOutlet: Codable, Identifiable {
         case isGeofenced = "is_geofenced"
         case storeLat = "store_lat"
         case storeLng = "store_lng"
+        case legDistanceKm = "leg_distance_km"
+        case legCo2Kg = "leg_co2_kg"
     }
 
     init(rawId: String?, storeId: String?, storeName: String?, address: String?, status: String?,
          activityId: String?, activities: [RouteActivity]?,
          visitOrder: Int? = nil, checkinAt: String? = nil, checkoutAt: String? = nil,
          geofenceRadius: Double? = nil, isGeofenced: Bool? = nil,
-         storeLat: Double? = nil, storeLng: Double? = nil) {
+         storeLat: Double? = nil, storeLng: Double? = nil,
+         legDistanceKm: Double? = nil, legCo2Kg: Double? = nil) {
         self.rawId = rawId
         self.storeId = storeId
         self.storeName = storeName
@@ -1001,6 +963,8 @@ struct RouteOutlet: Codable, Identifiable {
         self.isGeofenced = isGeofenced
         self.storeLat = storeLat
         self.storeLng = storeLng
+        self.legDistanceKm = legDistanceKm
+        self.legCo2Kg = legCo2Kg
     }
 
     init(from decoder: Decoder) throws {
@@ -1021,6 +985,8 @@ struct RouteOutlet: Codable, Identifiable {
         isGeofenced = try container.decodeIfPresent(Bool.self, forKey: .isGeofenced)
         storeLat = try container.decodeIfPresent(Double.self, forKey: .storeLat)
         storeLng = try container.decodeIfPresent(Double.self, forKey: .storeLng)
+        legDistanceKm = try container.decodeIfPresent(Double.self, forKey: .legDistanceKm)
+        legCo2Kg = try container.decodeIfPresent(Double.self, forKey: .legCo2Kg)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1039,6 +1005,8 @@ struct RouteOutlet: Codable, Identifiable {
         try container.encodeIfPresent(isGeofenced, forKey: .isGeofenced)
         try container.encodeIfPresent(storeLat, forKey: .storeLat)
         try container.encodeIfPresent(storeLng, forKey: .storeLng)
+        try container.encodeIfPresent(legDistanceKm, forKey: .legDistanceKm)
+        try container.encodeIfPresent(legCo2Kg, forKey: .legCo2Kg)
     }
 }
 
@@ -1056,24 +1024,15 @@ class Session: ObservableObject {
         get { UserDefaults.standard.string(forKey: "auth_token") ?? "" }
         set { UserDefaults.standard.set(newValue, forKey: "auth_token") }
     }
-
-    /// Supabase refresh token. Long-lived. Used by `KinematicRepository.refreshAccessToken`
-    /// to silently swap a stale access token for a fresh one, so the user
-    /// never gets kicked out unless they explicitly log out.
-    static var refreshToken: String {
-        get { UserDefaults.standard.string(forKey: "refresh_token") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "refresh_token") }
-    }
-
+    
     static var isDemoMode: Bool {
         get { UserDefaults.standard.bool(forKey: "is_demo_mode") }
         set { UserDefaults.standard.set(newValue, forKey: "is_demo_mode") }
     }
-
-    /// Number of consecutive 401s where refresh ALSO failed. Stays 0 in
-    /// the normal case because each 401 is now resolved by a silent refresh.
-    /// We only surface a re-auth prompt once the refresh token itself is
-    /// rejected — we no longer force-logout based on this counter.
+    
+    /// Number of consecutive 401s seen by the API client. Used to decide
+    /// when to give up and force-logout instead of kicking the user out
+    /// on the very first transient 401.
     static var unauthorizedHits: Int = 0
 
     static var isAuthenticated: Bool { !sharedToken.isEmpty || isDemoMode }
@@ -1088,9 +1047,8 @@ class Session: ObservableObject {
             }
         }
     }
-    static func logout() {
+    static func logout() { 
         sharedToken = ""
-        refreshToken = ""
         currentUser = nil
         isDemoMode = false
     }
@@ -1211,83 +1169,13 @@ class KinematicRepository {
         }
     }
     
-    /// Silently swap the stored access token for a fresh one using the
-    /// long-lived refresh token. Returns true on success. Serialised via
-    /// `refreshLock` so a burst of concurrent 401s only triggers one POST
-    /// to `/auth/refresh`.
-    private static let refreshLock = NSLock()
-    private static var refreshInFlight: Task<Bool, Never>?
-
-    func refreshAccessToken() async -> Bool {
-        let saved = Session.refreshToken
-        guard !saved.isEmpty else { return false }
-
-        // Coalesce — if another caller already kicked off a refresh, await
-        // its result instead of issuing a second POST.
-        Self.refreshLock.lock()
-        if let inflight = Self.refreshInFlight {
-            Self.refreshLock.unlock()
-            return await inflight.value
-        }
-        let task = Task<Bool, Never> {
-            defer {
-                Self.refreshLock.lock()
-                Self.refreshInFlight = nil
-                Self.refreshLock.unlock()
-            }
-            guard let url = URL(string: "\(baseURL)/auth/refresh") else { return false }
-            var req = URLRequest(url: url)
-            req.httpMethod = "POST"
-            req.timeoutInterval = 15
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONEncoder().encode(["refresh_token": saved])
-            do {
-                let (data, response) = try await URLSession.shared.data(for: req)
-                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                guard code == 200 else {
-                    print("🚩 REFRESH_FAILED: status \(code)")
-                    return false
-                }
-                struct Body: Codable {
-                    let success: Bool
-                    let data: Inner?
-                    struct Inner: Codable {
-                        let accessToken: String
-                        let refreshToken: String?
-                        enum CodingKeys: String, CodingKey {
-                            case accessToken = "access_token"
-                            case refreshToken = "refresh_token"
-                        }
-                    }
-                }
-                let parsed = try JSONDecoder().decode(Body.self, from: data)
-                guard parsed.success, let newAccess = parsed.data?.accessToken else { return false }
-                Session.sharedToken = newAccess
-                if let newRefresh = parsed.data?.refreshToken, !newRefresh.isEmpty {
-                    Session.refreshToken = newRefresh
-                }
-                print("✅ REFRESH_OK")
-                return true
-            } catch {
-                print("🚩 REFRESH_ERROR: \(error.localizedDescription)")
-                return false
-            }
-        }
-        Self.refreshInFlight = task
-        Self.refreshLock.unlock()
-        return await task.value
-    }
-
     // --- New Deep Diagnostic Helper ---
     private func performRequest<T: Codable>(
         _ path: String,
         method: String = "GET",
         body: Data? = nil,
         queryItems: [URLQueryItem]? = nil,
-        idempotencyKey: String? = nil,
-        // Internal — set on the recursive retry after a silent refresh so
-        // we never spin in an infinite refresh loop.
-        _retryingAfterRefresh: Bool = false
+        idempotencyKey: String? = nil
     ) async throws -> ApiResponse<T>? {
         var urlComponents = URLComponents(string: "\(baseURL)\(path)")
         if let queryItems = queryItems {
@@ -1311,48 +1199,44 @@ class KinematicRepository {
         if let key = idempotencyKey {
             req.setValue(key, forHTTPHeaderField: "Idempotency-Key")
         }
-
+        
         if let body = body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = body
         }
-
+        
         print("🚀 API_START: \(method) \(url.absoluteString)")
         if let orgId = req.value(forHTTPHeaderField: "X-Org-Id") {
             print("🔑 ORG_ID: \(orgId)")
         }
-
+        
         let (data, response) = try await URLSession.shared.data(for: req)
-
+        
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
         print("📡 API_END: Status \(statusCode) for \(path)")
-
-
+        
+        
         // Session resilience:
-        //   On 401 we silently refresh the access token using the long-lived
-        //   refresh token and replay the request once. The user never gets
-        //   kicked out unless they explicitly hit Sign Out OR the refresh
-        //   token itself is rejected (revoked / 30d-stale). Only in that
-        //   final case do we set `needsReAuth` so the UI can offer a
-        //   gentle re-login — we no longer wipe the local session
-        //   automatically.
+        //   The previous behaviour was to wipe the session on the *first*
+        //   401, which kicked field executives out mid-shift the moment
+        //   their JWT expired. We now keep the local session intact and
+        //   only force-logout if 401s keep happening. This way:
+        //     1) Cached attendance/check-in UI stays visible
+        //     2) Transient 401s (network/clock skew) don't blow up auth
+        //     3) After repeated 401s we surface a "session expired" flag
+        //        the UI can act on without losing state
         if statusCode == 401 {
-            if !_retryingAfterRefresh {
-                print("⚠️ AUTH_ERROR: 401 on \(path). Attempting silent refresh.")
-                let refreshed = await refreshAccessToken()
-                if refreshed {
-                    Session.unauthorizedHits = 0
-                    return try await performRequest(
-                        path, method: method, body: body,
-                        queryItems: queryItems, idempotencyKey: idempotencyKey,
-                        _retryingAfterRefresh: true
-                    )
-                }
-            }
-            // Refresh failed (or this IS the retry hitting 401 again).
-            // Surface a flag the UI can prompt on, but DO NOT auto-logout.
+            print("⚠️ AUTH_ERROR: 401 on \(path). Marking session as needing re-auth.")
             Session.unauthorizedHits += 1
             await MainActor.run { KiniAppState.shared.needsReAuth = true }
+            if Session.unauthorizedHits >= 5 {
+                print("⛔ AUTH_ERROR: 5+ consecutive 401s — forcing logout.")
+                Session.unauthorizedHits = 0
+                await MainActor.run {
+                    Session.logout()
+                    KiniAppState.shared.checkAuth()
+                }
+            }
         } else if statusCode >= 200 && statusCode < 400 {
             // Reset the counter on any successful response so a re-login
             // (or token refresh on the backend) resumes normal behaviour.
@@ -1499,28 +1383,7 @@ class KinematicRepository {
             return []
         }
     }
-
-    /// Re-pull `/auth/me` and overwrite the cached `Session.currentUser` so
-    /// entitlement-driven UI gating (CRM-only mode, FF tabs, etc.) reflects
-    /// the latest server-side SKU state. Critical for users whose session was
-    /// stored before `enabled_modules` / `enabled_packages` rolled out — those
-    /// stale rows have empty arrays which the User model treats as a "legacy
-    /// session" (i.e. full access), so a CRM-only client like Hemanth was
-    /// seeing Field Force tabs until this refresh ran.
-    @discardableResult
-    func refreshMe() async -> User? {
-        guard !Session.sharedToken.isEmpty else { return nil }
-        do {
-            let res: ApiResponse<User>? = try await performRequest("/auth/me")
-            guard let user = res?.data else { return nil }
-            await MainActor.run { Session.currentUser = user }
-            return user
-        } catch {
-            print("🚩 refreshMe failed: \(error.localizedDescription)")
-            return nil
-        }
-    }
-
+    
     func login(email: String, phone: String?, pass: String) async -> (Bool, String?) {
         guard let url = URL(string: "\(baseURL)/auth/login") else { return (false, "Invalid URL") }
         let identifier = (phone != nil && !phone!.isEmpty) ? phone! : email
@@ -1541,14 +1404,8 @@ class KinematicRepository {
             do {
                 let result = try JSONDecoder().decode(LoginResponseModel.self, from: data)
                 if result.success, let t = result.data?.accessToken {
-                    await MainActor.run {
+                    await MainActor.run { 
                         Session.sharedToken = t
-                        // Persist the refresh token so the access token can
-                        // be silently swapped when it expires (~1h Supabase
-                        // default), keeping the user signed in for the full
-                        // refresh-token lifetime (~30d, rolling) without a
-                        // re-login prompt.
-                        Session.refreshToken = result.data?.refreshToken ?? ""
                         Session.currentUser = result.data?.user
                         KiniAppState.shared.checkAuth()
                     }
