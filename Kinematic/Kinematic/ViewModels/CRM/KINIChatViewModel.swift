@@ -7,8 +7,13 @@ final class KINIChatViewModel: ObservableObject {
     @Published var draft: String = ""
     @Published var isSending = false
     @Published var errorMessage: String?
-    /// Latest monthly KINI quota — drives the credits chip in the header.
-    @Published var usage: KiniUsage?
+    /// Set when the backend returned HTTP 429 with a structured limit code.
+    /// View flips into a "monthly limit reached" empty state when non-nil.
+    @Published var limitCode: KiniLimitCode?
+    /// Bumped after every successful turn so the credits pill re-fetches.
+    @Published var creditsRefreshTrigger: Int = 0
+    /// True when voice mode is on. Chat view toggles the mic UI on this.
+    @Published var voiceMode: Bool = false
 
     private let api = AIChatService.shared
 
@@ -22,26 +27,15 @@ final class KINIChatViewModel: ObservableObject {
             toolPayload: nil,
             cards: nil
         ))
-        Task { await refreshUsage() }
     }
 
-    func refreshUsage() async {
-        if let u = await api.fetchUsage() { usage = u }
-    }
-
-    func reset() {
-        messages = [ChatMessage(
-            id: UUID().uuidString,
-            role: "assistant",
-            content: "Conversation cleared. What’s next?",
-            createdAt: ISO8601DateFormatter().string(from: Date()),
-            toolName: nil, toolPayload: nil, cards: nil
-        )]
-    }
-
-    func send() async {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isSending else { return }
+    /// Send the current draft (or an externally-provided text from voice mode).
+    /// Returns the assistant reply text on success so the caller can pipe it
+    /// into TTS without re-reading `messages`.
+    @discardableResult
+    func send(overrideText: String? = nil) async -> String? {
+        let text = (overrideText ?? draft).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isSending else { return nil }
         let userMsg = ChatMessage(
             id: UUID().uuidString,
             role: "user",
@@ -52,7 +46,7 @@ final class KINIChatViewModel: ObservableObject {
             cards: nil
         )
         messages.append(userMsg)
-        draft = ""
+        if overrideText == nil { draft = "" }
         isSending = true
         defer { isSending = false }
 
@@ -75,8 +69,23 @@ final class KINIChatViewModel: ObservableObject {
                 cards: response.cards
             )
             messages.append(assistant)
-            // Backend stamps the freshest quota on every successful reply.
-            if let u = response.usage { usage = u }
+            limitCode = nil
+            creditsRefreshTrigger &+= 1
+            return response.text
+        } catch let q as KiniQuotaError {
+            // Cap hit — surface the structured code so the view can flip
+            // into an empty-state with the right copy. We also drop a stub
+            // assistant message so the user gets immediate feedback.
+            limitCode = q.code
+            errorMessage = q.message
+            messages.append(ChatMessage(
+                id: UUID().uuidString,
+                role: "assistant",
+                content: q.message,
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                toolName: nil, toolPayload: nil, cards: nil
+            ))
+            return nil
         } catch {
             errorMessage = error.localizedDescription
             messages.append(ChatMessage(
@@ -86,6 +95,7 @@ final class KINIChatViewModel: ObservableObject {
                 createdAt: ISO8601DateFormatter().string(from: Date()),
                 toolName: nil, toolPayload: nil, cards: nil
             ))
+            return nil
         }
     }
 }
