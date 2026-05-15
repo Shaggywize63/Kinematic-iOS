@@ -48,63 +48,21 @@ func formatTime(_ iso: String?) -> String {
 // --- MAIN VIEWS ---
 struct ContentView: View {
     @EnvironmentObject var appState: KiniAppState
-    @State private var showKini: Bool = false
-    @State private var kiniUsage: KiniUsage? = nil
-
-    /// Whether the persistent KINI launcher should appear. Hidden pre-login,
-    /// hidden for clients without the CRM SKU (Field-Force-only deployments).
-    private var canShowKiniFab: Bool {
-        guard appState.isAuthenticated else { return false }
-        return Session.currentUser?.hasCrm ?? false
-    }
-
+    
     var body: some View {
-        // GLOBAL CANVAS (Root-Level Atmospheric Background). Moved from a
-        // ZStack sibling to a `.background()` modifier — the previous
-        // structure let VibrantBackgroundView's 500x500 offset circles
-        // inflate the ZStack's intrinsic size, which combined with
-        // `.bottomTrailing` alignment pushed the entire `MainTabView` /
-        // `CRMTabView` frame off the left edge of the viewport. Same fix
-        // already applied in StoreVisitView (see comment there).
-        ZStack(alignment: .bottomTrailing) {
+        ZStack {
+            // GLOBAL CANVAS (Root-Level Atmospheric Background)
+            VibrantBackgroundView()
+                .ignoresSafeArea()
+            
             if !appState.isAuthenticated {
                 LoginView(onSuccess: { appState.checkAuth() })
             } else {
                 MainTabView()
             }
-
-            // Persistent KINI launcher. Matches the web KinematicAI FAB and
-            // floats above every screen except the chat itself (the
-            // fullScreenCover hosting the chat masks it automatically).
-            if canShowKiniFab {
-                KiniFAB(usage: kiniUsage) { showKini = true }
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 28)
-                    .transition(.scale.combined(with: .opacity))
-            }
         }
-        .background(VibrantBackgroundView().ignoresSafeArea())
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
-        }
-        .fullScreenCover(isPresented: $showKini, onDismiss: {
-            // Pick up the latest quota when the user closes the chat so the
-            // chip on the FAB reflects whatever was spent inside the sheet.
-            Task { kiniUsage = await AIChatService.shared.fetchUsage() ?? kiniUsage }
-        }) {
-            KiniChatView(onClose: { showKini = false })
-        }
-        .task(id: appState.isAuthenticated) {
-            // Prefetch on auth so the chip is populated on first paint.
-            guard appState.isAuthenticated else { kiniUsage = nil; return }
-            // Re-pull /auth/me so entitlements (enabled_modules /
-            // enabled_packages) refresh from the server. Without this,
-            // sessions cached before entitlements rolled out have empty
-            // arrays — the User model treats that as a legacy session and
-            // grants full access, which is why CRM-only Hemanth was seeing
-            // Field Force tabs.
-            await KinematicRepository.shared.refreshMe()
-            kiniUsage = await AIChatService.shared.fetchUsage()
         }
     }
 }
@@ -112,31 +70,13 @@ struct ContentView: View {
 struct MainTabView: View {
     @EnvironmentObject var appState: KiniAppState
     @Namespace private var animation // For Matched Geometry (Liquid Pod)
-    /// Legacy manual override (Tata Tiscon-era hack). Kept so existing
-    /// installs continue to work, but the SKU-derived `User.isCrmOnly`
-    /// computed property is the new source of truth.
-    @AppStorage("crm_only_mode") private var crmOnlyModeOverride: Bool = false
-
-    /// True when the app should run in CRM-only mode — either because the
-    /// client only purchased the CRM SKU, or the manual override is on.
-    private var crmOnlyMode: Bool {
-        if crmOnlyModeOverride { return true }
-        return Session.currentUser?.isCrmOnly ?? false
-    }
-
-    /// Whether the Field Force tabs (Attendance, Route) should be visible.
-    private var hasFieldForce: Bool {
-        Session.currentUser?.hasFieldForce ?? true
-    }
+    @AppStorage("crm_only_mode") private var crmOnlyMode: Bool = false
 
     var body: some View {
-        // CRM-only deployments (e.g. Tata Tiscon, or any client with a CRM-only SKU)
-        // get the full CRM tab shell as the root of the app — Dashboard / Leads /
-        // Pipeline / Activities / More — so CRM feels like its own product.
-        // Full-access clients keep the field-ops MainTabView and reach CRM via
-        // the side menu, which presents the same CRMTabView as a fullScreenCover.
+        // CRM-only deployments (e.g. Tata Tiscon) hide the attendance + route
+        // tabs entirely and surface CRM as the whole app.
         if crmOnlyMode {
-            CRMTabView()
+            NavigationStack { CRMHomeView() }
         } else {
             mainTabBody
         }
@@ -150,20 +90,15 @@ struct MainTabView: View {
         //     which was the main reason Home felt like it was hanging)
         //   - .tabBarMinimizeBehavior(.onScrollDown) auto-hides the bar
         //     when the user scrolls down, the native iOS 26 gesture
-        //
-        // Attendance + Route are Field Force features; clients without that
-        // SKU only see the Home tab.
         TabView(selection: $appState.selectedTab) {
             Tab("Home", systemImage: "house", value: 0) {
                 HomeView()
             }
-            if hasFieldForce {
-                Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
-                    AttendanceView()
-                }
-                Tab("Route", systemImage: "map", value: 2) {
-                    RoutePlansView()
-                }
+            Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
+                AttendanceView()
+            }
+            Tab("Route", systemImage: "map", value: 2) {
+                RoutePlansView()
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
