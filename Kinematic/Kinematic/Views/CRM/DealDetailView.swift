@@ -9,14 +9,11 @@ struct DealDetailView: View {
     @State private var editing = false
     @State private var stages: [Stage] = []
     /// Primary contact loaded lazily from `Deal.contactId` so the deal
-    /// detail can offer tap-to-call without a separate navigation hop.
+    /// header can offer tap-to-call without a separate navigation.
     @State private var primaryContact: Contact?
     @State private var loggingActivity = false
     @State private var composerInitialType: String = "call"
     @State private var composerInitialSubject: String = ""
-    /// Set after a tap-to-call POSTs the minimal call row. Composer save
-    /// PATCHes this id; cancel leaves the minimal record on the timeline.
-    @State private var pendingCallActivityId: String?
     @State private var closingDeal = false
     @State private var reopening = false
     @State private var reopenError: String?
@@ -53,7 +50,7 @@ struct DealDetailView: View {
                                 Text("Suggest next action")
                             }
                             .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10)
-                            .background(Brand.red).foregroundColor(.white).cornerRadius(10)
+                            .background(Color.purple).foregroundColor(.white).cornerRadius(10)
                         }
                     }
                 } else {
@@ -90,11 +87,8 @@ struct DealDetailView: View {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject
-            ) { type, subject, description, imageUrl, when in
-                await logActivity(
-                    type: type, subject: subject, description: description,
-                    imageUrl: imageUrl, completedAt: when
-                )
+            ) { type, subject, description in
+                await logActivity(type: type, subject: subject, description: description)
             }
         }
         .task {
@@ -113,8 +107,8 @@ struct DealDetailView: View {
     private func primaryContactCard(contact: Contact, phone: String, dealName: String) -> some View {
         HStack(spacing: 12) {
             ZStack {
-                Circle().fill(Brand.red.opacity(0.15)).frame(width: 40, height: 40)
-                Image(systemName: "person.fill").foregroundColor(Brand.red)
+                Circle().fill(Color.orange.opacity(0.2)).frame(width: 40, height: 40)
+                Image(systemName: "person.fill").foregroundColor(.orange)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(contact.displayName).font(.system(size: 14, weight: .bold))
@@ -125,10 +119,8 @@ struct DealDetailView: View {
                 phone: phone,
                 prefillSubject: "Call about \(dealName)",
                 onCallInitiated: {
-                    let subject = "Call about \(dealName)"
                     composerInitialType = "call"
-                    composerInitialSubject = subject
-                    Task { await startCallActivity(subject: subject) }
+                    composerInitialSubject = "Call about \(dealName)"
                     loggingActivity = true
                 }
             )
@@ -137,50 +129,19 @@ struct DealDetailView: View {
         .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
     }
 
-    // MARK: - Activity logging
-
-    private func startCallActivity(subject: String) async {
-        let body: [String: Any] = [
-            "type": "call",
-            "subject": subject,
-            "deal_id": dealId,
-            "completed_at": ISO8601DateFormatter().string(from: Date()),
-            "status": "completed",
-        ]
-        if let created = try? await CRMService.shared.createActivity(body) {
-            pendingCallActivityId = created.id
-        }
-    }
-
-    private func logActivity(type: String, subject: String, description: String, imageUrl: String?, completedAt: Date) async {
+    /// POST an activity bound to this deal. Used by the call composer.
+    private func logActivity(type: String, subject: String, description: String) async {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        if type == "call", let id = pendingCallActivityId {
-            var patch: [String: Any] = ["subject": trimmed]
-            let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedDesc.isEmpty { patch["description"] = trimmedDesc }
-            if let imageUrl, !imageUrl.isEmpty { patch["image_url"] = imageUrl }
-            patch["completed_at"] = ISO8601DateFormatter().string(from: completedAt)
-            if let duration = CallObserver.shared.consumeDuration(), duration > 0 {
-                patch["duration_seconds"] = duration
-            }
-            _ = try? await CRMService.shared.updateActivity(id: id, body: patch)
-            pendingCallActivityId = nil
-            return
-        }
         var body: [String: Any] = [
             "type": type,
             "subject": trimmed,
+            "description": description,
             "deal_id": dealId,
         ]
-        let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedDesc.isEmpty { body["description"] = trimmedDesc }
-        if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
         if type != "task" {
-            body["completed_at"] = ISO8601DateFormatter().string(from: completedAt)
+            body["completed_at"] = ISO8601DateFormatter().string(from: Date())
             body["status"] = "completed"
-        } else {
-            body["due_at"] = ISO8601DateFormatter().string(from: completedAt)
         }
         if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
             body["duration_seconds"] = duration
@@ -188,14 +149,21 @@ struct DealDetailView: View {
         _ = try? await CRMService.shared.createActivity(body)
     }
 
+    /// Auto-log fallback for the cancel-after-dial case.
     private func autoLogCallIfNeeded() async {
-        guard let id = pendingCallActivityId else { return }
-        defer { pendingCallActivityId = nil }
         guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
-        _ = try? await CRMService.shared.updateActivity(id: id, body: ["duration_seconds": duration])
+        let subject = composerInitialSubject.isEmpty ? "Call (auto-logged)" : composerInitialSubject
+        let body: [String: Any] = [
+            "type": "call",
+            "subject": subject,
+            "description": "",
+            "deal_id": dealId,
+            "completed_at": ISO8601DateFormatter().string(from: Date()),
+            "status": "completed",
+            "duration_seconds": duration,
+        ]
+        _ = try? await CRMService.shared.createActivity(body)
     }
-
-    // MARK: - Close / re-open
 
     /// Status banner + close/re-open controls. Closing routes through the
     /// dedicated /win and /lose endpoints (see DealCloseView) so the
@@ -278,13 +246,13 @@ struct DealDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(d.name).font(.system(size: 20, weight: .black))
             HStack {
-                Image(systemName: "indianrupeesign.circle.fill").foregroundColor(Brand.red)
-                Text(formattedAmount(d)).font(.headline).foregroundColor(Brand.red)
+                Image(systemName: "indianrupeesign.circle.fill").foregroundColor(.green)
+                Text(formattedAmount(d)).font(.headline).foregroundColor(.green)
                 Spacer()
                 if let stage = d.stageName {
                     Text(stage.uppercased()).font(.system(size: 10, weight: .black))
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Brand.red.opacity(0.15)).foregroundColor(Brand.red).cornerRadius(4)
+                        .background(Color.indigo.opacity(0.15)).foregroundColor(.indigo).cornerRadius(4)
                 }
             }
             if let close = d.expectedCloseDate?.prefix(10) {
@@ -296,10 +264,9 @@ struct DealDetailView: View {
     }
 
     private func formattedAmount(_ d: Deal) -> String {
-        // Kinematic is INR-only — always render ₹ regardless of the
-        // currency stamp on the row (legacy data sometimes carries "USD"
-        // from imports and we never want $ to appear in-app).
-        CurrencyFormatter.formatINR(d.amount)
+        if (d.currency ?? "INR").uppercased() == "INR" { return CurrencyFormatter.formatINR(d.amount) }
+        let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = d.currency ?? "USD"
+        return f.string(from: NSNumber(value: d.amount ?? 0)) ?? "\(d.amount ?? 0)"
     }
 
     private func loadWinProb() async {
