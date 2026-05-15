@@ -106,7 +106,7 @@ struct CRMHelpView: View {
             actionRow(icon: "message.fill", color: .green, title: "WhatsApp",
                       detail: "Opens a pre-filled WhatsApp thread. The conversation is captured by KINI Auto-Response if enabled.")
             actionRow(icon: "sparkles", color: .purple, title: "AI Score",
-                      detail: "Re-runs Claude's scoring model on the lead. The badge changes — green means high intent.")
+                      detail: "Re-runs the KINI AI scoring model on the lead. The badge changes — green means high intent.")
             actionRow(icon: "arrow.triangle.branch", color: .red, title: "Convert",
                       detail: "Promotes the lead to Contact + Account + Deal. You'll be asked for a deal name, amount, and product so the new Deal lands on the pipeline ready to move.")
             actionRow(icon: "person.badge.plus", color: .orange, title: "Assign",
