@@ -22,6 +22,10 @@ struct VibrantBackgroundView: View {
         ZStack {
             (isDark ? Brand.navy : Brand.paper).ignoresSafeArea()
 
+            // Rasterized into a single offscreen layer via .drawingGroup
+            // so the 70–100pt blurs are computed once on the GPU instead
+            // of being recomputed every time an ancestor's body re-runs
+            // (e.g. on each keystroke inside LoginView's TextField).
             ZStack {
                 Circle()
                     .fill(Brand.red.opacity(isDark ? 0.10 : 0.05))
@@ -40,6 +44,7 @@ struct VibrantBackgroundView: View {
                     .frame(width: 300, height: 300)
                     .blur(radius: 100)
             }
+            .drawingGroup(opaque: false, colorMode: .nonLinear)
             .allowsHitTesting(false)
         }
         .allowsHitTesting(false)
@@ -82,9 +87,11 @@ struct LoginView: View {
 
     private var loginContent: some View {
         let theme = LoginTheme(isDark: colorScheme == .dark)
+        // VibrantBackgroundView is mounted once at ContentView root, so we
+        // don't re-mount it here. Doing so was rendering the heavy blurred
+        // gradient twice and re-rasterizing it on every keystroke, which
+        // is what made typing into the email/password fields feel laggy.
         return ZStack {
-            VibrantBackgroundView()
-
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
 
