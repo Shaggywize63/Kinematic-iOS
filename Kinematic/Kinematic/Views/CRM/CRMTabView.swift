@@ -92,6 +92,15 @@ struct CRMMoreMenu: View {
                     CRMHelpView()
                 } label: { MoreRow(icon: "books.vertical.fill", title: "How CRM works", tint: Brand.red) }
             }
+            // Appearance — light/dark/system picker. CRM-only deployments
+            // never reach the field-force SettingsView where the global
+            // theme toggle lives, so we re-host it here so every CRM user
+            // has one-tap access to a theme switch.
+            Section("Appearance") {
+                themeRow("System", appTheme: .system, icon: "circle.lefthalf.filled")
+                themeRow("Light",  appTheme: .light,  icon: "sun.max.fill")
+                themeRow("Dark",   appTheme: .dark,   icon: "moon.stars.fill")
+            }
             if let onExit {
                 Section {
                     Button(action: onExit) {
@@ -125,6 +134,33 @@ struct CRMMoreMenu: View {
             Button("Sign Out", role: .destructive) { appState.logout() }
         } message: {
             Text("You'll need to sign back in to access your CRM data.")
+        }
+    }
+
+    @ViewBuilder
+    private func themeRow(_ label: String, appTheme: AppTheme, icon: String) -> some View {
+        Button {
+            appState.theme = appTheme
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Brand.red.opacity(0.18))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .foregroundColor(Brand.red)
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                Text(label)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.primary)
+                Spacer()
+                if appState.theme == appTheme {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(Brand.red)
+                        .fontWeight(.bold)
+                }
+            }
         }
     }
 }
