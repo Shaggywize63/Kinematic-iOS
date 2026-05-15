@@ -17,12 +17,16 @@ struct DealDetailView: View {
     /// Set after a tap-to-call POSTs the minimal call row. Composer save
     /// PATCHes this id; cancel leaves the minimal record on the timeline.
     @State private var pendingCallActivityId: String?
+    @State private var closingDeal = false
+    @State private var reopening = false
+    @State private var reopenError: String?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let d = initialDeal {
                     headerCard(d)
+                    closeActions(d)
                     if let contact = primaryContact, let phone = contact.phone ?? contact.mobile, !phone.isEmpty {
                         primaryContactCard(contact: contact, phone: phone, dealName: d.name)
                     }
@@ -69,6 +73,16 @@ struct DealDetailView: View {
                 DealEditView(deal: d, stages: stages) { updated in initialDeal = updated }
             }
         }
+        .sheet(isPresented: $closingDeal) {
+            if let d = initialDeal {
+                DealCloseView(deal: d) { updated in initialDeal = updated }
+            }
+        }
+        .alert("Re-open failed",
+               isPresented: .init(get: { reopenError != nil },
+                                  set: { if !$0 { reopenError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(reopenError ?? "") }
         .sheet(
             isPresented: $loggingActivity,
             onDismiss: { Task { await autoLogCallIfNeeded() } }
@@ -179,6 +193,85 @@ struct DealDetailView: View {
         defer { pendingCallActivityId = nil }
         guard let duration = CallObserver.shared.consumeDuration(), duration > 0 else { return }
         _ = try? await CRMService.shared.updateActivity(id: id, body: ["duration_seconds": duration])
+    }
+
+    // MARK: - Close / re-open
+
+    /// Status banner + close/re-open controls. Closing routes through the
+    /// dedicated /win and /lose endpoints (see DealCloseView) so the
+    /// backend writes a crm_deal_history row; re-opening is a plain PATCH
+    /// status:"open" because we don't need a separate audit endpoint for it.
+    @ViewBuilder
+    private func closeActions(_ d: Deal) -> some View {
+        let status = (d.status ?? "open").lowercased()
+        switch status {
+        case "won":
+            statusBanner(text: "Closed as WON", system: "checkmark.seal.fill", color: .green)
+            reopenButton
+        case "lost":
+            VStack(alignment: .leading, spacing: 6) {
+                statusBanner(text: "Closed as LOST", system: "xmark.seal.fill", color: .red)
+                if let reason = d.lostReason, !reason.isEmpty {
+                    Text("Reason: \(reason)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 4)
+                }
+            }
+            reopenButton
+        default:
+            Button { closingDeal = true } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "flag.checkered")
+                    Text("Close deal").font(.system(size: 14, weight: .bold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.green))
+                .foregroundColor(.white)
+            }
+        }
+    }
+
+    private func statusBanner(text: String, system: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: system)
+            Text(text).font(.system(size: 13, weight: .black)).tracking(0.5)
+            Spacer()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundColor(color)
+        .background(RoundedRectangle(cornerRadius: 12).fill(color.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.4), lineWidth: 1))
+    }
+
+    private var reopenButton: some View {
+        Button { Task { await reopenDeal() } } label: {
+            HStack(spacing: 8) {
+                if reopening { ProgressView().controlSize(.small) }
+                else { Image(systemName: "arrow.uturn.backward") }
+                Text(reopening ? "Re-opening…" : "Re-open deal")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary, lineWidth: 1))
+        }
+        .foregroundColor(.primary)
+        .disabled(reopening)
+    }
+
+    private func reopenDeal() async {
+        guard let id = initialDeal?.id else { return }
+        reopening = true
+        defer { reopening = false }
+        do {
+            let updated = try await CRMService.shared.patchDeal(id: id, body: ["status": "open"])
+            initialDeal = updated
+        } catch {
+            reopenError = error.localizedDescription
+        }
     }
 
     private func headerCard(_ d: Deal) -> some View {
