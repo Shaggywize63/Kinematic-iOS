@@ -6,3 +6,9 @@ Kinematic/local_build_2/
 *.log.txt
 *.xcuserstate
 .DS_Store
+
+# Firebase iOS configuration — contains real API keys; each developer /
+# CI runner needs their own copy. See IOS_PUSH_SETUP.md.
+GoogleService-Info.plist
+Kinematic/GoogleService-Info.plist
+Kinematic/Kinematic/GoogleService-Info.plist
