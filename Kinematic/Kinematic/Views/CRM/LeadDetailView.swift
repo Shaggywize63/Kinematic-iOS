@@ -2,6 +2,8 @@ import SwiftUI
 
 /// Lead detail screen. Mirrors the web `crm/leads/[id]/page.tsx` surface:
 ///   - Header actions: Edit · Convert (full options sheet) · Assign · Deactivate · Delete
+///   - Lifecycle banner: Mark Unqualified / Mark Lost (open statuses) ·
+///     Disqualified / Converted banner with Re-open (closed statuses)
 ///   - Profile card (B2B/B2C aware)
 ///   - Converted-To links (contact/account/deal) once a lead converts
 ///   - Related Deals
@@ -20,6 +22,11 @@ struct LeadDetailView: View {
     @State private var showAssignSheet = false
     @State private var confirmDeactivate = false
     @State private var confirmDelete = false
+    /// Lifecycle-step-2 sheet. Driven by both header buttons (Mark
+    /// Unqualified / Mark Lost) — the `disqualifyDefault` carries which
+    /// outcome to pre-select on the sheet.
+    @State private var disqualifying = false
+    @State private var disqualifyDefault: LeadDisqualifyView.Outcome = .unqualified
     /// Activity composer presentation. Driven by both the "+ Log" button
     /// in the ACTIVITY section header and the tap-to-call flow on the
     /// phone field. Prefill state lets the call path open the composer
@@ -37,6 +44,7 @@ struct LeadDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let lead = vm.lead {
                     headerCard(lead: lead)
+                    lifecycleSection(lead: lead)
                     actionsBar(lead: lead)
                     if vm.isConverted { convertedToCard }
                     if let nba = vm.nextBestAction { nextBestActionSection(nba: nba) }
@@ -88,6 +96,15 @@ struct LeadDetailView: View {
                             if vm.errorMessage == nil { converting = false }
                         }
                     }
+                )
+            }
+        }
+        .sheet(isPresented: $disqualifying) {
+            if let lead = vm.lead {
+                LeadDisqualifyView(
+                    lead: lead,
+                    defaultOutcome: disqualifyDefault,
+                    onDisqualified: { updated in vm.applyDisqualified(updated) }
                 )
             }
         }
@@ -209,12 +226,180 @@ struct LeadDetailView: View {
         .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
     }
 
+    // MARK: - Lifecycle section (step 2: disqualify + reopen)
+
+    /// Status-aware control bar that mirrors the dashboard's lead
+    /// lifecycle gestures. Renders one of three shapes:
+    ///   * open statuses (new / working / nurturing / qualified) -> two
+    ///     prominent buttons (Mark Unqualified, Mark Lost) that present
+    ///     `LeadDisqualifyView` with the right outcome preset.
+    ///   * unqualified / lost -> grey banner with the captured
+    ///     `disqualified_at` + `lost_reason`, plus a "Re-open Lead" button.
+    ///   * converted -> green banner with `converted_at` and (if the deal
+    ///     resolves) a NavigationLink to it. Includes a "Re-open Lead"
+    ///     button so the rep can roll back a mis-conversion.
+    @ViewBuilder
+    private func lifecycleSection(lead: Lead) -> some View {
+        let status = (lead.status ?? "").lowercased()
+        switch status {
+        case "unqualified", "lost":
+            disqualifiedBanner(lead: lead, status: status)
+        case "converted":
+            convertedBanner(lead: lead)
+        default:
+            disqualifyButtonsRow()
+        }
+    }
+
+    private func disqualifyButtonsRow() -> some View {
+        HStack(spacing: 10) {
+            Button {
+                disqualifyDefault = .unqualified
+                disqualifying = true
+            } label: {
+                Label("Mark Unqualified", systemImage: "pause.circle")
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.yellow.opacity(0.18))
+                    .foregroundColor(Color.yellow.opacity(0.95))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.yellow.opacity(0.45), lineWidth: 1))
+                    .cornerRadius(10)
+            }
+            Button {
+                disqualifyDefault = .lost
+                disqualifying = true
+            } label: {
+                Label("Mark Lost", systemImage: "xmark.circle")
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Brand.red.opacity(0.12))
+                    .foregroundColor(Brand.red)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.45), lineWidth: 1))
+                    .cornerRadius(10)
+            }
+        }
+    }
+
+    private func disqualifiedBanner(lead: Lead, status: String) -> some View {
+        // Lost = red tint, unqualified = neutral grey — matches dashboard.
+        let isLost = status == "lost"
+        let tint: Color = isLost ? Brand.red : Color.gray
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: isLost ? "xmark.octagon.fill" : "pause.circle.fill")
+                    .foregroundColor(tint)
+                Text(isLost ? "CLOSED AS LOST" : "DISQUALIFIED")
+                    .font(.system(size: 11, weight: .black))
+                    .tracking(0.8)
+                    .foregroundColor(tint)
+                Spacer()
+            }
+            if let when = lead.disqualifiedAt {
+                Text("Closed \(formatDate(when))")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+            if let reason = lead.lostReason, !reason.isEmpty {
+                Text("Reason: \(reason)")
+                    .font(.system(size: 13))
+                    .foregroundColor(.primary)
+            }
+            reopenButton()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(tint.opacity(0.10))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(tint.opacity(0.35), lineWidth: 1))
+        )
+    }
+
+    private func convertedBanner(lead: Lead) -> some View {
+        // Green = success state; using a hard-coded hex so it doesn't
+        // collide with Brand.red even when a future theme rotates it.
+        let green = Color(red: 0.06, green: 0.62, blue: 0.40)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.seal.fill").foregroundColor(green)
+                Text("CONVERTED")
+                    .font(.system(size: 11, weight: .black))
+                    .tracking(0.8)
+                    .foregroundColor(green)
+                Spacer()
+            }
+            if let when = lead.convertedAt {
+                Text("Converted \(formatDate(when))")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+            if let deal = vm.convertedDeal, let dealId = deal.id {
+                NavigationLink {
+                    DealDetailView(dealId: dealId)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.stack.3d.up.fill").foregroundColor(green)
+                        Text(deal.name ?? "Open converted deal")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .background(green.opacity(0.10))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(green.opacity(0.30), lineWidth: 1))
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+            }
+            reopenButton()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(green.opacity(0.10))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(green.opacity(0.35), lineWidth: 1))
+        )
+    }
+
+    private func reopenButton() -> some View {
+        Button {
+            Task { await vm.reopen() }
+        } label: {
+            HStack(spacing: 6) {
+                if vm.reopenBusy { ProgressView().tint(.white).scaleEffect(0.8) }
+                else { Image(systemName: "arrow.uturn.backward.circle.fill") }
+                Text(vm.reopenBusy ? "Re-opening…" : "Re-open Lead")
+            }
+            .font(.system(size: 13, weight: .bold))
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(Brand.red)
+            .foregroundColor(.white)
+            .cornerRadius(10)
+        }
+        .disabled(vm.reopenBusy)
+    }
+
+    /// ISO-8601 to a short user-facing string. Falls back to the raw
+    /// timestamp if parsing fails so we never render a blank banner.
+    private func formatDate(_ iso: String) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        guard let date else { return iso }
+        let out = DateFormatter()
+        out.dateStyle = .medium
+        out.timeStyle = .short
+        return out.string(from: date)
+    }
+
     // MARK: - Action bar (Convert / Assign / Deactivate / Delete)
 
     private func actionsBar(lead: Lead) -> some View {
         // Wrap on small phones with a flexible LazyVGrid-style layout.
         FlexibleHStack(spacing: 10) {
-            if !vm.isConverted {
+            if !vm.isConverted && !vm.isDisqualified {
                 primaryAction("Convert", icon: "arrow.triangle.branch", busy: vm.convertBusy) {
                     converting = true
                 }
@@ -225,11 +410,6 @@ struct LeadDetailView: View {
             if !vm.assignableUsers.isEmpty {
                 secondaryAction("Assign", icon: "person.badge.plus", busy: vm.assignBusy) {
                     showAssignSheet = true
-                }
-            }
-            if !vm.isConverted {
-                outlineAction("Deactivate", icon: "pause.circle", busy: vm.deactivateBusy) {
-                    confirmDeactivate = true
                 }
             }
             destructiveAction("Delete", icon: "trash", busy: vm.deleteBusy) {
@@ -266,22 +446,6 @@ struct LeadDetailView: View {
             .foregroundColor(Brand.red)
             .background(Brand.red.opacity(0.10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.30), lineWidth: 1))
-            .cornerRadius(10)
-        }
-        .disabled(busy)
-    }
-
-    private func outlineAction(_ title: String, icon: String, busy: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if busy { ProgressView().scaleEffect(0.8) }
-                else { Image(systemName: icon) }
-                Text(title)
-            }
-            .font(.system(size: 13, weight: .semibold))
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .foregroundColor(.secondary)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.45), lineWidth: 1))
             .cornerRadius(10)
         }
         .disabled(busy)
