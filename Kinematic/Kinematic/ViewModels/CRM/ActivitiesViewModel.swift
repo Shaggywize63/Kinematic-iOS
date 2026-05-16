@@ -14,8 +14,13 @@ final class ActivitiesViewModel: ObservableObject {
         self.typeFilter = initialFilter
     }
 
+    /// Tasks are managed separately on TasksView — keep them out of the
+    /// activity timeline so completed CRM motion isn't mixed with TODOs.
     var filtered: [Activity] {
-        typeFilter == "all" ? activities : activities.filter { ($0.type ?? "") == typeFilter }
+        let withoutTasks = activities.filter { ($0.type ?? "").lowercased() != "task" }
+        return typeFilter == "all"
+            ? withoutTasks
+            : withoutTasks.filter { ($0.type ?? "") == typeFilter }
     }
 
     func refresh() async {

@@ -9,6 +9,7 @@ final class LeadDetailViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var aiBusy = false
+    @Published var wonBusy = false
 
     private let api = CRMService.shared
     let leadId: String
@@ -41,6 +42,27 @@ final class LeadDetailViewModel: ObservableObject {
     func convert() async {
         do {
             let updated = try await api.convertLead(id: leadId, body: ["create_account": true, "create_deal": true])
+            self.lead = updated
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Mark this lead as won via PATCH /leads/:id — distinct from /convert,
+    /// which spawns Account+Contact+Deal. The lightweight Won path stamps
+    /// status=converted + lifecycle_stage=customer + won_reason so the lead
+    /// detail screen can render the green WON banner without creating a
+    /// downstream deal record.
+    func markAsWon(reason: String?) async {
+        wonBusy = true
+        defer { wonBusy = false }
+        var body: [String: Any] = [
+            "status": "converted",
+            "lifecycle_stage": "customer",
+        ]
+        if let reason, !reason.isEmpty { body["won_reason"] = reason }
+        do {
+            let updated = try await api.patchLead(id: leadId, body: body)
             self.lead = updated
         } catch {
             errorMessage = error.localizedDescription

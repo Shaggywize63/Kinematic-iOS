@@ -4,6 +4,8 @@ struct LeadDetailView: View {
     @StateObject var vm: LeadDetailViewModel
     @State private var editing = false
     @State private var loggingActivity = false
+    @State private var showingWonSheet = false
+    @State private var wonReason: String = ""
     /// Prefill values for the activity composer. Reset to defaults
     /// whenever the user opens the composer manually; overridden when the
     /// CallButton presents the sheet after a tap-to-call.
@@ -19,9 +21,10 @@ struct LeadDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let lead = vm.lead {
                     headerCard(lead: lead)
+                    if lead.isWon { wonBanner(lead: lead) }
                     if lead.isB2c == true { b2cProfileCard(lead: lead) }
                     if let score = vm.score { scoreCard(score: score) }
-                    aiActions
+                    aiActions(lead: lead)
                     activitiesSection
                 } else if vm.isLoading {
                     ProgressView().padding(.top, 40)
@@ -48,11 +51,6 @@ struct LeadDetailView: View {
         .sheet(
             isPresented: $loggingActivity,
             onDismiss: {
-                // If the rep tapped Call, the dialer connected, and they
-                // dismissed without saving, fire-and-forget a minimal
-                // call activity so the timeline still reflects reality.
-                // consumeDuration returns nil if the save path already
-                // grabbed it, so this only runs on a genuine cancel.
                 let prefill = composerInitialSubject
                 Task { await vm.autoLogCallIfNeeded(prefillSubject: prefill) }
             }
@@ -64,6 +62,9 @@ struct LeadDetailView: View {
                 await vm.logActivity(type: type, subject: subject, description: description)
             }
         }
+        .sheet(isPresented: $showingWonSheet) {
+            wonSheet
+        }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .task { await vm.load() }
     }
@@ -74,6 +75,7 @@ struct LeadDetailView: View {
                 Text(lead.displayName).font(.system(size: 22, weight: .black))
                 Spacer()
                 if lead.isB2c == true { badge("B2C", color: .purple) } else { badge("B2B", color: .blue) }
+                if lead.isWon { badge("WON", color: .green) }
                 ScoreBadge(score: lead.score ?? 0)
             }
             if lead.isB2c != true, let c = lead.company { Text(c).foregroundColor(.secondary) }
@@ -103,6 +105,25 @@ struct LeadDetailView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    /// Banner shown at the top of the detail card when the lead has been
+    /// closed as won. Mirrors the dashboard's green callout so the same
+    /// lead read consistently across web and mobile.
+    private func wonBanner(lead: Lead) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "trophy.fill").foregroundColor(.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Lead Won!").font(.system(size: 14, weight: .heavy)).foregroundColor(.green)
+                if let reason = lead.wonReason, !reason.isEmpty {
+                    Text(reason).font(.system(size: 12)).foregroundColor(.green.opacity(0.85))
+                }
+            }
+            Spacer()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.12)))
     }
 
     private func b2cProfileCard(lead: Lead) -> some View {
@@ -152,7 +173,7 @@ struct LeadDetailView: View {
         .background(RoundedRectangle(cornerRadius: 18).fill(Color.purple.opacity(0.08)).overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.purple.opacity(0.25), lineWidth: 1)))
     }
 
-    private var aiActions: some View {
+    private func aiActions(lead: Lead) -> some View {
         HStack(spacing: 10) {
             Button { Task { await vm.runAIScore() } } label: {
                 HStack {
@@ -160,11 +181,54 @@ struct LeadDetailView: View {
                     Text("AI Score")
                 }.font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10).background(Color.purple).foregroundColor(.white).cornerRadius(10)
             }
-            Button { Task { await vm.convert() } } label: {
-                HStack { Image(systemName: "arrow.triangle.branch"); Text("Convert") }
-                    .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10).background(Color.green).foregroundColor(.white).cornerRadius(10)
+            // Hide Convert + Mark as Won once the lead is closed — these are
+            // open-lead actions only.
+            if !lead.isWon && lead.status != "converted" {
+                Button { Task { await vm.convert() } } label: {
+                    HStack { Image(systemName: "arrow.triangle.branch"); Text("Convert") }
+                        .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10).background(Color.green).foregroundColor(.white).cornerRadius(10)
+                }
+                Button {
+                    wonReason = ""
+                    showingWonSheet = true
+                } label: {
+                    HStack { Image(systemName: "trophy.fill"); Text("Mark Won") }
+                        .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10).background(Color.green.opacity(0.2)).foregroundColor(.green).cornerRadius(10)
+                }
             }
             Spacer()
+        }
+    }
+
+    /// Bottom sheet to capture the optional win reason before flipping the
+    /// lead to Won. Empty reason is accepted — the backend treats null as
+    /// "unspecified" and the green banner still renders.
+    private var wonSheet: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("Win reason")) {
+                    TextField("e.g. Best price, fastest delivery", text: $wonReason, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+            }
+            .navigationTitle("Mark as Won")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showingWonSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task {
+                            await vm.markAsWon(reason: wonReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : wonReason)
+                            showingWonSheet = false
+                        }
+                    } label: {
+                        if vm.wonBusy { ProgressView() } else { Text("Save").bold() }
+                    }
+                    .disabled(vm.wonBusy)
+                }
+            }
         }
     }
 
@@ -184,8 +248,10 @@ struct LeadDetailView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
             }
-            if vm.activities.isEmpty { Text("No activity logged.").font(.caption).foregroundColor(.gray) }
-            else { ForEach(vm.activities) { a in ActivityTimelineItem(activity: a) } }
+            // Filter out task-type rows here too — they live on TasksView.
+            let visible = vm.activities.filter { ($0.type ?? "").lowercased() != "task" }
+            if visible.isEmpty { Text("No activity logged.").font(.caption).foregroundColor(.gray) }
+            else { ForEach(visible) { a in ActivityTimelineItem(activity: a) } }
         }
     }
 }

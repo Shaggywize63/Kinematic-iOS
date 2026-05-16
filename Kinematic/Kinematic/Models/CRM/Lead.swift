@@ -47,6 +47,11 @@ struct Lead: Codable, Identifiable, Hashable {
     let marketingConsent: Bool?
     let whatsappConsent: Bool?
 
+    // Won (explicit close-as-won, distinct from /convert which spawns a deal).
+    // The backend stamps both fields when POST /leads/:id/won fires.
+    let wonReason: String?
+    let wonAt: String?
+
     var displayName: String {
         let f = firstName ?? ""
         let l = lastName ?? ""
@@ -58,6 +63,11 @@ struct Lead: Codable, Identifiable, Hashable {
         let parts = [addressLine1, addressLine2, city, state, postalCode, country].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
+
+    /// True when the lead has been explicitly marked Won (status=converted +
+    /// won_reason stamped). Distinct from converted-via-/convert which only
+    /// sets status='converted' and a converted_deal_id.
+    var isWon: Bool { status == "converted" && (wonReason?.isEmpty == false || wonAt != nil) }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -96,6 +106,8 @@ struct Lead: Codable, Identifiable, Hashable {
         case preferredContactMethod = "preferred_contact_method"
         case marketingConsent = "marketing_consent"
         case whatsappConsent = "whatsapp_consent"
+        case wonReason = "won_reason"
+        case wonAt = "won_at"
     }
 }
 

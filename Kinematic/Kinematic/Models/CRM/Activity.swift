@@ -17,6 +17,10 @@ struct Activity: Codable, Identifiable, Hashable {
     let durationMinutes: Int?
     let createdAt: String?
     let updatedAt: String?
+    // Optional attachment surfaced in the timeline as a thumbnail.
+    // Backend column `image_url` is nullable and only stamped when an
+    // FE uploads a photo with the activity (e.g. a planogram check).
+    let imageUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -33,5 +37,6 @@ struct Activity: Codable, Identifiable, Hashable {
         case durationMinutes = "duration_minutes"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case imageUrl = "image_url"
     }
 }
