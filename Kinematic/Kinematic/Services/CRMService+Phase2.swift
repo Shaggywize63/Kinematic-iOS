@@ -48,7 +48,7 @@ private extension CRMService {
         req.httpMethod = "GET"
         req.timeoutInterval = 30
         Self.applyHeaders(to: &req)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await CRMHTTP.send(req)
         try Self.validate(resp)
         return try Self.decodeListEnvelope(T.self, from: data)
     }
@@ -59,7 +59,7 @@ private extension CRMService {
         req.httpMethod = "GET"
         req.timeoutInterval = 30
         Self.applyHeaders(to: &req)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await CRMHTTP.send(req)
         try Self.validate(resp)
         return try Self.decodeEnvelope(T.self, from: data)
     }
@@ -88,9 +88,6 @@ private extension CRMService {
         }
         if let orgId = Session.currentUser?.orgId {
             req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
-        }
-        if let cid = CRMClientScope.selectedClientId() {
-            req.setValue(cid, forHTTPHeaderField: "X-Client-Id")
         }
     }
 
