@@ -47,6 +47,13 @@ struct Lead: Codable, Identifiable, Hashable {
     let marketingConsent: Bool?
     let whatsappConsent: Bool?
 
+    // Lifecycle (disqualify / reopen). Populated by the backend whenever
+    // status flips to "unqualified" or "lost" via PATCH /leads/:id, and
+    // cleared again by POST /leads/:id/reopen. Used by the lead detail
+    // banner so the rep can see *why* a lead was disqualified inline.
+    let lostReason: String?
+    let disqualifiedAt: String?
+
     var displayName: String {
         let f = firstName ?? ""
         let l = lastName ?? ""
@@ -96,6 +103,8 @@ struct Lead: Codable, Identifiable, Hashable {
         case preferredContactMethod = "preferred_contact_method"
         case marketingConsent = "marketing_consent"
         case whatsappConsent = "whatsapp_consent"
+        case lostReason = "lost_reason"
+        case disqualifiedAt = "disqualified_at"
     }
 }
 
