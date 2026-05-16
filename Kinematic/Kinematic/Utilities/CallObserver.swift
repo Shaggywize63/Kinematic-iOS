@@ -4,6 +4,7 @@ import CallKit
 /// Observes outgoing calls placed via tel: / FaceTime so the CRM can stamp
 /// `duration_seconds` on the matching call activity.
 ///
+/// Why CXCallObserver and not READ_PHONE_STATE-equivalent: on iOS,
 /// CXCallObserver is part of CallKit and observes calls placed via the
 /// system dialer regardless of which app initiated them. **No entitlement
 /// or permission is required** to read this — it's privacy-respecting

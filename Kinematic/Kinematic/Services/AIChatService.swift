@@ -5,6 +5,21 @@
 
 import Foundation
 
+/// Reason codes the backend emits on 429. UI maps them to copy / state.
+enum KiniLimitCode: String {
+    case orgLimit  = "ORG_KINI_LIMIT_REACHED"
+    case userLimit = "USER_KINI_LIMIT_REACHED"
+}
+
+/// Surfaced when the backend rejects the chat with HTTP 429. Carries the
+/// machine-readable `code` so the view layer can switch copy between
+/// per-user and org-wide caps.
+struct KiniQuotaError: LocalizedError {
+    let code: KiniLimitCode
+    let message: String
+    var errorDescription: String? { message }
+}
+
 final class AIChatService {
     static let shared = AIChatService()
 
@@ -33,17 +48,18 @@ final class AIChatService {
         return try await perform(req)
     }
 
-    /// GET /api/v1/crm/ai/usage — current month's AI quota for the caller.
-    /// Best-effort: returns nil on any failure so the FAB chip can quietly hide
-    /// instead of surfacing a transient error.
-    func fetchUsage() async -> KiniUsage? {
-        do {
-            let req = try makeRequest(path: "/api/v1/crm/ai/usage", method: "GET", body: nil)
-            let usage: KiniUsage = try await perform(req)
-            return usage
-        } catch {
-            return nil
-        }
+    /// GET /api/v1/crm/ai/credits — org-wide monthly credits + breakdown.
+    func getCredits() async throws -> KiniCredits {
+        let req = try makeRequest(path: "/api/v1/crm/ai/credits", method: "GET", body: nil)
+        return try await perform(req)
+    }
+
+    /// GET /api/v1/crm/ai/usage — caller's per-user monthly usage.
+    /// This is what the dashboard's KINI pill displays. Cap respects the
+    /// per-client override (e.g. Tata Tiscon users see 20).
+    func getUsage() async throws -> KiniUsage {
+        let req = try makeRequest(path: "/api/v1/crm/ai/usage", method: "GET", body: nil)
+        return try await perform(req)
     }
 
     private var authToken: String? {
@@ -62,6 +78,8 @@ final class AIChatService {
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Per-platform attribution for org-wide credit reporting on the backend.
+        req.setValue("ios", forHTTPHeaderField: "X-Kinematic-Platform")
         if let orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
         req.httpBody = body
         req.timeoutInterval = 60
@@ -74,8 +92,19 @@ final class AIChatService {
             throw CRMServiceError.badResponse(0)
         }
         if !(200..<300).contains(http.statusCode) {
+            // KINI 429 returns a structured {code,message} error so the
+            // mobile UI can distinguish org-cap from user-cap. Parse first.
+            if http.statusCode == 429,
+               let env = try? decoder.decode(APIEnvelope<KiniLimitPayload>.self, from: data) {
+                let codeStr = env.errorObject?.code
+                    ?? env.data?.usage?.reason
+                    ?? KiniLimitCode.userLimit.rawValue
+                let code = KiniLimitCode(rawValue: codeStr) ?? .userLimit
+                let msg = env.errorObject?.message ?? env.error ?? env.message ?? "Monthly KINI limit reached."
+                throw KiniQuotaError(code: code, message: msg)
+            }
             if let env = try? decoder.decode(APIEnvelope<EmptyAck>.self, from: data),
-               let msg = env.error ?? env.message {
+               let msg = env.errorObject?.message ?? env.error ?? env.message {
                 throw CRMServiceError.server(msg)
             }
             throw CRMServiceError.badResponse(http.statusCode)
@@ -89,4 +118,59 @@ final class AIChatService {
             throw CRMServiceError.decodeFailed(String(describing: error))
         }
     }
+}
+
+// MARK: - Models
+
+/// Response payload for /api/v1/crm/ai/usage — per-user counters.
+/// `exempt = true` for super_admin and the demo placeholder; the UI
+/// hides the pill in that case (matches dashboard behaviour).
+struct KiniUsage: Codable {
+    let used: Int
+    let cap: Int
+    let remaining: Int
+    let month: String
+    let exempt: Bool
+}
+
+/// Response payload for /api/v1/crm/ai/credits.
+struct KiniCredits: Codable {
+    let used: Int
+    let limit: Int
+    let periodEnd: String
+    let platformBreakdown: PlatformBreakdown
+
+    enum CodingKeys: String, CodingKey {
+        case used, limit
+        case periodEnd = "period_end"
+        case platformBreakdown = "platform_breakdown"
+    }
+
+    struct PlatformBreakdown: Codable {
+        let web: Int
+        let ios: Int
+        let android: Int
+    }
+}
+
+/// Shape of the {data: {usage: {...}}} object the backend returns on 429.
+struct KiniLimitPayload: Codable {
+    struct Usage: Codable {
+        let used: Int?
+        let cap: Int?
+        let remaining: Int?
+        let month: String?
+        let exempt: Bool?
+        let limitReached: Bool?
+        let reason: String?
+        let orgUsed: Int?
+        let orgCap: Int?
+        enum CodingKeys: String, CodingKey {
+            case used, cap, remaining, month, exempt, reason
+            case limitReached = "limit_reached"
+            case orgUsed = "org_used"
+            case orgCap  = "org_cap"
+        }
+    }
+    let usage: Usage?
 }
