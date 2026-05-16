@@ -121,17 +121,9 @@ final class AIChatService {
 }
 
 // MARK: - Models
-
-/// Response payload for /api/v1/crm/ai/usage — per-user counters.
-/// `exempt = true` for super_admin and the demo placeholder; the UI
-/// hides the pill in that case (matches dashboard behaviour).
-struct KiniUsage: Codable {
-    let used: Int
-    let cap: Int
-    let remaining: Int
-    let month: String
-    let exempt: Bool
-}
+// KiniUsage is defined in Models/CRM/ChatMessage.swift — keeping a single
+// source of truth so the @Published usage tracking and AIChatResponse.usage
+// reference the same type.
 
 /// Response payload for /api/v1/crm/ai/credits.
 struct KiniCredits: Codable {
