@@ -1708,6 +1708,11 @@ class KinematicRepository {
 
 @main
 struct KinematicApp: App {
+    // Hooks UIKit's UIApplication lifecycle into our SwiftUI app so we
+    // can configure Firebase, receive the APNs token, and forward push
+    // notifications via AppDelegate. Required for FCM on iOS — the
+    // Messaging SDK relies on a real UIApplicationDelegate.
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var locationService = LocationTrackingService.shared
     @StateObject private var appState = KiniAppState.shared
     @Environment(\.scenePhase) private var scenePhase
@@ -1732,9 +1737,12 @@ struct KinematicApp: App {
                 .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
                 .onChange(of: scenePhase) { _, phase in
                     // Drain queued attendance + distribution writes whenever
-                    // the app comes back to the foreground.
+                    // the app comes back to the foreground. Also resend the
+                    // cached FCM token in case the user signed in after the
+                    // initial APNs registration completed.
                     if phase == .active && Session.isAuthenticated {
                         Task { await AttendanceCache.shared.flush() }
+                        PushNotificationService.shared.resendTokenAfterLogin()
                     }
                 }
                 .task {
