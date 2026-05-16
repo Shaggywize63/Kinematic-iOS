@@ -68,8 +68,26 @@ final class CRMService {
     func leadActivities(id: String) async throws -> [Activity] {
         try await get("/api/v1/crm/leads/\(id)/activities")
     }
+    /// Backend exposes `/leads/{id}/deals` to fetch every deal linked to a
+    /// lead (the converted deal plus any later opportunities seeded from
+    /// it). Mirrors `crmLeads.deals(id)` in the web client.
+    func leadDeals(id: String) async throws -> [Deal] {
+        try await get("/api/v1/crm/leads/\(id)/deals")
+    }
     func convertLead(id: String, body: [String: Any]) async throws -> Lead {
         try await postJSON("/api/v1/crm/leads/\(id)/convert", body: body)
+    }
+
+    /// Backend `/users` endpoint is gated by admin/supervisor/hr roles. Client-
+    /// role users (CRM-only deployments) will get a 403; we treat that as an
+    /// empty list so the assign button hides quietly instead of erroring.
+    func listAssignableUsers() async -> [AssignableUser] {
+        do {
+            let list: [AssignableUser] = try await get("/api/v1/users")
+            return list
+        } catch {
+            return []
+        }
     }
 
     // MARK: Contacts
@@ -174,6 +192,12 @@ final class CRMService {
     func createActivity(_ body: [String: Any]) async throws -> Activity {
         try await postJSON("/api/v1/crm/activities", body: body)
     }
+    /// Update an existing activity (used by the auto-log-then-edit path on
+    /// the call button: tap dials + creates a minimal activity, composer
+    /// opens to optionally add notes/duration, save PATCHes the same row).
+    func updateActivity(id: String, body: [String: Any]) async throws -> Activity {
+        try await sendJSON("/api/v1/crm/activities/\(id)", method: "PATCH", body: body)
+    }
     func listNotes(leadId: String? = nil, dealId: String? = nil) async throws -> [CRMNote] {
         var q: [String: String] = [:]
         if let leadId { q["lead_id"] = leadId }
@@ -275,13 +299,6 @@ final class CRMService {
 
     private var orgId: String? { Session.currentUser?.orgId }
 
-    /// Admin client-picker selection (mirrors the dashboard's
-    /// `kinematic_selected_client` localStorage entry). Returned only when
-    /// the value parses as a UUID — anything else (legacy literal "Kinematic",
-    /// empty strings) is dropped so we never stamp garbage into the header.
-    /// Client-level users keep this nil because their JWT already pins them.
-    private var selectedClientId: String? { CRMClientScope.selectedClientId() }
-
     private func get<T: Codable>(_ path: String, query: [String: String] = [:]) async throws -> T {
         let req = try makeRequest(path: path, method: "GET", body: nil, query: query)
         return try await perform(req)
@@ -320,16 +337,28 @@ final class CRMService {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
-        if let cid = selectedClientId { req.setValue(cid, forHTTPHeaderField: "X-Client-Id") }
         req.httpBody = body
         req.timeoutInterval = 30
         return req
     }
 
-    private func perform<T: Codable>(_ req: URLRequest) async throws -> T {
+    private func perform<T: Codable>(_ req: URLRequest, retryAfterRefresh: Bool = true) async throws -> T {
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else {
             throw CRMServiceError.badResponse(0)
+        }
+        // 401 → silently refresh the access token and replay once, so the
+        // user stays signed in across the ~1h Supabase access-token expiry
+        // without ever seeing a re-login prompt. We never auto-logout from
+        // here — that only happens when the user explicitly hits Sign Out.
+        if http.statusCode == 401, retryAfterRefresh {
+            let refreshed = await KinematicRepository.shared.refreshAccessToken()
+            if refreshed {
+                // Rebuild the request with the freshly-rotated Bearer token.
+                var retry = req
+                retry.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+                return try await perform(retry, retryAfterRefresh: false)
+            }
         }
         if !(200..<300).contains(http.statusCode) {
             if let env = try? decoder.decode(APIEnvelope<EmptyAck>.self, from: data),
@@ -353,3 +382,22 @@ final class CRMService {
 
 /// Used as a placeholder when we don't care about the response payload.
 struct EmptyAck: Codable {}
+
+/// Shared authenticated URLSession call used by every CRM HTTP path
+/// (CRMService + its extensions). Handles silent refresh-on-401 once so
+/// CRM screens never get kicked out mid-session — mirrors what the main
+/// `KinematicRepository.performRequest` does for field-ops endpoints.
+enum CRMHTTP {
+    static func send(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        let (data, response) = try await URLSession.shared.data(for: req)
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 {
+            let refreshed = await KinematicRepository.shared.refreshAccessToken()
+            if refreshed {
+                var retry = req
+                retry.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+                return try await URLSession.shared.data(for: retry)
+            }
+        }
+        return (data, response)
+    }
+}
