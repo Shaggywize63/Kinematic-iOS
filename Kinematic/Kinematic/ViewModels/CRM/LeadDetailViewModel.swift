@@ -27,6 +27,9 @@ final class LeadDetailViewModel: ObservableObject {
     @Published var assignBusy = false
     @Published var deactivateBusy = false
     @Published var deleteBusy = false
+    /// Busy flag for the lifecycle step-2 reopen action. Surfaced on the
+    /// status banner button so a slow round-trip is visible to the rep.
+    @Published var reopenBusy = false
     @Published var errorMessage: String?
     @Published var successMessage: String?
     /// Non-nil after a successful delete so the view can pop itself.
@@ -39,6 +42,13 @@ final class LeadDetailViewModel: ObservableObject {
 
     var isConverted: Bool {
         (lead?.status?.lowercased() == "converted") || (lead?.convertedAt != nil)
+    }
+
+    /// True when the lead is closed-but-not-converted (unqualified or
+    /// lost). Drives whether the disqualify banner shows on detail.
+    var isDisqualified: Bool {
+        let s = lead?.status?.lowercased()
+        return s == "unqualified" || s == "lost"
     }
 
     func load() async {
@@ -173,6 +183,33 @@ final class LeadDetailViewModel: ObservableObject {
             let updated = try await api.updateLead(id: leadId, body: ["status": "unqualified"])
             self.lead = updated
             successMessage = "Lead deactivated"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Apply a disqualification that came back from `LeadDisqualifyView`.
+    /// The sheet already PATCHed the row; we just need to swap the local
+    /// lead so the banner repaints. Called from the `onDisqualified`
+    /// closure on the sheet presentation.
+    func applyDisqualified(_ updated: Lead) {
+        self.lead = updated
+        successMessage = "Lead marked as \(updated.status?.capitalized ?? "closed")"
+        Task { await loadAuxiliary(lead: updated) }
+    }
+
+    /// POST /leads/:id/reopen. Backend clears converted_*_id, lost_reason,
+    /// disqualified_at and flips status -> 'working' atomically; we just
+    /// swap the local lead and refresh the auxiliary fan-out so the
+    /// converted-to card / NBA disappear in the same render pass.
+    func reopen(reason: String? = nil) async {
+        reopenBusy = true
+        defer { reopenBusy = false }
+        do {
+            let updated = try await api.reopenLead(id: leadId, reason: reason)
+            self.lead = updated
+            successMessage = "Lead re-opened"
+            await loadAuxiliary(lead: updated)
         } catch {
             errorMessage = error.localizedDescription
         }
