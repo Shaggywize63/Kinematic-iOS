@@ -83,6 +83,12 @@ struct CRMMoreMenu: View {
                 NavigationLink {
                     CRMReportsView()
                 } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
+                // Read-only Lead Analytics surface — six widget cards with a
+                // per-card size cycle. Mirrors the dashboard's
+                // /dashboard/crm/analytics screen, scoped down to mobile.
+                NavigationLink {
+                    LeadAnalyticsView()
+                } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: "Lead Analytics", tint: Brand.red) }
             }
             // Help & lifecycle — single-tap onboarding so any new rep can
             // understand how a Lead → Contact → Deal flows through the CRM
