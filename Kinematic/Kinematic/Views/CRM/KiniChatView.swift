@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 private let brandRed = Color(red: 0xE0/255, green: 0x1E/255, blue: 0x2C/255)
@@ -9,14 +10,21 @@ private let headerGradient = LinearGradient(
     endPoint: .bottomTrailing
 )
 
-/// KINI chat panel — mirrors the web `KinematicAI` chat surface so users see
-/// the same product whether they're on dashboard or mobile.
-/// - Red→blue gradient header with sparkle badge, "CRM" pill, credits chip
-/// - Amber rate-limit banner when the user is at cap
-/// - Gradient user bubbles + bordered assistant bubbles
+/// KINI agentic copilot — chat surface with two modes:
+/// 1) Tap-to-talk text: type or hold mic, hit send.
+/// 2) Hands-free voice: header pill toggle. After every assistant reply,
+///    TTS speaks the text; when speech ends, the mic auto-reopens for the
+///    next turn. Toggling OFF silences mid-speech and cancels listening.
+///
+/// Tool-use results from the backend land in `m.cards` and render via
+/// `KiniToolResultCard` — agentic create/update results appear inline.
 struct KiniChatView: View {
     @StateObject var vm = KINIChatViewModel()
     @StateObject private var voice = KiniVoiceRecognizer()
+    @StateObject private var speaker = KiniSpeaker()
+    @State private var handsFree: Bool = false
+    @State private var lastSpokenMessageCount: Int = 0
+    @State private var pendingAutoSend: Bool = false
     var onClose: (() -> Void)? = nil
 
     private var capped: Bool {
@@ -48,7 +56,7 @@ struct KiniChatView: View {
                             bubble(for: m).id(m.id)
                         }
                         if vm.isSending {
-                            typingIndicator
+                            workingIndicator
                         }
                     }
                     .padding(.horizontal)
@@ -59,13 +67,26 @@ struct KiniChatView: View {
                     if let last = vm.messages.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
+                    // Hands-free: speak each new assistant reply.
+                    if handsFree, vm.messages.count > lastSpokenMessageCount,
+                       let m = vm.messages.last, m.role == "assistant", !m.content.isEmpty {
+                        speaker.speak(m.content)
+                    }
+                    lastSpokenMessageCount = vm.messages.count
                 }
+            }
+
+            // Live voice/speech state strip — only visible during an active
+            // voice interaction. Replaces guesswork about whether the mic
+            // is hot or KINI is talking.
+            if voice.isListening || speaker.isSpeaking {
+                voiceStateStrip
             }
 
             Divider()
 
             HStack(alignment: .bottom, spacing: 8) {
-                TextField(capped ? "Monthly quota reached — resets on the 1st" : "Ask KINI anything…",
+                TextField(capped ? "Monthly quota reached — resets on the 1st" : "Ask KINI to act on your CRM…",
                           text: $vm.draft, axis: .vertical)
                     .lineLimit(1...4)
                     .disabled(capped)
@@ -73,16 +94,9 @@ struct KiniChatView: View {
                     .background(Color(uiColor: .secondarySystemBackground))
                     .cornerRadius(12)
 
-                // Hold-to-talk voice mic. Tap to start, tap again to stop;
-                // partial transcripts stream into `vm.draft` as the user
-                // speaks. Mirrors the web KinematicAI mic.
                 if voice.isAvailable {
                     Button {
-                        if voice.isListening {
-                            voice.stop()
-                        } else {
-                            voice.start { text in vm.draft = text }
-                        }
+                        toggleSingleShotMic()
                     } label: {
                         ZStack {
                             Circle()
@@ -119,6 +133,71 @@ struct KiniChatView: View {
             .padding()
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        // Auto-send when the recognizer ends a turn while hands-free is on.
+        .onChange(of: voice.isListening) { wasListening, isNow in
+            guard wasListening && !isNow else { return }
+            guard pendingAutoSend else { return }
+            pendingAutoSend = false
+            let txt = vm.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !txt.isEmpty else { return }
+            Task { await vm.send() }
+        }
+        // When speech ends, give the mic back to the user — but only if
+        // hands-free is still on (toggling off mid-speech kills the loop).
+        .onChange(of: speaker.isSpeaking) { wasSpeaking, isNow in
+            guard wasSpeaking && !isNow else { return }
+            if handsFree { startMicForAutoSend() }
+        }
+        .onChange(of: handsFree) { _, on in
+            if on {
+                // First turn — open the mic so the user can start talking.
+                startMicForAutoSend()
+            } else {
+                voice.stop()
+                speaker.stop()
+            }
+        }
+        .onDisappear {
+            voice.stop()
+            speaker.stop()
+        }
+    }
+
+    private func toggleSingleShotMic() {
+        if voice.isListening {
+            voice.stop()
+        } else {
+            pendingAutoSend = false        // single-shot: stream into draft, don't auto-send
+            voice.start { text in vm.draft = text }
+        }
+    }
+
+    private func startMicForAutoSend() {
+        if voice.isListening { return }
+        pendingAutoSend = true
+        vm.draft = ""
+        voice.start { text in vm.draft = text }
+    }
+
+    private var voiceStateStrip: some View {
+        HStack(spacing: 10) {
+            PulsingDot(color: voice.isListening ? brandRed : brandBlue)
+            Text(voice.isListening ? "Listening…  \(vm.draft)" : "KINI is speaking…")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(voice.isListening ? brandRed : brandBlue)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Cancel") {
+                voice.stop()
+                speaker.stop()
+                pendingAutoSend = false
+            }
+            .font(.system(size: 12, weight: .bold))
+            .foregroundColor(voice.isListening ? brandRed : brandBlue)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background((voice.isListening ? brandRed : brandBlue).opacity(0.08))
     }
 
     private var header: some View {
@@ -159,6 +238,20 @@ struct KiniChatView: View {
                     .foregroundColor(.white.opacity(0.9))
             }
             Spacer()
+            // Hands-free toggle pill — turning this on starts the
+            // listen→answer→speak→listen loop.
+            Button { handsFree.toggle() } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: handsFree ? "ear.fill" : "ear")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(handsFree ? "Voice ON" : "Voice")
+                        .font(.system(size: 10, weight: .black))
+                }
+                .foregroundColor(handsFree ? brandRed : .white)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(handsFree ? Color.white : Color.white.opacity(0.18))
+                .clipShape(Capsule())
+            }
             if let u = vm.usage, !u.exempt {
                 Text("\(u.used)/\(u.cap)")
                     .font(.system(size: 10, weight: .black))
@@ -167,7 +260,7 @@ struct KiniChatView: View {
                     .background(u.remaining == 0 ? Color.black.opacity(0.35) : Color.white.opacity(0.18))
                     .clipShape(Capsule())
             }
-            Button(action: { vm.reset() }) {
+            Button(action: { vm.reset(); lastSpokenMessageCount = 0 }) {
                 Text("Clear")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white)
@@ -213,7 +306,7 @@ struct KiniChatView: View {
                 suggestionChip("Show me overdue tasks",        icon: "exclamationmark.triangle.fill")
                 suggestionChip("Which deals are stuck > 14 days?", icon: "clock.fill")
                 suggestionChip("Top 5 leads I should call today", icon: "phone.fill")
-                suggestionChip("Draft a follow-up for my best deal", icon: "envelope.fill")
+                suggestionChip("Add lead Rakesh from Acme, 98xxxxxxxx", icon: "person.crop.circle.badge.plus")
             }
             .padding(.horizontal, 8)
             .padding(.top, 4)
@@ -252,9 +345,11 @@ struct KiniChatView: View {
         .buttonStyle(.plain)
     }
 
-    /// Three pulsing dots animation that replaces the static "KINI is
-    /// thinking…" — feels alive in a way ProgressView doesn't.
-    private var typingIndicator: some View {
+    /// "KINI is working…" — three staggered dots + sparkle icon. Replaces
+    /// the old `typingIndicator` so the affordance reads as "agent is
+    /// running tools" rather than "model is typing prose" (those have
+    /// different latency profiles and the user should feel both).
+    private var workingIndicator: some View {
         HStack(spacing: 10) {
             ZStack {
                 Circle().fill(brandRed.opacity(0.12)).frame(width: 32, height: 32)
@@ -268,6 +363,9 @@ struct KiniChatView: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(Color(uiColor: .secondarySystemBackground))
             .cornerRadius(18)
+            Text("KINI is working…")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
             Spacer(minLength: 40)
         }
     }
@@ -321,5 +419,64 @@ private struct TypingDot: View {
             .opacity(on ? 1.0 : 0.3)
             .animation(.easeInOut(duration: 0.6).repeatForever().delay(delay), value: on)
             .onAppear { on = true }
+    }
+}
+
+/// Animated dot used by the voice-state strip. Same vibe as `TypingDot` but
+/// pulses by scale so it reads as "live signal" rather than "thinking".
+private struct PulsingDot: View {
+    let color: Color
+    @State private var on = false
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 10, height: 10)
+            .scaleEffect(on ? 1.0 : 0.7)
+            .opacity(on ? 1.0 : 0.7)
+            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: on)
+            .onAppear { on = true }
+    }
+}
+
+/// Thin wrapper around `AVSpeechSynthesizer` so the SwiftUI view can observe
+/// `isSpeaking` and react when speech finishes (drives the hands-free
+/// listen→speak→listen loop). en-IN voice preferred to match the user base;
+/// falls back to system default when unavailable.
+@MainActor
+final class KiniSpeaker: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+    @Published private(set) var isSpeaking: Bool = false
+    private let synth = AVSpeechSynthesizer()
+
+    override init() {
+        super.init()
+        synth.delegate = self
+    }
+
+    func speak(_ text: String) {
+        if text.isEmpty { return }
+        // Route audio through the speaker even if a phone call earpiece
+        // was last active for the session.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .mixWithOthers])
+        try? AVAudioSession.sharedInstance().setActive(true, options: [])
+        let utt = AVSpeechUtterance(string: text)
+        utt.voice = AVSpeechSynthesisVoice(language: "en-IN") ?? AVSpeechSynthesisVoice(language: "en-US")
+        utt.rate = AVSpeechUtteranceDefaultSpeechRate
+        utt.pitchMultiplier = 1.0
+        synth.stopSpeaking(at: .immediate)
+        synth.speak(utt)
+        isSpeaking = true
+    }
+
+    func stop() {
+        synth.stopSpeaking(at: .immediate)
+        isSpeaking = false
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.isSpeaking = false }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.isSpeaking = false }
     }
 }
