@@ -106,6 +106,14 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
 class KiniAppState: ObservableObject {
     static let shared = KiniAppState()
+
+    /// Persisted across the auth flip so LoginView can show the user
+    /// "you got kicked off because another device signed in" AFTER they're
+    /// bounced back to the login screen. Cleared by the next successful
+    /// login or via `clearSessionKickedMsg()`.
+    @Published var sessionKickedMsg: String? = nil
+    func clearSessionKickedMsg() { sessionKickedMsg = nil }
+
     @Published var isAuthenticated = Session.isAuthenticated
     @Published var selectedTab: Int = 0
     @Published var selectedOutlet: RouteOutlet? = nil
@@ -249,10 +257,17 @@ struct LoginData: Codable {
     /// it so the access token can be silently refreshed before/after it
     /// expires, keeping the user signed in until they explicitly log out.
     let refreshToken: String?
+    /// Single-device-login session UUID. The backend rotates this on every
+    /// mobile login and the client echoes it back as X-Session-Id on every
+    /// authenticated request. Mismatch → backend returns 401 DEVICE_REPLACED
+    /// and this device is force-logged-out by KiniAppState. Null on legacy
+    /// or demo logins where enforcement is skipped.
+    let sessionId: String?
     let user: User
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case refreshToken = "refresh_token"
+        case sessionId = "session_id"
         case user
     }
 }
@@ -1088,9 +1103,25 @@ class Session: ObservableObject {
             }
         }
     }
+    /// Single-device-login session UUID, written by /auth/login and echoed
+    /// back as X-Session-Id on every authenticated request. Stored in
+    /// UserDefaults (matches sharedToken / refreshToken so cold-start
+    /// restores all three together). Cleared on logout.
+    static var sessionId: String? {
+        get { UserDefaults.standard.string(forKey: "active_session_id") }
+        set {
+            if let v = newValue, !v.isEmpty {
+                UserDefaults.standard.set(v, forKey: "active_session_id")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "active_session_id")
+            }
+        }
+    }
+
     static func logout() {
         sharedToken = ""
         refreshToken = ""
+        sessionId = nil
         currentUser = nil
         isDemoMode = false
     }
@@ -1303,6 +1334,18 @@ class KinematicRepository {
         req.httpMethod = method
         req.timeoutInterval = 15.0 // Prevent hangs
         req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+        // Single-device-login + platform headers. Backend uses
+        // X-Kinematic-Platform to decide whether to enforce session
+        // checking; mismatch on X-Session-Id returns 401 DEVICE_REPLACED.
+        // Device-* headers populate the kicked-device toast on the
+        // OTHER device ("signed in on iPhone15,3 · iOS 17.4").
+        req.setValue("ios", forHTTPHeaderField: "X-Kinematic-Platform")
+        req.setValue(UIDevice.current.modelName, forHTTPHeaderField: "X-Device-Model")
+        req.setValue("Apple", forHTTPHeaderField: "X-Device-Brand")
+        req.setValue(UIDevice.current.systemVersion, forHTTPHeaderField: "X-OS-Version")
+        if let sid = Session.sessionId, !sid.isEmpty {
+            req.setValue(sid, forHTTPHeaderField: "X-Session-Id")
+        }
 
         // --- PROD SYNC: Inject X-Org-Id if available ---
         if let orgId = Session.currentUser?.orgId {
@@ -1337,6 +1380,35 @@ class KinematicRepository {
         //   gentle re-login — we no longer wipe the local session
         //   automatically.
         if statusCode == 401 {
+            // Single-device-login: if the body carries DEVICE_REPLACED,
+            // this device's session UUID is stale because the SAME user
+            // logged in on another device. Refreshing the access token
+            // would NOT help (the session_id mismatch survives token
+            // rotation), so skip the refresh path and force-logout
+            // immediately with a friendly explainer.
+            let bodyStr = String(data: data, encoding: .utf8) ?? ""
+            if bodyStr.contains("DEVICE_REPLACED") {
+                // Extract the human-readable device label from the JSON
+                // body ("device":"Realme 12 Pro · Android 14"). Plain
+                // string-splitting instead of NSRegularExpression because
+                // we only need this one shape and the body is small
+                // enough that O(n) scanning is trivial.
+                let deviceLabel: String? = {
+                    let needle = "\"device\""
+                    guard let keyRange = bodyStr.range(of: needle) else { return nil }
+                    let after = bodyStr[keyRange.upperBound...]
+                    guard let openQuote = after.range(of: "\"") else { return nil }
+                    let valueStart = openQuote.upperBound
+                    guard let closeQuote = after.range(of: "\"", range: valueStart..<after.endIndex) else { return nil }
+                    return String(after[valueStart..<closeQuote.lowerBound])
+                }()
+                await MainActor.run {
+                    let label = deviceLabel ?? "another device"
+                    KiniAppState.shared.sessionKickedMsg = "Your account was signed in on \(label). This device has been signed out."
+                    KiniAppState.shared.logout()
+                }
+                return nil
+            }
             if !_retryingAfterRefresh {
                 print("⚠️ AUTH_ERROR: 401 on \(path). Attempting silent refresh.")
                 let refreshed = await refreshAccessToken()
@@ -1529,6 +1601,14 @@ class KinematicRepository {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Stamp platform + device headers so the backend can identify
+        // mobile traffic at login and build a friendly device label for
+        // the OTHER device's kicked-device toast when this login rotates
+        // the session_id.
+        req.setValue("ios", forHTTPHeaderField: "X-Kinematic-Platform")
+        req.setValue(UIDevice.current.modelName, forHTTPHeaderField: "X-Device-Model")
+        req.setValue("Apple", forHTTPHeaderField: "X-Device-Brand")
+        req.setValue(UIDevice.current.systemVersion, forHTTPHeaderField: "X-OS-Version")
         req.httpBody = try? JSONEncoder().encode(payload)
         
         print("🚀 API_LOGIN_START: \(url.absoluteString) for \(identifier)")
@@ -1549,6 +1629,12 @@ class KinematicRepository {
                         // refresh-token lifetime (~30d, rolling) without a
                         // re-login prompt.
                         Session.refreshToken = result.data?.refreshToken ?? ""
+                        // Single-device-login session UUID — persisted so
+                        // every subsequent request can echo it back as
+                        // X-Session-Id. Clear any leftover kicked-device
+                        // toast from a previous forced logout.
+                        Session.sessionId = result.data?.sessionId
+                        KiniAppState.shared.clearSessionKickedMsg()
                         Session.currentUser = result.data?.user
                         KiniAppState.shared.checkAuth()
                     }
@@ -1898,5 +1984,25 @@ struct KinematicApp: App {
                     // launch was part of the first-install hang.
                 }
         }
+    }
+}
+
+
+// MARK: - UIDevice.modelName
+// Returns the marketing identifier from sysctl (e.g. "iPhone15,3" for iPhone
+// 14 Pro Max). The default UIDevice.current.model gives generic "iPhone" /
+// "iPad" — not granular enough for the kicked-device toast that surfaces on
+// the OTHER device when the same user logs in on a new phone. Falls back to
+// UIDevice.current.model on sysctl error so the header is never empty.
+extension UIDevice {
+    var modelName: String {
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        let machineMirror = Mirror(reflecting: systemInfo.machine)
+        let id = machineMirror.children.reduce("") { acc, element in
+            guard let value = element.value as? Int8, value != 0 else { return acc }
+            return acc + String(UnicodeScalar(UInt8(value)))
+        }
+        return id.isEmpty ? UIDevice.current.model : id
     }
 }
