@@ -333,13 +333,13 @@ struct LeadDetailView: View {
                 Text("Converted \(formatDate(when))")
                     .font(.caption).foregroundColor(.secondary)
             }
-            if let deal = vm.convertedDeal, let dealId = deal.id {
+            if let deal = vm.convertedDeal {
                 NavigationLink {
-                    DealDetailView(dealId: dealId)
+                    DealDetailView(dealId: deal.id)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "square.stack.3d.up.fill").foregroundColor(green)
-                        Text(deal.name ?? "Open converted deal")
+                        Text(deal.name)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.primary)
                         Spacer()
