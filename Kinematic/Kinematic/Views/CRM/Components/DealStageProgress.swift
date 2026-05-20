@@ -60,7 +60,7 @@ struct DealStageProgress: View {
 
     private var heading: some View {
         HStack(spacing: 8) {
-            Image(systemName: "chart.line.flattrend.xyaxis")
+            Image(systemName: "chart.line.uptrend.xyaxis")
                 .foregroundColor(Brand.red)
                 .font(.system(size: 11))
             Text("STAGE PROGRESS")
