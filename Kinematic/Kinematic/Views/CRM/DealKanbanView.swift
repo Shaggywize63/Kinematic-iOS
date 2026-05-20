@@ -7,6 +7,53 @@ struct DealKanbanView: View {
     @AppStorage("crm.deals.showWeighted") private var showWeighted: Bool = false
 
     var body: some View {
+        Group {
+            // First-load shell: show a single ProgressView until pipelines
+            // resolve so the rep doesn't see a half-rendered, no-data UI
+            // that looks frozen during the 3-call fan-out
+            // (listPipelines → listStages + listDeals).
+            if vm.pipelines.isEmpty && vm.isLoading {
+                loadingShell
+            } else {
+                loadedBody
+            }
+        }
+        .navigationTitle("Pipeline")
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .task { await vm.load() }
+        .confirmationDialog("Move deal to stage", isPresented: Binding(
+            get: { movingDeal != nil },
+            set: { if !$0 { movingDeal = nil } }
+        )) {
+            ForEach(vm.stages.filter { $0.id != movingDeal?.stageId }) { stage in
+                Button(stage.name) {
+                    if let deal = movingDeal {
+                        Task { await vm.move(deal: deal, toStage: stage.id) }
+                    }
+                    movingDeal = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { movingDeal = nil }
+        }
+    }
+
+    // MARK: - Loading shell
+
+    private var loadingShell: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            ProgressView().tint(Brand.red).scaleEffect(1.3)
+            Text("Loading pipeline…")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Loaded body
+
+    private var loadedBody: some View {
         VStack(spacing: 0) {
             if let pipeline = vm.pipelines.first(where: { $0.id == vm.selectedPipelineId }) {
                 HStack {
@@ -34,7 +81,7 @@ struct DealKanbanView: View {
             // Cost / Weighted toggle
             HStack(spacing: 8) {
                 Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
-                    .foregroundColor(showWeighted ? Brand.red : Brand.red)
+                    .foregroundColor(Brand.red)
                     .font(.caption)
                 Text(showWeighted ? "Weighted value (amount × win prob)" : "Cost (raw amount)")
                     .font(.caption2).foregroundColor(.secondary)
@@ -45,34 +92,12 @@ struct DealKanbanView: View {
 
             // Mobile-first pipeline layout: horizontally-scrolling stage
             // chips (each with deal count + ₹ total), then a vertical list
-            // of deals for the selected stage. The previous horizontal-kanban
-            // forced side-scrolling per tap which is unworkable on phones.
+            // of deals for the selected stage. LazyHStack so wide pipelines
+            // don't render every chip up-front.
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                LazyHStack(spacing: 8) {
                     ForEach(vm.stages) { stage in
-                        let deals = vm.dealsFor(stageId: stage.id)
-                        let total = deals.reduce(0.0) { acc, d in
-                            acc + (d.amount ?? 0) * (showWeighted ? (d.winProbability ?? 0) : 1.0)
-                        }
-                        Button(action: { selectedStageId = stage.id }) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(stage.name).font(.system(size: 13, weight: .bold))
-                                Text("\(deals.count) • \(CurrencyFormatter.formatINR(total))")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 999)
-                                    .fill(selectedStageId == stage.id ? Brand.red.opacity(0.18) : Color(uiColor: .secondarySystemBackground))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 999)
-                                    .stroke(selectedStageId == stage.id ? Brand.red : Color.clear, lineWidth: 1.5)
-                            )
-                        }
-                        .buttonStyle(.plain)
+                        stageChip(stage)
                     }
                 }
                 .padding(.horizontal)
@@ -114,27 +139,37 @@ struct DealKanbanView: View {
                 }
             }
         }
-        .navigationTitle("Pipeline")
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .task { await vm.load() }
-        .overlay {
-            if vm.isLoading && vm.deals.isEmpty {
-                ProgressView().scaleEffect(1.3)
+    }
+
+    // MARK: - Stage chip
+
+    /// Pulled out into its own view so the LazyHStack only builds chips
+    /// that are about to scroll into view, and reads the precomputed
+    /// per-stage rollups from the VM (O(1)) instead of filtering +
+    /// reducing the deals array on every render.
+    @ViewBuilder
+    private func stageChip(_ stage: Stage) -> some View {
+        let count = vm.dealsFor(stageId: stage.id).count
+        let total = showWeighted ? vm.weightedTotal(stageId: stage.id)
+                                 : vm.rawTotal(stageId: stage.id)
+        Button(action: { selectedStageId = stage.id }) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(stage.name).font(.system(size: 13, weight: .bold))
+                Text("\(count) • \(CurrencyFormatter.formatINR(total))")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.secondary)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 999)
+                    .fill(selectedStageId == stage.id ? Brand.red.opacity(0.18) : Color(uiColor: .secondarySystemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 999)
+                    .stroke(selectedStageId == stage.id ? Brand.red : Color.clear, lineWidth: 1.5)
+            )
         }
-        .confirmationDialog("Move deal to stage", isPresented: Binding(
-            get: { movingDeal != nil },
-            set: { if !$0 { movingDeal = nil } }
-        )) {
-            ForEach(vm.stages.filter { $0.id != movingDeal?.stageId }) { stage in
-                Button(stage.name) {
-                    if let deal = movingDeal {
-                        Task { await vm.move(deal: deal, toStage: stage.id) }
-                    }
-                    movingDeal = nil
-                }
-            }
-            Button("Cancel", role: .cancel) { movingDeal = nil }
-        }
+        .buttonStyle(.plain)
     }
 }
