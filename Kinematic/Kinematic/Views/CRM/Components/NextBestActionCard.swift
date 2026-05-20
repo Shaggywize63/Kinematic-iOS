@@ -8,13 +8,19 @@ struct NextBestActionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Header row: section title + Kini badge + optional How? pill.
+            // Web parity: the card keeps the "NEXT BEST ACTION" title and
+            // the Kini AI attribution renders as a separate pill chip — it
+            // does NOT replace the title (see issue: "Kini AI is not
+            // visible").
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .foregroundColor(Brand.red)
-                Text("POWERED BY KINI AI")
-                    .font(.system(size: 10, weight: .black))
-                    .tracking(1)
+                Text("NEXT BEST ACTION")
+                    .font(.system(size: 11, weight: .black))
+                    .tracking(0.8)
                     .foregroundColor(Brand.red)
+                PoweredByKiniAIBadge(compact: true)
                 Spacer()
                 if action.methodology != nil {
                     Button { showHow = true } label: {
