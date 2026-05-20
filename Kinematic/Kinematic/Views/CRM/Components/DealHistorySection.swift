@@ -93,6 +93,9 @@ private struct DealHistoryRow: View {
         case "amount_changed": return "indianrupeesign.circle.fill"
         case "created":        return "sparkles"
         case "updated":        return "pencil.circle.fill"
+        case "won":            return "trophy.fill"
+        case "lost":           return "xmark.octagon.fill"
+        case "reopened":       return "arrow.uturn.left.circle.fill"
         default:               return "circle.fill"
         }
     }
@@ -103,6 +106,9 @@ private struct DealHistoryRow: View {
         case "amount_changed": return .green
         case "created":        return .blue
         case "updated":        return .orange
+        case "won":            return .green
+        case "lost":           return .red
+        case "reopened":       return .blue
         default:               return .secondary
         }
     }
@@ -121,6 +127,12 @@ private struct DealHistoryRow: View {
             return "Deal created"
         case "updated":
             return "Deal updated"
+        case "won":
+            return "Deal won"
+        case "lost":
+            return "Deal lost"
+        case "reopened":
+            return "Deal reopened"
         default:
             return event.eventType.replacingOccurrences(of: "_", with: " ").capitalized
         }
