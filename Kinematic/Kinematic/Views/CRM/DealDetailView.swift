@@ -32,11 +32,20 @@ struct DealDetailView: View {
                     }
                     HStack(alignment: .top, spacing: 16) {
                         if let wp = winProb {
-                            WinProbabilityGauge(probability: wp.probability, label: wp.band?.uppercased())
-                                .frame(maxWidth: .infinity)
+                            WinProbabilityGauge(
+                                probability: wp.probability,
+                                label: wp.band?.uppercased(),
+                                reasoning: wp.reasoning,
+                                breakdown: wp.breakdown
+                            )
+                            .frame(maxWidth: .infinity)
                         } else {
-                            VStack {
-                                Text("AI win prob.").font(.caption).foregroundColor(.gray)
+                            VStack(spacing: 6) {
+                                Text("Powered by KINI AI")
+                                    .font(.system(size: 9, weight: .black))
+                                    .tracking(1)
+                                    .foregroundColor(Brand.red)
+                                Text("Win probability").font(.caption).foregroundColor(.gray)
                                 Button { Task { await loadWinProb() } } label: { Text("Compute").font(.caption).bold() }
                             }
                             .frame(maxWidth: .infinity).padding()
