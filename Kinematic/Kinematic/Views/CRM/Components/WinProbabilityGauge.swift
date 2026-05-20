@@ -23,13 +23,19 @@ struct WinProbabilityGauge: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 8) {
+            // Header row: section title + Kini badge + optional How? pill.
+            // Web parity: the gauge keeps the "WIN PROBABILITY" title and
+            // the Kini AI attribution renders as a separate pill chip — it
+            // does NOT replace the title (see issue: "Kini AI is not
+            // visible").
+            HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .foregroundColor(Brand.red)
-                Text("POWERED BY KINI AI")
-                    .font(.system(size: 9, weight: .black))
-                    .tracking(1)
+                Text("WIN PROBABILITY")
+                    .font(.system(size: 10, weight: .black))
+                    .tracking(0.8)
                     .foregroundColor(Brand.red)
+                PoweredByKiniAIBadge(compact: true)
                 Spacer()
                 if breakdown != nil {
                     Button { showHow = true } label: {
