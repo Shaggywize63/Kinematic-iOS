@@ -4,6 +4,11 @@ import SwiftUI
 /// create/update audit rows pulled from `/deals/:id/history`.
 struct DealHistorySection: View {
     let dealId: String
+    /// Bumped by the parent (e.g. DealDetailView) after a successful
+    /// stage move or freshly-logged activity. We mix it into the
+    /// `.task(id:)` key so the section re-fetches on demand without
+    /// the parent having to remount us.
+    var refreshTick: Int = 0
 
     @State private var events: [DealHistoryEvent] = []
     @State private var loaded = false
@@ -49,7 +54,9 @@ struct DealHistorySection: View {
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color(uiColor: .secondarySystemBackground))
         )
-        .task(id: dealId) {
+        // Compose dealId + refreshTick into a single stable key so the
+        // task re-runs every time the parent bumps the tick.
+        .task(id: "\(dealId)#\(refreshTick)") {
             let list = (try? await CRMService.shared.dealHistory(dealId: dealId)) ?? []
             events = list
             loaded = true
