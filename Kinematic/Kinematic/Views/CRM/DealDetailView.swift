@@ -65,6 +65,7 @@ struct DealDetailView: View {
                             .background(Brand.red).foregroundColor(.white).cornerRadius(10)
                         }
                     }
+                    DealHistorySection(dealId: dealId)
                 } else {
                     ProgressView().padding()
                 }
