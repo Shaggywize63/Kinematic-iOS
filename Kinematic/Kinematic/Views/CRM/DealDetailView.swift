@@ -20,13 +20,31 @@ struct DealDetailView: View {
     @State private var closingDeal = false
     @State private var reopening = false
     @State private var reopenError: String?
+    /// Bumped after a successful stage move or a freshly-logged activity
+    /// so DealHistorySection re-fetches without needing the whole detail
+    /// screen to reload.
+    @State private var historyRefreshTick = 0
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let d = initialDeal {
+                    // Stage stepper sits above everything — reps land on
+                    // this screen looking for "what's the status, what
+                    // changes next?" so it deserves first paint priority.
+                    if !stages.isEmpty {
+                        DealStageProgress(
+                            deal: Binding(
+                                get: { initialDeal ?? d },
+                                set: { initialDeal = $0 }
+                            ),
+                            stages: stages,
+                            onStageChanged: { historyRefreshTick &+= 1 }
+                        )
+                    }
                     headerCard(d)
                     closeActions(d)
+                    quickActionsRow(d)
                     if let contact = primaryContact, let phone = contact.phone ?? contact.mobile, !phone.isEmpty {
                         primaryContactCard(contact: contact, phone: phone, dealName: d.name)
                     }
@@ -65,7 +83,7 @@ struct DealDetailView: View {
                             .background(Brand.red).foregroundColor(.white).cornerRadius(10)
                         }
                     }
-                    DealHistorySection(dealId: dealId)
+                    DealHistorySection(dealId: dealId, refreshTick: historyRefreshTick)
                 } else {
                     ProgressView().padding()
                 }
@@ -85,7 +103,10 @@ struct DealDetailView: View {
         }
         .sheet(isPresented: $closingDeal) {
             if let d = initialDeal {
-                DealCloseView(deal: d) { updated in initialDeal = updated }
+                DealCloseView(deal: d) { updated in
+                    initialDeal = updated
+                    historyRefreshTick &+= 1
+                }
             }
         }
         .alert("Re-open failed",
@@ -105,6 +126,7 @@ struct DealDetailView: View {
                     type: type, subject: subject, description: description,
                     imageUrl: imageUrl, completedAt: when
                 )
+                historyRefreshTick &+= 1
             }
         }
         .task {
@@ -117,6 +139,38 @@ struct DealDetailView: View {
             if let cid = initialDeal?.contactId, primaryContact == nil {
                 primaryContact = try? await CRMService.shared.getContact(id: cid)
             }
+        }
+    }
+
+    // MARK: - Quick action row (Add Activity + future buttons)
+
+    /// Compact action bar that sits between the close controls and the
+    /// AI/insight stack. The "+ Add Activity" button mirrors the web
+    /// dashboard's quick-log composer on the deal detail page.
+    @ViewBuilder
+    private func quickActionsRow(_ d: Deal) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                composerInitialType = "note"
+                composerInitialSubject = ""
+                pendingCallActivityId = nil
+                loggingActivity = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Add Activity")
+                        .font(.system(size: 13, weight: .black))
+                        .tracking(0.3)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .foregroundColor(.white)
+                .background(Capsule().fill(Brand.red))
+                .shadow(color: Brand.red.opacity(0.30), radius: 6, x: 0, y: 2)
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: loggingActivity)
+            Spacer()
         }
     }
 
@@ -279,6 +333,7 @@ struct DealDetailView: View {
         do {
             let updated = try await CRMService.shared.patchDeal(id: id, body: ["status": "open"])
             initialDeal = updated
+            historyRefreshTick &+= 1
         } catch {
             reopenError = error.localizedDescription
         }
