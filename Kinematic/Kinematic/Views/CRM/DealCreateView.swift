@@ -14,6 +14,10 @@ struct DealCreateView: View {
 
     let onSubmit: ([String: Any]) async -> Void
 
+    private var currentPipeline: Pipeline? {
+        pipelines.first(where: { $0.id == pipelineId })
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -31,11 +35,31 @@ struct DealCreateView: View {
 
                 if !pipelines.isEmpty {
                     Section("Pipeline") {
-                        Picker("Pipeline", selection: $pipelineId) {
-                            ForEach(pipelines) { p in Text(p.name).tag(p.id) }
-                        }
-                        .onChange(of: pipelineId) { _, newId in
-                            Task { await loadStages(pipelineId: newId) }
+                        if pipelines.count == 1 {
+                            // Single pipeline: show a read-only label instead of a
+                            // useless picker. Matches the web dashboard's behaviour
+                            // where the dropdown collapses to a static "Default
+                            // pipeline" affordance when there's nothing to choose.
+                            HStack {
+                                Text(currentPipeline?.name ?? "Default pipeline")
+                                Spacer()
+                                Text("· default")
+                                    .foregroundStyle(.secondary)
+                                    .font(.caption)
+                            }
+                        } else {
+                            Picker("Pipeline", selection: $pipelineId) {
+                                ForEach(pipelines) { p in
+                                    if p.isDefault == true {
+                                        Text("\(p.name) (default)").tag(p.id)
+                                    } else {
+                                        Text(p.name).tag(p.id)
+                                    }
+                                }
+                            }
+                            .onChange(of: pipelineId) { _, newId in
+                                Task { await loadStages(pipelineId: newId) }
+                            }
                         }
                         if !stages.isEmpty {
                             Picker("Stage", selection: $stageId) {
@@ -70,7 +94,13 @@ struct DealCreateView: View {
 
     private func loadPipelines() async {
         pipelines = (try? await CRMService.shared.listPipelines()) ?? []
-        if pipelineId.isEmpty, let first = pipelines.first { pipelineId = first.id }
+        if pipelineId.isEmpty {
+            // Prefer the org's default pipeline; fall back to the first one so
+            // we never end up with an empty selection when at least one
+            // pipeline exists.
+            let preferred = pipelines.first(where: { $0.isDefault == true }) ?? pipelines.first
+            if let preferred { pipelineId = preferred.id }
+        }
         if !pipelineId.isEmpty { await loadStages(pipelineId: pipelineId) }
     }
 
