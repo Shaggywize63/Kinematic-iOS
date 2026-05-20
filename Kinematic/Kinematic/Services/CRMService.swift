@@ -163,8 +163,12 @@ final class CRMService {
         if let dueAt { body["due_at"] = dueAt }
         return try await postJSON("/api/v1/crm/deals/\(id)/next-action", body: body)
     }
-    func dealHistory(id: String) async throws -> [Activity] {
-        try await get("/api/v1/crm/deals/\(id)/history")
+    /// Audit trail for a deal — stage transitions, amount edits, and
+    /// create/update events. Returns up to 50 rows (newest first) so the
+    /// History section on DealDetailView stays responsive even on
+    /// long-lived deals.
+    func dealHistory(dealId: String) async throws -> [DealHistoryEvent] {
+        try await get("/api/v1/crm/deals/\(dealId)/history")
     }
 
     // MARK: Pipelines / Stages
