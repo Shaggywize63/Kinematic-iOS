@@ -72,6 +72,53 @@ final class CRMService {
         try await postJSON("/api/v1/crm/leads/\(id)/convert", body: body)
     }
 
+    /// Strongly-typed line item for the multi-product lead-convert flow.
+    /// `volumeKg` and `subtotal` are optional because the backend will
+    /// re-derive any missing fields from `crm_products.price` /
+    /// `weight_kg` — we only need to send the dimension the rep typed
+    /// against, but the iOS UI keeps all three in sync so all three are
+    /// usually populated. Trailing precision in any field doesn't matter
+    /// because the server canonicalises the row from the product record.
+    struct ConvertLineItem {
+        let productId: String
+        let pieces: Double?
+        let volumeKg: Double?
+        let subtotal: Double?
+    }
+
+    /// Multi-product convert variant. Mirrors the web's `LeadConvertModal`
+    /// payload: when `dealLineItems` is non-empty we tack `deal_line_items`
+    /// onto the body so the backend writes the resolved rows into
+    /// `deal.custom_fields.line_items` and stamps the total kg into
+    /// `deal.custom_fields.volume_kg`. When the array is nil or empty we
+    /// emit exactly the same payload the single-product path used to, so
+    /// non-Tata tenants don't see any behavioural change.
+    func convertLead(
+        id: String,
+        createAccount: Bool,
+        createDeal: Bool,
+        dealName: String?,
+        dealAmount: Double?,
+        dealLineItems: [ConvertLineItem]?
+    ) async throws -> Lead {
+        var body: [String: Any] = [
+            "create_account": createAccount,
+            "create_deal": createDeal,
+        ]
+        if let dealName, !dealName.isEmpty { body["deal_name"] = dealName }
+        if let dealAmount, dealAmount > 0 { body["deal_amount"] = dealAmount }
+        if let dealLineItems, !dealLineItems.isEmpty {
+            body["deal_line_items"] = dealLineItems.map { item -> [String: Any] in
+                var row: [String: Any] = ["product_id": item.productId]
+                if let p = item.pieces, p > 0 { row["pieces"] = p }
+                if let v = item.volumeKg, v > 0 { row["volume_kg"] = v }
+                if let s = item.subtotal, s > 0 { row["subtotal"] = s }
+                return row
+            }
+        }
+        return try await postJSON("/api/v1/crm/leads/\(id)/convert", body: body)
+    }
+
     // MARK: Contacts
     func listContacts(search: String? = nil) async throws -> [Contact] {
         var q: [String: String] = [:]
