@@ -6,6 +6,14 @@ struct LeadDetailView: View {
     @State private var loggingActivity = false
     @State private var showingWonSheet = false
     @State private var wonReason: String = ""
+    /// Drives the multi-product convert sheet. Replaces the old single-tap
+    /// `vm.convert()` flow so reps can attach line items (gated to Tata).
+    @State private var showingConvertSheet = false
+    /// When the convert sheet finishes successfully and the response carries
+    /// a deal id, we stash it here and the body picks it up via a hidden
+    /// NavigationLink so the user lands on the brand-new deal screen.
+    @State private var pushDealId: String?
+    @State private var convertSuccessMessage: String?
     /// Prefill values for the activity composer. Reset to defaults
     /// whenever the user opens the composer manually; overridden when the
     /// CallButton presents the sheet after a tap-to-call.
@@ -64,6 +72,37 @@ struct LeadDetailView: View {
         }
         .sheet(isPresented: $showingWonSheet) {
             wonSheet
+        }
+        .sheet(isPresented: $showingConvertSheet) {
+            if let lead = vm.lead {
+                LeadConvertView(lead: lead) { updated, dealId in
+                    vm.lead = updated
+                    Task { await vm.load() }
+                    convertSuccessMessage = "Lead converted."
+                    if let dealId, !dealId.isEmpty {
+                        // Defer the navigation push by one runloop tick —
+                        // the sheet is still dismissing and SwiftUI gets
+                        // grumpy about routing state changes mid-transition.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            pushDealId = dealId
+                        }
+                    }
+                }
+            }
+        }
+        // Hidden navigation hop so we can push DealDetailView once the
+        // sheet returns a deal id. navigationDestination(item:) is the
+        // modern replacement for the deprecated isActive-binding link.
+        .navigationDestination(item: $pushDealId) { dealId in
+            DealDetailView(dealId: dealId)
+        }
+        .alert("Convert success", isPresented: .init(
+            get: { convertSuccessMessage != nil },
+            set: { if !$0 { convertSuccessMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { convertSuccessMessage = nil }
+        } message: {
+            Text(convertSuccessMessage ?? "")
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .task { await vm.load() }
@@ -184,7 +223,7 @@ struct LeadDetailView: View {
             // Hide Convert + Mark as Won once the lead is closed — these are
             // open-lead actions only.
             if !lead.isWon && lead.status != "converted" {
-                Button { Task { await vm.convert() } } label: {
+                Button { showingConvertSheet = true } label: {
                     HStack { Image(systemName: "arrow.triangle.branch"); Text("Convert") }
                         .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10).background(Color.green).foregroundColor(.white).cornerRadius(10)
                 }
