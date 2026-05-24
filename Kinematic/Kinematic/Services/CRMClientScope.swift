@@ -19,6 +19,28 @@ import Foundation
 enum CRMClientScope {
     private static let storageKey = "kinematic_selected_client"
 
+    /// Hardcoded Tata Tiscon tenant UUID. Mirrors the constant the web
+    /// dashboard uses to gate the multi-product Lead Convert flow — Tata's
+    /// sales motion ships steel by tonnage, so they get the kg/pieces/₹
+    /// three-way sync UI while every other tenant keeps the simple
+    /// single-amount convert form.
+    static let tataTisconClientId = "a1f67468-526e-4734-be3a-2cb132cc2804"
+
+    /// True when either the user's JWT-pinned client_id or the admin
+    /// client-picker selection matches Tata Tiscon. Read both so org
+    /// admins scoped down to Tata see the same UI as Tata's own users.
+    static func isTataTiscon() -> Bool {
+        if let cid = Session.currentUser?.clientId,
+           cid.caseInsensitiveCompare(tataTisconClientId) == .orderedSame {
+            return true
+        }
+        if let cid = selectedClientId(),
+           cid.caseInsensitiveCompare(tataTisconClientId) == .orderedSame {
+            return true
+        }
+        return false
+    }
+
     /// Persisted client selection. Returns nil unless the stored value is a
     /// valid UUID — guards against legacy strings ("Kinematic", "") that
     /// shouldn't end up on the wire.

@@ -9,6 +9,14 @@ struct Product: Codable, Identifiable, Hashable {
     let categoryId: String?
     let unit: String?
     let unitPrice: Double?
+    /// Canonical per-unit price from `crm_products.price`. The legacy
+    /// `unit_price` accessor above is retained for older call sites; new
+    /// code (e.g. multi-line lead convert) should prefer `price` since the
+    /// backend canonicalises against this column when re-deriving totals.
+    let price: Double?
+    /// Per-unit weight in kg (Tata Tiscon ships products by tonnage, so the
+    /// convert flow needs kg/pieces/subtotal three-way sync against this).
+    let weightKg: Double?
     let currency: String?
     let taxPct: Double?
     let hsnCode: String?
@@ -17,12 +25,19 @@ struct Product: Codable, Identifiable, Hashable {
     let createdAt: String?
     let updatedAt: String?
 
+    /// Convenience: prefer the new `price` column, fall back to legacy
+    /// `unit_price`. Keeps the existing ProductsListView row rendering
+    /// working without a separate migration.
+    var effectivePrice: Double? { price ?? unitPrice }
+
     enum CodingKeys: String, CodingKey {
         case id
         case orgId = "org_id"
         case sku, name, description, unit
         case categoryId = "category_id"
         case unitPrice = "unit_price"
+        case price
+        case weightKg = "weight_kg"
         case currency
         case taxPct = "tax_pct"
         case hsnCode = "hsn_code"
