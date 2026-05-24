@@ -48,17 +48,32 @@ func formatTime(_ iso: String?) -> String {
 // --- MAIN VIEWS ---
 struct ContentView: View {
     @EnvironmentObject var appState: KiniAppState
-    
+    // Hold references so the singletons are constructed at app start and
+    // their @Published state drives the banner immediately.
+    @StateObject private var reachability = NetworkReachability.shared
+    @StateObject private var crmQueue = CRMWriteQueue.shared
+
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             // GLOBAL CANVAS (Root-Level Atmospheric Background)
             VibrantBackgroundView()
                 .ignoresSafeArea()
-            
+
             if !appState.isAuthenticated {
                 LoginView(onSuccess: { appState.checkAuth() })
             } else {
                 MainTabView()
+            }
+
+            // Offline / pending-sync banner — overlays every screen at
+            // the top of the safe area. Hidden when online + no pending
+            // mutations, so the chrome stays clean during normal use.
+            if appState.isAuthenticated {
+                VStack { OfflineStatusBanner(); Spacer() }
+                    .padding(.top, 4)
+                    .allowsHitTesting(true)
+                    .animation(.easeInOut(duration: 0.2), value: reachability.isOnline)
+                    .animation(.easeInOut(duration: 0.2), value: crmQueue.rows.count)
             }
         }
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
