@@ -10,15 +10,11 @@ struct AccountCreateView: View {
     @State private var employees: Int = 0
     @State private var description = ""
 
-    // Photo (optional, uploaded via /api/v1/upload/photo).
-    @State private var photoUrl: String?
-
     let onSubmit: ([String: Any]) async -> Void
 
     var body: some View {
         NavigationStack {
             Form {
-                CRMPhotoSection(title: "Account Logo / Photo (optional)", photoUrl: $photoUrl)
                 Section("Account") {
                     TextField("Company name", text: $name)
                     TextField("Industry", text: $industry)
@@ -69,9 +65,6 @@ struct AccountCreateView: View {
         if annualRevenue > 0 { body["annual_revenue"] = annualRevenue }
         if employees > 0     { body["employees"] = employees }
         if !description.isEmpty { body["description"] = description }
-        if let url = photoUrl, !url.isEmpty {
-            body["photo_url"] = url
-        }
         return body
     }
 }

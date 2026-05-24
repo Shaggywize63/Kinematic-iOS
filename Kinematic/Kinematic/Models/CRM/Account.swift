@@ -16,7 +16,6 @@ struct CRMAccount: Codable, Identifiable, Hashable {
     let territoryId: String?
     let tags: [String]?
     let description: String?
-    let photoUrl: String?
     let createdAt: String?
     let updatedAt: String?
 
@@ -33,7 +32,6 @@ struct CRMAccount: Codable, Identifiable, Hashable {
         case territoryId = "territory_id"
         case tags
         case description
-        case photoUrl = "photo_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

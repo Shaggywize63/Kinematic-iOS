@@ -12,7 +12,6 @@ struct AccountEditView: View {
     @State private var revenue: String
     @State private var employees: String
     @State private var description: String
-    @State private var photoUrl: String?
     @State private var saving = false
     @State private var errorMessage: String?
 
@@ -26,13 +25,11 @@ struct AccountEditView: View {
         _revenue = State(initialValue: account.annualRevenue.map { String(Int($0)) } ?? "")
         _employees = State(initialValue: account.employees.map { String($0) } ?? "")
         _description = State(initialValue: account.description ?? "")
-        _photoUrl = State(initialValue: account.photoUrl)
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                CRMPhotoSection(title: "Account Logo / Photo (optional)", photoUrl: $photoUrl)
                 Section("Identity") {
                     TextField("Name", text: $name)
                     TextField("Industry", text: $industry)
@@ -72,12 +69,6 @@ struct AccountEditView: View {
         body["annual_revenue"] = Double(revenue) ?? NSNull()
         body["employees"] = Int(employees) ?? NSNull()
         body["description"] = description.isEmpty ? NSNull() : description
-        // Photo: NSNull explicitly clears when removed, mirroring LeadEditView.
-        if let url = photoUrl, !url.isEmpty {
-            body["photo_url"] = url
-        } else {
-            body["photo_url"] = NSNull()
-        }
         do {
             let updated = try await CRMService.shared.patchAccount(id: account.id, body: body)
             onSaved(updated)

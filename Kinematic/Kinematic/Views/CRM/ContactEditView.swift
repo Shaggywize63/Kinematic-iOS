@@ -25,7 +25,6 @@ struct ContactEditView: View {
     @State private var referralSource: String
     @State private var marketingConsent: Bool
     @State private var whatsappConsent: Bool
-    @State private var photoUrl: String?
     @State private var saving = false
     @State private var errorMessage: String?
 
@@ -52,7 +51,6 @@ struct ContactEditView: View {
         _referralSource = State(initialValue: contact.referralSource ?? "")
         _marketingConsent = State(initialValue: contact.marketingConsent ?? false)
         _whatsappConsent = State(initialValue: contact.whatsappConsent ?? false)
-        _photoUrl = State(initialValue: contact.photoUrl)
     }
 
     var body: some View {
@@ -64,7 +62,6 @@ struct ContactEditView: View {
                         Text("B2C Customer").tag(true)
                     }.pickerStyle(.segmented)
                 }
-                CRMPhotoSection(title: "Contact Photo (optional)", photoUrl: $photoUrl)
                 Section("Personal") {
                     TextField("First name", text: $firstName)
                     TextField("Last name", text: $lastName)
@@ -149,12 +146,6 @@ struct ContactEditView: View {
             body["referral_source"] = referralSource.isEmpty ? NSNull() : referralSource
             body["marketing_consent"] = marketingConsent
             body["whatsapp_consent"] = whatsappConsent
-        }
-        // Photo: NSNull explicitly clears when removed, mirroring LeadEditView.
-        if let url = photoUrl, !url.isEmpty {
-            body["photo_url"] = url
-        } else {
-            body["photo_url"] = NSNull()
         }
         do {
             let updated = try await CRMService.shared.patchContact(id: contact.id, body: body)

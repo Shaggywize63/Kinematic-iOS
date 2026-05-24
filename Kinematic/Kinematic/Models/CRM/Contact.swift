@@ -41,9 +41,6 @@ struct Contact: Codable, Identifiable, Hashable {
     let lastPurchaseAt: String?
     let referralSource: String?
 
-    // Photo (optional, stored as a hosted URL via /api/v1/upload/photo).
-    let photoUrl: String?
-
     var displayName: String {
         let f = firstName ?? ""
         let l = lastName ?? ""
@@ -88,6 +85,5 @@ struct Contact: Codable, Identifiable, Hashable {
         case totalOrders = "total_orders"
         case lastPurchaseAt = "last_purchase_at"
         case referralSource = "referral_source"
-        case photoUrl = "photo_url"
     }
 }
