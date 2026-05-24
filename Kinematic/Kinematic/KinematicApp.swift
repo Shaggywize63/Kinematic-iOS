@@ -119,6 +119,11 @@ class KiniAppState: ObservableObject {
     func logout() {
         Session.logout()
         OutletCache.shared.invalidateAll()
+        // Drop CRM read caches so the next user doesn't see the previous
+        // user's leads/deals/etc. The write queue is intentionally NOT
+        // wiped — queued rows are user-key-scoped and would replay safely
+        // on the original user's next login.
+        Task { @MainActor in CRMReadCache.shared.invalidateAll() }
         self.isAuthenticated = false
         self.selectedTab = 0
         self.showSideMenu = false
@@ -1736,12 +1741,16 @@ struct KinematicApp: App {
                 .environmentObject(appState)
                 .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
                 .onChange(of: scenePhase) { _, phase in
-                    // Drain queued attendance + distribution writes whenever
-                    // the app comes back to the foreground. Also resend the
-                    // cached FCM token in case the user signed in after the
-                    // initial APNs registration completed.
+                    // Drain queued attendance + distribution + CRM writes
+                    // whenever the app comes back to the foreground. Also
+                    // resend the cached FCM token in case the user signed in
+                    // after the initial APNs registration completed.
                     if phase == .active && Session.isAuthenticated {
-                        Task { await AttendanceCache.shared.flush() }
+                        Task {
+                            await AttendanceCache.shared.flush()
+                            await CRMSyncEngine.shared.flushQueue()
+                            await CRMSyncEngine.shared.flushDistribution()
+                        }
                         PushNotificationService.shared.resendTokenAfterLogin()
                     }
                 }
