@@ -40,11 +40,40 @@ struct CRMReportsView: View {
 
                 exportCard(
                     title: "Deals",
-                    subtitle: "Open + won + lost deals with amount, stage",
+                    subtitle: "Server export — line items, custom fields, lead phone",
                     icon: "square.stack.3d.up.fill",
                     color: .green,
                     action: exportDeals
                 )
+
+                exportCard(
+                    title: "Activities",
+                    subtitle: "Server export — includes lead phone column",
+                    icon: "clock.arrow.circlepath",
+                    color: .orange,
+                    action: exportActivities
+                )
+
+                NavigationLink(destination: CustomReportBuilderView()) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle().fill(Color.indigo.opacity(0.15)).frame(width: 44, height: 44)
+                            Image(systemName: "slider.horizontal.3").foregroundColor(.indigo)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Custom Report Builder")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(Color(uiColor: .label))
+                            Text("Pick entity + fields + filters and export")
+                                .font(.caption).foregroundColor(.gray)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundColor(.indigo)
+                    }
+                    .padding(14)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
+                }
+                .buttonStyle(.plain)
 
                 if let msg = statusMessage {
                     Label(msg, systemImage: statusIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
@@ -182,19 +211,22 @@ struct CRMReportsView: View {
         }
     }
 
+    /// Server-side deals export. The backend includes line items, custom-field
+    /// columns, and lead-phone / source-lead columns that client-side
+    /// generation can't see, so we hit the export endpoint directly and stream
+    /// the CSV bytes to a tempfile. Date filters are ignored — the endpoint
+    /// emits the org's full deal set, matching the web behaviour.
     private func exportDeals() async {
-        await runExport(filenamePrefix: "deals") {
-            let rows = try await CRMService.shared.listDeals(from: self.isoFrom, to: self.isoTo)
-            let headers = ["id","name","amount","currency","status","stage_id","win_probability","expected_close_date","account_id","created_at"]
-            var lines: [String] = [headers.joined(separator: ",")]
-            for d in rows {
-                lines.append([
-                    d.id, d.name, String(d.amount ?? 0), d.currency ?? "INR",
-                    d.status ?? "", d.stageId ?? "", String(d.winProbability ?? 0),
-                    d.expectedCloseDate ?? "", d.accountId ?? "", d.createdAt ?? "",
-                ].map(self.escape).joined(separator: ","))
-            }
-            return (lines.joined(separator: "\n"), rows.count)
+        await runServerExport(filenamePrefix: "deals") {
+            try await CRMService.shared.exportDealsCSV()
+        }
+    }
+
+    /// Server-side activities export. The new column set includes Lead Phone
+    /// and drops the legacy Contact / Account / Deal name columns.
+    private func exportActivities() async {
+        await runServerExport(filenamePrefix: "activities") {
+            try await CRMService.shared.exportActivitiesCSV()
         }
     }
 
@@ -213,6 +245,41 @@ struct CRMReportsView: View {
                 if d >= endOfT { return false }
             }
             return true
+        }
+    }
+
+    /// Variant of `runExport` for endpoints that return the CSV bytes directly.
+    /// Row count isn't known up-front (we'd have to parse), so we just count
+    /// non-empty newlines after the header.
+    private func runServerExport(filenamePrefix: String, fetch: () async throws -> Data) async {
+        await MainActor.run {
+            isBusy = true
+            statusMessage = nil
+        }
+        defer { Task { @MainActor in isBusy = false } }
+        do {
+            let data = try await fetch()
+            let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+            let filename = "\(filenamePrefix)-\(fmt.string(from: Date())).csv"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            try data.write(to: url, options: .atomic)
+
+            // Best-effort row count (header + data lines, minus the header).
+            let text = String(data: data, encoding: .utf8) ?? ""
+            let lineCount = text.split(separator: "\n", omittingEmptySubsequences: true).count
+            let rowCount = max(0, lineCount - 1)
+
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            await MainActor.run {
+                statusIsError = false
+                statusMessage = "Exported \(rowCount) rows → \(filename)"
+                shareItem = ShareItem(url: url)
+            }
+        } catch {
+            await MainActor.run {
+                statusIsError = true
+                statusMessage = "Export failed: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -254,12 +321,12 @@ struct CRMReportsView: View {
 /// The previous implementation used `let id = UUID()` which generated a fresh
 /// identity on every Binding `get`, confusing SwiftUI's sheet(item:) tracking
 /// and preventing the share sheet from appearing.
-private struct ShareItem: Identifiable {
+struct ShareItem: Identifiable {
     var id: URL { url }
     let url: URL
 }
 
-private struct ActivityShareSheet: UIViewControllerRepresentable {
+struct ActivityShareSheet: UIViewControllerRepresentable {
     let items: [Any]
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: items, applicationActivities: nil)

@@ -4,6 +4,9 @@ struct DealsListView: View {
     @StateObject var vm = DealsViewModel()
     @State private var showCreate = false
     @State private var showDateFilter = false
+    @State private var isExporting = false
+    @State private var exportShareItem: ShareItem?
+    @State private var exportError: String?
     @AppStorage("crm.deals.showWeighted") private var showWeighted: Bool = false
     let statusOptions = ["open", "won", "lost", "all"]
 
@@ -73,6 +76,19 @@ struct DealsListView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showCreate = true } label: { Image(systemName: "plus") }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await downloadCSV() }
+                } label: {
+                    if isExporting {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.down.doc")
+                    }
+                }
+                .disabled(isExporting)
+                .accessibilityLabel("Download CSV")
+            }
         }
         .sheet(isPresented: $showCreate) {
             DealCreateView { body in
@@ -84,6 +100,36 @@ struct DealsListView: View {
                 Task { await vm.refresh() }
             }
         }
+        .sheet(item: $exportShareItem) { item in
+            ActivityShareSheet(items: [item.url])
+        }
+        .alert("Export failed", isPresented: Binding(
+            get: { exportError != nil },
+            set: { if !$0 { exportError = nil } }
+        )) {
+            Button("OK", role: .cancel) { exportError = nil }
+        } message: {
+            Text(exportError ?? "")
+        }
         .task { await vm.refresh() }
+    }
+
+    /// Calls the server-side deals export endpoint and presents the resulting
+    /// CSV via UIActivityViewController. Same pattern CRMReportsView uses so
+    /// we get identical line-item / custom-field column coverage.
+    private func downloadCSV() async {
+        await MainActor.run { isExporting = true; exportError = nil }
+        defer { Task { @MainActor in isExporting = false } }
+        do {
+            let data = try await CRMService.shared.exportDealsCSV()
+            let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+            let filename = "deals-\(fmt.string(from: Date())).csv"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            try data.write(to: url, options: .atomic)
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            await MainActor.run { exportShareItem = ShareItem(url: url) }
+        } catch {
+            await MainActor.run { exportError = error.localizedDescription }
+        }
     }
 }
