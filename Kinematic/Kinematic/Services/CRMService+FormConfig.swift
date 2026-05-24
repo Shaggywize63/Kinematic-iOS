@@ -72,7 +72,11 @@ extension CRMService {
     /// Upload a UIImage as JPEG to /api/v1/upload/photo and return the
     /// hosted URL. JPEG compression caps the payload at ~8MB (the backend's
     /// stated limit); we step quality down until we fit.
-    func uploadLeadPhoto(_ image: UIImage) async throws -> String {
+    ///
+    /// The endpoint is entity-agnostic: leads, contacts, and accounts all
+    /// hit the same `/api/v1/upload/photo` and the resulting URL is stored
+    /// on the entity row by the caller.
+    func uploadPhoto(_ image: UIImage) async throws -> String {
         guard let data = Self.jpegUnder8MB(image) else {
             throw CRMServiceError.server("Could not encode image")
         }
@@ -88,7 +92,7 @@ extension CRMService {
 
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"lead.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"photo.jpg\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
         body.append(data)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)

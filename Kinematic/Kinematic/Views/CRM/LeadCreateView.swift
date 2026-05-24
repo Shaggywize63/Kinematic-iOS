@@ -48,7 +48,7 @@ struct LeadCreateView: View {
                     }.pickerStyle(.segmented)
                 }
 
-                LeadPhotoSection(photoUrl: $photoUrl)
+                CRMPhotoSection(title: "Lead Photo (optional)", photoUrl: $photoUrl)
 
                 identitySection
                 contactSection

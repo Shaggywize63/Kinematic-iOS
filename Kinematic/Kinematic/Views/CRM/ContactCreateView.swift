@@ -27,6 +27,9 @@ struct ContactCreateView: View {
     @State private var marketingConsent = false
     @State private var whatsappConsent = false
 
+    // Photo (optional, uploaded via /api/v1/upload/photo).
+    @State private var photoUrl: String?
+
     let onSubmit: ([String: Any]) async -> Void
 
     var body: some View {
@@ -38,6 +41,8 @@ struct ContactCreateView: View {
                         Text("B2C (Consumer)").tag(true)
                     }.pickerStyle(.segmented)
                 }
+
+                CRMPhotoSection(title: "Contact Photo (optional)", photoUrl: $photoUrl)
 
                 Section("Identity") {
                     TextField("First name", text: $firstName)
@@ -126,6 +131,9 @@ struct ContactCreateView: View {
             body["country"] = country
             body["marketing_consent"] = marketingConsent
             body["whatsapp_consent"]  = whatsappConsent
+        }
+        if let url = photoUrl, !url.isEmpty {
+            body["photo_url"] = url
         }
         return body
     }

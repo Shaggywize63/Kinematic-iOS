@@ -80,7 +80,7 @@ struct LeadEditView: View {
                     .pickerStyle(.segmented)
                 }
 
-                LeadPhotoSection(photoUrl: $photoUrl)
+                CRMPhotoSection(title: "Lead Photo (optional)", photoUrl: $photoUrl)
 
                 personalSection
                 if !isB2C {
