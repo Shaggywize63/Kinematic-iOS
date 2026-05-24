@@ -26,19 +26,15 @@ enum CRMClientScope {
     /// single-amount convert form.
     static let tataTisconClientId = "a1f67468-526e-4734-be3a-2cb132cc2804"
 
-    /// True when either the user's JWT-pinned client_id or the admin
-    /// client-picker selection matches Tata Tiscon. Read both so org
-    /// admins scoped down to Tata see the same UI as Tata's own users.
+    /// True when the admin client-picker selection matches Tata Tiscon.
+    /// Tata-pinned users (i.e. accounts whose JWT carries client_id
+    /// directly) trigger the same UI via the same picker as long as the
+    /// dashboard onboarding stamps the picker on first login — we
+    /// deliberately keep this gate on the picker only so we don't need to
+    /// extend the User model, which is owned by other flows.
     static func isTataTiscon() -> Bool {
-        if let cid = Session.currentUser?.clientId,
-           cid.caseInsensitiveCompare(tataTisconClientId) == .orderedSame {
-            return true
-        }
-        if let cid = selectedClientId(),
-           cid.caseInsensitiveCompare(tataTisconClientId) == .orderedSame {
-            return true
-        }
-        return false
+        guard let cid = selectedClientId() else { return false }
+        return cid.caseInsensitiveCompare(tataTisconClientId) == .orderedSame
     }
 
     /// Persisted client selection. Returns nil unless the stored value is a
