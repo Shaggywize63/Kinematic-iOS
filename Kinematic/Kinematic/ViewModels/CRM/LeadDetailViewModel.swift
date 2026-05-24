@@ -5,6 +5,10 @@ import Combine
 final class LeadDetailViewModel: ObservableObject {
     @Published var lead: Lead?
     @Published var score: LeadScore?
+    /// Wall-clock time the currently-shown `score` was fetched from the
+    /// server. Drives the "Last computed Xh ago" subtitle on the score card.
+    /// `nil` when the cache is empty — UI then shows a Compute Now button.
+    @Published var scoreFetchedAt: Date?
     @Published var activities: [Activity] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -19,6 +23,10 @@ final class LeadDetailViewModel: ObservableObject {
     func load() async {
         isLoading = true
         defer { isLoading = false }
+        // Hydrate score from disk FIRST so the card renders without waiting
+        // on the lead/activities round-trip and without firing the score
+        // recompute endpoint. Recompute now requires an explicit Refresh tap.
+        hydrateCachedScore()
         do {
             async let leadTask = api.getLead(id: leadId)
             async let actsTask = api.leadActivities(id: leadId)
@@ -29,11 +37,28 @@ final class LeadDetailViewModel: ObservableObject {
         }
     }
 
+    /// Pull the most recent cached score for this lead off disk and push it
+    /// into @Published state. Safe to call repeatedly — a missing cache is
+    /// treated as "no score yet" and the UI shows the Compute Now empty
+    /// state. Called from `load()` on appear.
+    func hydrateCachedScore() {
+        guard let cached = CRMScoreNBACache.shared.loadScore(leadId: leadId) else { return }
+        self.score = cached.score
+        self.scoreFetchedAt = cached.fetchedAt
+    }
+
+    /// Explicit recompute path. Triggered by the Compute Now / Refresh
+    /// affordances on the score card — never on .task / .onAppear. Persists
+    /// the freshly-computed score so subsequent visits read it from disk.
     func runAIScore() async {
         aiBusy = true
         defer { aiBusy = false }
         do {
-            score = try await api.aiScoreLead(id: leadId)
+            let fresh = try await api.aiScoreLead(id: leadId)
+            let now = Date()
+            score = fresh
+            scoreFetchedAt = now
+            CRMScoreNBACache.shared.saveScore(leadId: leadId, score: fresh, fetchedAt: now)
         } catch {
             errorMessage = error.localizedDescription
         }
