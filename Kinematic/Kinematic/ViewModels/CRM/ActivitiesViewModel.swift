@@ -12,6 +12,9 @@ final class ActivitiesViewModel: ObservableObject {
 
     init(initialFilter: String = "all") {
         self.typeFilter = initialFilter
+        if let cached = CRMReadCache.shared.load(.activities, as: [Activity].self) {
+            self.activities = cached
+        }
     }
 
     /// Tasks are managed separately on TasksView — keep them out of the
@@ -34,14 +37,10 @@ final class ActivitiesViewModel: ObservableObject {
     }
 
     func log(type: String, subject: String, description: String, dealId: String?, leadId: String?) async {
-        do {
-            var body: [String: Any] = ["type": type, "subject": subject, "description": description]
-            if let dealId { body["deal_id"] = dealId }
-            if let leadId { body["lead_id"] = leadId }
-            let a = try await api.createActivity(body)
-            activities.insert(a, at: 0)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        var body: [String: Any] = ["type": type, "subject": subject, "description": description]
+        if let dealId { body["deal_id"] = dealId }
+        if let leadId { body["lead_id"] = leadId }
+        let a = await api.createActivityOrQueue(body)
+        activities.insert(a, at: 0)
     }
 }

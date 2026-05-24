@@ -12,6 +12,12 @@ final class DealsViewModel: ObservableObject {
 
     private let api = CRMService.shared
 
+    init() {
+        if let cached = CRMReadCache.shared.load(.deals, as: [Deal].self) {
+            self.deals = cached
+        }
+    }
+
     private static let isoDate: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
     }()
@@ -31,26 +37,22 @@ final class DealsViewModel: ObservableObject {
     }
 
     func create(body: [String: Any]) async {
-        do {
-            let d = try await api.createDeal(body)
-            deals.insert(d, at: 0)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        let d = await api.createDealOrQueue(body)
+        deals.insert(d, at: 0)
     }
 
     func win(_ deal: Deal) async {
-        do {
-            let updated = try await api.winDeal(id: deal.id, amount: deal.amount)
+        if let updated = await api.winDealOrQueue(id: deal.id, amount: deal.amount) {
             replace(updated)
-        } catch { errorMessage = error.localizedDescription }
+        }
+        // nil → enqueued. UI keeps the existing row; the banner / pending
+        // sync sheet surfaces the pending change.
     }
 
     func lose(_ deal: Deal, reason: String) async {
-        do {
-            let updated = try await api.loseDeal(id: deal.id, reason: reason)
+        if let updated = await api.loseDealOrQueue(id: deal.id, reason: reason) {
             replace(updated)
-        } catch { errorMessage = error.localizedDescription }
+        }
     }
 
     private func replace(_ d: Deal) {

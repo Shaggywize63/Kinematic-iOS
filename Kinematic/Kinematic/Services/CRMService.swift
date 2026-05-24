@@ -47,7 +47,22 @@ final class CRMService {
         if let state { q["state"] = state }
         if let from { q["from"] = from }
         if let to { q["to"] = to }
-        return try await get("/api/v1/crm/leads", query: q)
+        do {
+            let rows: [Lead] = try await get("/api/v1/crm/leads", query: q)
+            // Only persist the unfiltered "default view" so the offline UI
+            // shows the broadest snapshot. A filtered fetch still hits the
+            // wire on every search keystroke when online.
+            if status == nil && (search ?? "").isEmpty && city == nil && state == nil && from == nil && to == nil {
+                await MainActor.run { CRMReadCache.shared.save(.leads, rows: rows) }
+            }
+            return rows
+        } catch {
+            // Network failure / decode failure — serve last good snapshot.
+            if let cached = await MainActor.run(body: { CRMReadCache.shared.load(.leads, as: [Lead].self) }) {
+                return cached
+            }
+            throw error
+        }
     }
     func getLead(id: String) async throws -> Lead { try await get("/api/v1/crm/leads/\(id)") }
     func createLead(_ body: [String: Any]) async throws -> Lead {
@@ -123,7 +138,18 @@ final class CRMService {
     func listContacts(search: String? = nil) async throws -> [Contact] {
         var q: [String: String] = [:]
         if let search { q["q"] = search }
-        return try await get("/api/v1/crm/contacts", query: q)
+        do {
+            let rows: [Contact] = try await get("/api/v1/crm/contacts", query: q)
+            if (search ?? "").isEmpty {
+                await MainActor.run { CRMReadCache.shared.save(.contacts, rows: rows) }
+            }
+            return rows
+        } catch {
+            if let cached = await MainActor.run(body: { CRMReadCache.shared.load(.contacts, as: [Contact].self) }) {
+                return cached
+            }
+            throw error
+        }
     }
     func getContact(id: String) async throws -> Contact { try await get("/api/v1/crm/contacts/\(id)") }
     func createContact(_ body: [String: Any]) async throws -> Contact {
@@ -143,7 +169,18 @@ final class CRMService {
     func listAccounts(search: String? = nil) async throws -> [CRMAccount] {
         var q: [String: String] = [:]
         if let search { q["q"] = search }
-        return try await get("/api/v1/crm/accounts", query: q)
+        do {
+            let rows: [CRMAccount] = try await get("/api/v1/crm/accounts", query: q)
+            if (search ?? "").isEmpty {
+                await MainActor.run { CRMReadCache.shared.save(.accounts, rows: rows) }
+            }
+            return rows
+        } catch {
+            if let cached = await MainActor.run(body: { CRMReadCache.shared.load(.accounts, as: [CRMAccount].self) }) {
+                return cached
+            }
+            throw error
+        }
     }
     func getAccount(id: String) async throws -> CRMAccount { try await get("/api/v1/crm/accounts/\(id)") }
     func createAccount(_ body: [String: Any]) async throws -> CRMAccount {
@@ -166,7 +203,18 @@ final class CRMService {
         if let status { q["status"] = status }
         if let from { q["from"] = from }
         if let to { q["to"] = to }
-        return try await get("/api/v1/crm/deals", query: q)
+        do {
+            let rows: [Deal] = try await get("/api/v1/crm/deals", query: q)
+            if pipelineId == nil && status == nil && from == nil && to == nil {
+                await MainActor.run { CRMReadCache.shared.save(.deals, rows: rows) }
+            }
+            return rows
+        } catch {
+            if let cached = await MainActor.run(body: { CRMReadCache.shared.load(.deals, as: [Deal].self) }) {
+                return cached
+            }
+            throw error
+        }
     }
     func getDeal(id: String) async throws -> Deal { try await get("/api/v1/crm/deals/\(id)") }
     func createDeal(_ body: [String: Any]) async throws -> Deal {
@@ -216,7 +264,18 @@ final class CRMService {
         var q: [String: String] = [:]
         if let dealId { q["deal_id"] = dealId }
         if let leadId { q["lead_id"] = leadId }
-        return try await get("/api/v1/crm/activities", query: q)
+        do {
+            let rows: [Activity] = try await get("/api/v1/crm/activities", query: q)
+            if dealId == nil && leadId == nil {
+                await MainActor.run { CRMReadCache.shared.save(.activities, rows: rows) }
+            }
+            return rows
+        } catch {
+            if let cached = await MainActor.run(body: { CRMReadCache.shared.load(.activities, as: [Activity].self) }) {
+                return cached
+            }
+            throw error
+        }
     }
     func createActivity(_ body: [String: Any]) async throws -> Activity {
         try await postJSON("/api/v1/crm/activities", body: body)
@@ -334,19 +393,19 @@ final class CRMService {
         return try await perform(req)
     }
 
-    private func postJSON<T: Codable>(_ path: String, body: [String: Any]) async throws -> T {
+    private func postJSON<T: Codable>(_ path: String, body: [String: Any], idempotencyKey: String? = nil) async throws -> T {
         let data = body.isEmpty
             ? Data("{}".utf8)
             : try JSONSerialization.data(withJSONObject: body, options: [])
-        let req = try makeRequest(path: path, method: "POST", body: data)
+        let req = try makeRequest(path: path, method: "POST", body: data, idempotencyKey: idempotencyKey)
         return try await perform(req)
     }
 
-    private func sendJSON<T: Codable>(_ path: String, method: String, body: [String: Any]) async throws -> T {
+    private func sendJSON<T: Codable>(_ path: String, method: String, body: [String: Any], idempotencyKey: String? = nil) async throws -> T {
         let data = body.isEmpty
             ? Data("{}".utf8)
             : try JSONSerialization.data(withJSONObject: body, options: [])
-        let req = try makeRequest(path: path, method: method, body: data)
+        let req = try makeRequest(path: path, method: method, body: data, idempotencyKey: idempotencyKey)
         return try await perform(req)
     }
 
@@ -355,7 +414,7 @@ final class CRMService {
         return try await perform(req)
     }
 
-    private func makeRequest(path: String, method: String, body: Data?, query: [String: String] = [:]) throws -> URLRequest {
+    private func makeRequest(path: String, method: String, body: Data?, query: [String: String] = [:], idempotencyKey: String? = nil) throws -> URLRequest {
         guard let token = authToken else { throw CRMServiceError.missingAuth }
         var components = URLComponents(url: baseHost.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         if !query.isEmpty {
@@ -368,6 +427,10 @@ final class CRMService {
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
         if let cid = selectedClientId { req.setValue(cid, forHTTPHeaderField: "X-Client-Id") }
+        // Idempotency-Key — backend dedupes retries of the same create/update
+        // so the offline queue can replay safely. Distribution + attendance
+        // already use this header; CRM accepts (or ignores) the same shape.
+        if let idempotencyKey { req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key") }
         req.httpBody = body
         req.timeoutInterval = 30
         return req

@@ -11,27 +11,30 @@ import Foundation
 import Combine
 
 extension CRMService {
-    func patchLead(id: String, body: [String: Any]) async throws -> Lead {
-        try await patch("/api/v1/crm/leads/\(id)", body: body)
+    func patchLead(id: String, body: [String: Any], idempotencyKey: String? = nil) async throws -> Lead {
+        try await patch("/api/v1/crm/leads/\(id)", body: body, idempotencyKey: idempotencyKey)
     }
-    func patchContact(id: String, body: [String: Any]) async throws -> Contact {
-        try await patch("/api/v1/crm/contacts/\(id)", body: body)
+    func patchContact(id: String, body: [String: Any], idempotencyKey: String? = nil) async throws -> Contact {
+        try await patch("/api/v1/crm/contacts/\(id)", body: body, idempotencyKey: idempotencyKey)
     }
-    func patchAccount(id: String, body: [String: Any]) async throws -> CRMAccount {
-        try await patch("/api/v1/crm/accounts/\(id)", body: body)
+    func patchAccount(id: String, body: [String: Any], idempotencyKey: String? = nil) async throws -> CRMAccount {
+        try await patch("/api/v1/crm/accounts/\(id)", body: body, idempotencyKey: idempotencyKey)
     }
-    func patchDeal(id: String, body: [String: Any]) async throws -> Deal {
-        try await patch("/api/v1/crm/deals/\(id)", body: body)
+    func patchDeal(id: String, body: [String: Any], idempotencyKey: String? = nil) async throws -> Deal {
+        try await patch("/api/v1/crm/deals/\(id)", body: body, idempotencyKey: idempotencyKey)
     }
 }
 
 private extension CRMService {
-    func patch<T: Codable>(_ path: String, body: [String: Any]) async throws -> T {
+    func patch<T: Codable>(_ path: String, body: [String: Any], idempotencyKey: String? = nil) async throws -> T {
         let url = try EditHelpers.buildURL(path: path)
         var req = URLRequest(url: url)
         req.httpMethod = "PATCH"
         req.timeoutInterval = 30
         EditHelpers.applyHeaders(to: &req)
+        if let idempotencyKey {
+            req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        }
         let payload = body.isEmpty
             ? Data("{}".utf8)
             : try JSONSerialization.data(withJSONObject: body, options: [])

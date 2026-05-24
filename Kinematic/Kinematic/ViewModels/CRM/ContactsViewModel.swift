@@ -12,6 +12,12 @@ final class ContactsViewModel: ObservableObject {
 
     private let api = CRMService.shared
 
+    init() {
+        if let cached = CRMReadCache.shared.load(.contacts, as: [Contact].self) {
+            self.contacts = cached
+        }
+    }
+
     /// ISO-8601 parser for `created_at` strings returned by the backend.
     private static let isoParser: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -57,11 +63,7 @@ final class ContactsViewModel: ObservableObject {
     }
 
     func create(body: [String: Any]) async {
-        do {
-            let c = try await api.createContact(body)
-            contacts.insert(c, at: 0)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        let c = await api.createContactOrQueue(body)
+        contacts.insert(c, at: 0)
     }
 }

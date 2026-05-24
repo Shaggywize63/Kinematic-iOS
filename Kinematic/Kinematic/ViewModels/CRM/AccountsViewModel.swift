@@ -10,6 +10,12 @@ final class AccountsViewModel: ObservableObject {
 
     private let api = CRMService.shared
 
+    init() {
+        if let cached = CRMReadCache.shared.load(.accounts, as: [CRMAccount].self) {
+            self.accounts = cached
+        }
+    }
+
     var filtered: [CRMAccount] {
         guard !search.isEmpty else { return accounts }
         let q = search.lowercased()
@@ -27,11 +33,7 @@ final class AccountsViewModel: ObservableObject {
     }
 
     func create(body: [String: Any]) async {
-        do {
-            let a = try await api.createAccount(body)
-            accounts.insert(a, at: 0)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        let a = await api.createAccountOrQueue(body)
+        accounts.insert(a, at: 0)
     }
 }

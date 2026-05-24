@@ -16,6 +16,11 @@ final class LeadsViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     init() {
+        // Cold-start: paint the last cached snapshot instantly so the list
+        // never shows an empty state while the network fetch is in flight.
+        if let cached = CRMReadCache.shared.load(.leads, as: [Lead].self) {
+            self.leads = cached
+        }
         // Re-fetch when location filter changes
         location.$state.combineLatest(location.$city)
             .dropFirst()
@@ -55,11 +60,11 @@ final class LeadsViewModel: ObservableObject {
     }
 
     func create(body: [String: Any]) async {
-        do {
-            let lead = try await api.createLead(body)
-            leads.insert(lead, at: 0)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        // Offline-aware: on network failure the lead is enqueued and an
+        // optimistic row (id="pending:<uuid>") is returned so the list
+        // surfaces it immediately. CRMSyncEngine swaps in the real id on
+        // the next successful flush.
+        let lead = await api.createLeadOrQueue(body)
+        leads.insert(lead, at: 0)
     }
 }
