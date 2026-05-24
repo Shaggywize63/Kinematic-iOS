@@ -123,7 +123,10 @@ class KiniAppState: ObservableObject {
         // user's leads/deals/etc. The write queue is intentionally NOT
         // wiped — queued rows are user-key-scoped and would replay safely
         // on the original user's next login.
-        Task { @MainActor in CRMReadCache.shared.invalidateAll() }
+        Task { @MainActor in
+            CRMReadCache.shared.invalidateAll()
+            CRMScoreNBACache.shared.invalidateAll()
+        }
         self.isAuthenticated = false
         self.selectedTab = 0
         self.showSideMenu = false
@@ -1774,4 +1777,3 @@ struct KinematicApp: App {
         }
     }
 }
-
