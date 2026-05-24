@@ -7,6 +7,8 @@ final class ActivitiesViewModel: ObservableObject {
     @Published var typeFilter: String
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// See LeadsViewModel.showingCached — drives the "Cached · Xm ago" chip.
+    @Published var showingCached: Bool = false
 
     private let api = CRMService.shared
 
@@ -14,6 +16,7 @@ final class ActivitiesViewModel: ObservableObject {
         self.typeFilter = initialFilter
         if let cached = CRMReadCache.shared.load(.activities, as: [Activity].self) {
             self.activities = cached
+            self.showingCached = true
         }
     }
 
@@ -31,6 +34,7 @@ final class ActivitiesViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             activities = try await api.listActivities()
+            showingCached = false
         } catch {
             errorMessage = error.localizedDescription
         }

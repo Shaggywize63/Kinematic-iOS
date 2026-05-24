@@ -9,12 +9,15 @@ final class ContactsViewModel: ObservableObject {
     @Published var dateTo: Date? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// See LeadsViewModel.showingCached — drives the "Cached · Xm ago" chip.
+    @Published var showingCached: Bool = false
 
     private let api = CRMService.shared
 
     init() {
         if let cached = CRMReadCache.shared.load(.contacts, as: [Contact].self) {
             self.contacts = cached
+            self.showingCached = true
         }
     }
 
@@ -57,6 +60,7 @@ final class ContactsViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             contacts = try await api.listContacts(search: search.isEmpty ? nil : search)
+            showingCached = false
         } catch {
             errorMessage = error.localizedDescription
         }

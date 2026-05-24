@@ -23,6 +23,9 @@ extension CRMService {
     func patchDeal(id: String, body: [String: Any], idempotencyKey: String? = nil) async throws -> Deal {
         try await patch("/api/v1/crm/deals/\(id)", body: body, idempotencyKey: idempotencyKey)
     }
+    func patchActivity(id: String, body: [String: Any], idempotencyKey: String? = nil) async throws -> Activity {
+        try await patch("/api/v1/crm/activities/\(id)", body: body, idempotencyKey: idempotencyKey)
+    }
 }
 
 private extension CRMService {

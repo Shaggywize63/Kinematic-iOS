@@ -10,6 +10,12 @@ final class LeadsViewModel: ObservableObject {
     @Published var dateTo: Date? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// True when the list is rendering data from the on-disk cache rather
+    /// than a fresh network response. Flips off after the first successful
+    /// refresh; stays on through network failures so the UI keeps telling
+    /// the rep "you're looking at older data". Drives the "Cached · Xm
+    /// ago" chip in the list header.
+    @Published var showingCached: Bool = false
 
     private let api = CRMService.shared
     private let location = CRMLocationStore.shared
@@ -20,6 +26,7 @@ final class LeadsViewModel: ObservableObject {
         // never shows an empty state while the network fetch is in flight.
         if let cached = CRMReadCache.shared.load(.leads, as: [Lead].self) {
             self.leads = cached
+            self.showingCached = true
         }
         // Re-fetch when location filter changes
         location.$state.combineLatest(location.$city)
@@ -54,6 +61,10 @@ final class LeadsViewModel: ObservableObject {
                 from: dateFrom.map { Self.isoDate.string(from: $0) },
                 to: dateTo.map { Self.isoDate.string(from: $0) }
             )
+            // Successful network refresh — the chip can disappear. We
+            // deliberately don't flip this off on `catch` so the user
+            // keeps seeing the "Cached" hint when network is unreachable.
+            showingCached = false
         } catch {
             errorMessage = error.localizedDescription
         }

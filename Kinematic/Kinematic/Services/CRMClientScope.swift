@@ -26,15 +26,22 @@ enum CRMClientScope {
     /// single-amount convert form.
     static let tataTisconClientId = "a1f67468-526e-4734-be3a-2cb132cc2804"
 
-    /// True when the admin client-picker selection matches Tata Tiscon.
-    /// Tata-pinned users (i.e. accounts whose JWT carries client_id
-    /// directly) trigger the same UI via the same picker as long as the
-    /// dashboard onboarding stamps the picker on first login — we
-    /// deliberately keep this gate on the picker only so we don't need to
-    /// extend the User model, which is owned by other flows.
+    /// True when EITHER the admin client-picker is set to Tata OR the
+    /// signed-in user's JWT carries a `client_id` claim that matches
+    /// Tata's tenant UUID. The picker path covers org-admins hopping
+    /// between scopes; the JWT path covers Tata-pinned users (whose
+    /// onboarding may not have stamped the picker on first login).
+    /// Picker takes precedence when both are set.
     static func isTataTiscon() -> Bool {
-        guard let cid = selectedClientId() else { return false }
-        return cid.caseInsensitiveCompare(tataTisconClientId) == .orderedSame
+        if let cid = selectedClientId(),
+           cid.caseInsensitiveCompare(tataTisconClientId) == .orderedSame {
+            return true
+        }
+        if let jwtCid = clientIdFromJWT(),
+           jwtCid.caseInsensitiveCompare(tataTisconClientId) == .orderedSame {
+            return true
+        }
+        return false
     }
 
     /// Persisted client selection. Returns nil unless the stored value is a
@@ -60,6 +67,29 @@ enum CRMClientScope {
     /// Posted whenever the active client changes. ViewModels that cache
     /// per-client data can subscribe to refresh their lists.
     static let didChange = Notification.Name.crmClientScopeChanged
+
+    /// Decode the `client_id` claim out of the stored JWT, if present.
+    /// Returns nil for non-Tata users (most accounts), demo mode, or any
+    /// malformed token — caller treats nil as "no JWT-pinned client".
+    /// We parse the middle JWT segment by hand rather than pulling in
+    /// a JWT lib for one field. Backend never signs HS512/EdDSA with a
+    /// segment count != 3, so a clean string-split + base64url decode is
+    /// enough.
+    private static func clientIdFromJWT() -> String? {
+        let token = Session.sharedToken
+        guard !token.isEmpty else { return nil }
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return nil }
+        let payload = String(parts[1])
+        // base64url → base64 (URL-safe replacements + pad to length % 4)
+        var b64 = payload.replacingOccurrences(of: "-", with: "+")
+                         .replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64.append("=") }
+        guard let data = Data(base64Encoded: b64) else { return nil }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let cid = json["client_id"] as? String, isUUID(cid) { return cid }
+        return nil
+    }
 
     private static func isUUID(_ s: String) -> Bool {
         // Mirrors the regex used in `/lib/api.ts` on the dashboard.

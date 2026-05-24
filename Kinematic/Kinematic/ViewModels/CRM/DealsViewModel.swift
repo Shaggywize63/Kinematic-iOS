@@ -9,12 +9,17 @@ final class DealsViewModel: ObservableObject {
     @Published var dateTo: Date? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// See LeadsViewModel.showingCached — drives the "Cached · Xm ago"
+    /// chip in the list header. Same lifecycle: set on cache hit at init,
+    /// cleared after a successful network refresh, sticky on failure.
+    @Published var showingCached: Bool = false
 
     private let api = CRMService.shared
 
     init() {
         if let cached = CRMReadCache.shared.load(.deals, as: [Deal].self) {
             self.deals = cached
+            self.showingCached = true
         }
     }
 
@@ -31,6 +36,7 @@ final class DealsViewModel: ObservableObject {
                 from: dateFrom.map { Self.isoDate.string(from: $0) },
                 to: dateTo.map { Self.isoDate.string(from: $0) }
             )
+            showingCached = false
         } catch {
             errorMessage = error.localizedDescription
         }
