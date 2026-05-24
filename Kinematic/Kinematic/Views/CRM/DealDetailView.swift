@@ -5,6 +5,10 @@ struct DealDetailView: View {
     @State var initialDeal: Deal?
     @State private var winProb: WinProbability?
     @State private var nextAction: NextBestAction?
+    /// Wall-clock time the currently-shown `nextAction` was fetched. Set
+    /// from the on-disk cache on appear (no API call) or from a successful
+    /// Refresh tap. `nil` keeps the card in its cold/empty state.
+    @State private var nbaFetchedAt: Date?
     @State private var aiBusy = false
     @State private var editing = false
     @State private var stages: [Stage] = []
@@ -41,18 +45,7 @@ struct DealDetailView: View {
                         }
                     }
                     LineItemsCard(dealId: dealId)
-                    if let nba = nextAction {
-                        NextBestActionCard(action: nba) { }
-                    } else {
-                        Button { Task { await loadNextAction() } } label: {
-                            HStack {
-                                if aiBusy { ProgressView().tint(.white) } else { Image(systemName: "sparkles") }
-                                Text("Suggest next action")
-                            }
-                            .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10)
-                            .background(Color.purple).foregroundColor(.white).cornerRadius(10)
-                        }
-                    }
+                    nbaSection
                 } else {
                     ProgressView().padding()
                 }
@@ -92,6 +85,13 @@ struct DealDetailView: View {
             }
         }
         .task {
+            // Cache-first NBA hydration. We deliberately do NOT call
+            // aiNextBestAction on appear anymore — the rep must tap Refresh
+            // to spend an AI roundtrip. Cold cache renders the empty state.
+            if let cached = CRMScoreNBACache.shared.loadNBA(dealId: dealId) {
+                nextAction = cached.action
+                nbaFetchedAt = cached.fetchedAt
+            }
             if initialDeal == nil {
                 initialDeal = try? await CRMService.shared.getDeal(id: dealId)
             }
@@ -103,6 +103,65 @@ struct DealDetailView: View {
             }
         }
     }
+
+    /// Next-best-action card. Cache-first: hydrated from
+    /// CRMScoreNBACache.loadNBA(dealId:) in `.task` so the card renders the
+    /// last computed suggestion without hitting `/api/v1/crm/ai/next-best-action`.
+    /// Refresh icon (warm) or Compute Now button (cold) is the only path
+    /// that triggers a live AI call.
+    @ViewBuilder
+    private var nbaSection: some View {
+        if let nba = nextAction {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Spacer()
+                    nbaRefreshButton
+                }
+                NextBestActionCard(action: nba) { }
+                if let fetched = nbaFetchedAt {
+                    Text("Last computed \(Self.relTimeFmt.localizedString(for: fetched, relativeTo: Date()))")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 4)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(NetworkReachability.shared.isOnline ? "No suggested action yet." : "Connect to compute.")
+                    .font(.caption).foregroundColor(.secondary)
+                Button { Task { await loadNextAction() } } label: {
+                    HStack {
+                        if aiBusy { ProgressView().tint(.white) } else { Image(systemName: "sparkles") }
+                        Text("Suggest next action")
+                    }
+                    .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(NetworkReachability.shared.isOnline ? Color.purple : Color.gray)
+                    .foregroundColor(.white).cornerRadius(10)
+                }
+                .disabled(!NetworkReachability.shared.isOnline || aiBusy)
+            }
+        }
+    }
+
+    private var nbaRefreshButton: some View {
+        let online = NetworkReachability.shared.isOnline
+        return Button { Task { await loadNextAction() } } label: {
+            if aiBusy {
+                ProgressView().controlSize(.small)
+            } else {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(online ? .purple : .gray)
+            }
+        }
+        .disabled(aiBusy || !online)
+    }
+
+    private static let relTimeFmt: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
 
     private func primaryContactCard(contact: Contact, phone: String, dealName: String) -> some View {
         HStack(spacing: 12) {
@@ -273,8 +332,16 @@ struct DealDetailView: View {
         aiBusy = true; defer { aiBusy = false }
         winProb = try? await CRMService.shared.aiWinProbability(dealId: dealId)
     }
+    /// Explicit user-driven NBA recompute. Called from the card's refresh
+    /// icon (warm cache) or Compute Now button (cold cache). Persists the
+    /// result so the next detail-screen open is free.
     private func loadNextAction() async {
         aiBusy = true; defer { aiBusy = false }
-        nextAction = try? await CRMService.shared.aiNextBestAction(dealId: dealId)
+        if let fresh = try? await CRMService.shared.aiNextBestAction(dealId: dealId) {
+            let now = Date()
+            nextAction = fresh
+            nbaFetchedAt = now
+            CRMScoreNBACache.shared.saveNBA(dealId: dealId, action: fresh, fetchedAt: now)
+        }
     }
 }

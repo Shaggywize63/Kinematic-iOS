@@ -31,7 +31,9 @@ struct LeadDetailView: View {
                     headerCard(lead: lead)
                     if lead.isWon { wonBanner(lead: lead) }
                     if lead.isB2c == true { b2cProfileCard(lead: lead) }
-                    if let score = vm.score { scoreCard(score: score) }
+                    // Score card always renders — either with cached values
+                    // + a refresh button, or an empty Compute Now state.
+                    scoreCard()
                     aiActions(lead: lead)
                     activitiesSection
                 } else if vm.isLoading {
@@ -193,33 +195,93 @@ struct LeadDetailView: View {
         Text(text).font(.system(size: 9, weight: .heavy)).padding(.horizontal, 6).padding(.vertical, 2).background(color).foregroundColor(.white).cornerRadius(4)
     }
 
-    private func scoreCard(score: LeadScore) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("AI SCORE").font(.system(size: 10, weight: .black)).tracking(1).foregroundColor(.purple)
-            HStack {
-                Text("\(Int(score.score))").font(.system(size: 36, weight: .black)).foregroundColor(.purple)
-                if let band = score.band {
-                    Text(band.uppercased()).font(.caption2).bold().padding(.horizontal, 8).padding(.vertical, 2).background(Color.purple.opacity(0.15)).foregroundColor(.purple).cornerRadius(4)
+    /// Lead-score card with a cache-first, refresh-on-demand contract. The
+    /// view-model hydrates `vm.score` from disk on appear; the live recompute
+    /// endpoint is only hit when the rep taps the refresh icon (warm cache)
+    /// or the Compute Now button (cold cache). The refresh icon disables
+    /// itself when offline and spins while the API call is in flight.
+    @ViewBuilder
+    private func scoreCard() -> some View {
+        if let score = vm.score {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("AI SCORE").font(.system(size: 10, weight: .black)).tracking(1).foregroundColor(.purple)
+                    Spacer()
+                    refreshButton(busy: vm.aiBusy) { Task { await vm.runAIScore() } }
+                }
+                HStack {
+                    Text("\(Int(score.score))").font(.system(size: 36, weight: .black)).foregroundColor(.purple)
+                    if let band = score.band {
+                        Text(band.uppercased()).font(.caption2).bold().padding(.horizontal, 8).padding(.vertical, 2).background(Color.purple.opacity(0.15)).foregroundColor(.purple).cornerRadius(4)
+                    }
+                }
+                if let breakdown = score.breakdown {
+                    ForEach(breakdown) { b in
+                        HStack { Text(b.factor).font(.caption); Spacer(); Text("+\(Int(b.points))").font(.caption).foregroundColor(.green) }
+                    }
+                }
+                if let fetched = vm.scoreFetchedAt {
+                    Text("Last computed \(Self.relTimeFmt.localizedString(for: fetched, relativeTo: Date()))")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
                 }
             }
-            if let breakdown = score.breakdown {
-                ForEach(breakdown) { b in
-                    HStack { Text(b.factor).font(.caption); Spacer(); Text("+\(Int(b.points))").font(.caption).foregroundColor(.green) }
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color.purple.opacity(0.08)).overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.purple.opacity(0.25), lineWidth: 1)))
+        } else {
+            // Empty / cold-cache state — no score has ever been computed (or
+            // logout wiped the cache). Compute Now is disabled offline so
+            // we don't queue a synchronous AI call that's guaranteed to fail.
+            VStack(alignment: .leading, spacing: 10) {
+                Text("AI SCORE").font(.system(size: 10, weight: .black)).tracking(1).foregroundColor(.purple)
+                Text(NetworkReachability.shared.isOnline ? "No score yet." : "Connect to compute.")
+                    .font(.caption).foregroundColor(.secondary)
+                Button { Task { await vm.runAIScore() } } label: {
+                    HStack {
+                        if vm.aiBusy { ProgressView().tint(.white) } else { Image(systemName: "sparkles") }
+                        Text("Compute now")
+                    }
+                    .font(.system(size: 13, weight: .bold))
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(NetworkReachability.shared.isOnline ? Color.purple : Color.gray)
+                    .foregroundColor(.white).cornerRadius(10)
                 }
+                .disabled(!NetworkReachability.shared.isOnline || vm.aiBusy)
             }
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color.purple.opacity(0.06)).overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.purple.opacity(0.18), lineWidth: 1)))
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18).fill(Color.purple.opacity(0.08)).overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.purple.opacity(0.25), lineWidth: 1)))
     }
 
-    private func aiActions(lead: Lead) -> some View {
-        HStack(spacing: 10) {
-            Button { Task { await vm.runAIScore() } } label: {
-                HStack {
-                    if vm.aiBusy { ProgressView().tint(.white) } else { Image(systemName: "sparkles") }
-                    Text("AI Score")
-                }.font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10).background(Color.purple).foregroundColor(.white).cornerRadius(10)
+    /// Compact refresh icon shown in the card header when a cached value
+    /// exists. Mirrors the convention from CRM list screens: spinner while
+    /// in-flight, dimmed/disabled when offline.
+    @ViewBuilder
+    private func refreshButton(busy: Bool, action: @escaping () -> Void) -> some View {
+        let online = NetworkReachability.shared.isOnline
+        Button(action: action) {
+            if busy {
+                ProgressView().controlSize(.small)
+            } else {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(online ? .purple : .gray)
             }
+        }
+        .disabled(busy || !online)
+    }
+
+    private static let relTimeFmt: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+
+    private func aiActions(lead: Lead) -> some View {
+        // AI Score moved into the score card itself (refresh icon when
+        // cached, Compute Now button when cold) — no need to duplicate it
+        // here. Convert + Mark Won stay because they're not AI-driven.
+        HStack(spacing: 10) {
             // Hide Convert + Mark as Won once the lead is closed — these are
             // open-lead actions only.
             if !lead.isWon && lead.status != "converted" {
