@@ -11,6 +11,10 @@ struct ActivitiesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            CachedSnapshotChip(
+                showing: vm.showingCached,
+                lastFetched: CRMReadCache.shared.lastFetched(.activities)
+            )
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(typeOptions, id: \.self) { t in

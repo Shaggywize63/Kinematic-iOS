@@ -10,6 +10,10 @@ struct LeadsListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            CachedSnapshotChip(
+                showing: vm.showingCached,
+                lastFetched: CRMReadCache.shared.lastFetched(.leads)
+            )
             HStack {
                 Image(systemName: "magnifyingglass").foregroundColor(.gray)
                 TextField("Search leads…", text: $vm.search)

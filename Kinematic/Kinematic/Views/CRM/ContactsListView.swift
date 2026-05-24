@@ -7,6 +7,10 @@ struct ContactsListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            CachedSnapshotChip(
+                showing: vm.showingCached,
+                lastFetched: CRMReadCache.shared.lastFetched(.contacts)
+            )
             HStack {
                 Image(systemName: "magnifyingglass").foregroundColor(.gray)
                 TextField("Search contacts…", text: $vm.search)

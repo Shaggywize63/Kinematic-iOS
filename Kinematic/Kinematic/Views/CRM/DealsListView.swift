@@ -12,6 +12,10 @@ struct DealsListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            CachedSnapshotChip(
+                showing: vm.showingCached,
+                lastFetched: CRMReadCache.shared.lastFetched(.deals)
+            )
             HStack(spacing: 8) {
                 Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
                     .foregroundColor(showWeighted ? .indigo : .green)

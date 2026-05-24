@@ -199,11 +199,14 @@ final class CRMSyncEngine {
                 queue.markSynced(row.id, realEntityId: a.id)
 
             case (.activity, .update, _):
-                // CRMService doesn't expose a patchActivity yet — treat as
-                // permanent so the row stops blocking the queue rather than
-                // looping forever. Surfaced in the banner so the user can
-                // delete it manually.
-                throw CRMSyncError.permanent("Activity updates not supported offline")
+                guard let entityId = row.entityId, !entityId.hasPrefix("pending:") else {
+                    // Update queued against a still-pending create — sync
+                    // engine drains in order, so this should be vanishingly
+                    // rare. Bail rather than PATCH a non-existent row.
+                    throw CRMSyncError.permanent("Cannot update an unsynced activity")
+                }
+                _ = try await api.patchActivity(id: entityId, body: body, idempotencyKey: row.idempotencyKey)
+                queue.markSynced(row.id, realEntityId: entityId)
             }
         } catch let CRMSyncError.transient(message) {
             throw CRMSyncError.transient(message)
