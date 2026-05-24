@@ -2,6 +2,10 @@ import SwiftUI
 
 struct DealDetailView: View {
     let dealId: String
+    // Observe reachability so the NBA-card refresh button auto-enables
+    // when the device comes back online — without this the button stays
+    // greyed out until some other state change re-renders the view.
+    @ObservedObject private var reachability = NetworkReachability.shared
     @State var initialDeal: Deal?
     @State private var winProb: WinProbability?
     @State private var nextAction: NextBestAction?
@@ -108,7 +112,8 @@ struct DealDetailView: View {
     /// CRMScoreNBACache.loadNBA(dealId:) in `.task` so the card renders the
     /// last computed suggestion without hitting `/api/v1/crm/ai/next-best-action`.
     /// Refresh icon (warm) or Compute Now button (cold) is the only path
-    /// that triggers a live AI call.
+    /// that triggers a live AI call. Reads reactivity-aware
+    /// `reachability.isOnline` so the button auto-enables on reconnect.
     @ViewBuilder
     private var nbaSection: some View {
         if let nba = nextAction {
@@ -127,7 +132,7 @@ struct DealDetailView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Text(NetworkReachability.shared.isOnline ? "No suggested action yet." : "Connect to compute.")
+                Text(reachability.isOnline ? "No suggested action yet." : "Connect to compute.")
                     .font(.caption).foregroundColor(.secondary)
                 Button { Task { await loadNextAction() } } label: {
                     HStack {
@@ -135,16 +140,16 @@ struct DealDetailView: View {
                         Text("Suggest next action")
                     }
                     .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(NetworkReachability.shared.isOnline ? Color.purple : Color.gray)
+                    .background(reachability.isOnline ? Color.purple : Color.gray)
                     .foregroundColor(.white).cornerRadius(10)
                 }
-                .disabled(!NetworkReachability.shared.isOnline || aiBusy)
+                .disabled(!reachability.isOnline || aiBusy)
             }
         }
     }
 
     private var nbaRefreshButton: some View {
-        let online = NetworkReachability.shared.isOnline
+        let online = reachability.isOnline
         return Button { Task { await loadNextAction() } } label: {
             if aiBusy {
                 ProgressView().controlSize(.small)

@@ -2,6 +2,10 @@ import SwiftUI
 
 struct LeadDetailView: View {
     @StateObject var vm: LeadDetailViewModel
+    // Observe reachability so the score-card refresh button auto-enables
+    // when the device comes back online — without this the button stays
+    // greyed out until some other state change re-renders the view.
+    @ObservedObject private var reachability = NetworkReachability.shared
     @State private var editing = false
     @State private var loggingActivity = false
     @State private var showingWonSheet = false
@@ -234,7 +238,7 @@ struct LeadDetailView: View {
             // we don't queue a synchronous AI call that's guaranteed to fail.
             VStack(alignment: .leading, spacing: 10) {
                 Text("AI SCORE").font(.system(size: 10, weight: .black)).tracking(1).foregroundColor(.purple)
-                Text(NetworkReachability.shared.isOnline ? "No score yet." : "Connect to compute.")
+                Text(reachability.isOnline ? "No score yet." : "Connect to compute.")
                     .font(.caption).foregroundColor(.secondary)
                 Button { Task { await vm.runAIScore() } } label: {
                     HStack {
@@ -243,10 +247,10 @@ struct LeadDetailView: View {
                     }
                     .font(.system(size: 13, weight: .bold))
                     .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(NetworkReachability.shared.isOnline ? Color.purple : Color.gray)
+                    .background(reachability.isOnline ? Color.purple : Color.gray)
                     .foregroundColor(.white).cornerRadius(10)
                 }
-                .disabled(!NetworkReachability.shared.isOnline || vm.aiBusy)
+                .disabled(!reachability.isOnline || vm.aiBusy)
             }
             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 18).fill(Color.purple.opacity(0.06)).overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.purple.opacity(0.18), lineWidth: 1)))
@@ -255,10 +259,11 @@ struct LeadDetailView: View {
 
     /// Compact refresh icon shown in the card header when a cached value
     /// exists. Mirrors the convention from CRM list screens: spinner while
-    /// in-flight, dimmed/disabled when offline.
+    /// in-flight, dimmed/disabled when offline. Reads reactivity-aware
+    /// `reachability.isOnline` so the button auto-enables on reconnect.
     @ViewBuilder
     private func refreshButton(busy: Bool, action: @escaping () -> Void) -> some View {
-        let online = NetworkReachability.shared.isOnline
+        let online = reachability.isOnline
         Button(action: action) {
             if busy {
                 ProgressView().controlSize(.small)
