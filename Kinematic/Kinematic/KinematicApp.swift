@@ -1452,74 +1452,21 @@ class KinematicRepository {
     
     func getFormTemplates(activityId: String) async -> FormTemplate? {
         print("LOADING_TEMPLATE_FOR_ACTIVITY: \(activityId)")
-        
-        // --- TEST FALLBACK (Unblocks Activity Testing) ---
-        // Ensuring ANY activity ID starting with 'form_' or 'test_' or empty uses the Test Form
-        if activityId == "form_123" || activityId.starts(with: "test") || activityId.isEmpty {
-            return mockTestForm(activityId: activityId.isEmpty ? "form_123" : activityId)
-        }
-        
+
+        guard !activityId.isEmpty else { return nil }
+
         do {
             let res: ApiResponse<[FormTemplate]>? = try await performRequest(
                 "/forms/templates",
                 queryItems: [URLQueryItem(name: "activity_id", value: activityId)]
             )
-            
-            // Server fallback: If server returns empty for an activity, provide the Test Form for stability during testing
-            if (res?.data == nil || res?.data?.isEmpty == true) {
-                return mockTestForm(activityId: activityId)
-            }
-            
             return res?.data?.first
         } catch {
-            print("⚠️ FETCH_TEMPLATES_FAILED: Returning Mock Test Form as fallback.")
-            return mockTestForm(activityId: activityId)
+            print("⚠️ FETCH_TEMPLATES_FAILED: \(error)")
+            return nil
         }
     }
-    
-    private func mockTestForm(activityId: String) -> FormTemplate {
-        return FormTemplate(
-            id: "tmp_form_unified_001",
-            activityId: activityId,
-            name: "Ultimate Retail Audit",
-            description: "Phase-based synthesis with specialized keyboards.",
-            requiresPhoto: true,
-            requiresGps: true,
-            fields: [
-                // Page 1: Initial Details
-                FormField(id: "s1", label: "Initial Details", fieldKey: "sec_1", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 1, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p1", keyboardType: nil),
-                FormField(id: "f1", label: "Audit Date", fieldKey: "audit_date", fieldType: "date", placeholder: nil, helpText: "Target date for this audit", isRequired: true, sortOrder: 2, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p1", keyboardType: nil),
-                FormField(id: "f2", label: "Store Email", fieldKey: "email", fieldType: "email", placeholder: "manager@store.com", helpText: nil, isRequired: false, sortOrder: 3, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p1", keyboardType: "email"),
-                FormField(id: "f10", label: "FE Mobile", fieldKey: "mobile", fieldType: "short_text", placeholder: "Contact number", helpText: nil, isRequired: true, sortOrder: 4, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p1", keyboardType: "phone"),
-                
-                // Page 2: Product Visibility
-                FormField(id: "s2", label: "Product Visibility", fieldKey: "sec_2", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 4, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p2", keyboardType: nil),
-                FormField(id: "f3", label: "Display Correct?", fieldKey: "is_correct", fieldType: "yes_no", placeholder: nil, helpText: "Check against Planogram V4", isRequired: true, sortOrder: 5, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p2", keyboardType: nil),
-                FormField(id: "f4", label: "Condition Rating", fieldKey: "rating", fieldType: "rating", placeholder: nil, helpText: "Rate the shelf presentation", isRequired: true, sortOrder: 6, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p2", keyboardType: nil),
-                
-                // Page 3: Inventory Logic
-                FormField(id: "s3", label: "Inventory Logic", fieldKey: "sec_3", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 7, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p3", keyboardType: nil),
-                FormField(id: "f5", label: "Stock Priority", fieldKey: "stock_priority", fieldType: "radio", placeholder: nil, helpText: "Choose one", isRequired: true, sortOrder: 8, options: [
-                    FormOption(label: "Critical", value: "crit"),
-                    FormOption(label: "Normal", value: "norm"),
-                    FormOption(label: "Low", value: "low")
-                ], dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p3", keyboardType: nil),
-                FormField(id: "f11", label: "Unit Count", fieldKey: "units", fieldType: "short_text", placeholder: "0", helpText: "Numerical count", isRequired: true, sortOrder: 9, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p3", keyboardType: "number"),
-                
-                // Page 4: Evidence
-                FormField(id: "s4", label: "Evidence & Signature", fieldKey: "sec_4", fieldType: "section_header", placeholder: nil, helpText: nil, isRequired: false, sortOrder: 10, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p4", keyboardType: nil),
-                FormField(id: "f7", label: "Audit Photos", fieldKey: "photos", fieldType: "image", placeholder: nil, helpText: "Capture photos of the shelf", isRequired: true, sortOrder: 11, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: 5, cameraOnly: true, pageId: "p4", keyboardType: nil),
-                FormField(id: "f8", label: "Confirm Location", fieldKey: "gps", fieldType: "location", placeholder: nil, helpText: "Fetch exact audit point", isRequired: true, sortOrder: 12, options: nil, dependsOnId: nil, dependsOnValue: nil, imageCount: nil, cameraOnly: nil, pageId: "p4", keyboardType: nil),
-            ],
-            pages: [
-                FormPage(id: "p1", title: "Setup", description: "Standard identity validation", order: 1),
-                FormPage(id: "p2", title: "Visibility", description: "Visual audit metrics", order: 2),
-                FormPage(id: "p3", title: "Inventory", description: "Stock level checks", order: 3),
-                FormPage(id: "p4", title: "Verification", description: "Final proof of check", order: 4)
-            ]
-        )
-    }
-    
+
     func submitForm(request: FormSubmissionRequest) async -> Bool {
         do {
             let body = try? JSONEncoder().encode(request)
