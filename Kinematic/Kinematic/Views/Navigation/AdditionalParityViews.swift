@@ -232,10 +232,23 @@ class NotificationsViewModel: ObservableObject {
         _ = await ParityAPI.request(path: "/notifications/read", method: "PATCH", body: Body(), as: [String: String].self)
         await load()
     }
+
+    func clearAll() async {
+        // Optimistic clear so the list empties immediately; the server delete
+        // is fire-and-forget. If it fails the next load() will repopulate.
+        items = []
+        _ = await ParityAPI.request(path: "/notifications/clear", method: "DELETE", as: [String: String].self)
+    }
+
+    func deleteOne(id: String) async {
+        items.removeAll { $0.id == id }
+        _ = await ParityAPI.request(path: "/notifications/item/\(id)", method: "DELETE", as: [String: String].self)
+    }
 }
 
 struct NotificationsView: View {
     @StateObject var vm = NotificationsViewModel()
+    @State private var showClearConfirm = false
     var body: some View {
         Group {
             if vm.isLoading && vm.items.isEmpty {
@@ -257,7 +270,16 @@ struct NotificationsView: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    ForEach(vm.items) { n in NotificationRow(n: n) }
+                    ForEach(vm.items) { n in
+                        NotificationRow(n: n)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Task { await vm.deleteOne(id: n.id) }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                    }
                 }
                 .listStyle(.plain)
             }
@@ -266,9 +288,34 @@ struct NotificationsView: View {
         .toolbar {
             if !vm.items.isEmpty {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Mark all read") { Task { await vm.markAllRead() } }
+                    Menu {
+                        Button {
+                            Task { await vm.markAllRead() }
+                        } label: {
+                            Label("Mark all read", systemImage: "checkmark.circle")
+                        }
+                        Button(role: .destructive) {
+                            showClearConfirm = true
+                        } label: {
+                            Label("Clear all", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
+        }
+        .confirmationDialog(
+            "Clear all notifications?",
+            isPresented: $showClearConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Clear all", role: .destructive) {
+                Task { await vm.clearAll() }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This removes every notification from your inbox. It cannot be undone.")
         }
         .task { await vm.load() }
         .refreshable { await vm.load() }
