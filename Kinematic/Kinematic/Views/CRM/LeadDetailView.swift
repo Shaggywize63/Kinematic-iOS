@@ -472,14 +472,37 @@ struct LeadDetailView: View {
     private var convertedToCard: some View {
         Card(title: "CONVERTED TO") {
             FlexibleHStack(spacing: 8) {
-                if vm.convertedContact != nil || vm.lead?.convertedContactId != nil {
-                    chipLink(label: "Contact", subtitle: vm.convertedContact?.displayName, icon: "person.crop.circle.fill")
+                // Each chip used to be a static label — tapping it did
+                // nothing. Now each one wraps a NavigationLink so reps
+                // jump straight into the contact / account / deal
+                // detail screen. The VM eagerly loads each linked
+                // object after a conversion, so the navigation target
+                // is ready by the time the user lands here.
+                if let contact = vm.convertedContact {
+                    NavigationLink(destination: ContactDetailView(contact: contact)) {
+                        chipLink(label: "Contact", subtitle: contact.displayName, icon: "person.crop.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                } else if vm.lead?.convertedContactId != nil {
+                    // Conversion just happened and the VM hasn't hydrated yet —
+                    // show the chip as a hint without a tap target.
+                    chipLink(label: "Contact", subtitle: nil, icon: "person.crop.circle.fill")
                 }
-                if vm.convertedAccount != nil || vm.lead?.convertedAccountId != nil {
-                    chipLink(label: "Account", subtitle: vm.convertedAccount?.name, icon: "building.2.fill")
+                if let account = vm.convertedAccount {
+                    NavigationLink(destination: AccountDetailView(account: account)) {
+                        chipLink(label: "Account", subtitle: account.name, icon: "building.2.fill")
+                    }
+                    .buttonStyle(.plain)
+                } else if vm.lead?.convertedAccountId != nil {
+                    chipLink(label: "Account", subtitle: nil, icon: "building.2.fill")
                 }
-                if vm.convertedDeal != nil || vm.lead?.convertedDealId != nil {
-                    chipLink(label: "Deal", subtitle: vm.convertedDeal?.name, icon: "square.stack.3d.up.fill")
+                if let deal = vm.convertedDeal {
+                    NavigationLink(destination: DealDetailView(dealId: deal.id, initialDeal: deal)) {
+                        chipLink(label: "Deal", subtitle: deal.name, icon: "square.stack.3d.up.fill")
+                    }
+                    .buttonStyle(.plain)
+                } else if vm.lead?.convertedDealId != nil {
+                    chipLink(label: "Deal", subtitle: nil, icon: "square.stack.3d.up.fill")
                 }
             }
         }
@@ -492,6 +515,7 @@ struct LeadDetailView: View {
                 Text(label.uppercased()).font(.system(size: 9, weight: .black)).tracking(0.6).foregroundColor(.secondary)
                 Text(subtitle ?? "Open").font(.system(size: 13, weight: .semibold)).foregroundColor(.primary).lineLimit(1)
             }
+            Image(systemName: "chevron.right").font(.caption2).foregroundColor(Brand.red.opacity(0.6))
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(Brand.red.opacity(0.08))
