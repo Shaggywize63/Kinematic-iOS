@@ -50,13 +50,14 @@ struct PipelineBarChartView: View {
                     }
                 }
                 .chartXAxis {
+                    // Tight tick labels — keeps 6+ period labels from
+                    // overlapping on iPhone SE. AxisValueLabel only takes
+                    // a `format:` initializer for typed labels; for the
+                    // default string formatter we just call it bare and
+                    // hang the font modifier on the AxisMarks itself.
                     AxisMarks { _ in
-                        AxisValueLabel(centered: true) {
-                            // Rotated label avoids the squish where 6+
-                            // periods would otherwise overlap on iPhone SE.
-                            AxisValueLabel()
-                                .font(.system(size: 9, weight: .semibold))
-                        }
+                        AxisValueLabel()
+                            .font(.system(size: 9, weight: .semibold))
                     }
                 }
                 .frame(height: 200)
