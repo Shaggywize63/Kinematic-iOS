@@ -13,6 +13,9 @@ struct User: Codable, Identifiable {
     let mobile: String?
     let orgId: String?
     let clientId: String?
+    /// Profile picture URL stored on users.avatar_url. Optional — the
+    /// ProfileView falls back to a coloured initial circle when absent.
+    let avatarUrl: String?
     /// Per-client SKU module IDs (Field Force / CRM / Distribution + universal).
     /// Empty list = legacy session, treat as full access for backwards compat.
     let enabledModules: [String]
@@ -25,6 +28,7 @@ struct User: Codable, Identifiable {
         case id, name, email, role, mobile, permissions
         case orgId = "org_id"
         case clientId = "client_id"
+        case avatarUrl = "avatar_url"
         case enabledModules = "enabled_modules"
         case enabledPackages = "enabled_packages"
     }
@@ -38,6 +42,7 @@ struct User: Codable, Identifiable {
         mobile          = try c.decodeIfPresent(String.self, forKey: .mobile)
         orgId           = try c.decodeIfPresent(String.self, forKey: .orgId)
         clientId        = try c.decodeIfPresent(String.self, forKey: .clientId)
+        avatarUrl       = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
         enabledModules  = (try? c.decode([String].self, forKey: .enabledModules)) ?? []
         enabledPackages = (try? c.decode([String].self, forKey: .enabledPackages)) ?? []
         permissions     = (try? c.decode([String].self, forKey: .permissions)) ?? []

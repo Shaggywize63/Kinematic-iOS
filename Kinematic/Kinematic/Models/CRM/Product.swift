@@ -14,20 +14,28 @@ struct Product: Codable, Identifiable, Hashable {
     let hsnCode: String?
     let imageUrl: String?
     let isActive: Bool?
+    let weightKg: Double?
     let createdAt: String?
     let updatedAt: String?
 
+    // Backend column names diverge from the Swift property names for
+    // historical reasons:
+    //   crm_products.price        → unitPrice
+    //   crm_products.tax_rate_pct → taxPct
+    // Without these aliases every product decoded to nil price + 0%
+    // tax — the bug behind "all products show ₹0 in the app".
     enum CodingKeys: String, CodingKey {
         case id
         case orgId = "org_id"
         case sku, name, description, unit
         case categoryId = "category_id"
-        case unitPrice = "unit_price"
+        case unitPrice = "price"
         case currency
-        case taxPct = "tax_pct"
+        case taxPct = "tax_rate_pct"
         case hsnCode = "hsn_code"
         case imageUrl = "image_url"
         case isActive = "is_active"
+        case weightKg = "weight_kg"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
