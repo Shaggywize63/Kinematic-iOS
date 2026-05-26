@@ -1545,6 +1545,30 @@ class KinematicRepository {
         }
     }
 
+    /// Self-profile patch. Backend allow-list (auth.controller.ts) is
+    /// avatar_url + name today; pass nil to skip a field. Returns true
+    /// when the server accepted the update so the caller can decide
+    /// whether to mirror the change optimistically.
+    func patchMyProfile(avatarUrl: String? = nil, name: String? = nil) async -> Bool {
+        guard !Session.sharedToken.isEmpty else { return false }
+        struct Body: Encodable {
+            let avatar_url: String?
+            let name: String?
+        }
+        let body = try? JSONEncoder().encode(Body(avatar_url: avatarUrl, name: name))
+        do {
+            let res: ApiResponse<User>? = try await performRequest(
+                "/auth/me",
+                method: "PATCH",
+                body: body
+            )
+            return res?.success ?? false
+        } catch {
+            print("🚩 patchMyProfile failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     func login(email: String, phone: String?, pass: String) async -> (Bool, String?) {
         guard let url = URL(string: "\(baseURL)/auth/login") else { return (false, "Invalid URL") }
         let identifier = (phone != nil && !phone!.isEmpty) ? phone! : email
