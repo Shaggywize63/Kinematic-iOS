@@ -16,27 +16,55 @@ struct CRMTabView: View {
     var onExit: (() -> Void)? = nil
 
     @State private var selectedTab: Int = 0
+    // KINI floats inside the CRM module only — it used to live at the
+    // ContentView root, which meant the assistant appeared over the
+    // Field Force tabs too. Moved here so reps doing route visits
+    // aren't distracted by it.
+    @State private var showKini: Bool = false
+    @State private var kiniUsage: KiniUsage? = nil
+
+    private var canShowKiniFab: Bool {
+        Session.currentUser?.hasCrm ?? false
+    }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            Tab("Dashboard", systemImage: "chart.bar.fill", value: 0) {
-                NavigationStack { CRMDashboardView() }
+        ZStack(alignment: .bottomTrailing) {
+            TabView(selection: $selectedTab) {
+                Tab("Dashboard", systemImage: "chart.bar.fill", value: 0) {
+                    NavigationStack { CRMDashboardView() }
+                }
+                Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 1) {
+                    NavigationStack { LeadsListView() }
+                }
+                Tab("Pipeline", systemImage: "square.stack.3d.up.fill", value: 2) {
+                    NavigationStack { DealKanbanView() }
+                }
+                Tab("Activities", systemImage: "checkmark.square.fill", value: 3) {
+                    NavigationStack { ActivitiesView() }
+                }
+                Tab("More", systemImage: "ellipsis.circle", value: 4) {
+                    NavigationStack { CRMMoreMenu(onExit: onExit) }
+                }
             }
-            Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 1) {
-                NavigationStack { LeadsListView() }
-            }
-            Tab("Pipeline", systemImage: "square.stack.3d.up.fill", value: 2) {
-                NavigationStack { DealKanbanView() }
-            }
-            Tab("Activities", systemImage: "checkmark.square.fill", value: 3) {
-                NavigationStack { ActivitiesView() }
-            }
-            Tab("More", systemImage: "ellipsis.circle", value: 4) {
-                NavigationStack { CRMMoreMenu(onExit: onExit) }
+            .tint(Brand.red)
+            .tabBarMinimizeBehavior(.onScrollDown)
+
+            if canShowKiniFab {
+                KiniFAB(usage: kiniUsage) { showKini = true }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 88)
+                    .transition(.scale.combined(with: .opacity))
             }
         }
-        .tint(Brand.red)
-        .tabBarMinimizeBehavior(.onScrollDown)
+        .fullScreenCover(isPresented: $showKini, onDismiss: {
+            Task { kiniUsage = await AIChatService.shared.fetchUsage() ?? kiniUsage }
+        }) {
+            KiniChatView(onClose: { showKini = false })
+        }
+        .task {
+            guard canShowKiniFab else { return }
+            kiniUsage = await AIChatService.shared.fetchUsage()
+        }
     }
 }
 
