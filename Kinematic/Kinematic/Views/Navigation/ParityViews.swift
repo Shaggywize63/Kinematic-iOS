@@ -352,15 +352,44 @@ struct ProfileView: View {
     private var mainCard: some View {
         VStack(spacing: 20) {
             ZStack {
+                // Coloured gradient circle as the fallback / placeholder.
+                // When users.avatar_url is set we drop an AsyncImage on
+                // top of it so the gradient peeks while the URL loads
+                // and the layout doesn't jump.
                 Circle()
                     .fill(LinearGradient(colors: [.red, .orange], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 88, height: 88)
                     .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 4))
                     .shadow(color: .red.opacity(0.3), radius: 10, x: 0, y: 5)
-                
-                Text(user?.name.prefix(1).uppercased() ?? "U")
-                    .font(.system(size: 36, weight: .black, design: .rounded))
-                    .foregroundColor(.white)
+
+                if let urlString = user?.avatarUrl,
+                   let url = URL(string: urlString) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .empty:
+                            Text(user?.name.prefix(1).uppercased() ?? "U")
+                                .font(.system(size: 36, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 88, height: 88)
+                                .clipShape(Circle())
+                        case .failure:
+                            Text(user?.name.prefix(1).uppercased() ?? "U")
+                                .font(.system(size: 36, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                    .frame(width: 88, height: 88)
+                } else {
+                    Text(user?.name.prefix(1).uppercased() ?? "U")
+                        .font(.system(size: 36, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                }
             }
             
             VStack(spacing: 6) {

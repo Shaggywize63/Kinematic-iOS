@@ -15,6 +15,7 @@ struct Activity: Codable, Identifiable, Hashable {
     let completedAt: String?
     let direction: String?      // inbound / outbound
     let durationMinutes: Int?
+    let imageUrl: String?
     let createdAt: String?
     let updatedAt: String?
 
@@ -31,6 +32,7 @@ struct Activity: Codable, Identifiable, Hashable {
         case completedAt = "completed_at"
         case direction
         case durationMinutes = "duration_minutes"
+        case imageUrl = "image_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
