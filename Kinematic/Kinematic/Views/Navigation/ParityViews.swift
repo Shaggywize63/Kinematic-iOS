@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct BroadcastHubView: View {
     @StateObject var vm = BroadcastHubViewModel()
@@ -334,8 +335,12 @@ struct LearningMaterialRow: View {
 
 struct ProfileView: View {
     @ObservedObject var appState = KiniAppState.shared
-    let user = Session.currentUser
-    
+    @State private var user: User? = Session.currentUser
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var uploading = false
+    @State private var avatarOverride: String?   // optimistic URL until refreshMe lands
+    @State private var uploadError: String?
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -347,51 +352,50 @@ struct ProfileView: View {
         }
         .navigationTitle("My Profile")
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .onChange(of: pickerItem) { _, newItem in
+            guard let newItem else { return }
+            Task { await handlePick(item: newItem) }
+        }
+        .alert("Upload failed",
+               isPresented: .init(get: { uploadError != nil },
+                                  set: { if !$0 { uploadError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(uploadError ?? "") }
     }
     
+    private var avatarUrlString: String? {
+        avatarOverride ?? user?.avatarUrl
+    }
+
     private var mainCard: some View {
         VStack(spacing: 20) {
-            ZStack {
-                // Coloured gradient circle as the fallback / placeholder.
-                // When users.avatar_url is set we drop an AsyncImage on
-                // top of it so the gradient peeks while the URL loads
-                // and the layout doesn't jump.
-                Circle()
-                    .fill(LinearGradient(colors: [.red, .orange], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 88, height: 88)
-                    .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 4))
-                    .shadow(color: .red.opacity(0.3), radius: 10, x: 0, y: 5)
-
-                if let urlString = user?.avatarUrl,
-                   let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            Text(user?.name.prefix(1).uppercased() ?? "U")
-                                .font(.system(size: 36, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 88, height: 88)
-                                .clipShape(Circle())
-                        case .failure:
-                            Text(user?.name.prefix(1).uppercased() ?? "U")
-                                .font(.system(size: 36, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
-                    .frame(width: 88, height: 88)
+            // PhotosPicker wraps the avatar so a tap opens the system
+            // photo library. Picked image is compressed + uploaded via
+            // the existing KinematicRepository.uploadImage helper, then
+            // PATCHed onto /auth/me so the URL persists across sessions.
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                avatarStack
+            }
+            .buttonStyle(.plain)
+            .disabled(uploading)
+            .overlay(alignment: .bottomTrailing) {
+                if uploading {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color.black.opacity(0.55)))
                 } else {
-                    Text(user?.name.prefix(1).uppercased() ?? "U")
-                        .font(.system(size: 36, weight: .black, design: .rounded))
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Brand.red))
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
                 }
             }
-            
+            .frame(width: 88, height: 88)
+
             VStack(spacing: 6) {
                 Text(user?.name ?? "Field Executive")
                     .font(.system(size: 24, weight: .bold))
@@ -422,6 +426,79 @@ struct ProfileView: View {
         .padding(.horizontal)
     }
     
+    /// Gradient circle + AsyncImage stack. Extracted into its own view so
+    /// the PhotosPicker label can host the visual and the camera-overlay
+    /// can sit on top via the parent's `.overlay(alignment:)`.
+    private var avatarStack: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(colors: [.red, .orange], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 88, height: 88)
+                .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 4))
+                .shadow(color: .red.opacity(0.3), radius: 10, x: 0, y: 5)
+
+            if let urlString = avatarUrlString,
+               let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        Text(user?.name.prefix(1).uppercased() ?? "U")
+                            .font(.system(size: 36, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 88, height: 88)
+                            .clipShape(Circle())
+                    case .failure:
+                        Text(user?.name.prefix(1).uppercased() ?? "U")
+                            .font(.system(size: 36, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .frame(width: 88, height: 88)
+            } else {
+                Text(user?.name.prefix(1).uppercased() ?? "U")
+                    .font(.system(size: 36, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+            }
+        }
+    }
+
+    /// Picker → compress → /upload/profile_photo → PATCH /auth/me with the
+    /// returned URL → refreshMe so subsequent screens (side menu, top-bar
+    /// chip) pick up the new value. Optimistic via `avatarOverride` so the
+    /// avatar updates the instant the upload finishes.
+    private func handlePick(item: PhotosPickerItem) async {
+        defer { pickerItem = nil }
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else {
+            uploadError = "Couldn't read the selected image."
+            return
+        }
+        uploading = true
+        defer { uploading = false }
+        // KinematicRepository routes to /upload/<type>. We use the profile
+        // bucket so the URL is publicly reachable through the same Storage
+        // policy as activity / lead photos.
+        guard let url = await KinematicRepository.shared.uploadImage(image: image, type: "profile_photo"),
+              !url.isEmpty else {
+            uploadError = "Upload failed. Try again on a stronger network."
+            return
+        }
+        let ok = await KinematicRepository.shared.patchMyProfile(avatarUrl: url)
+        if !ok {
+            uploadError = "Photo uploaded but couldn't save to your profile. Try again."
+            return
+        }
+        avatarOverride = url
+        await KinematicRepository.shared.refreshMe()
+        user = Session.currentUser
+    }
+
     private var weeklySummary: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("THIS WEEK SUMMARY")
