@@ -5,6 +5,7 @@ struct ContactDetailView: View {
     @State private var editing = false
     @State private var deals: [Deal] = []
     @State private var activities: [Activity] = []
+    @State private var linkedAccount: CRMAccount?
     @State private var isLoadingRelations = false
     @State private var loggingActivity = false
     @State private var composerInitialType: String = "call"
@@ -31,6 +32,7 @@ struct ContactDetailView: View {
                 if contact.isB2c != true, let dept = contact.department {
                     detailRow("Department", value: dept, icon: "building.2.fill", color: Brand.red)
                 }
+                linkedAccountSection
                 dealsSection
                 activitiesSection
             }
@@ -220,8 +222,51 @@ struct ContactDetailView: View {
         defer { isLoadingRelations = false }
         async let d = (try? api.contactDeals(id: contact.id)) ?? []
         async let a = (try? api.contactActivities(id: contact.id)) ?? []
+        // Parent account: only fetched when the contact actually links to
+        // one. B2C contacts and unlinked B2B contacts skip the round trip.
+        async let acct: CRMAccount? = {
+            guard let aid = contact.accountId, !aid.isEmpty else { return nil }
+            return try? await api.getAccount(id: aid)
+        }()
         deals = await d
         activities = await a
+        linkedAccount = await acct
+    }
+
+    /// Card that surfaces the contact's parent account with a NavigationLink
+    /// to AccountDetailView. Hidden entirely for unlinked / B2C contacts so
+    /// the section doesn't visually weigh down their detail page.
+    @ViewBuilder
+    private var linkedAccountSection: some View {
+        if let account = linkedAccount {
+            VStack(alignment: .leading, spacing: 10) {
+                sectionHeader("ACCOUNT", count: 1)
+                NavigationLink(destination: AccountDetailView(account: account)) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "building.2.fill")
+                            .foregroundColor(Brand.red)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(account.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(Color(uiColor: .label))
+                            if let industry = account.industry, !industry.isEmpty {
+                                Text(industry)
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: - Header + customer cards (unchanged from main)
