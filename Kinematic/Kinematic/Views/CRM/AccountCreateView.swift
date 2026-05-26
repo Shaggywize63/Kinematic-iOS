@@ -17,7 +17,15 @@ struct AccountCreateView: View {
             Form {
                 Section("Account") {
                     TextField("Company name", text: $name)
-                    TextField("Industry", text: $industry)
+                    // Curated industry list — mirrors the web dashboard so
+                    // a contact's industry on iOS bucket-matches the same
+                    // analytics groupings on the desktop reports.
+                    Picker("Industry", selection: $industry) {
+                        Text("— Select industry —").tag("")
+                        ForEach(CRM_INDUSTRIES, id: \.self) { i in
+                            Text(i).tag(i)
+                        }
+                    }
                     TextField("Website", text: $website).autocapitalization(.none).keyboardType(.URL)
                     TextField("Phone", text: $phone).keyboardType(.phonePad)
                 }
