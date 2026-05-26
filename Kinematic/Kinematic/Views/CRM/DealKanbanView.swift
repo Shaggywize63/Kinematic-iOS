@@ -10,7 +10,17 @@ struct DealKanbanView: View {
     @State private var movingDeal: Deal?
     @State private var creatingDeal = false
     @State private var moveSuccessTick = 0
-    @AppStorage("crm.deals.showWeighted") private var showWeighted: Bool = false
+    @AppStorage("crm.deals.showWeighted") private var showWeightedStored: Bool = false
+    /// Tata Tiscon is the only client that gets the weighted-by-tonne
+    /// toggle. Every other client always sees raw amount, regardless of
+    /// what's persisted in @AppStorage (which might be true from a
+    /// previous Tata-enabled session on the same device).
+    private var showWeighted: Bool {
+        get { ClientFeatures.isTataTiscon ? showWeightedStored : false }
+    }
+    private var showWeightedBinding: Binding<Bool> {
+        Binding(get: { showWeightedStored }, set: { showWeightedStored = $0 })
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -154,19 +164,26 @@ struct DealKanbanView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.secondary)
             }
-            HStack(spacing: 8) {
-                Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
-                    .foregroundColor(Brand.red)
-                    .font(.caption)
-                Text(showWeighted
-                     ? "Weighted (amount × win prob)"
-                     : "Raw amount")
-                    .font(.caption2).foregroundColor(.secondary)
-                Spacer()
-                Toggle("", isOn: $showWeighted)
-                    .labelsHidden()
-                    .tint(Brand.red)
-                    .scaleEffect(0.85)
+            // Cost / weighted-view toggle was built for Tata Tiscon's
+            // tonnage-driven pipeline. Hidden for every other client until
+            // it's generalised or moved behind a tenant setting — the
+            // showWeighted state still exists so power users can turn it
+            // back on per device, but the UI is Tata-only.
+            if ClientFeatures.isTataTiscon {
+                HStack(spacing: 8) {
+                    Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
+                        .foregroundColor(Brand.red)
+                        .font(.caption)
+                    Text(showWeighted
+                         ? "Weighted (amount × win prob)"
+                         : "Raw amount")
+                        .font(.caption2).foregroundColor(.secondary)
+                    Spacer()
+                    Toggle("", isOn: showWeightedBinding)
+                        .labelsHidden()
+                        .tint(Brand.red)
+                        .scaleEffect(0.85)
+                }
             }
         }
         .padding(.horizontal, 14)

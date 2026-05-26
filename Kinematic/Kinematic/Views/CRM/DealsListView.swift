@@ -4,21 +4,29 @@ struct DealsListView: View {
     @StateObject var vm = DealsViewModel()
     @State private var showCreate = false
     @State private var showDateFilter = false
-    @AppStorage("crm.deals.showWeighted") private var showWeighted: Bool = false
+    @AppStorage("crm.deals.showWeighted") private var showWeightedStored: Bool = false
+    // Tata-only weighted view (see ClientFeatureGates). Every other
+    // client keeps the simpler raw-amount display.
+    private var showWeighted: Bool {
+        ClientFeatures.isTataTiscon ? showWeightedStored : false
+    }
     let statusOptions = ["open", "won", "lost", "all"]
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
-                    .foregroundColor(showWeighted ? Brand.red : Brand.red)
-                    .font(.caption)
-                Text(showWeighted ? "Weighted" : "Cost")
-                    .font(.caption2).foregroundColor(.secondary)
-                Spacer()
-                Toggle("", isOn: $showWeighted).labelsHidden().tint(Brand.red)
+            if ClientFeatures.isTataTiscon {
+                HStack(spacing: 8) {
+                    Image(systemName: showWeighted ? "scalemass.fill" : "indianrupeesign.circle.fill")
+                        .foregroundColor(Brand.red)
+                        .font(.caption)
+                    Text(showWeighted ? "Weighted" : "Cost")
+                        .font(.caption2).foregroundColor(.secondary)
+                    Spacer()
+                    Toggle("", isOn: Binding(get: { showWeightedStored }, set: { showWeightedStored = $0 }))
+                        .labelsHidden().tint(Brand.red)
+                }
+                .padding(.horizontal).padding(.top, 8)
             }
-            .padding(.horizontal).padding(.top, 8)
             HStack {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {

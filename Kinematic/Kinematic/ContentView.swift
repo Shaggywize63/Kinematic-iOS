@@ -48,63 +48,34 @@ func formatTime(_ iso: String?) -> String {
 // --- MAIN VIEWS ---
 struct ContentView: View {
     @EnvironmentObject var appState: KiniAppState
-    @State private var showKini: Bool = false
-    @State private var kiniUsage: KiniUsage? = nil
-
-    /// Whether the persistent KINI launcher should appear. Hidden pre-login,
-    /// hidden for clients without the CRM SKU (Field-Force-only deployments).
-    private var canShowKiniFab: Bool {
-        guard appState.isAuthenticated else { return false }
-        return Session.currentUser?.hasCrm ?? false
-    }
 
     var body: some View {
-        // GLOBAL CANVAS (Root-Level Atmospheric Background). Moved from a
-        // ZStack sibling to a `.background()` modifier — the previous
-        // structure let VibrantBackgroundView's 500x500 offset circles
-        // inflate the ZStack's intrinsic size, which combined with
-        // `.bottomTrailing` alignment pushed the entire `MainTabView` /
-        // `CRMTabView` frame off the left edge of the viewport. Same fix
-        // already applied in StoreVisitView (see comment there).
-        ZStack(alignment: .bottomTrailing) {
+        // GLOBAL CANVAS (Root-Level Atmospheric Background). The KINI FAB
+        // used to float here above MainTabView — that meant the assistant
+        // appeared in the Field Force tabs for every full-access client,
+        // which sales reps doing route visits didn't want. The FAB has
+        // moved into CRMTabView so it now only shows inside the CRM
+        // module.
+        ZStack {
             if !appState.isAuthenticated {
                 LoginView(onSuccess: { appState.checkAuth() })
             } else {
                 MainTabView()
-            }
-
-            // Persistent KINI launcher. Matches the web KinematicAI FAB and
-            // floats above every screen except the chat itself (the
-            // fullScreenCover hosting the chat masks it automatically).
-            if canShowKiniFab {
-                KiniFAB(usage: kiniUsage) { showKini = true }
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 28)
-                    .transition(.scale.combined(with: .opacity))
             }
         }
         .background(VibrantBackgroundView().ignoresSafeArea())
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
         }
-        .fullScreenCover(isPresented: $showKini, onDismiss: {
-            // Pick up the latest quota when the user closes the chat so the
-            // chip on the FAB reflects whatever was spent inside the sheet.
-            Task { kiniUsage = await AIChatService.shared.fetchUsage() ?? kiniUsage }
-        }) {
-            KiniChatView(onClose: { showKini = false })
-        }
         .task(id: appState.isAuthenticated) {
-            // Prefetch on auth so the chip is populated on first paint.
-            guard appState.isAuthenticated else { kiniUsage = nil; return }
-            // Re-pull /auth/me so entitlements (enabled_modules /
-            // enabled_packages) refresh from the server. Without this,
-            // sessions cached before entitlements rolled out have empty
-            // arrays — the User model treats that as a legacy session and
-            // grants full access, which is why CRM-only Hemanth was seeing
-            // Field Force tabs.
+            // Prefetch on auth so the FAB chip (now inside CRMTabView) is
+            // populated on first paint. Without this, sessions cached
+            // before entitlements rolled out have empty arrays — the User
+            // model treats that as a legacy session and grants full
+            // access, which is why CRM-only Hemanth was seeing Field
+            // Force tabs.
+            guard appState.isAuthenticated else { return }
             await KinematicRepository.shared.refreshMe()
-            kiniUsage = await AIChatService.shared.fetchUsage()
         }
     }
 }

@@ -72,7 +72,17 @@ struct DealDetailView: View {
                     }
                     LineItemsCard(dealId: dealId)
                     if let nba = nextAction {
-                        NextBestActionCard(action: nba) { }
+                        NextBestActionCard(action: nba) {
+                            // Wire "Schedule it" → activity composer prefilled
+                            // from the NBA recommendation. Maps the NBA action
+                            // verb to an activity type, drops the displayable
+                            // label as the subject, and presents the same
+                            // composer the in-deal quick actions use so the
+                            // saved row lands on the deal timeline.
+                            composerInitialType = activityTypeFor(nba.action)
+                            composerInitialSubject = NextBestActionCard.displayAction(nba.action)
+                            loggingActivity = true
+                        }
                     } else {
                         Button { Task { await loadNextAction() } } label: {
                             HStack {
@@ -374,5 +384,19 @@ struct DealDetailView: View {
     private func loadNextAction() async {
         aiBusy = true; defer { aiBusy = false }
         nextAction = try? await CRMService.shared.aiNextBestAction(dealId: dealId)
+    }
+
+    /// Map a NextBestAction action verb to the activity type the composer
+    /// understands. Anything not in the segmented picker (send_proposal,
+    /// nurture, follow_up, …) gets logged as a task so the rep still
+    /// captures the commitment on the timeline.
+    private func activityTypeFor(_ nbaAction: String) -> String {
+        switch nbaAction.lowercased() {
+        case "call":    return "call"
+        case "email":   return "email"
+        case "meeting": return "meeting"
+        case "note":    return "note"
+        default:        return "task"
+        }
     }
 }
