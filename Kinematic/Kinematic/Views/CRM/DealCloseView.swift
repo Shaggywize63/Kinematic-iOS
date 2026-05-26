@@ -9,8 +9,10 @@ struct DealCloseView: View {
     let onClosed: (Deal) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    /// Keep this list in sync with `LOST_REASONS` in the web dashboard's
-    /// `deals/[id]/page.tsx` — reports group on the resulting string.
+    /// Keep these lists in sync with `LOST_REASONS` / `WON_REASONS` in
+    /// the web dashboard's `deals/[id]/page.tsx` — analytics groups on
+    /// the resulting string, so any drift between platforms shows up as
+    /// duplicated buckets on the win-loss reports.
     private static let lostReasons: [String] = [
         "Price too high",
         "Lost to competitor",
@@ -22,11 +24,35 @@ struct DealCloseView: View {
         "Stayed with current solution",
         "Missing features",
         "Project cancelled",
+        "Lost on payment terms",
+        "Lost on delivery / lead time",
+        "Lost on quality / spec mismatch",
+        "Internal champion left",
+        "Procurement / vendor not approved",
+        "Wrong contact / no authority",
+        "Duplicate / merged with another deal",
+        "Other",
+    ]
+
+    private static let wonReasons: [String] = [
+        "Competitive pricing",
+        "Better product fit",
+        "Strong relationship / trust",
+        "Faster delivery / availability",
+        "Better quality / spec match",
+        "Better payment / credit terms",
+        "Existing vendor expansion",
+        "Referral / word of mouth",
+        "Bundled deal / cross-sell",
+        "Replaced competitor solution",
+        "Superior demo / POC result",
+        "Better support / SLA",
         "Other",
     ]
 
     @State private var outcome: Outcome = .won
     @State private var winReason: String = ""
+    @State private var wonOther: String = ""
     @State private var lostReason: String = ""
     @State private var lostOther: String = ""
     @State private var saving = false
@@ -69,11 +95,21 @@ struct DealCloseView: View {
                         }
                     }
                 } else {
-                    Section("Win reason (optional)") {
-                        TextField("e.g. Competitive pricing, great demo, referral",
-                                  text: $winReason,
-                                  axis: .vertical)
-                            .lineLimit(2...4)
+                    // Win reason switched from free-text to a curated
+                    // dropdown so analytics doesn't get polluted with
+                    // one-off spellings ("comp prc", "competetive pricing"…).
+                    // Required on submit, mirrors web dashboard PR #70.
+                    Section("Win reason") {
+                        Picker("Reason", selection: $winReason) {
+                            Text("— Select a reason —").tag("")
+                            ForEach(Self.wonReasons, id: \.self) { r in
+                                Text(r).tag(r)
+                            }
+                        }
+                        if winReason == "Other" {
+                            TextField("Describe the reason", text: $wonOther, axis: .vertical)
+                                .lineLimit(2...4)
+                        }
                     }
                 }
 
@@ -110,7 +146,12 @@ struct DealCloseView: View {
 
     private var canSubmit: Bool {
         switch outcome {
-        case .won: return true
+        case .won:
+            guard !winReason.isEmpty else { return false }
+            if winReason == "Other" {
+                return !wonOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            return true
         case .lost:
             guard !lostReason.isEmpty else { return false }
             if lostReason == "Other" {
@@ -147,11 +188,13 @@ struct DealCloseView: View {
             let updated: Deal
             switch outcome {
             case .won:
-                let trimmed = winReason.trimmingCharacters(in: .whitespacesAndNewlines)
+                let reason = winReason == "Other"
+                    ? wonOther.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : winReason
                 updated = try await CRMService.shared.winDeal(
                     id: deal.id,
                     amount: nil,
-                    reason: trimmed.isEmpty ? nil : trimmed
+                    reason: reason.isEmpty ? nil : reason
                 )
             case .lost:
                 let reason = lostReason == "Other"
