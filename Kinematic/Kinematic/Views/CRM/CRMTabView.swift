@@ -36,8 +36,12 @@ struct CRMTabView: View {
                 Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 1) {
                     NavigationStack { LeadsListView() }
                 }
-                Tab("Pipeline", systemImage: "square.stack.3d.up.fill", value: 2) {
-                    NavigationStack { DealKanbanView() }
+                // Deals is the higher-frequency surface (list view, search,
+                // close actions) so it gets the bottom slot. Pipeline (the
+                // kanban view) moved into the More menu — same kanban,
+                // just one tap deeper.
+                Tab("Deals", systemImage: "indianrupeesign.circle.fill", value: 2) {
+                    NavigationStack { DealsListView() }
                 }
                 Tab("Activities", systemImage: "checkmark.square.fill", value: 3) {
                     NavigationStack { ActivitiesView() }
@@ -103,6 +107,12 @@ struct CRMMoreMenu: View {
                 NavigationLink {
                     ContactsListView()
                 } label: { MoreRow(icon: "person.2.fill", title: "Contacts", tint: Brand.red) }
+                // Pipeline (kanban) — moved here from the bottom tab in
+                // favour of the higher-frequency Deals list. Same view,
+                // one tap deeper.
+                NavigationLink {
+                    DealKanbanView()
+                } label: { MoreRow(icon: "square.stack.3d.up.fill", title: "Pipeline", tint: Brand.red) }
                 NavigationLink {
                     ProductsListView()
                 } label: { MoreRow(icon: "shippingbox.fill", title: "Products", tint: Brand.red) }
