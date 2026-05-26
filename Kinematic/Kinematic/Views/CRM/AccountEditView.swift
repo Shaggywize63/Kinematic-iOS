@@ -32,7 +32,20 @@ struct AccountEditView: View {
             Form {
                 Section("Identity") {
                     TextField("Name", text: $name)
-                    TextField("Industry", text: $industry)
+                    // Picker pre-selects whatever was already stored, even
+                    // if it's a legacy free-text value not in the curated
+                    // list — the picker keeps the existing tag visible so
+                    // the rep sees what's there without it silently
+                    // clearing on first edit.
+                    Picker("Industry", selection: $industry) {
+                        Text("— Select industry —").tag("")
+                        if !industry.isEmpty && !CRM_INDUSTRIES.contains(industry) {
+                            Text(industry).tag(industry)
+                        }
+                        ForEach(CRM_INDUSTRIES, id: \.self) { i in
+                            Text(i).tag(i)
+                        }
+                    }
                     TextField("Website", text: $website).keyboardType(.URL).autocapitalization(.none)
                 }
                 Section("Contact") {
