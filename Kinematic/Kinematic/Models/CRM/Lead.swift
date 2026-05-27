@@ -54,6 +54,15 @@ struct Lead: Codable, Identifiable, Hashable {
     let lostReason: String?
     let disqualifiedAt: String?
 
+    // Denormalised "latest update" snapshot from crm_leads. Each POST to
+    // /leads/:id/updates writes a row into crm_lead_updates AND copies the
+    // freshest body/timestamp/author back onto the lead row, so list views
+    // (and the row preview on iOS) can render the most-recent activity
+    // without a join. See server-side `leadUpdates.service.ts`.
+    let latestUpdate: String?
+    let latestUpdateAt: String?
+    let latestUpdateBy: String?
+
     var displayName: String {
         let f = firstName ?? ""
         let l = lastName ?? ""
@@ -105,6 +114,9 @@ struct Lead: Codable, Identifiable, Hashable {
         case whatsappConsent = "whatsapp_consent"
         case lostReason = "lost_reason"
         case disqualifiedAt = "disqualified_at"
+        case latestUpdate = "latest_update"
+        case latestUpdateAt = "latest_update_at"
+        case latestUpdateBy = "latest_update_by"
     }
 }
 

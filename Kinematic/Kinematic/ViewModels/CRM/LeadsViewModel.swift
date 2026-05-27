@@ -11,6 +11,20 @@ final class LeadsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
+    // Multi-select state. When `isMultiSelect` is true the list view swaps
+    // navigation taps for selection toggles and shows the bulk action bar.
+    // Bulk delete itself is a client-side loop over the single-lead DELETE
+    // endpoint — there's no `/bulk-delete` server endpoint (deals do it the
+    // same way on the dashboard side; see `dashboard/crm/leads/page.tsx`
+    // L264-285).
+    @Published var isMultiSelect = false
+    @Published var selectedIds: Set<String> = []
+    @Published var bulkBusy = false
+    /// Surfaces the result of the most recent bulk delete so the view can
+    /// flash a toast. Cleared when the user dismisses or starts a new
+    /// selection.
+    @Published var bulkResult: (ok: Int, failed: Int)?
+
     private let api = CRMService.shared
     private let location = CRMLocationStore.shared
     private var cancellables = Set<AnyCancellable>()
@@ -61,5 +75,54 @@ final class LeadsViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: Multi-select / bulk delete
+
+    func enterMultiSelect() {
+        isMultiSelect = true
+        selectedIds.removeAll()
+        bulkResult = nil
+    }
+
+    func exitMultiSelect() {
+        isMultiSelect = false
+        selectedIds.removeAll()
+    }
+
+    func toggleSelection(_ id: String) {
+        if selectedIds.contains(id) {
+            selectedIds.remove(id)
+        } else {
+            selectedIds.insert(id)
+        }
+    }
+
+    func selectAllVisible() {
+        selectedIds = Set(filtered.map(\.id))
+    }
+
+    /// Sequence single-lead DELETEs for everything in `selectedIds`. Errors
+    /// are counted, not aborted on, so a partial network failure is
+    /// surfaced honestly rather than rolling back the successes.
+    func bulkDeleteSelected() async {
+        guard !selectedIds.isEmpty else { return }
+        bulkBusy = true
+        let ids = Array(selectedIds)
+        var ok = 0
+        var failed = 0
+        for id in ids {
+            do {
+                try await api.deleteLead(id: id)
+                ok += 1
+            } catch {
+                failed += 1
+            }
+        }
+        bulkBusy = false
+        bulkResult = (ok, failed)
+        selectedIds.removeAll()
+        isMultiSelect = false
+        await refresh()
     }
 }
