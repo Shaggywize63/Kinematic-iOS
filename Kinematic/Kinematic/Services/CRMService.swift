@@ -78,6 +78,18 @@ final class CRMService {
         try await postJSON("/api/v1/crm/leads/\(id)/convert", body: body)
     }
 
+    // MARK: Lead Updates (append-only timeline)
+    // Server-side routes live in `routes/crm/lead-updates.routes.ts`,
+    // mounted at /api/v1/crm/leads BEFORE the main CRM router so the
+    // /:leadId/updates path is caught here. Every POST also writes the
+    // body+timestamp+author back onto the lead's latest_update fields.
+    func listLeadUpdates(leadId: String, limit: Int = 50) async throws -> [LeadUpdate] {
+        try await get("/api/v1/crm/leads/\(leadId)/updates", query: ["limit": String(limit)])
+    }
+    func createLeadUpdate(leadId: String, body: String) async throws -> LeadUpdate {
+        try await postJSON("/api/v1/crm/leads/\(leadId)/updates", body: ["body": body])
+    }
+
     /// Backend `/users` endpoint is gated by admin/supervisor/hr roles. Client-
     /// role users (CRM-only deployments) will get a 403; we treat that as an
     /// empty list so the assign button hides quietly instead of erroring.

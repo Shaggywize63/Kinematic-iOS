@@ -19,6 +19,13 @@ final class LeadDetailViewModel: ObservableObject {
     /// is available. Mirrors how the web lead page hosts the card.
     @Published var nextBestAction: NextBestAction?
     @Published var nbaBusy = false
+    /// Append-only Updates timeline on this lead. Distinct from the
+    /// Activities list (which is calls/emails/meetings/tasks); updates
+    /// are short free-text notes that feed both the leads list "latest
+    /// update" snapshot and the lead-scoring v2 engagement signals.
+    @Published var updates: [LeadUpdate] = []
+    @Published var updatesLoading = false
+    @Published var updatesPosting = false
     @Published var products: [Product] = []
     @Published var assignableUsers: [AssignableUser] = []
     @Published var isLoading = false
@@ -63,11 +70,13 @@ final class LeadDetailViewModel: ObservableObject {
             async let actsTask = api.leadActivities(id: leadId)
             async let dealsTask = api.leadDeals(id: leadId)
             async let assignableTask = api.listAssignableUsers()
+            async let updatesTask = api.listLeadUpdates(leadId: leadId)
             let lead = try await leadTask
             self.lead = lead
             self.activities = (try? await actsTask) ?? []
             self.relatedDeals = (try? await dealsTask) ?? []
             self.assignableUsers = await assignableTask
+            self.updates = (try? await updatesTask) ?? []
             // Auxiliary fetches that depend on lead fields (converted IDs)
             // fan out in parallel too.
             await loadAuxiliary(lead: lead)
@@ -111,6 +120,36 @@ final class LeadDetailViewModel: ObservableObject {
         nbaBusy = true
         defer { nbaBusy = false }
         nextBestAction = try? await api.aiNextBestAction(dealId: did)
+    }
+
+    func loadUpdates() async {
+        updatesLoading = true
+        defer { updatesLoading = false }
+        updates = (try? await api.listLeadUpdates(leadId: leadId)) ?? []
+    }
+
+    /// Post a new update and prepend it to the in-memory list. Returns
+    /// true on success so the view can clear its draft + dismiss the
+    /// keyboard. We also re-fetch the lead so the denormalised
+    /// `latest_update*` snapshot reflects the new state if the rep
+    /// navigates back to the list immediately.
+    @discardableResult
+    func postUpdate(body: String) async -> Bool {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        updatesPosting = true
+        defer { updatesPosting = false }
+        do {
+            let new = try await api.createLeadUpdate(leadId: leadId, body: trimmed)
+            updates.insert(new, at: 0)
+            if let refreshed = try? await api.getLead(id: leadId) {
+                self.lead = refreshed
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
     }
 
     func loadProductsIfNeeded() async {

@@ -48,6 +48,7 @@ struct LeadDetailView: View {
                     actionsBar(lead: lead)
                     if vm.isConverted { convertedToCard }
                     if let nba = vm.nextBestAction { nextBestActionSection(nba: nba) }
+                    UpdatesTimelineSection(vm: vm)
                     if lead.isB2c == true { b2cProfileCard(lead: lead) }
                     if let score = vm.score { scoreCard(score: score) }
                     if !vm.relatedDeals.isEmpty { relatedDealsCard }

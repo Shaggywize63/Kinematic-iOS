@@ -5,6 +5,8 @@ struct LeadsListView: View {
     @State private var showCreate = false
     @State private var showImport = false
     @State private var showDateFilter = false
+    @State private var confirmBulkDelete = false
+    @State private var bulkResultToast: String?
 
     let statusOptions = ["all", "new", "contacted", "qualified", "unqualified", "converted"]
 
@@ -107,28 +109,98 @@ struct LeadsListView: View {
                         .padding(.top, 60)
                     } else {
                         ForEach(vm.filtered) { lead in
-                            NavigationLink(destination: LeadDetailView(leadId: lead.id)) {
-                                LeadRow(lead: lead)
+                            if vm.isMultiSelect {
+                                // In multi-select mode the row becomes a
+                                // tap-to-toggle target instead of a
+                                // navigation link. Wrapping in a Button
+                                // keeps the accessibility/hit-target
+                                // behaviour consistent with the
+                                // NavigationLink path.
+                                Button {
+                                    vm.toggleSelection(lead.id)
+                                } label: {
+                                    LeadRow(lead: lead, selected: vm.selectedIds.contains(lead.id))
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                NavigationLink(destination: LeadDetailView(leadId: lead.id)) {
+                                    LeadRow(lead: lead)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
                 .padding(.horizontal)
                 .padding(.top, 4)
-                .padding(.bottom, 40)
+                .padding(.bottom, vm.isMultiSelect && !vm.selectedIds.isEmpty ? 100 : 40)
             }
             .refreshable { await vm.refresh() }
+
+            if vm.isMultiSelect && !vm.selectedIds.isEmpty {
+                bulkActionBar
+            }
         }
-        .navigationTitle("Leads")
+        .navigationTitle(vm.isMultiSelect
+                         ? (vm.selectedIds.isEmpty
+                            ? "Select leads"
+                            : "\(vm.selectedIds.count) selected")
+                         : "Leads")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button { showCreate = true } label: { Label("New lead", systemImage: "plus") }
-                    Button { showImport = true } label: { Label("Import CSV", systemImage: "square.and.arrow.down") }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                if vm.isMultiSelect {
+                    Button("Done") { vm.exitMultiSelect() }
+                        .fontWeight(.semibold)
+                } else {
+                    Menu {
+                        Button { showCreate = true } label: { Label("New lead", systemImage: "plus") }
+                        Button { showImport = true } label: { Label("Import CSV", systemImage: "square.and.arrow.down") }
+                        Button { vm.enterMultiSelect() } label: { Label("Select…", systemImage: "checkmark.circle") }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
+            }
+            if vm.isMultiSelect {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(vm.selectedIds.count == vm.filtered.count ? "Clear" : "Select all") {
+                        if vm.selectedIds.count == vm.filtered.count { vm.selectedIds.removeAll() }
+                        else { vm.selectAllVisible() }
+                    }
+                    .font(.system(size: 14))
+                }
+            }
+        }
+        .alert("Delete \(vm.selectedIds.count) lead\(vm.selectedIds.count == 1 ? "" : "s")?", isPresented: $confirmBulkDelete) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    await vm.bulkDeleteSelected()
+                    if let res = vm.bulkResult {
+                        bulkResultToast = res.failed == 0
+                            ? "Deleted \(res.ok) lead\(res.ok == 1 ? "" : "s")"
+                            : "Deleted \(res.ok), \(res.failed) failed"
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This soft-deletes them — rows can be restored from the database if needed.")
+        }
+        .overlay(alignment: .top) {
+            if let msg = bulkResultToast {
+                Text(msg)
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(Color(uiColor: .systemBackground))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red, lineWidth: 1))
+                    .cornerRadius(10)
+                    .shadow(radius: 8)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task {
+                        try? await Task.sleep(nanoseconds: 2_400_000_000)
+                        withAnimation { bulkResultToast = nil }
+                    }
             }
         }
         .sheet(isPresented: $showCreate) {
@@ -148,5 +220,38 @@ struct LeadsListView: View {
         .onChange(of: vm.search) { _, _ in
             Task { await vm.refresh() }
         }
+    }
+
+    /// Bottom action bar visible only while the user is in multi-select
+    /// mode AND has at least one lead selected. Mirrors the dashboard's
+    /// selection toolbar (`dashboard/crm/leads/page.tsx` L347-355).
+    private var bulkActionBar: some View {
+        HStack(spacing: 10) {
+            Text("\(vm.selectedIds.count) selected")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+            Spacer()
+            Button {
+                confirmBulkDelete = true
+            } label: {
+                HStack(spacing: 6) {
+                    if vm.bulkBusy {
+                        ProgressView().controlSize(.small).tint(.white)
+                    } else {
+                        Image(systemName: "trash")
+                    }
+                    Text(vm.bulkBusy ? "Deleting…" : "Delete \(vm.selectedIds.count)")
+                }
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(Brand.red.opacity(vm.bulkBusy ? 0.6 : 1))
+                .cornerRadius(10)
+            }
+            .disabled(vm.bulkBusy)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+        .overlay(Rectangle().frame(height: 0.5).foregroundColor(.secondary.opacity(0.3)), alignment: .top)
     }
 }
