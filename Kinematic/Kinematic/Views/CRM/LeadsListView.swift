@@ -1,15 +1,51 @@
 import SwiftUI
 
+extension Notification.Name {
+    /// Posted by the lead-create form when a lead lands in the offline
+    /// queue instead of hitting the network. The list screen shows a
+    /// transient toast in response.
+    static let kmLeadSavedOffline = Notification.Name("KMLeadSavedOffline")
+}
+
 struct LeadsListView: View {
     @StateObject var vm = LeadsViewModel()
+    @StateObject private var queue = OfflineLeadQueue.shared
     @State private var showCreate = false
     @State private var showImport = false
     @State private var showDateFilter = false
+    @State private var offlineToast = false
 
     let statusOptions = ["all", "new", "contacted", "qualified", "unqualified", "converted"]
 
     var body: some View {
         VStack(spacing: 0) {
+            if queue.pendingCount > 0 {
+                HStack(spacing: 8) {
+                    Image(systemName: "icloud.slash")
+                        .foregroundColor(.orange)
+                    Text("\(queue.pendingCount) lead\(queue.pendingCount == 1 ? "" : "s") waiting to sync")
+                        .font(.caption.bold())
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Button("Retry") { queue.drain() }
+                        .font(.caption.bold())
+                        .foregroundColor(.orange)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.12))
+            }
+            if offlineToast {
+                HStack {
+                    Image(systemName: "icloud.and.arrow.up").foregroundColor(.green)
+                    Text("Saved offline — will sync when online")
+                        .font(.caption.bold())
+                    Spacer()
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Color.green.opacity(0.12))
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
             HStack {
                 Image(systemName: "magnifyingglass").foregroundColor(.gray)
                 TextField("Search leads…", text: $vm.search)
@@ -133,7 +169,13 @@ struct LeadsListView: View {
         }
         .sheet(isPresented: $showCreate) {
             LeadCreateView { body in
-                await vm.create(body: body)
+                let outcome = await vm.create(body: body)
+                if case .offline = outcome {
+                    // Defer to the toast — UI presents this via the
+                    // viewmodel's errorMessage / OfflineLeadQueue.pendingCount
+                    // observer in LeadsListView. The form just dismisses.
+                    NotificationCenter.default.post(name: .kmLeadSavedOffline, object: nil)
+                }
             }
         }
         .sheet(isPresented: $showImport) {
@@ -144,7 +186,26 @@ struct LeadsListView: View {
                 Task { await vm.refresh() }
             }
         }
-        .task { await vm.refresh() }
+        .task {
+            // Try to drain any queued offline leads on first appearance —
+            // network might already be back from a previous offline burst.
+            queue.drain()
+            await vm.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .kmLeadSavedOffline)) { _ in
+            withAnimation { offlineToast = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                withAnimation { offlineToast = false }
+            }
+        }
+        .onChange(of: queue.pendingCount) { _, newCount in
+            // Once the queue drains down to 0 in the background, surface
+            // a quick "synced" hint via the list refresh so the rep sees
+            // their real leads pop in.
+            if newCount == 0 {
+                Task { await vm.refresh() }
+            }
+        }
         .onChange(of: vm.search) { _, _ in
             Task { await vm.refresh() }
         }

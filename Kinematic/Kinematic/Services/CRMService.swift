@@ -50,8 +50,54 @@ final class CRMService {
         return try await get("/api/v1/crm/leads", query: q)
     }
     func getLead(id: String) async throws -> Lead { try await get("/api/v1/crm/leads/\(id)") }
+    /// Outcome of an offline-aware lead create.
+    enum CreateLeadOutcome {
+        case success(Lead)
+        case queued(localId: String)
+        case error(message: String)
+    }
+
+    /**
+     * Offline-aware lead create. Tries the network first. On
+     * URLError.notConnectedToInternet / .timedOut / .cannotConnectToHost
+     * or a 5xx server transient, persists the payload via
+     * OfflineLeadQueue and returns `.queued`. On permanent 4xx
+     * (validation / auth), returns `.error` so the form can surface
+     * the message and let the rep fix the input.
+     */
+    func createLeadOfflineAware(body: [String: Any], clientId: String?) async -> CreateLeadOutcome {
+        do {
+            let lead: Lead = try await postJSON("/api/v1/crm/leads", body: body)
+            return .success(lead)
+        } catch let err as URLError where [.notConnectedToInternet, .timedOut, .cannotConnectToHost, .networkConnectionLost, .dataNotAllowed].contains(err.code) {
+            let id = OfflineLeadQueue.shared.enqueue(payload: body, clientId: clientId, lastError: err.localizedDescription)
+            return .queued(localId: id)
+        } catch CRMServiceError.badResponse(let code) where [408, 429, 500, 502, 503, 504].contains(code) {
+            let id = OfflineLeadQueue.shared.enqueue(payload: body, clientId: clientId, lastError: "HTTP \(code)")
+            return .queued(localId: id)
+        } catch {
+            return .error(message: error.localizedDescription)
+        }
+    }
+
+    /// Direct path kept for callers that bypass the offline queue (and
+    /// for the queue's own replay function, which adds the idempotency
+    /// header so the server doesn't double-insert).
     func createLead(_ body: [String: Any]) async throws -> Lead {
         try await postJSON("/api/v1/crm/leads", body: body)
+    }
+
+    /// Replay-only entry point used by OfflineLeadQueue. Adds the
+    /// Idempotency-Key header so the server returns the original
+    /// response if the queued POST already landed once.
+    func createLeadDirect(body: [String: Any], idempotencyKey: String, clientId: String?) async throws -> Lead {
+        let data = body.isEmpty
+            ? Data("{}".utf8)
+            : try JSONSerialization.data(withJSONObject: body, options: [])
+        var req = try makeRequest(path: "/api/v1/crm/leads", method: "POST", body: data)
+        req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        if let cid = clientId, !cid.isEmpty { req.setValue(cid, forHTTPHeaderField: "X-Client-Id") }
+        return try await perform(req)
     }
     func updateLead(id: String, body: [String: Any]) async throws -> Lead {
         try await sendJSON("/api/v1/crm/leads/\(id)", method: "PATCH", body: body)

@@ -54,12 +54,24 @@ final class LeadsViewModel: ObservableObject {
         }
     }
 
-    func create(body: [String: Any]) async {
-        do {
-            let lead = try await api.createLead(body)
+    /// User-visible result so the form can show "Saved offline" vs. "Saved".
+    enum CreateOutcome { case online, offline, error(String) }
+
+    func create(body: [String: Any]) async -> CreateOutcome {
+        let clientId = CRMClientScope.selectedClientId()
+        switch await api.createLeadOfflineAware(body: body, clientId: clientId) {
+        case .success(let lead):
             leads.insert(lead, at: 0)
-        } catch {
-            errorMessage = error.localizedDescription
+            return .online
+        case .queued:
+            // Don't insert a synthesised row — the rep sees it in the
+            // "Pending sync" badge instead. Once the queue drains and
+            // the server returns the real row, the next list refresh
+            // surfaces it.
+            return .offline
+        case .error(let msg):
+            errorMessage = msg
+            return .error(msg)
         }
     }
 }
