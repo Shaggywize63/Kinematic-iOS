@@ -12,9 +12,8 @@ struct WhatsAppButton: View {
             Button {
                 _ = WhatsAppHelper.open(phone: phone, text: prefillText)
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "message.fill")
-                        .font(.system(size: compact ? 11 : 13, weight: .bold))
+                HStack(spacing: 6) {
+                    WhatsAppLogo(size: compact ? 13 : 16, color: .white)
                     Text("WhatsApp")
                         .font(.system(size: compact ? 11 : 13, weight: .bold))
                 }

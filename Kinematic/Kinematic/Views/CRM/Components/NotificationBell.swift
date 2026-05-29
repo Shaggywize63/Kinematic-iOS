@@ -109,8 +109,15 @@ private struct NotificationActivityRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(emoji(for: activity.type))
-                .font(.system(size: 22))
+            if activity.type == "whatsapp" {
+                // Render the brand SVG instead of an emoji — the
+                // previous 💚 heart was the wrong glyph and users
+                // have flagged it multiple times.
+                WhatsAppLogo(size: 20)
+            } else {
+                Text(emoji(for: activity.type))
+                    .font(.system(size: 22))
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(activity.subject ?? activity.type?.capitalized ?? "Activity")
                     .font(.system(size: 14, weight: .semibold))
@@ -135,7 +142,7 @@ private struct NotificationActivityRow: View {
         case "task":     return "✅"
         case "note":     return "📝"
         case "sms":      return "💬"
-        case "whatsapp": return "💚"
+        // whatsapp is rendered via WhatsAppLogo, not an emoji.
         default:         return "🔔"
         }
     }
