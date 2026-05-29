@@ -166,9 +166,13 @@ struct DealCloseView: View {
         if (deal.currency ?? "INR").uppercased() == "INR" {
             return CurrencyFormatter.formatINR(amount)
         }
+        // Kinematic is INR-only; never let a missing deal.currency
+        // fall through to the OS locale default (which renders $ for
+        // most US-locale devices). Honour the deal row when set,
+        // default to INR otherwise.
         let f = NumberFormatter()
         f.numberStyle = .currency
-        f.currencyCode = deal.currency ?? "USD"
+        f.currencyCode = deal.currency ?? "INR"
         return f.string(from: NSNumber(value: amount)) ?? "\(amount)"
     }
 
