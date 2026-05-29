@@ -15,12 +15,13 @@ struct WhatsAppLogo: View {
 
     var body: some View {
         Canvas { ctx, canvasSize in
-            // Source path is authored against a 24×24 viewBox.
-            let scale = canvasSize.width / 24.0
-            var t = CGAffineTransform.identity
-            t = t.scaledBy(x: scale, y: scale)
-            let path = Self.cachedPath.transform(t)
-            ctx.fill(path, with: .color(color), style: FillStyle(eoFill: true))
+            // Source path is authored against a 24×24 viewBox. Scale the
+            // GraphicsContext (instead of transforming the Path) so we
+            // get a real `Path` back to hand to ctx.fill — Shape.transform
+            // returns a TransformedShape which fill won't accept.
+            let s = canvasSize.width / 24.0
+            ctx.scaleBy(x: s, y: s)
+            ctx.fill(Self.cachedPath, with: .color(color), style: FillStyle(eoFill: true))
         }
         .frame(width: size, height: size)
         .accessibilityLabel("WhatsApp")
