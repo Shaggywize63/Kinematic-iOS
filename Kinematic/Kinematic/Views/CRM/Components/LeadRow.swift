@@ -75,7 +75,7 @@ struct LeadRow: View {
 
             Spacer()
 
-            LeadScoreChip(score: lead.score ?? 0)
+            LeadScoreChip(score: Int(lead.score ?? 0))
         }
         .padding(14)
         .background(
@@ -132,7 +132,10 @@ struct LeadRow: View {
             [Color(red: 0.925, green: 0.282, blue: 0.6),  Color(red: 0.957, green: 0.447, blue: 0.714)],  // pink → magenta
             [Color(red: 0.078, green: 0.722, blue: 0.651), Color(red: 0.176, green: 0.831, blue: 0.749)], // teal → cyan
         ]
-        let seed = lead.id ?? lead.email ?? lead.phone ?? "lead"
+        // `lead.id` is non-optional on iOS; fall through to email / phone
+        // only when the id happens to be empty (shouldn't happen, but the
+        // chain keeps the avatar gradient stable across re-renders).
+        let seed = !lead.id.isEmpty ? lead.id : (lead.email ?? lead.phone ?? "lead")
         let h = abs(seed.hashValue)
         return palettes[h % palettes.count]
     }
