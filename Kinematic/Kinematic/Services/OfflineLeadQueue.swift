@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Network
 
 /**
@@ -13,12 +14,14 @@ import Network
  *   - network path becoming `.satisfied` (NWPathMonitor)
  *
  * Idempotent: every queued lead carries a stable UUID-based
- * Idempotency-Key (server is expected to honour it for replay).
+ * Idempotency-Key (server honours it for replay).
  *
- * Single-file queue keeps the moving parts to a minimum — we don't
- * need a real database for one entity. Reps rarely accumulate more
- * than a handful of leads between sync windows; the on-disk file is
- * < 100 KB even at the high end.
+ * Implementation note: the lead payload is stored as a pre-encoded
+ * JSON string rather than wrapped in an AnyCodable type, both because
+ * the codebase already declares a single-purpose `AnyCodable` in
+ * Models/CRM/Lead.swift (string-only) and because a JSON-string blob
+ * keeps the queue file self-describing for any future on-device tools
+ * that want to peek at pending captures.
  */
 final class OfflineLeadQueue: ObservableObject {
     static let shared = OfflineLeadQueue()
@@ -34,7 +37,8 @@ final class OfflineLeadQueue: ObservableObject {
     private struct QueuedLead: Codable {
         let id: String
         let idempotencyKey: String
-        let payload: [String: AnyCodable]
+        /// JSON-string of the body the form built — replayed verbatim.
+        let payloadJSON: String
         let clientId: String?
         let createdAt: Date
         var attempt: Int
@@ -51,8 +55,6 @@ final class OfflineLeadQueue: ObservableObject {
     }
 
     private init() {
-        // Listen for connectivity transitions and drain when the path
-        // becomes satisfied. Idempotent — drain() guards against double-fire.
         monitor.pathUpdateHandler = { [weak self] path in
             guard path.status == .satisfied else { return }
             self?.drain()
@@ -62,16 +64,15 @@ final class OfflineLeadQueue: ObservableObject {
     }
 
     // MARK: - Enqueue
-    /// Persist a lead payload for later replay. Returns the synthesised
-    /// lead id (a local UUID) so the form can dismiss with consistent
-    /// behaviour.
     func enqueue(payload: [String: Any], clientId: String?, lastError: String? = nil) -> String {
         let id = UUID().uuidString
         let idempotencyKey = "lead-\(id)"
+        let bodyData = (try? JSONSerialization.data(withJSONObject: payload, options: [])) ?? Data()
+        let payloadJSON = String(data: bodyData, encoding: .utf8) ?? "{}"
         let row = QueuedLead(
             id: id,
             idempotencyKey: idempotencyKey,
-            payload: payload.mapValues { AnyCodable($0) },
+            payloadJSON: payloadJSON,
             clientId: clientId,
             createdAt: Date(),
             attempt: 0,
@@ -80,7 +81,7 @@ final class OfflineLeadQueue: ObservableObject {
         let file = dir.appendingPathComponent("\(id).json")
         do {
             let data = try JSONEncoder().encode(row)
-            try data.write(to: file, options: .atomic)
+            try data.write(to: file, options: [.atomic])
         } catch {
             self.lastError = "Failed to queue: \(error.localizedDescription)"
         }
@@ -106,12 +107,9 @@ final class OfflineLeadQueue: ObservableObject {
 
             for file in files {
                 let ok = self.replayOne(file: file)
-                if !ok {
-                    // Stop draining on first transient failure — wait for
-                    // the next path-update to retry. Avoids burning battery
-                    // on a still-flapping connection.
-                    break
-                }
+                // Stop on first transient failure — wait for the next path
+                // update to retry. Avoids burning battery on a flapping link.
+                if !ok { break }
             }
             DispatchQueue.main.async {
                 self.lastSyncedAt = Date()
@@ -123,7 +121,17 @@ final class OfflineLeadQueue: ObservableObject {
     private func replayOne(file: URL) -> Bool {
         guard let data = try? Data(contentsOf: file),
               var row = try? JSONDecoder().decode(QueuedLead.self, from: data) else {
-            // Corrupt row — drop it.
+            try? FileManager.default.removeItem(at: file)
+            return true
+        }
+        // Decode the persisted JSON string back into a dictionary the
+        // typed API helper can re-serialise.
+        let payload: [String: Any]
+        if let bodyData = row.payloadJSON.data(using: .utf8),
+           let dict = try? JSONSerialization.jsonObject(with: bodyData, options: []) as? [String: Any] {
+            payload = dict
+        } else {
+            // Corrupt — drop it.
             try? FileManager.default.removeItem(at: file)
             return true
         }
@@ -132,28 +140,26 @@ final class OfflineLeadQueue: ObservableObject {
         group.enter()
         Task {
             do {
-                let body = row.payload.mapValues { $0.value }
                 _ = try await CRMService.shared.createLeadDirect(
-                    body: body,
+                    body: payload,
                     idempotencyKey: row.idempotencyKey,
                     clientId: row.clientId
                 )
                 success = true
                 try? FileManager.default.removeItem(at: file)
-            } catch let e as URLError where [.notConnectedToInternet, .timedOut, .cannotConnectToHost].contains(e.code) {
+            } catch let e as URLError where [.notConnectedToInternet, .timedOut, .cannotConnectToHost, .networkConnectionLost, .dataNotAllowed].contains(e.code) {
                 row.attempt += 1
                 row.lastError = e.localizedDescription
-                if let d = try? JSONEncoder().encode(row) { try? d.write(to: file, options: .atomic) }
+                if let d = try? JSONEncoder().encode(row) { try? d.write(to: file, options: [.atomic]) }
                 success = false
             } catch {
-                // 4xx permanent — drop so we don't retry forever.
                 row.attempt += 1
                 row.lastError = error.localizedDescription
                 if row.attempt >= 8 {
                     try? FileManager.default.removeItem(at: file)
                     success = true
                 } else {
-                    if let d = try? JSONEncoder().encode(row) { try? d.write(to: file, options: .atomic) }
+                    if let d = try? JSONEncoder().encode(row) { try? d.write(to: file, options: [.atomic]) }
                     success = false
                 }
             }
@@ -168,44 +174,5 @@ final class OfflineLeadQueue: ObservableObject {
             .filter { $0.pathExtension == "json" }
             .count) ?? 0
         DispatchQueue.main.async { self.pendingCount = n }
-    }
-}
-
-// MARK: - AnyCodable helper
-/// Minimal Codable wrapper so we can persist arbitrary `[String: Any]`
-/// without inflating the dependency footprint.
-struct AnyCodable: Codable {
-    let value: Any
-
-    init(_ value: Any) { self.value = value }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        if c.decodeNil() {
-            value = NSNull()
-        } else if let b = try? c.decode(Bool.self) { value = b
-        } else if let i = try? c.decode(Int.self) { value = i
-        } else if let d = try? c.decode(Double.self) { value = d
-        } else if let s = try? c.decode(String.self) { value = s
-        } else if let a = try? c.decode([AnyCodable].self) { value = a.map { $0.value }
-        } else if let o = try? c.decode([String: AnyCodable].self) { value = o.mapValues { $0.value }
-        } else {
-            throw DecodingError.dataCorruptedError(in: c, debugDescription: "Unsupported value")
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.singleValueContainer()
-        switch value {
-        case is NSNull:                       try c.encodeNil()
-        case let b as Bool:                   try c.encode(b)
-        case let i as Int:                    try c.encode(i)
-        case let i as Int64:                  try c.encode(i)
-        case let d as Double:                 try c.encode(d)
-        case let s as String:                 try c.encode(s)
-        case let a as [Any]:                  try c.encode(a.map { AnyCodable($0) })
-        case let o as [String: Any]:          try c.encode(o.mapValues { AnyCodable($0) })
-        default:                              try c.encode(String(describing: value))
-        }
     }
 }
