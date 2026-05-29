@@ -58,6 +58,12 @@ struct KiniChatView: View {
                         }
                         if vm.isSending {
                             workingIndicator
+                        } else if let last = vm.messages.last, last.role == "assistant" {
+                            // Follow-up chips after every assistant turn so the
+                            // conversation has obvious next steps without
+                            // forcing the rep to type. Each fires the same
+                            // agentic loop a typed prompt would.
+                            followUpChips
                         }
                     }
                     .padding(.horizontal)
@@ -287,27 +293,34 @@ struct KiniChatView: View {
                 Circle()
                     .fill(LinearGradient(colors: [brandRed, brandRedLight, brandBlue],
                                          startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 64, height: 64)
-                Text("✦")
-                    .font(.system(size: 28))
+                    .frame(width: 72, height: 72)
+                Text("K")
+                    .font(.system(size: 32, weight: .black))
                     .foregroundColor(.white)
             }
             .padding(.top, 32)
 
             VStack(spacing: 4) {
-                Text("Ask KINI anything")
+                Text("Hi, I'm KINI")
                     .font(.system(size: 18, weight: .black))
-                Text("Pipeline, leads, follow-ups — your CRM copilot.")
+                Text("Your CRM copilot. I can search leads, draft messages, move deals, and surface what needs your attention next.")
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
             }
 
+            Text("TRY ASKING")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.secondary)
+                .padding(.top, 6)
+
             VStack(spacing: 8) {
-                suggestionChip("Show me overdue tasks",        icon: "exclamationmark.triangle.fill")
-                suggestionChip("Which deals are stuck > 14 days?", icon: "clock.fill")
-                suggestionChip("Top 5 leads I should call today", icon: "phone.fill")
-                suggestionChip("Add lead Rakesh from Acme, 98xxxxxxxx", icon: "person.crop.circle.badge.plus")
+                suggestionChip("Show my hottest leads this week", icon: "flame.fill")
+                suggestionChip("Which deals are at risk of slipping?", icon: "exclamationmark.triangle.fill")
+                suggestionChip("Draft a follow-up to my top lead", icon: "envelope.fill")
+                suggestionChip("What activities are due today?", icon: "calendar")
+                suggestionChip("Summarise this week's pipeline", icon: "chart.line.uptrend.xyaxis")
             }
             .padding(.horizontal, 8)
             .padding(.top, 4)
@@ -318,7 +331,11 @@ struct KiniChatView: View {
 
     private func suggestionChip(_ prompt: String, icon: String) -> some View {
         Button {
+            // One-tap agentic kickoff — fill the draft AND fire the turn
+            // so the rep sees KINI actually act, not just a pre-filled
+            // input they need to send themselves.
             vm.draft = prompt
+            Task { await vm.send() }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: icon)
@@ -350,6 +367,40 @@ struct KiniChatView: View {
     /// the old `typingIndicator` so the affordance reads as "agent is
     /// running tools" rather than "model is typing prose" (those have
     /// different latency profiles and the user should feel both).
+    /// Three contextual continuation chips shown beneath the last
+    /// assistant reply. Curated to cover the common follow-ups; each
+    /// fires the same agentic turn as a typed prompt.
+    private var followUpChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                followUpChip("Tell me more",   prompt: "Tell me more — expand on the last point with examples from my CRM.")
+                followUpChip("Show as a list", prompt: "Show that as a structured list with the most important details first.")
+                followUpChip("What's next?",   prompt: "Based on that, what's the next best action I should take?")
+            }
+            .padding(.horizontal, 4)
+        }
+        .padding(.top, 2)
+    }
+
+    private func followUpChip(_ label: String, prompt: String) -> some View {
+        Button {
+            vm.draft = prompt
+            Task { await vm.send() }
+        } label: {
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(
+                    Capsule().fill(Color(uiColor: .secondarySystemBackground))
+                )
+                .overlay(
+                    Capsule().stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
     private var workingIndicator: some View {
         HStack(spacing: 10) {
             ZStack {
