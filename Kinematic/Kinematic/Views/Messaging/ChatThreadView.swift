@@ -7,6 +7,10 @@
 //
 
 import SwiftUI
+// iOS 26's MemberImportVisibility doesn't re-export ObservableObject /
+// @Published through SwiftUI anymore, so we have to import Combine
+// explicitly even though the file otherwise only touches SwiftUI types.
+import Combine
 
 @MainActor
 final class ChatThreadViewModel: ObservableObject {
