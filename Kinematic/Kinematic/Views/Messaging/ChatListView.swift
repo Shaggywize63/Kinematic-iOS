@@ -215,8 +215,8 @@ private struct ComposeThreadSheet: View {
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(u.displayName).font(.body.weight(.semibold))
-                                if !u.cityNames.isEmpty {
-                                    Text(u.cityNames.joinedSafe()).font(.caption2).foregroundStyle(.secondary)
+                                if !u.citiesText.isEmpty {
+                                    Text(u.citiesText).font(.caption2).foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -272,6 +272,3 @@ private struct ComposeThreadSheet: View {
     }
 }
 
-private extension Array where Element == String {
-    func joinedSafe() -> String { self.joined(separator: ", ") }
-}

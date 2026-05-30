@@ -127,8 +127,13 @@ struct CaptureResponse: Codable {
 
 // MARK: - API envelope
 
+/// Defensive shape: every field is optional so we tolerate routes that
+/// return `{ data }` without an explicit `success` flag (e.g. the older
+/// messaging routes before they were wrapped). Decoders that strictly
+/// require `success` would silently drop the response and surface as an
+/// empty list in the UI.
 struct APIEnvelope<T: Codable>: Codable {
-    let success: Bool
+    let success: Bool?
     let data: T?
     let error: String?
     let message: String?

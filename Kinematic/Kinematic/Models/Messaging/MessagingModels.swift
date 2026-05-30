@@ -11,8 +11,11 @@ import Foundation
 struct MessagingScopedUser: Codable, Identifiable, Hashable {
     let id: String
     let fullName: String?
-    let email: String
-    let cityNames: [String]
+    // email + city_names made optional defensively — public.users.email is
+    // nullable in the DB schema, so a single rep without an email would
+    // otherwise blow up the entire decode and empty the whole picker.
+    let email: String?
+    let cityNames: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -23,8 +26,11 @@ struct MessagingScopedUser: Codable, Identifiable, Hashable {
 
     var displayName: String {
         if let n = fullName, !n.isEmpty { return n }
-        return email.isEmpty ? "User" : email
+        if let e = email, !e.isEmpty { return e }
+        return "User"
     }
+
+    var citiesText: String { (cityNames ?? []).joined(separator: ", ") }
 }
 
 struct MessagingThreadMember: Codable, Hashable {
