@@ -69,6 +69,14 @@ struct CRMHomeView: View {
                             }
                         }
                     }
+                    // Chat icon sits adjacent to logout (top-right) so reps
+                    // reach the inbox + team chats from one tap on Home.
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink(value: CRMDestination.messages) {
+                            Image(systemName: "bubble.left.and.bubble.right")
+                        }
+                        .accessibilityLabel("Messages")
+                    }
                     if let onLogout {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button(action: onLogout) {
@@ -99,7 +107,7 @@ private struct CRMTile: Identifiable {
 }
 
 private enum CRMDestination: Hashable {
-    case dashboard, leads, contacts, accounts, deals, pipeline, products, activities, tasks, reports, kini
+    case dashboard, leads, contacts, accounts, deals, pipeline, products, activities, tasks, reports, kini, messages
 
     @ViewBuilder
     var view: some View {
@@ -115,6 +123,8 @@ private enum CRMDestination: Hashable {
         case .tasks:      TasksView()
         case .reports:    CRMReportsView()
         case .kini:       KiniChatView()
+        // Inbox: DMs + team chats with scope-filtered user search.
+        case .messages:   ChatListView()
         }
     }
 }
