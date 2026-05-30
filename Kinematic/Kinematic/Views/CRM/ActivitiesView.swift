@@ -72,6 +72,11 @@ struct ActivitiesView: View {
         .navigationTitle("Activities")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(destination: ChatListView()) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { showCompose = true } label: { Image(systemName: "plus") }
             }
         }

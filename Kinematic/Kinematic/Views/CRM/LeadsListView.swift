@@ -159,6 +159,11 @@ struct LeadsListView: View {
         .navigationTitle("Leads")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(destination: ChatListView()) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { showCreate = true } label: { Label("New lead", systemImage: "plus") }
                     Button { showImport = true } label: { Label("Import CSV", systemImage: "square.and.arrow.down") }

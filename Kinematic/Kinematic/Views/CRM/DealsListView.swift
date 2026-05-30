@@ -79,6 +79,11 @@ struct DealsListView: View {
         .navigationTitle("Deals")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(destination: ChatListView()) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { showCreate = true } label: { Image(systemName: "plus") }
             }
         }

@@ -37,6 +37,13 @@ struct CRMDashboardView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 8) {
+                    // Chat sits adjacent to the notification bell, matching
+                    // the dashboard's header placement. CRMTabView wraps this
+                    // view in a NavigationStack so this push lands inside the
+                    // active tab — no full-screen cover needed.
+                    NavigationLink(destination: ChatListView()) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                    }
                     NotificationBell()
                     NavigationLink(destination: CRMReportsView()) {
                         Image(systemName: "square.and.arrow.down.on.square")
