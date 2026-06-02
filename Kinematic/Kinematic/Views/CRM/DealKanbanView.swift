@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// True horizontal Kanban for deals. Each pipeline stage gets its own
 /// fixed-width column that scrolls vertically, and the whole row of
