@@ -1,7 +1,12 @@
 import SwiftUI
+import Combine
+import CoreLocation
 
 struct LeadCreateView: View {
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var locator = OneShotLocationProvider()
+    @State private var latitude = ""
+    @State private var longitude = ""
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var email = ""
@@ -88,6 +93,37 @@ struct LeadCreateView: View {
                         Toggle("WhatsApp messages", isOn: $whatsappConsent)
                     }
                 }
+
+                // Geo-location — shown for both B2B and B2C. "Use current
+                // location" grabs a one-shot GPS fix (ideal for reps adding a
+                // lead on-site); both fields can also be typed in by hand.
+                Section {
+                    Button {
+                        locator.requestLocation()
+                    } label: {
+                        HStack {
+                            Image(systemName: "location.fill")
+                            Text(locator.isLocating ? "Locating…" : "Use current location")
+                            Spacer()
+                            if locator.isLocating { ProgressView() }
+                        }
+                    }
+                    .disabled(locator.isLocating)
+                    TextField("Latitude", text: $latitude).keyboardType(.numbersAndPunctuation)
+                    TextField("Longitude", text: $longitude).keyboardType(.numbersAndPunctuation)
+                    if let msg = locator.errorMessage {
+                        Text(msg).font(.caption).foregroundColor(.secondary)
+                    }
+                } header: {
+                    Text("Location")
+                } footer: {
+                    Text("Optional — plots this lead's exact pin on the map.")
+                }
+                .onReceive(locator.$coordinate) { coord in
+                    guard let c = coord else { return }
+                    latitude = String(format: "%.6f", c.latitude)
+                    longitude = String(format: "%.6f", c.longitude)
+                }
             }
             .navigationTitle("New Lead")
             .toolbar {
@@ -137,6 +173,10 @@ struct LeadCreateView: View {
             body["marketing_consent"] = marketingConsent
             body["whatsapp_consent"]  = whatsappConsent
         }
+        // Geo coordinates (both B2B + B2C). Only sent when they parse as
+        // valid numbers, so a half-typed value never reaches the API.
+        if let lat = Double(latitude.trimmingCharacters(in: .whitespaces)) { body["latitude"] = lat }
+        if let lon = Double(longitude.trimmingCharacters(in: .whitespaces)) { body["longitude"] = lon }
         return body
     }
 }
