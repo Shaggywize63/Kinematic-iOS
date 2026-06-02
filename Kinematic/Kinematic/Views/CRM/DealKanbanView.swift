@@ -282,7 +282,9 @@ struct DealKanbanView: View {
             }
             .frame(maxHeight: .infinity)
         }
-        .frame(width: 280)
+        // Column width adapts to the device: ~82% of the screen on a small
+        // phone (so the next column peeks), capped at 300pt on larger screens.
+        .frame(width: min(300, UIScreen.main.bounds.width * 0.82))
         .padding(.bottom, 4)
         .background(
             RoundedRectangle(cornerRadius: 18)
