@@ -20,6 +20,7 @@ struct Lead: Codable, Identifiable, Hashable {
     let status: String?
     let score: Double?
     let ownerId: String?
+    let ownerName: String?
     let assignedTo: String?
     let convertedAt: String?
     let convertedContactId: String?
@@ -46,6 +47,12 @@ struct Lead: Codable, Identifiable, Hashable {
     let preferredContactMethod: String?
     let marketingConsent: Bool?
     let whatsappConsent: Bool?
+
+    // Geo coordinates — captured on add via device GPS / manual entry, or
+    // backfilled from the dashboard. Plotted on the web map; shown read-only
+    // on the lead detail here. Optional: most legacy leads have no fix.
+    let latitude: Double?
+    let longitude: Double?
 
     // Lifecycle (disqualify / reopen). Populated by the backend whenever
     // status flips to "unqualified" or "lost" via PATCH /leads/:id, and
@@ -79,6 +86,7 @@ struct Lead: Codable, Identifiable, Hashable {
         case status
         case score
         case ownerId = "owner_id"
+        case ownerName = "owner_name"
         case assignedTo = "assigned_to"
         case convertedAt = "converted_at"
         case convertedContactId = "converted_contact_id"
@@ -103,6 +111,8 @@ struct Lead: Codable, Identifiable, Hashable {
         case preferredContactMethod = "preferred_contact_method"
         case marketingConsent = "marketing_consent"
         case whatsappConsent = "whatsapp_consent"
+        case latitude
+        case longitude
         case lostReason = "lost_reason"
         case disqualifiedAt = "disqualified_at"
     }

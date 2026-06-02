@@ -49,8 +49,10 @@ struct LeadDetailView: View {
                     if vm.isConverted { convertedToCard }
                     if let nba = vm.nextBestAction { nextBestActionSection(nba: nba) }
                     if lead.isB2c == true { b2cProfileCard(lead: lead) }
+                    if lead.latitude != nil || lead.longitude != nil { locationCard(lead: lead) }
                     if let score = vm.score { scoreCard(score: score) }
                     if !vm.relatedDeals.isEmpty { relatedDealsCard }
+                    recordCard(lead: lead)
                     activitiesSection
                 } else if vm.isLoading {
                     ProgressView().tint(Brand.red).padding(.top, 40).frame(maxWidth: .infinity)
@@ -582,6 +584,42 @@ struct LeadDetailView: View {
                 if let addr = lead.fullAddress { profileRow("Address", value: addr) }
                 profileRow("Marketing Consent", value: (lead.marketingConsent ?? false) ? "Yes" : "No")
                 profileRow("WhatsApp Consent", value: (lead.whatsappConsent ?? false) ? "Yes" : "No")
+            }
+        }
+    }
+
+    // MARK: - Location (geo coordinates)
+
+    private func locationCard(lead: Lead) -> some View {
+        Card(title: "LOCATION") {
+            VStack(alignment: .leading, spacing: 6) {
+                if let lat = lead.latitude { profileRow("Latitude", value: String(format: "%.6f", lat)) }
+                if let lon = lead.longitude { profileRow("Longitude", value: String(format: "%.6f", lon)) }
+                if let lat = lead.latitude, let lon = lead.longitude,
+                   let url = URL(string: "https://maps.apple.com/?ll=\(lat),\(lon)&q=\(lat),\(lon)") {
+                    Link(destination: url) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "map.fill")
+                            Text("Open in Maps")
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Brand.red)
+                    }
+                    .padding(.top, 2)
+                }
+            }
+        }
+    }
+
+    // MARK: - Record (id / owner / timestamps)
+
+    private func recordCard(lead: Lead) -> some View {
+        Card(title: "RECORD") {
+            VStack(alignment: .leading, spacing: 6) {
+                profileRow("Lead ID", value: lead.id)
+                if let owner = lead.ownerName, !owner.isEmpty { profileRow("Owner", value: owner) }
+                if let created = lead.createdAt { profileRow("Created", value: formatDate(created)) }
+                if let updated = lead.updatedAt { profileRow("Updated", value: formatDate(updated)) }
             }
         }
     }
