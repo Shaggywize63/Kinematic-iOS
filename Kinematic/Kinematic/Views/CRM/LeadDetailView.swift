@@ -625,13 +625,18 @@ struct LeadDetailView: View {
     }
 
     private func profileRow(_ label: String, value: String) -> some View {
-        HStack(alignment: .top) {
+        // Flexible two-column row: the label caps at 130pt (shrinks for short
+        // labels) and the value takes the rest and wraps instead of clipping —
+        // keeps long values + large Dynamic Type readable on small phones.
+        HStack(alignment: .top, spacing: 10) {
             Text(label.uppercased())
                 .font(.system(size: 9, weight: .heavy)).tracking(0.5)
                 .foregroundColor(.secondary)
-                .frame(width: 130, alignment: .leading)
+                .frame(maxWidth: 130, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
             Text(value).font(.system(size: 13)).foregroundColor(.primary)
-            Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

@@ -51,8 +51,9 @@ struct FunnelChartView: View {
                     HStack(spacing: 8) {
                         Text(s.stageName)
                             .font(.system(size: 11, weight: .semibold))
-                            .frame(width: 110, alignment: .leading)
+                            .frame(maxWidth: 110, alignment: .leading)
                             .lineLimit(2)
+                            .minimumScaleFactor(0.8)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 6)

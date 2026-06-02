@@ -324,10 +324,15 @@ struct ContactDetailView: View {
     }
 
     private func profileRow(_ label: String, value: String) -> some View {
-        HStack(alignment: .top) {
-            Text(label.uppercased()).font(.system(size: 9, weight: .heavy)).tracking(0.5).foregroundColor(.gray).frame(width: 130, alignment: .leading)
+        // Flexible label column (caps at 130pt) + wrapping value so long
+        // values and large Dynamic Type don't clip on small phones.
+        HStack(alignment: .top, spacing: 10) {
+            Text(label.uppercased()).font(.system(size: 9, weight: .heavy)).tracking(0.5).foregroundColor(.gray)
+                .frame(maxWidth: 130, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
             Text(value).font(.system(size: 13)).foregroundColor(.primary)
-            Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

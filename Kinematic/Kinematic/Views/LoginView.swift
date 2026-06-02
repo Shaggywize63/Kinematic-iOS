@@ -243,8 +243,9 @@ struct LoginView: View {
                     .padding(.bottom, 32)
                 }
             }
+            .frame(maxWidth: 480)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 60)
+            .padding(.horizontal, 24)
             .ignoresSafeArea(.keyboard)
         }
     }
