@@ -13,6 +13,7 @@ struct LeadsListView: View {
     @State private var showCreate = false
     @State private var showImport = false
     @State private var showDateFilter = false
+    @State private var showFilters = false
     @State private var offlineToast = false
 
     let statusOptions = ["all", "new", "contacted", "qualified", "unqualified", "converted"]
@@ -56,9 +57,17 @@ struct LeadsListView: View {
                         Image(systemName: "calendar.badge.minus").foregroundColor(Brand.red)
                     }
                 }
-                Button { showDateFilter = true } label: {
-                    Image(systemName: "calendar")
-                        .foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? Brand.red : .secondary)
+                Button { showFilters = true } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .foregroundColor(vm.activeFilterCount > 0 ? Brand.red : .secondary)
+                        if vm.activeFilterCount > 0 {
+                            Text("\(vm.activeFilterCount)")
+                                .font(.system(size: 9, weight: .black)).foregroundColor(.white)
+                                .frame(width: 14, height: 14).background(Brand.red).clipShape(Circle())
+                                .offset(x: 6, y: -6)
+                        }
+                    }
                 }
             }
             .padding(10)
@@ -185,6 +194,9 @@ struct LeadsListView: View {
         }
         .sheet(isPresented: $showImport) {
             LeadImportView()
+        }
+        .sheet(isPresented: $showFilters) {
+            LeadsFilterSheet(vm: vm)
         }
         .sheet(isPresented: $showDateFilter) {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Created date") {

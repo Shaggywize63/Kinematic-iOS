@@ -8,8 +8,30 @@ final class LeadsViewModel: ObservableObject {
     @Published var statusFilter: String = "all"
     @Published var dateFrom: Date? = nil
     @Published var dateTo: Date? = nil
+    // Web-parity filters.
+    @Published var gradeFilter: String = "all"      // all | A | B | C | D
+    @Published var minScore: Int = 0                // 0 = no minimum
+    @Published var lifecycleFilter: String = "all"  // all | subscriber | lead | mql | sql | opportunity | customer
+    @Published var convertedFilter: String = "all"  // all | yes | no
     @Published var isLoading = false
     @Published var errorMessage: String?
+
+    /// Count of non-default advanced filters — drives the badge on the
+    /// Filters button so reps can see a filter is active.
+    var activeFilterCount: Int {
+        var n = 0
+        if gradeFilter != "all" { n += 1 }
+        if minScore > 0 { n += 1 }
+        if lifecycleFilter != "all" { n += 1 }
+        if convertedFilter != "all" { n += 1 }
+        if dateFrom != nil || dateTo != nil { n += 1 }
+        return n
+    }
+
+    func resetFilters() {
+        gradeFilter = "all"; minScore = 0; lifecycleFilter = "all"; convertedFilter = "all"
+        dateFrom = nil; dateTo = nil
+    }
 
     private let api = CRMService.shared
     private let location = CRMLocationStore.shared
@@ -47,7 +69,12 @@ final class LeadsViewModel: ObservableObject {
                 city: location.city,
                 state: location.state,
                 from: dateFrom.map { Self.isoDate.string(from: $0) },
-                to: dateTo.map { Self.isoDate.string(from: $0) }
+                to: dateTo.map { Self.isoDate.string(from: $0) },
+                scoreGrade: gradeFilter == "all" ? nil : gradeFilter,
+                scoreGte: minScore > 0 ? minScore : nil,
+                lifecycle: lifecycleFilter == "all" ? nil : lifecycleFilter,
+                isConverted: convertedFilter == "all" ? nil : (convertedFilter == "yes"),
+                limit: 200
             )
         } catch {
             errorMessage = error.localizedDescription
