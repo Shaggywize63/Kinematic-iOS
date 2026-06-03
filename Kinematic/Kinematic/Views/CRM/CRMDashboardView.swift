@@ -21,6 +21,7 @@ struct CRMDashboardView: View {
                 .padding(.top, 4)
 
                 kpiGrid
+                DashboardLeadsMapCard()
                 funnelCard
                 winRateCard
                 forecastCard
@@ -84,6 +85,15 @@ struct CRMDashboardView: View {
             }.buttonStyle(.plain)
             NavigationLink(destination: TasksView()) {
                 kpiTile("Tasks Due", value: "\(s?.tasksDue ?? 0)", icon: "checklist", color: Brand.red)
+            }.buttonStyle(.plain)
+            NavigationLink(destination: DealsListView()) {
+                kpiTile("Avg Deal", value: CurrencyFormatter.formatINRCompact(s?.averageDealSize ?? 0), icon: "chart.bar.fill", color: Brand.red)
+            }.buttonStyle(.plain)
+            NavigationLink(destination: LeadsListView()) {
+                kpiTile("New Leads", value: "\(s?.newLeadsThisWeek ?? 0)", icon: "sparkles", color: Brand.red)
+            }.buttonStyle(.plain)
+            NavigationLink(destination: ActivitiesView()) {
+                kpiTile("Activities", value: "\(s?.activitiesToday ?? 0)", icon: "bolt.fill", color: Brand.red)
             }.buttonStyle(.plain)
         }
     }
