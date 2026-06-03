@@ -400,7 +400,7 @@ final class CRMService {
 
     /// Backend notification feed (stagnant leads, deals closing, tasks overdue,
     /// broadcasts). Detailed title/body + a `data` payload for deep-linking.
-    func listNotifications(limit: Int = 50) async throws -> [AppNotification] {
+    func listNotifications(limit: Int = 50) async throws -> [CRMNotification] {
         try await get("/api/v1/notifications", query: ["limit": String(limit)])
     }
 

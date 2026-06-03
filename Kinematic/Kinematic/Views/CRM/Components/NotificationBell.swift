@@ -6,7 +6,7 @@ import SwiftUI
 /// sheet lists each notification with its full detail, and tapping one opens
 /// the related lead (deep-link) and marks it read.
 struct NotificationBell: View {
-    @State private var notifications: [AppNotification] = []
+    @State private var notifications: [CRMNotification] = []
     @State private var showList = false
     @State private var pollTask: Task<Void, Never>?
 
@@ -58,14 +58,14 @@ struct NotificationBell: View {
         // Optimistic local update + fire the PATCH.
         if let i = notifications.firstIndex(where: { $0.id == id }) {
             let n = notifications[i]
-            notifications[i] = AppNotification(id: n.id, title: n.title, body: n.body, data: n.data, isRead: true, createdAt: n.createdAt)
+            notifications[i] = CRMNotification(id: n.id, title: n.title, body: n.body, data: n.data, isRead: true, createdAt: n.createdAt)
         }
         Task { await CRMService.shared.markNotificationRead(id: id) }
     }
 }
 
 private struct NotificationCenterView: View {
-    let notifications: [AppNotification]
+    let notifications: [CRMNotification]
     let reload: () async -> Void
     let onRead: (String) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -105,7 +105,7 @@ private struct NotificationCenterView: View {
 }
 
 private struct NotificationRow: View {
-    let n: AppNotification
+    let n: CRMNotification
 
     var body: some View {
         HStack(spacing: 10) {
