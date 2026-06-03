@@ -4,7 +4,7 @@ import Foundation
 /// deal-closing reminders, task-overdue alerts, broadcasts, etc. Carries a
 /// loose `data` payload that usually includes `lead_id` / `deal_id` for
 /// deep-linking and `kind` for the icon.
-struct AppNotification: Codable, Identifiable {
+struct CRMNotification: Codable, Identifiable {
     let id: String
     let title: String?
     let body: String?
