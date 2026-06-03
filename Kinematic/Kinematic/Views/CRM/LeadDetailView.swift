@@ -48,6 +48,13 @@ struct LeadDetailView: View {
                     actionsBar(lead: lead)
                     if vm.isConverted { convertedToCard }
                     if let nba = vm.nextBestAction { nextBestActionSection(nba: nba) }
+                    LeadScoreBoostCard(
+                        lead: lead,
+                        isTata: ClientFeatures.isTataTiscon,
+                        busy: vm.qualifyBusy,
+                        onEdit: { editing = true },
+                        onQualify: { Task { await vm.qualify() } }
+                    )
                     if lead.isB2c == true { b2cProfileCard(lead: lead) }
                     if lead.latitude != nil || lead.longitude != nil { locationCard(lead: lead) }
                     if let score = vm.score { scoreCard(score: score) }
