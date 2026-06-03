@@ -190,7 +190,7 @@ struct CRMReportDetailView: View {
     private func load() async {
         await MainActor.run { isLoading = true; errorMessage = nil }
         do {
-            let fetched: [ReportRow] = try await CRMService.shared.analyticsGetList(spec.path, query: spec.query)
+            let fetched: [ReportRow] = try await CRMService.shared.analyticsReport(spec.path, query: spec.query)
             let cols = computeColumns(fetched)
             await MainActor.run { rows = fetched; columns = cols; isLoading = false }
         } catch {
