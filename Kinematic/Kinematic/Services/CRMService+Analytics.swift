@@ -51,6 +51,13 @@ extension CRMService {
     func leadSourceRoi() async throws -> [LeadSourceROIRow] {
         try await analyticsGetList("/api/v1/crm/analytics/lead-source-roi")
     }
+
+    /// Generic report fetch for the Reports hub — exposes the file-private
+    /// `analyticsGetList` to other files. Returns each row as a loose JSON map
+    /// so any analytics endpoint can be rendered as a table + exported.
+    func analyticsReport(_ path: String, query: [String: String] = [:]) async throws -> [[String: AnyCodableValue]] {
+        try await analyticsGetList(path, query: query)
+    }
 }
 
 // MARK: - Private helpers (file-scoped, same shape as CRMService+Phase2)
