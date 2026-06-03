@@ -623,7 +623,6 @@ struct LeadDetailView: View {
     private func recordCard(lead: Lead) -> some View {
         Card(title: "RECORD") {
             VStack(alignment: .leading, spacing: 6) {
-                profileRow("Lead ID", value: lead.id)
                 if let owner = lead.ownerName, !owner.isEmpty { profileRow("Owner", value: owner) }
                 if let created = lead.createdAt { profileRow("Created", value: formatDate(created)) }
                 if let updated = lead.updatedAt { profileRow("Updated", value: formatDate(updated)) }
