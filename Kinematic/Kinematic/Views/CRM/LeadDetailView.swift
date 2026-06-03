@@ -527,9 +527,9 @@ struct LeadDetailView: View {
 
     // MARK: - Next Best Action
 
-    /// NBA card on the lead detail. Sourced from the converted deal's NBA
-    /// (backend has no lead-scoped NBA). Auto-loads when the lead has a
-    /// converted_deal_id; the refresh button re-runs the inference.
+    /// NBA card on the lead detail. Sourced from the lead-scoped NBA endpoint
+    /// so it works for every lead (converted or not). Auto-loads on open; the
+    /// refresh button re-runs the inference.
     private func nextBestActionSection(nba: NextBestAction) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {

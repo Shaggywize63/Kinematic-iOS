@@ -327,6 +327,12 @@ final class CRMService {
     func aiNextBestAction(dealId: String) async throws -> NextBestAction {
         try await postJSON("/api/v1/crm/ai/next-best-action/\(dealId)", body: [:])
     }
+    /// Lead-scoped NBA — works for any lead, converted or not. Decodes into the
+    /// same NextBestAction model (the lead payload mirrors the deal one:
+    /// action / reason / priority / suggested_when / methodology).
+    func aiNextBestActionLead(leadId: String) async throws -> NextBestAction {
+        try await postJSON("/api/v1/crm/ai/next-best-action/lead/\(leadId)", body: [:])
+    }
     func aiWinProbability(dealId: String) async throws -> WinProbability {
         try await postJSON("/api/v1/crm/ai/win-probability/\(dealId)", body: [:])
     }
