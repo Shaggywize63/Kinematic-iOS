@@ -45,7 +45,7 @@ struct CRMDashboardView: View {
                         Image(systemName: "bubble.left.and.bubble.right")
                     }
                     NotificationBell()
-                    NavigationLink(destination: CRMReportsView()) {
+                    NavigationLink(destination: CRMReportsHubView()) {
                         Image(systemName: "square.and.arrow.down.on.square")
                     }
                 }
