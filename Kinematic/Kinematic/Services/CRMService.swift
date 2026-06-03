@@ -369,6 +369,27 @@ final class CRMService {
         return try await perform(req)
     }
 
+    // MARK: - Notifications (in-app center)
+
+    /// Backend notification feed (stagnant leads, deals closing, tasks overdue,
+    /// broadcasts). Detailed title/body + a `data` payload for deep-linking.
+    func listNotifications(limit: Int = 50) async throws -> [AppNotification] {
+        try await get("/api/v1/notifications", query: ["limit": String(limit)])
+    }
+
+    /// Mark a single notification read. Best-effort: the PATCH is sent before
+    /// any decode, so a decode mismatch on the (empty) ack doesn't matter.
+    func markNotificationRead(id: String) async {
+        struct Ack: Codable { let success: Bool? }
+        _ = try? await (sendJSON("/api/v1/notifications/\(id)/read", method: "PATCH", body: [:]) as Ack)
+    }
+
+    /// Mark every notification read.
+    func markAllNotificationsRead() async {
+        struct Ack: Codable { let success: Bool? }
+        _ = try? await (sendJSON("/api/v1/notifications/read", method: "PATCH", body: [:]) as Ack)
+    }
+
     private func postJSON<T: Codable>(_ path: String, body: [String: Any]) async throws -> T {
         let data = body.isEmpty
             ? Data("{}".utf8)
