@@ -119,7 +119,7 @@ struct CRMMoreMenu: View {
             }
             Section("Insights") {
                 NavigationLink {
-                    CRMReportsView()
+                    CRMReportsHubView()
                 } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
                 // Read-only Lead Analytics surface — six widget cards with a
                 // per-card size cycle. Mirrors the dashboard's
