@@ -11,6 +11,8 @@ struct CRMHelpView: View {
                 hero
                 stagesSection
                 actionsSection
+                aiSection
+                reportsSection
                 tipsSection
                 contactSection
             }
@@ -130,6 +132,43 @@ struct CRMHelpView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    // MARK: - KINI AI
+
+    private var aiSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("KINI AI")
+            actionRow(icon: "sparkles", color: .purple, title: "Score & prioritise leads",
+                      detail: "Every lead gets an AI score 0–100 and an A–D grade from its signals. Work the highest first; the 'Boost this score' card shows what's missing.")
+            actionRow(icon: "wand.and.stars", color: .purple, title: "Next-Best-Action",
+                      detail: "On any lead or deal, KINI recommends the single best next move (call, meet, qualify, nurture) with the reasoning behind it.")
+            actionRow(icon: "envelope.badge.fill", color: .blue, title: "Draft email & WhatsApp",
+                      detail: "Generate a ready-to-edit email or WhatsApp template from a short goal — in English, Hindi, Odia, Bengali or Assamese.")
+            actionRow(icon: "doc.text.magnifyingglass", color: .red, title: "Summarise & ask",
+                      detail: "Summarise an account or deal, or ask KINI things like 'show deals stuck over 14 days' or 'draft a follow-up for X'.")
+        }
+    }
+
+    // MARK: - Reports & analytics
+
+    private var reportsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("Reports & analytics")
+            Text("Reports → open any report as a table and download it as CSV. The dashboard shows your pipeline, win rate, avg deal, sales cycle, new leads and a live leads map — scoped to your leads and team.")
+                .font(.system(size: 13)).foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(["Rep Leaderboard", "Forecast", "Stage Funnel", "Win / Loss", "Lead Aging", "Stuck Leads", "Activity Heatmap", "Lead Source ROI", "Sales Cycle"], id: \.self) { r in
+                    HStack(spacing: 8) {
+                        Image(systemName: "chart.bar.doc.horizontal.fill").foregroundColor(Brand.red).font(.system(size: 12))
+                        Text(r).font(.system(size: 13)).foregroundColor(.primary)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground)))
     }
 
     // MARK: - Tips
