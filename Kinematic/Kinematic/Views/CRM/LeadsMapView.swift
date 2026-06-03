@@ -14,6 +14,7 @@ struct DashboardLeadsMapCard: View {
 
     @State private var pins: [LeadPin] = []
     @State private var loading = true
+    @State private var selectedLeadId: String?
     @State private var position: MapCameraPosition = .region(
         MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 22.0, longitude: 79.0),
                            span: MKCoordinateSpan(latitudeDelta: 24, longitudeDelta: 24)) // India
@@ -41,7 +42,16 @@ struct DashboardLeadsMapCard: View {
             } else {
                 Map(position: $position) {
                     ForEach(pins) { p in
-                        Marker(p.name, coordinate: p.coord).tint(Brand.red)
+                        // Tappable annotation — opens the lead on tap (a plain
+                        // Marker isn't interactive).
+                        Annotation(p.name, coordinate: p.coord) {
+                            Button { selectedLeadId = p.id } label: {
+                                Image(systemName: "mappin.circle.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(.white, Brand.red)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
                 .frame(height: 280)
@@ -51,6 +61,9 @@ struct DashboardLeadsMapCard: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
+        .navigationDestination(item: $selectedLeadId) { id in
+            LeadDetailView(leadId: id)
+        }
         .task { await load() }
     }
 
