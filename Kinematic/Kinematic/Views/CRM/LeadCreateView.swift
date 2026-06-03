@@ -35,6 +35,15 @@ struct LeadCreateView: View {
 
     let onSubmit: ([String: Any]) async -> Void
 
+    // Tata Tiscon requires the submission location to be captured automatically
+    // and is non-editable + mandatory (parity with the web lead form). Other
+    // clients keep the optional "Use current location" + manual entry flow.
+    private var isTata: Bool { ClientFeatures.isTataTiscon }
+    private var hasValidCoords: Bool {
+        Double(latitude.trimmingCharacters(in: .whitespaces)) != nil &&
+        Double(longitude.trimmingCharacters(in: .whitespaces)) != nil
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -94,30 +103,59 @@ struct LeadCreateView: View {
                     }
                 }
 
-                // Geo-location — shown for both B2B and B2C. "Use current
-                // location" grabs a one-shot GPS fix (ideal for reps adding a
-                // lead on-site); both fields can also be typed in by hand.
+                // Geo-location. For Tata Tiscon it's auto-captured on open,
+                // non-editable and mandatory (web parity). For everyone else
+                // it stays optional: "Use current location" grabs a one-shot
+                // GPS fix, and both fields can also be typed in by hand.
                 Section {
-                    Button {
-                        locator.requestLocation()
-                    } label: {
-                        HStack {
-                            Image(systemName: "location.fill")
-                            Text(locator.isLocating ? "Locating…" : "Use current location")
-                            Spacer()
-                            if locator.isLocating { ProgressView() }
+                    if isTata {
+                        HStack(spacing: 10) {
+                            Image(systemName: "location.fill").foregroundColor(.accentColor)
+                            if locator.isLocating {
+                                Text("Capturing current location…")
+                                Spacer()
+                                ProgressView()
+                            } else if hasValidCoords {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Location captured").font(.subheadline)
+                                    Text("\(latitude), \(longitude)")
+                                        .font(.caption).foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                            } else {
+                                Text("Location not captured")
+                                Spacer()
+                                Button("Retry") { locator.requestLocation() }
+                            }
                         }
-                    }
-                    .disabled(locator.isLocating)
-                    TextField("Latitude", text: $latitude).keyboardType(.numbersAndPunctuation)
-                    TextField("Longitude", text: $longitude).keyboardType(.numbersAndPunctuation)
-                    if let msg = locator.errorMessage {
-                        Text(msg).font(.caption).foregroundColor(.secondary)
+                        if let msg = locator.errorMessage {
+                            Text(msg).font(.caption).foregroundColor(.secondary)
+                        }
+                    } else {
+                        Button {
+                            locator.requestLocation()
+                        } label: {
+                            HStack {
+                                Image(systemName: "location.fill")
+                                Text(locator.isLocating ? "Locating…" : "Use current location")
+                                Spacer()
+                                if locator.isLocating { ProgressView() }
+                            }
+                        }
+                        .disabled(locator.isLocating)
+                        TextField("Latitude", text: $latitude).keyboardType(.numbersAndPunctuation)
+                        TextField("Longitude", text: $longitude).keyboardType(.numbersAndPunctuation)
+                        if let msg = locator.errorMessage {
+                            Text(msg).font(.caption).foregroundColor(.secondary)
+                        }
                     }
                 } header: {
                     Text("Location")
                 } footer: {
-                    Text("Optional — plots this lead's exact pin on the map.")
+                    Text(isTata
+                         ? "Required — your current location is captured automatically when you open this form."
+                         : "Optional — plots this lead's exact pin on the map.")
                 }
                 .onReceive(locator.$coordinate) { coord in
                     guard let c = coord else { return }
@@ -126,6 +164,13 @@ struct LeadCreateView: View {
                 }
             }
             .navigationTitle("New Lead")
+            .onAppear {
+                // Tata Tiscon: grab the submission location the moment the
+                // form opens so it's ready (and required) at save time.
+                if isTata && !hasValidCoords && !locator.isLocating {
+                    locator.requestLocation()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -137,7 +182,7 @@ struct LeadCreateView: View {
                             dismiss()
                         }
                     }
-                    .disabled(firstName.isEmpty && email.isEmpty)
+                    .disabled((firstName.isEmpty && email.isEmpty) || (isTata && !hasValidCoords))
                 }
             }
         }
