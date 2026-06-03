@@ -11,6 +11,7 @@
 
 import Foundation
 import CoreLocation
+import Combine
 
 final class OneShotLocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var isLocating = false
