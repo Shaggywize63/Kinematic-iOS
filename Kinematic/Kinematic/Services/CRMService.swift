@@ -39,7 +39,11 @@ final class CRMService {
     }
 
     // MARK: Leads
-    func listLeads(status: String? = nil, search: String? = nil, city: String? = nil, state: String? = nil, from: String? = nil, to: String? = nil) async throws -> [Lead] {
+    func listLeads(status: String? = nil, search: String? = nil, city: String? = nil, state: String? = nil,
+                   from: String? = nil, to: String? = nil,
+                   scoreGrade: String? = nil, scoreGte: Int? = nil,
+                   lifecycle: String? = nil, isConverted: Bool? = nil,
+                   limit: Int? = nil) async throws -> [Lead] {
         var q: [String: String] = [:]
         if let status { q["status"] = status }
         if let search { q["q"] = search }
@@ -47,6 +51,11 @@ final class CRMService {
         if let state { q["state"] = state }
         if let from { q["from"] = from }
         if let to { q["to"] = to }
+        if let scoreGrade { q["score_grade"] = scoreGrade }
+        if let scoreGte { q["score_gte"] = String(scoreGte) }
+        if let lifecycle { q["lifecycle_stage"] = lifecycle }
+        if let isConverted { q["is_converted"] = isConverted ? "true" : "false" }
+        if let limit { q["limit"] = String(limit) }
         return try await get("/api/v1/crm/leads", query: q)
     }
     func getLead(id: String) async throws -> Lead { try await get("/api/v1/crm/leads/\(id)") }
