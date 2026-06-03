@@ -125,7 +125,7 @@ struct CRMMoreMenu: View {
                 // per-card size cycle. Mirrors the dashboard's
                 // /dashboard/crm/analytics screen, scoped down to mobile.
                 NavigationLink {
-                    LeadAnalyticsView()
+                    CustomLeadAnalyticsView()
                 } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: "Lead Analytics", tint: Brand.red) }
             }
             // Help & lifecycle — single-tap onboarding so any new rep can

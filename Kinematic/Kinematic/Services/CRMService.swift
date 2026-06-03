@@ -369,6 +369,33 @@ final class CRMService {
         return try await perform(req)
     }
 
+    // MARK: - Lead Analytics layout (per-user, synced with web)
+
+    struct AnalyticsLayoutWidget: Codable {
+        let id: String
+        let widget_type: String
+        let chart_type: String?
+    }
+    private struct AnalyticsLayout: Codable { let widgets: [AnalyticsLayoutWidget]? }
+
+    /// The user's saved Lead Analytics widget layout — the same per-user config
+    /// the web "customisable Lead Analytics" page writes to. Empty = not yet
+    /// customised.
+    func getAnalyticsLayout() async throws -> [AnalyticsLayoutWidget] {
+        let layout: AnalyticsLayout = try await get("/api/v1/crm/dashboard-layouts/analytics")
+        return layout.widgets ?? []
+    }
+
+    /// Persist the chosen widgets (by type, in order). Round-trips to web.
+    func saveAnalyticsLayout(types: [String]) async {
+        let widgets: [[String: Any]] = types.map {
+            ["id": "w_\($0)", "widget_type": $0, "chart_type": "bar", "config": [:]]
+        }
+        struct Ack: Codable { let widgets: [AnalyticsLayoutWidget]? }
+        _ = try? await (sendJSON("/api/v1/crm/dashboard-layouts/analytics", method: "PUT",
+                                 body: ["widgets": widgets, "layouts": [:]]) as Ack)
+    }
+
     // MARK: - Notifications (in-app center)
 
     /// Backend notification feed (stagnant leads, deals closing, tasks overdue,
