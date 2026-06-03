@@ -26,6 +26,7 @@ final class LeadDetailViewModel: ObservableObject {
     @Published var convertBusy = false
     @Published var assignBusy = false
     @Published var deactivateBusy = false
+    @Published var qualifyBusy = false
     @Published var deleteBusy = false
     /// Busy flag for the lifecycle step-2 reopen action. Surfaced on the
     /// status banner button so a slow round-trip is visible to the rep.
@@ -168,6 +169,20 @@ final class LeadDetailViewModel: ObservableObject {
             let updated = try await api.updateLead(id: leadId, body: ["owner_id": user.id])
             self.lead = updated
             successMessage = "Assigned to \(user.displayName)"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Mark the lead qualified — used by the "Boost this score" card's
+    /// Mark Qualified action.
+    func qualify() async {
+        qualifyBusy = true
+        defer { qualifyBusy = false }
+        do {
+            let updated = try await api.updateLead(id: leadId, body: ["status": "qualified"])
+            self.lead = updated
+            successMessage = "Lead marked as qualified"
         } catch {
             errorMessage = error.localizedDescription
         }
