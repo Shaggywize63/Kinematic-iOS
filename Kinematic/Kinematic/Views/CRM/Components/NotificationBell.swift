@@ -1,25 +1,16 @@
 import SwiftUI
 
-/// Reusable notification bell for the CRM module.
-/// Polls `/api/v1/crm/activities/calendar` (±7 days) every 60 seconds for
-/// incomplete activities with a due date — matches dashboard NotificationBell.tsx.
-///
-/// Badge is red if any activity is overdue, blue otherwise. Tap presents a
-/// sheet with the upcoming activity list.
+/// Notification bell → in-app Notification Center. Reads the backend
+/// notification feed (`/api/v1/notifications`): stagnant-lead nudges, deals
+/// closing, tasks overdue, broadcasts. The badge shows the unread count; the
+/// sheet lists each notification with its full detail, and tapping one opens
+/// the related lead (deep-link) and marks it read.
 struct NotificationBell: View {
-    @State private var activities: [Activity] = []
+    @State private var notifications: [AppNotification] = []
     @State private var showList = false
     @State private var pollTask: Task<Void, Never>?
 
-    private var unread: [Activity] {
-        activities
-            .filter { $0.completedAt == nil && $0.dueAt != nil }
-            .sorted { ($0.dueAt ?? "") < ($1.dueAt ?? "") }
-    }
-
-    private var overdueCount: Int {
-        unread.filter { isOverdue($0.dueAt) }.count
-    }
+    private var unreadCount: Int { notifications.filter { !($0.isRead ?? false) }.count }
 
     var body: some View {
         Button { showList = true } label: {
@@ -27,12 +18,12 @@ struct NotificationBell: View {
                 Image(systemName: "bell.fill")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(Color(uiColor: .label))
-                if !unread.isEmpty {
-                    Text("\(min(unread.count, 99))")
+                if unreadCount > 0 {
+                    Text("\(min(unreadCount, 99))")
                         .font(.system(size: 10, weight: .black))
                         .foregroundColor(.white)
                         .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(overdueCount > 0 ? Color.red : Brand.red)
+                        .background(Color.red)
                         .clipShape(Capsule())
                         .offset(x: 8, y: -6)
                 }
@@ -40,7 +31,7 @@ struct NotificationBell: View {
             .frame(width: 32, height: 32)
         }
         .sheet(isPresented: $showList) {
-            NotificationListSheet(activities: unread, reload: load)
+            NotificationCenterView(notifications: notifications, reload: load, onRead: markRead)
         }
         .task { startPolling() }
         .onDisappear { pollTask?.cancel() }
@@ -58,42 +49,51 @@ struct NotificationBell: View {
     }
 
     private func load() async {
-        let f = ISO8601DateFormatter()
-        let from = f.string(from: Date().addingTimeInterval(-7 * 86400))
-        let to   = f.string(from: Date().addingTimeInterval( 7 * 86400))
-        if let list = try? await CRMService.shared.activitiesCalendar(from: from, to: to) {
-            await MainActor.run { activities = list }
+        if let list = try? await CRMService.shared.listNotifications() {
+            await MainActor.run { notifications = list }
         }
     }
 
-    private func isOverdue(_ iso: String?) -> Bool {
-        guard let iso, let d = ISO8601DateFormatter().date(from: iso) else { return false }
-        return d.timeIntervalSinceNow < 0
+    private func markRead(_ id: String) {
+        // Optimistic local update + fire the PATCH.
+        if let i = notifications.firstIndex(where: { $0.id == id }) {
+            let n = notifications[i]
+            notifications[i] = AppNotification(id: n.id, title: n.title, body: n.body, data: n.data, isRead: true, createdAt: n.createdAt)
+        }
+        Task { await CRMService.shared.markNotificationRead(id: id) }
     }
 }
 
-private struct NotificationListSheet: View {
-    let activities: [Activity]
+private struct NotificationCenterView: View {
+    let notifications: [AppNotification]
     let reload: () async -> Void
+    let onRead: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
-                if activities.isEmpty {
-                    Text("No upcoming activities.").foregroundColor(.secondary).font(.caption)
+                if notifications.isEmpty {
+                    Text("You're all caught up — no notifications.").foregroundColor(.secondary).font(.caption)
                 } else {
-                    ForEach(activities, id: \.id) { a in
-                        NotificationActivityRow(activity: a)
+                    ForEach(notifications) { n in
+                        if let leadId = n.leadId {
+                            NavigationLink(destination: LeadDetailView(leadId: leadId)) {
+                                NotificationRow(n: n)
+                            }
+                            .simultaneousGesture(TapGesture().onEnded { onRead(n.id) })
+                        } else {
+                            NotificationRow(n: n)
+                                .contentShape(Rectangle())
+                                .onTapGesture { onRead(n.id) }
+                        }
                     }
                 }
             }
             .navigationTitle("Notifications")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { dismiss() }
-                }
+                ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }
                 }
@@ -104,62 +104,38 @@ private struct NotificationListSheet: View {
     }
 }
 
-private struct NotificationActivityRow: View {
-    let activity: Activity
+private struct NotificationRow: View {
+    let n: AppNotification
 
     var body: some View {
         HStack(spacing: 10) {
-            if activity.type == "whatsapp" {
-                // Render the brand SVG instead of an emoji — the
-                // previous 💚 heart was the wrong glyph and users
-                // have flagged it multiple times.
-                WhatsAppLogo(size: 20)
-            } else {
-                Text(emoji(for: activity.type))
-                    .font(.system(size: 22))
+            ZStack {
+                Circle().fill((n.isRead ?? false ? Color.gray : Brand.red).opacity(0.15)).frame(width: 36, height: 36)
+                Image(systemName: icon(for: n.kind)).foregroundColor(n.isRead ?? false ? .gray : Brand.red).font(.system(size: 15))
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(activity.subject ?? activity.type?.capitalized ?? "Activity")
-                    .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
-                if let body = activity.description, !body.isEmpty {
-                    Text(body).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                Text(n.title ?? "Notification")
+                    .font(.system(size: 14, weight: (n.isRead ?? false) ? .regular : .bold))
+                    .lineLimit(2)
+                if let body = n.body, !body.isEmpty {
+                    Text(body).font(.caption).foregroundColor(.secondary).lineLimit(3)
                 }
             }
             Spacer()
-            Text(relativeDue(activity.dueAt))
-                .font(.caption2).fontWeight(.bold)
-                .foregroundColor(isOverdue(activity.dueAt) ? .red : Brand.red)
+            if !(n.isRead ?? false) {
+                Circle().fill(Brand.red).frame(width: 8, height: 8)
+            }
         }
         .padding(.vertical, 4)
     }
 
-    private func emoji(for type: String?) -> String {
-        switch type ?? "" {
-        case "call":     return "📞"
-        case "email":    return "✉️"
-        case "meeting":  return "📅"
-        case "task":     return "✅"
-        case "note":     return "📝"
-        case "sms":      return "💬"
-        // whatsapp is rendered via WhatsAppLogo, not an emoji.
-        default:         return "🔔"
+    private func icon(for kind: String?) -> String {
+        switch kind ?? "" {
+        case "crm_lead_stagnant", "crm_lead_stagnant_escalation": return "person.fill.questionmark"
+        case "crm_deal_closing_soon": return "calendar.badge.clock"
+        case "crm_deal_overdue":      return "exclamationmark.triangle.fill"
+        case "crm_task_overdue":      return "checklist"
+        default:                       return "bell.fill"
         }
-    }
-
-    private func isOverdue(_ iso: String?) -> Bool {
-        guard let iso, let d = ISO8601DateFormatter().date(from: iso) else { return false }
-        return d.timeIntervalSinceNow < 0
-    }
-
-    private func relativeDue(_ iso: String?) -> String {
-        guard let iso, let d = ISO8601DateFormatter().date(from: iso) else { return "" }
-        let delta = d.timeIntervalSinceNow
-        let abs = Swift.abs(delta)
-        let label: String
-        if abs < 3600 { label = "\(Int(abs / 60))m" }
-        else if abs < 86400 { label = "\(Int(abs / 3600))h" }
-        else { label = "\(Int(abs / 86400))d" }
-        return delta < 0 ? "\(label) overdue" : "in \(label)"
     }
 }
