@@ -103,59 +103,36 @@ struct LeadCreateView: View {
                     }
                 }
 
-                // Geo-location. For Tata Tiscon it's auto-captured on open,
-                // non-editable and mandatory (web parity). For everyone else
-                // it stays optional: "Use current location" grabs a one-shot
-                // GPS fix, and both fields can also be typed in by hand.
+                // Geo-location is captured automatically — no button, no manual
+                // entry. We start a one-shot GPS fix when the form opens so the
+                // coordinates are ready by the time the rep taps Save.
                 Section {
-                    if isTata {
-                        HStack(spacing: 10) {
-                            Image(systemName: "location.fill").foregroundColor(.accentColor)
-                            if locator.isLocating {
-                                Text("Capturing current location…")
-                                Spacer()
-                                ProgressView()
-                            } else if hasValidCoords {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Location captured").font(.subheadline)
-                                    Text("\(latitude), \(longitude)")
-                                        .font(.caption).foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-                            } else {
-                                Text("Location not captured")
-                                Spacer()
-                                Button("Retry") { locator.requestLocation() }
+                    HStack(spacing: 10) {
+                        Image(systemName: "location.fill").foregroundColor(.accentColor)
+                        if hasValidCoords {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Location captured").font(.subheadline)
+                                Text("\(latitude), \(longitude)").font(.caption).foregroundColor(.secondary)
                             }
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                        } else if locator.isLocating {
+                            Text("Capturing current location…")
+                            Spacer()
+                            ProgressView()
+                        } else {
+                            Text("Location will be captured automatically")
+                            Spacer()
+                            Button("Retry") { locator.requestLocation() }
                         }
-                        if let msg = locator.errorMessage {
-                            Text(msg).font(.caption).foregroundColor(.secondary)
-                        }
-                    } else {
-                        Button {
-                            locator.requestLocation()
-                        } label: {
-                            HStack {
-                                Image(systemName: "location.fill")
-                                Text(locator.isLocating ? "Locating…" : "Use current location")
-                                Spacer()
-                                if locator.isLocating { ProgressView() }
-                            }
-                        }
-                        .disabled(locator.isLocating)
-                        TextField("Latitude", text: $latitude).keyboardType(.numbersAndPunctuation)
-                        TextField("Longitude", text: $longitude).keyboardType(.numbersAndPunctuation)
-                        if let msg = locator.errorMessage {
-                            Text(msg).font(.caption).foregroundColor(.secondary)
-                        }
+                    }
+                    if let msg = locator.errorMessage {
+                        Text(msg).font(.caption).foregroundColor(.secondary)
                     }
                 } header: {
                     Text("Location")
                 } footer: {
-                    Text(isTata
-                         ? "Required — your current location is captured automatically when you open this form."
-                         : "Optional — plots this lead's exact pin on the map.")
+                    Text("Your current location is captured automatically and saved with the lead.")
                 }
                 .onReceive(locator.$coordinate) { coord in
                     guard let c = coord else { return }
@@ -165,9 +142,9 @@ struct LeadCreateView: View {
             }
             .navigationTitle("New Lead")
             .onAppear {
-                // Tata Tiscon: grab the submission location the moment the
-                // form opens so it's ready (and required) at save time.
-                if isTata && !hasValidCoords && !locator.isLocating {
+                // Auto-capture the submission location as soon as the form
+                // opens so it's attached by the time the rep taps Save.
+                if !hasValidCoords && !locator.isLocating {
                     locator.requestLocation()
                 }
             }
@@ -177,12 +154,15 @@ struct LeadCreateView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        // Fetch the location on Save if we still don't have a
+                        // fix (e.g. permission was just granted) — best effort.
+                        if !hasValidCoords { locator.requestLocation() }
                         Task {
                             await onSubmit(buildBody())
                             dismiss()
                         }
                     }
-                    .disabled((firstName.isEmpty && email.isEmpty) || (isTata && !hasValidCoords))
+                    .disabled(firstName.isEmpty && email.isEmpty)
                 }
             }
         }
