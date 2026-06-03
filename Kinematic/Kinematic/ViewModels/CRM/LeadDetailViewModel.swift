@@ -94,8 +94,10 @@ final class LeadDetailViewModel: ObservableObject {
             return try? await api.getDeal(id: did)
         }
         let nba = Task<NextBestAction?, Never> {
-            guard let did = lead.convertedDealId else { return nil }
-            return try? await api.aiNextBestAction(dealId: did)
+            // Lead-scoped NBA — works for every lead, converted or not. The
+            // backend computes a recommendation from the lead's own signals
+            // (status, activity, score) rather than requiring a deal.
+            return try? await api.aiNextBestActionLead(leadId: lead.id)
         }
         convertedContact = await contact.value
         convertedAccount = await account.value
@@ -103,14 +105,13 @@ final class LeadDetailViewModel: ObservableObject {
         nextBestAction = await nba.value
     }
 
-    /// Manual refresh of the converted-deal's NBA. Only meaningful when the
-    /// lead has been converted; no-op otherwise. Used by the "Refresh" button
-    /// on the lead detail's NBA card.
+    /// Manual refresh of the lead's NBA. Works for any lead. Used by the
+    /// "Refresh" button on the lead detail's NBA card.
     func refreshNextBestAction() async {
-        guard let did = lead?.convertedDealId else { return }
+        guard let leadId = lead?.id else { return }
         nbaBusy = true
         defer { nbaBusy = false }
-        nextBestAction = try? await api.aiNextBestAction(dealId: did)
+        nextBestAction = try? await api.aiNextBestActionLead(leadId: leadId)
     }
 
     func loadProductsIfNeeded() async {

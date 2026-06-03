@@ -1940,6 +1940,10 @@ struct KinematicApp: App {
                     // the app comes back to the foreground.
                     if phase == .active && Session.isAuthenticated {
                         Task { await AttendanceCache.shared.flush() }
+                        // Re-pull /auth/me so profile changes made elsewhere
+                        // (e.g. a DP/avatar set on the web dashboard) and the
+                        // latest entitlements show up without a re-login.
+                        Task { await KinematicRepository.shared.refreshMe() }
                     }
                 }
                 .task {
