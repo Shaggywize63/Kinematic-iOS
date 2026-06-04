@@ -15,6 +15,7 @@ struct CRMTabView: View {
     /// the CRM shell back to the main field-ops app. Nil hides the row.
     var onExit: (() -> Void)? = nil
 
+    @EnvironmentObject var appState: KiniAppState
     @State private var selectedTab: Int = 0
     // KINI floats inside the CRM module only — it used to live at the
     // ContentView root, which meant the assistant appeared over the
@@ -69,6 +70,11 @@ struct CRMTabView: View {
             guard canShowKiniFab else { return }
             kiniUsage = await AIChatService.shared.fetchUsage()
         }
+        // Re-assert the chosen theme at the CRM module root. The app root also
+        // sets this, but if the CRM shell is ever presented in a context that
+        // doesn't inherit the root's colorScheme, this guarantees the Light/
+        // Dark/System pick in More actually takes effect here.
+        .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
     }
 }
 
