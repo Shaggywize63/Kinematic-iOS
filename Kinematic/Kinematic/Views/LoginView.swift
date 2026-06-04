@@ -90,17 +90,19 @@ struct LoginView: View {
 
                     Spacer().frame(height: 80)
 
-                    // Brand mark + wordmark — matches splash so the
-                    // identity is consistent through the cold-start flow.
-                    HStack(spacing: 12) {
-                        Image("KinematicLogo")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 44, height: 44)
-                        Text("KINEMATIC")
-                            .font(.system(size: 18, weight: .black))
-                            .tracking(3)
-                            .foregroundColor(theme.text)
+                    // Brand lockup — mark + wordmark + signature line, matching
+                    // the splash so the cold-start flow reads as one brand.
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 12) {
+                            KinematicBrandMark(size: 40)
+                            Text("Kinematic")
+                                .font(Brand.Display.extraBold(24))
+                                .tracking(-0.3)
+                                .foregroundColor(theme.text)
+                        }
+                        Text("Motion, made measurable.")
+                            .font(Brand.Display.medium(13))
+                            .foregroundColor(theme.textMuted)
                     }
                     .padding(.bottom, 36)
 
