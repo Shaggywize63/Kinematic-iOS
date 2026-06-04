@@ -286,10 +286,10 @@ struct HomeView: View {
 
                     VStack(spacing: 12) {
                         HStack(spacing: 12) {
-                            StatTile(label: "Store Target", value: "\(vm.totalStoreCount)", icon: "storefront.fill", color: .blue)
+                            StatTile(label: "Store Target", value: "\(vm.totalStoreCount)", icon: "storefront.fill", color: Brand.red)
                             StatTile(label: "Visited", value: "\(vm.visitedStoreCount)", icon: "checkmark.seal.fill", color: .green)
                         }
-                        StatTile(label: "Data Forms Submitted Today", value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: .purple)
+                        StatTile(label: "Data Forms Submitted Today", value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: Brand.red)
                     }
                     .padding(.horizontal, 20)
 
@@ -750,13 +750,13 @@ struct RoutePlanProgressHeader: View {
                 Spacer()
                 Text(String(format: "%.0f%%", t.pct))
                     .font(.system(size: 16, weight: .black))
-                    .foregroundColor(t.pct >= 100 ? .green : .indigo)
+                    .foregroundColor(t.pct >= 100 ? .green : Brand.red)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.08)).frame(height: 6)
                     Capsule()
-                        .fill(LinearGradient(colors: [.indigo, .purple], startPoint: .leading, endPoint: .trailing))
+                        .fill(LinearGradient(colors: [Brand.red.opacity(0.8), Brand.red], startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(6, geo.size.width * CGFloat(t.pct / 100.0)), height: 6)
                 }
             }.frame(height: 6)
@@ -798,11 +798,11 @@ struct OutletCard: View {
                 // Visit-order badge (Android parity)
                 if let order = outlet.visitOrder {
                     ZStack {
-                        Circle().fill(isDone ? Color.green.opacity(0.2) : Color.indigo.opacity(0.2))
+                        Circle().fill(isDone ? Color.green.opacity(0.2) : Brand.red.opacity(0.2))
                             .frame(width: 28, height: 28)
                         Text("\(order)")
                             .font(.system(size: 12, weight: .black))
-                            .foregroundColor(isDone ? .green : .indigo)
+                            .foregroundColor(isDone ? .green : Brand.red)
                     }
                 }
                 VStack(alignment: .leading, spacing: 3) {
@@ -837,7 +837,7 @@ struct OutletCard: View {
                 HStack(spacing: 4) {
                     Image(systemName: "list.clipboard").font(.caption)
                     Text("\((outlet.activities ?? []).count) Tasks").font(.caption).fontWeight(.bold)
-                }.foregroundColor(.purple)
+                }.foregroundColor(Brand.red)
 
                 // Geofence pill
                 if outlet.isGeofenced == true, let r = outlet.geofenceRadius, r > 0 {
@@ -1014,7 +1014,7 @@ struct AttendanceView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity).padding()
-                                .background(isCheckInIntent ? (needsSelfie ? Color.blue : Color.green) : Color.red)
+                                .background(isCheckInIntent ? (needsSelfie ? Brand.red : Color.green) : Color.red)
                                 .foregroundColor(.white).cornerRadius(18)
                                 .disabled(vm.isLoading)
 
@@ -1059,7 +1059,7 @@ struct AttendanceView: View {
                             Text("RECENT HISTORY").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
                             Spacer()
                             Button { showHistory = true } label: {
-                                Text("View all").font(.caption).fontWeight(.bold).foregroundColor(.indigo)
+                                Text("View all").font(.caption).fontWeight(.bold).foregroundColor(Brand.red)
                             }
                         }.padding(.horizontal, 20)
                         VStack(spacing: 12) {
@@ -1172,10 +1172,10 @@ struct ActivityRow: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: "doc.plaintext.fill")
-                .foregroundColor(.purple)
+                .foregroundColor(Brand.red)
                 .font(.system(size: 18))
                 .frame(width: 40, height: 40)
-                .background(Color.purple.opacity(0.12))
+                .background(Brand.red.opacity(0.12))
                 .clipShape(Circle())
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.outletName ?? "General Submission")
