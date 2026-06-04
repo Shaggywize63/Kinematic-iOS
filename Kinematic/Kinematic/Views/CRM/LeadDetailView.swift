@@ -563,6 +563,29 @@ struct LeadDetailView: View {
                 RoundedRectangle(cornerRadius: 16).fill(Brand.red.opacity(0.06))
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.red.opacity(0.2), lineWidth: 1))
             )
+        } else {
+            // Not auto-loaded — each NBA call is a billed AI hit, so the rep
+            // taps to compute it on demand.
+            Button { Task { await vm.loadNBA() } } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles").foregroundColor(Brand.red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("NEXT BEST ACTION")
+                            .font(.system(size: 11, weight: .black)).tracking(0.8).foregroundColor(Brand.red)
+                        Text("Tap to get the AI-recommended next move")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundColor(.secondary)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 16).fill(Brand.red.opacity(0.06))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.red.opacity(0.2), lineWidth: 1))
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 

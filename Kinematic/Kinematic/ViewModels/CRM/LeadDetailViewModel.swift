@@ -58,9 +58,8 @@ final class LeadDetailViewModel: ObservableObject {
     func load() async {
         isLoading = true
         defer { isLoading = false }
-        // NBA only needs the leadId — fire it immediately, in parallel with the
-        // lead fetch, so the card appears (loading, then filled) right away.
-        Task { await loadNBA() }
+        // NBA is NOT fetched automatically — each call is a billed AI hit, so
+        // we wait for the rep to tap "Get Next Best Action" (see loadNBA()).
         do {
             // Lead is the only blocking fetch — we need it to know which
             // auxiliary calls to make (convertedDealId etc). Everything
