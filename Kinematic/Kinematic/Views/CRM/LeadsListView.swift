@@ -95,6 +95,19 @@ struct LeadsListView: View {
                 .padding(.vertical, 8)
             }
 
+            // Total count — server-reported across all pages.
+            if vm.total > 0 {
+                HStack {
+                    Text(vm.leads.count >= vm.total
+                         ? "\(vm.total) lead\(vm.total == 1 ? "" : "s")"
+                         : "Showing \(vm.leads.count) of \(vm.total) leads")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal).padding(.bottom, 4)
+            }
+
             ScrollView {
                 LazyVStack(spacing: 10) {
                     if vm.isLoading && vm.leads.isEmpty {
@@ -156,6 +169,16 @@ struct LeadsListView: View {
                                 LeadRow(lead: lead)
                             }
                             .buttonStyle(.plain)
+                            .onAppear {
+                                // Infinite scroll — load the next page as the
+                                // last row appears so the whole book is reachable.
+                                if lead.id == vm.leads.last?.id {
+                                    Task { await vm.loadMoreIfNeeded() }
+                                }
+                            }
+                        }
+                        if vm.isLoadingMore {
+                            ProgressView().tint(Brand.red).padding(.vertical, 12)
                         }
                     }
                 }
@@ -173,12 +196,10 @@ struct LeadsListView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button { showCreate = true } label: { Label("New lead", systemImage: "plus") }
-                    Button { showImport = true } label: { Label("Import CSV", systemImage: "square.and.arrow.down") }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                Button { showCreate = true } label: {
+                    Image(systemName: "plus")
                 }
+                .accessibilityLabel("Add lead")
             }
         }
         .sheet(isPresented: $showCreate) {
