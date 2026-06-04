@@ -137,4 +137,16 @@ struct APIEnvelope<T: Codable>: Codable {
     let data: T?
     let error: String?
     let message: String?
+    let pagination: PageMeta?
+}
+
+/// Server pagination block returned alongside `data` on list endpoints
+/// (e.g. /crm/leads). All optional so non-paginated responses still decode.
+struct PageMeta: Codable {
+    let total: Int?
+    let page: Int?
+    let limit: Int?
+    let totalPages: Int?
+    let hasNext: Bool?
+    let hasPrev: Bool?
 }

@@ -455,6 +455,54 @@ final class CRMService {
         return req
     }
 
+    /// Page of leads + the server's total count, so the list can show the real
+    /// total and load every lead (the API caps each page at 200).
+    func listLeadsPage(page: Int, status: String? = nil, search: String? = nil, city: String? = nil, state: String? = nil,
+                       from: String? = nil, to: String? = nil, scoreGrade: String? = nil, scoreGte: Int? = nil,
+                       lifecycle: String? = nil, isConverted: Bool? = nil) async throws -> (leads: [Lead], total: Int) {
+        var q: [String: String] = ["page": String(page), "limit": "200"]
+        if let status { q["status"] = status }
+        if let search { q["q"] = search }
+        if let city { q["city"] = city }
+        if let state { q["state"] = state }
+        if let from { q["from"] = from }
+        if let to { q["to"] = to }
+        if let scoreGrade { q["score_grade"] = scoreGrade }
+        if let scoreGte { q["score_gte"] = String(scoreGte) }
+        if let lifecycle { q["lifecycle_stage"] = lifecycle }
+        if let isConverted { q["is_converted"] = isConverted ? "true" : "false" }
+        let req = try makeRequest(path: "/api/v1/crm/leads", method: "GET", body: nil, query: q)
+        let data = try await fetchData(req)
+        let env = try decoder.decode(APIEnvelope<[Lead]>.self, from: data)
+        let rows = env.data ?? []
+        return (rows, env.pagination?.total ?? rows.count)
+    }
+
+    /// Shared HTTP + 401-refresh-and-replay + error-mapping. Returns the raw
+    /// body so callers can decode the full envelope (e.g. to read pagination).
+    private func fetchData(_ req: URLRequest, retryAfterRefresh: Bool = true) async throws -> Data {
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw CRMServiceError.badResponse(0)
+        }
+        if http.statusCode == 401, retryAfterRefresh {
+            let refreshed = await KinematicRepository.shared.refreshAccessToken()
+            if refreshed {
+                var retry = req
+                retry.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+                return try await fetchData(retry, retryAfterRefresh: false)
+            }
+        }
+        if !(200..<300).contains(http.statusCode) {
+            if let env = try? decoder.decode(APIEnvelope<EmptyAck>.self, from: data),
+               let msg = env.error ?? env.message {
+                throw CRMServiceError.server(msg)
+            }
+            throw CRMServiceError.badResponse(http.statusCode)
+        }
+        return data
+    }
+
     private func perform<T: Codable>(_ req: URLRequest, retryAfterRefresh: Bool = true) async throws -> T {
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else {
