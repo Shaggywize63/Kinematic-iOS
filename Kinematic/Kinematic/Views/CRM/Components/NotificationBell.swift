@@ -31,7 +31,7 @@ struct NotificationBell: View {
             .frame(width: 32, height: 32)
         }
         .sheet(isPresented: $showList) {
-            NotificationCenterView(notifications: notifications, reload: load, onRead: markRead)
+            NotificationCenterView(notifications: notifications, reload: load, onRead: markRead, onClearAll: markAllRead)
         }
         .task { startPolling() }
         .onDisappear { pollTask?.cancel() }
@@ -62,13 +62,24 @@ struct NotificationBell: View {
         }
         Task { await CRMService.shared.markNotificationRead(id: id) }
     }
+
+    /// Clear the badge by marking every notification read (web + Android parity).
+    private func markAllRead() {
+        notifications = notifications.map {
+            CRMNotification(id: $0.id, title: $0.title, body: $0.body, data: $0.data, isRead: true, createdAt: $0.createdAt)
+        }
+        Task { await CRMService.shared.markAllNotificationsRead() }
+    }
 }
 
 private struct NotificationCenterView: View {
     let notifications: [CRMNotification]
     let reload: () async -> Void
     let onRead: (String) -> Void
+    let onClearAll: () -> Void
     @Environment(\.dismiss) private var dismiss
+
+    private var hasUnread: Bool { notifications.contains { !($0.isRead ?? false) } }
 
     var body: some View {
         NavigationStack {
@@ -95,7 +106,13 @@ private struct NotificationCenterView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }
+                    HStack(spacing: 14) {
+                        if hasUnread {
+                            Button("Clear all") { onClearAll() }
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }
+                    }
                 }
             }
             .refreshable { await reload() }

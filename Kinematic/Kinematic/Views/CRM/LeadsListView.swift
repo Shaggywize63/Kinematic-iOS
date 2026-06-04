@@ -18,6 +18,37 @@ struct LeadsListView: View {
 
     let statusOptions = ["all", "new", "contacted", "qualified", "unqualified", "converted"]
 
+    // (label, sort key, ascending). "recent" = backend default order.
+    private let sortOptions: [(String, String, Bool)] = [
+        ("Most recent activity", "recent", false),
+        ("Date added (newest)", "created", false),
+        ("Date added (oldest)", "created", true),
+        ("Name (A–Z)", "name", true),
+        ("Name (Z–A)", "name", false),
+        ("Company (A–Z)", "company", true),
+        ("Score (high–low)", "score", false),
+        ("Score (low–high)", "score", true),
+        ("Last updated", "updated", false),
+    ]
+
+    private var sortMenu: some View {
+        Menu {
+            ForEach(sortOptions, id: \.0) { opt in
+                Button {
+                    vm.sortKey = opt.1
+                    vm.sortAscending = opt.2
+                    Task { await vm.refresh() }
+                } label: {
+                    Label(opt.0, systemImage:
+                            (vm.sortKey == opt.1 && (opt.1 == "recent" || vm.sortAscending == opt.2)) ? "checkmark" : "")
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down.circle")
+                .foregroundColor(vm.sortKey == "recent" ? .secondary : Brand.red)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if queue.pendingCount > 0 {
@@ -69,6 +100,7 @@ struct LeadsListView: View {
                         }
                     }
                 }
+                sortMenu
             }
             .padding(10)
             .background(Color(uiColor: .secondarySystemBackground))

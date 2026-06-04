@@ -492,7 +492,7 @@ final class CRMService {
     func listLeadsPage(page: Int, status: String? = nil, search: String? = nil, city: String? = nil, state: String? = nil,
                        from: String? = nil, to: String? = nil, scoreGrade: String? = nil, scoreGte: Int? = nil,
                        lifecycle: String? = nil, isConverted: Bool? = nil, ownerId: String? = nil,
-                       sourceId: String? = nil) async throws -> (leads: [Lead], total: Int) {
+                       sourceId: String? = nil, sort: String? = nil, order: String? = nil) async throws -> (leads: [Lead], total: Int) {
         var q: [String: String] = ["page": String(page), "limit": "200"]
         if let status { q["status"] = status }
         if let search { q["q"] = search }
@@ -506,6 +506,8 @@ final class CRMService {
         if let isConverted { q["is_converted"] = isConverted ? "true" : "false" }
         if let ownerId { q["owner_id"] = ownerId }
         if let sourceId { q["source_id"] = sourceId }
+        if let sort { q["sort"] = sort }
+        if let order { q["order"] = order }
         let req = try makeRequest(path: "/api/v1/crm/leads", method: "GET", body: nil, query: q)
         let data = try await fetchData(req)
         let env = try decoder.decode(APIEnvelope<[Lead]>.self, from: data)
