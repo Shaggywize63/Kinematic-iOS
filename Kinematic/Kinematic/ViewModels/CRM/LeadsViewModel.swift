@@ -15,6 +15,9 @@ final class LeadsViewModel: ObservableObject {
     @Published var convertedFilter: String = "all"  // all | yes | no
     @Published var ownerFilter: String = "all"      // "all" or an owner user id
     @Published var sourceFilter: String = "all"     // "all" or a lead-source id
+    // Sorting. sortKey "recent" = backend default; others map to ?sort=&order=.
+    @Published var sortKey: String = "recent"
+    @Published var sortAscending: Bool = false
     // Options for the owner / source pickers (loaded lazily when the sheet opens).
     @Published var owners: [AssignableUser] = []
     @Published var sources: [CRMLeadSource] = []
@@ -88,7 +91,9 @@ final class LeadsViewModel: ObservableObject {
             lifecycle: lifecycleFilter == "all" ? nil : lifecycleFilter,
             isConverted: convertedFilter == "all" ? nil : (convertedFilter == "yes"),
             ownerId: ownerFilter == "all" ? nil : ownerFilter,
-            sourceId: sourceFilter == "all" ? nil : sourceFilter
+            sourceId: sourceFilter == "all" ? nil : sourceFilter,
+            sort: sortKey == "recent" ? nil : sortKey,
+            order: sortKey == "recent" ? nil : (sortAscending ? "asc" : "desc")
         )
     }
 
