@@ -21,6 +21,8 @@ final class LeadDetailViewModel: ObservableObject {
     @Published var nbaBusy = false
     @Published var products: [Product] = []
     @Published var assignableUsers: [AssignableUser] = []
+    @Published var updates: [LeadUpdate] = []
+    @Published var postingUpdate = false
     @Published var isLoading = false
     @Published var aiBusy = false
     @Published var convertBusy = false
@@ -64,8 +66,10 @@ final class LeadDetailViewModel: ObservableObject {
             async let actsTask = api.leadActivities(id: leadId)
             async let dealsTask = api.leadDeals(id: leadId)
             async let assignableTask = api.listAssignableUsers()
+            async let updatesTask: [LeadUpdate] = (try? await api.listLeadUpdates(leadId: leadId)) ?? []
             let lead = try await leadTask
             self.lead = lead
+            self.updates = await updatesTask
             self.activities = (try? await actsTask) ?? []
             self.relatedDeals = (try? await dealsTask) ?? []
             self.assignableUsers = await assignableTask
@@ -169,6 +173,25 @@ final class LeadDetailViewModel: ObservableObject {
             let updated = try await api.updateLead(id: leadId, body: ["owner_id": user.id])
             self.lead = updated
             successMessage = "Assigned to \(user.displayName)"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Load the Recent Updates timeline for this lead.
+    func loadUpdates() async {
+        updates = (try? await api.listLeadUpdates(leadId: leadId)) ?? []
+    }
+
+    /// Post a new update, then prepend it to the timeline.
+    func addUpdate(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        postingUpdate = true
+        defer { postingUpdate = false }
+        do {
+            let created = try await api.addLeadUpdate(leadId: leadId, body: trimmed)
+            updates.insert(created, at: 0)
         } catch {
             errorMessage = error.localizedDescription
         }
