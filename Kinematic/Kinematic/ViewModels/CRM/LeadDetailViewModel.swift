@@ -19,6 +19,7 @@ final class LeadDetailViewModel: ObservableObject {
     /// is available. Mirrors how the web lead page hosts the card.
     @Published var nextBestAction: NextBestAction?
     @Published var nbaBusy = false
+    @Published var nbaLoading = false
     @Published var products: [Product] = []
     @Published var assignableUsers: [AssignableUser] = []
     @Published var updates: [LeadUpdate] = []
@@ -57,6 +58,9 @@ final class LeadDetailViewModel: ObservableObject {
     func load() async {
         isLoading = true
         defer { isLoading = false }
+        // NBA only needs the leadId — fire it immediately, in parallel with the
+        // lead fetch, so the card appears (loading, then filled) right away.
+        Task { await loadNBA() }
         do {
             // Lead is the only blocking fetch — we need it to know which
             // auxiliary calls to make (convertedDealId etc). Everything
@@ -98,16 +102,18 @@ final class LeadDetailViewModel: ObservableObject {
             guard let did = lead.convertedDealId else { return nil }
             return try? await api.getDeal(id: did)
         }
-        let nba = Task<NextBestAction?, Never> {
-            // Lead-scoped NBA — works for every lead, converted or not. The
-            // backend computes a recommendation from the lead's own signals
-            // (status, activity, score) rather than requiring a deal.
-            return try? await api.aiNextBestActionLead(leadId: lead.id)
-        }
         convertedContact = await contact.value
         convertedAccount = await account.value
         convertedDeal = await deal.value
-        nextBestAction = await nba.value
+    }
+
+    /// Fetch the lead-scoped NBA. Fired in parallel the moment the screen opens
+    /// (it only needs the leadId, which we already have) so the recommendation
+    /// card shows up front with a loading state instead of appearing late.
+    func loadNBA() async {
+        nbaLoading = true
+        defer { nbaLoading = false }
+        nextBestAction = try? await api.aiNextBestActionLead(leadId: leadId)
     }
 
     /// Manual refresh of the lead's NBA. Works for any lead. Used by the
