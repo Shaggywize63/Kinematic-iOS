@@ -296,7 +296,7 @@ struct TaskCard: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial)
+            .background(Color(uiColor: .secondarySystemBackground))
             .cornerRadius(18)
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
@@ -344,7 +344,7 @@ private struct PlanogramAuditCard: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial)
+            .background(Color(uiColor: .secondarySystemBackground))
             .cornerRadius(18)
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
