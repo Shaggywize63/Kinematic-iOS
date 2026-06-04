@@ -78,12 +78,29 @@ public enum Brand {
     ///   JetBrains Mono → SF Mono
     private static func custom(_ name: String, design: Font.Design, weight: Font.Weight, size: CGFloat) -> Font {
         #if canImport(UIKit)
-        if UIFont(name: name, size: size) != nil {
+        // `UIFont(name:size:)` hits the font registry on every call. This helper
+        // is invoked ~15× per view body, and views like LoginView re-run their
+        // body on every keystroke — so the uncached lookup was the source of the
+        // login-screen typing lag. Memoise availability per font name (the
+        // result is size-independent) so we touch the registry at most once.
+        if isFontAvailable(name) {
             return Font.custom(name, size: size).weight(weight)
         }
         #endif
         return Font.system(size: size, weight: weight, design: design)
     }
+
+    #if canImport(UIKit)
+    private static let fontAvailabilityLock = NSLock()
+    private static var fontAvailability: [String: Bool] = [:]
+    private static func isFontAvailable(_ name: String) -> Bool {
+        fontAvailabilityLock.lock(); defer { fontAvailabilityLock.unlock() }
+        if let cached = fontAvailability[name] { return cached }
+        let available = UIFont(name: name, size: 12) != nil
+        fontAvailability[name] = available
+        return available
+    }
+    #endif
 }
 
 // MARK: - SwiftUI sugar
