@@ -7,6 +7,8 @@ struct CRMAnalyticsSummary: Codable, Hashable {
     let newLeadsThisWeek: Int?
     let openDeals: Int?
     let openPipelineValue: Double?
+    /// Open-pipeline tonnage in kg (web surfaces this as MT = kg / 1000).
+    let openDealVolume: Double?
     let dealsWonThisMonth: Int?
     let revenueWonThisMonth: Double?
     let winRate: Double?
@@ -14,16 +16,22 @@ struct CRMAnalyticsSummary: Codable, Hashable {
     let activitiesToday: Int?
     let tasksDue: Int?
 
+    // Keys must match the backend `dashboardSummary()` payload exactly. The
+    // previous mapping (open_pipeline_value, win_rate, …) was stale and decoded
+    // every money/rate tile to nil → the dashboard showed 0 for Pipeline, Win
+    // Rate, Avg Deal, New Leads, Won and Activities.
     enum CodingKeys: String, CodingKey {
         case totalLeads = "total_leads"
-        case newLeadsThisWeek = "new_leads_this_week"
+        case newLeadsThisWeek = "new_leads_30d"
         case openDeals = "open_deals"
-        case openPipelineValue = "open_pipeline_value"
-        case dealsWonThisMonth = "deals_won_this_month"
-        case revenueWonThisMonth = "revenue_won_this_month"
-        case winRate = "win_rate"
-        case averageDealSize = "average_deal_size"
-        case activitiesToday = "activities_today"
+        case openPipelineValue = "open_deal_value"
+        case openDealVolume = "open_deal_volume"
+        case dealsWonThisMonth = "won_deals_30d"
+        case revenueWonThisMonth = "won_revenue_30d"
+        case winRate = "win_rate_30d"
+        case averageDealSize = "avg_deal_size"
+        case activitiesToday = "activities_7d"
+        // Backend does not emit a tasks_due figure; leave nil → tile shows 0.
         case tasksDue = "tasks_due"
     }
 }
