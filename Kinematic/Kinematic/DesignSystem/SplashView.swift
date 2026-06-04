@@ -19,28 +19,31 @@ public struct SplashView: View {
         ZStack {
             bg.ignoresSafeArea()
 
-            VStack(spacing: 18) {
-                // Explicit PNG mark per appearance so the black satellite discs
-                // never disappear on the dark navy background (the reverse mark
-                // is white). Both are PNG assets.
+            VStack(spacing: 16) {
+                // Explicit PNG mark per appearance: the satellite discs are ink
+                // on light and white on dark, so the mark is always fully
+                // visible (the discs never disappear into the navy background).
                 Image(isDark ? "KinematicMarkReverse" : "KinematicMarkPrimary")
                     .resizable()
                     .renderingMode(.original)
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 96, height: 96)
+                    .frame(width: 104, height: 104)
                     .scaleEffect(appeared ? 1.0 : 0.92)
                     .opacity(appeared ? 1.0 : 0.0)
                     .accessibilityLabel("Kinematic")
 
+                // Wordmark — Manrope ExtraBold per the brand guidelines.
                 Text("Kinematic")
-                    .font(Brand.Display.bold(40))
+                    .font(Brand.Display.extraBold(40))
                     .tracking(-0.5)
                     .foregroundColor(textColor)
                     .opacity(appeared ? 1.0 : 0.0)
 
+                // Brand signature line, set as a Manrope headline (sentence case,
+                // with the period) to match the guideline's treatment.
                 Text("Motion, made measurable.")
-                    .font(Brand.Body.regular(15))
-                    .foregroundColor(textColor.opacity(0.6))
+                    .font(Brand.Display.medium(16))
+                    .foregroundColor(textColor.opacity(0.65))
                     .opacity(appeared ? 1.0 : 0.0)
             }
             .onAppear {
