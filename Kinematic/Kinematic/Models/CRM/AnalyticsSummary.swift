@@ -36,6 +36,13 @@ struct CRMAnalyticsSummary: Codable, Hashable {
     }
 }
 
+/// A client an org-level admin can scope the CRM into via the dashboard
+/// picker. Mirrors the web `ClientSelect` row shape (`{ id, name }`).
+struct CRMClientOption: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+}
+
 struct FunnelStageMetric: Codable, Identifiable, Hashable {
     var id: String { stageName }
     let stageName: String

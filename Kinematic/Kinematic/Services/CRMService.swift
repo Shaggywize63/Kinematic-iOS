@@ -313,6 +313,14 @@ final class CRMService {
         try await get("/api/v1/crm/import/jobs/\(id)")
     }
 
+    // MARK: Multi-tenant client picker (org-level admins only)
+    /// Lists the clients an org-level admin can scope into, mirroring the web
+    /// `GET /api/v1/misc/clients` used by `ClientSelect`. Client-pinned users
+    /// never call this — their scope is fixed by the JWT `client_id` claim.
+    func listClients() async throws -> [CRMClientOption] {
+        try await get("/api/v1/misc/clients")
+    }
+
     // MARK: Analytics
     func dashboardSummary() async throws -> CRMAnalyticsSummary {
         try await get("/api/v1/crm/analytics/dashboard-summary")
@@ -461,6 +469,12 @@ final class CRMService {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
+        // Org-level admins who picked a client on the dashboard scope every CRM
+        // call to that tenant (mirrors the dashboard's X-Client-Id header).
+        // Client-pinned users leave this nil → backend uses their JWT claim.
+        if let cid = CRMClientScope.selectedClientId(), !cid.isEmpty {
+            req.setValue(cid, forHTTPHeaderField: "X-Client-Id")
+        }
         req.httpBody = body
         req.timeoutInterval = 30
         return req
