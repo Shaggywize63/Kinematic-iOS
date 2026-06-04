@@ -317,7 +317,9 @@ struct HomeView: View {
                             }
                             Spacer()
                         }
-                        .padding(18).liquidGlass().padding(.horizontal, 32).transition(.scale.combined(with: .opacity))
+                        .padding(18)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
+                        .padding(.horizontal, 32).transition(.scale.combined(with: .opacity))
                     } else if let b = vm.data?.broadcast, !(vm.data?.alreadyAnswered ?? b.alreadyAnswered) {
                         BroadcastCard(broadcast: b) { selectedIndex in
                             Task { await vm.submitBroadcastAnswer(id: b.id, selectedIndex: selectedIndex) }
@@ -441,32 +443,12 @@ struct SelfieStatusCard: View {
                     .font(.title3)
                     .foregroundColor(.white)
                     .frame(width: 44, height: 44)
-                    .background(isShiftEnded ? Color.gray : (isCheckInIntent ? Color.blue : Color.red), in: Circle())
-                    .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
+                    .background(isShiftEnded ? Color.gray : Brand.red, in: Circle())
             }
             .padding(20)
-            .background {
-                // High-End Aura Background
-                ZStack {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    (isIn ? Color.green : Color.red).opacity(0.6),
-                                    .clear,
-                                    .white.opacity(0.4)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 2
-                        )
-                }
-            }
-            .shadow(color: .black.opacity(0.1), radius: 20, x: 0, y: 10)
+            // Flat CRM-style card. Status stays legible via the badge + the
+            // green/red indicator disc, but the card chrome matches the CRM.
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
         }
         .alert("End shift?", isPresented: $showCheckoutAlert) {
             Button("Stay clocked in", role: .cancel) { }
@@ -575,7 +557,7 @@ struct SessionCardContent: View {
                 HStack(spacing: 16) {
                     ZStack {
                         Circle().stroke(Color.primary.opacity(0.08), lineWidth: 8)
-                        Circle().trim(from: 0, to: progress).stroke(LinearGradient(colors: progress >= 1.0 ? [.green, .mint] : [.red, .orange], startPoint: .topLeading, endPoint: .bottomTrailing), style: StrokeStyle(lineWidth: 8, lineCap: .round)).rotationEffect(.degrees(-90))
+                        Circle().trim(from: 0, to: progress).stroke(progress >= 1.0 ? Color.green : Brand.red, style: StrokeStyle(lineWidth: 8, lineCap: .round)).rotationEffect(.degrees(-90))
                         VStack(spacing: 1) {
                             Text("\(Int(progress * 100))%").font(.system(size: 16, weight: .black, design: .rounded))
                             Text("of 9h").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
@@ -602,7 +584,8 @@ struct SessionCardContent: View {
                 }.padding(.vertical, 4)
             }
         }
-        .padding(20).liquidGlass()
+        .padding(20)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
     }
 }
 
@@ -624,7 +607,7 @@ struct BroadcastCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                HStack(spacing: 6) { Image(systemName: "megaphone.fill").font(.caption); Text("ANNOUNCEMENT").font(.system(size: 10, weight: .bold)).tracking(1) }.foregroundColor(broadcast.isUrgent ? .red : .blue)
+                HStack(spacing: 6) { Image(systemName: "megaphone.fill").font(.caption); Text("ANNOUNCEMENT").font(.system(size: 10, weight: .bold)).tracking(1) }.foregroundColor(Brand.red)
                 Spacer()
                 if broadcast.alreadyAnswered { Text("ANSWERED").font(.system(size: 8, weight: .bold)).padding(4).background(Color.green.opacity(0.2)).foregroundColor(.green).cornerRadius(4) }
             }
@@ -638,7 +621,9 @@ struct BroadcastCard: View {
                     }
                 }
             }
-        }.padding(20).liquidGlass()
+        }
+        .padding(20)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
     }
 }
 
