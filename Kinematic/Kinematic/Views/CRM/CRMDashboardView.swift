@@ -81,21 +81,32 @@ struct CRMDashboardView: View {
                 kpiTile("Win Rate", value: "\(Int((s?.winRate ?? 0) * 100))%", icon: "trophy.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: DealsListView()) {
-                kpiTile("Won — Mo.", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: Brand.red)
+                kpiTile("Won — 30d", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: Brand.red)
             }.buttonStyle(.plain)
-            NavigationLink(destination: TasksView()) {
-                kpiTile("Tasks Due", value: "\(s?.tasksDue ?? 0)", icon: "checklist", color: Brand.red)
+            NavigationLink(destination: DealKanbanView()) {
+                kpiTile("Open Volume", value: formattedVolumeMT(s?.openDealVolume), icon: "shippingbox.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: DealsListView()) {
                 kpiTile("Avg Deal", value: CurrencyFormatter.formatINRCompact(s?.averageDealSize ?? 0), icon: "chart.bar.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: LeadsListView()) {
-                kpiTile("New Leads", value: "\(s?.newLeadsThisWeek ?? 0)", icon: "sparkles", color: Brand.red)
+                kpiTile("New Leads — 30d", value: "\(s?.newLeadsThisWeek ?? 0)", icon: "sparkles", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: ActivitiesView()) {
-                kpiTile("Activities", value: "\(s?.activitiesToday ?? 0)", icon: "bolt.fill", color: Brand.red)
+                kpiTile("Activities — 7d", value: "\(s?.activitiesToday ?? 0)", icon: "bolt.fill", color: Brand.red)
             }.buttonStyle(.plain)
         }
+    }
+
+    /// Open-pipeline tonnage arrives in kg; the dashboard surfaces it as MT
+    /// (metric tonnes) to match the web KPI. Compact so the value never
+    /// overflows the small tile (e.g. "1.2K MT", "850 MT").
+    private func formattedVolumeMT(_ kg: Double?) -> String {
+        let mt = (kg ?? 0) / 1000.0
+        if mt <= 0 { return "0 MT" }
+        if mt >= 1000 { return String(format: "%.1fK MT", mt / 1000.0) }
+        if mt >= 100 { return String(format: "%.0f MT", mt) }
+        return String(format: "%.1f MT", mt)
     }
 
     private func kpiTile(_ title: String, value: String, icon: String, color: Color) -> some View {
@@ -104,10 +115,14 @@ struct CRMDashboardView: View {
             Text(value)
                 .font(.system(size: 22, weight: .black))
                 .foregroundColor(Color(uiColor: .label))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .black))
                 .tracking(0.5)
                 .foregroundColor(.gray)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
