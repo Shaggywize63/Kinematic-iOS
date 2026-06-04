@@ -566,12 +566,42 @@ struct LeadDetailView: View {
                 }
                 .disabled(vm.nbaBusy)
             }
-            Text(nba.action)
+            Text(nbaActionLabel(nba.action))
                 .font(.system(size: 15, weight: .bold))
                 .foregroundColor(Color(uiColor: .label))
-            if let r = nba.rationale, !r.isEmpty {
+            if let r = nba.reason ?? nba.rationale, !r.isEmpty {
                 Text(r).font(.caption).foregroundColor(.secondary)
             }
+            // Actionable CTAs (web parity): make the suggestion one tap to act.
+            HStack(spacing: 8) {
+                if nba.action.lowercased() == "qualify" {
+                    Button {
+                        Task { await vm.qualify() }
+                    } label: {
+                        Label("Mark Qualified", systemImage: "checkmark.seal.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(Brand.red).foregroundColor(.white).clipShape(Capsule())
+                    }
+                    .disabled(vm.qualifyBusy)
+                } else {
+                    Button {
+                        Task {
+                            await vm.logActivity(
+                                type: nbaActivityType(nba.action),
+                                subject: "Next best action: \(nbaActionLabel(nba.action))",
+                                description: nba.reason ?? nba.rationale ?? ""
+                            )
+                        }
+                    } label: {
+                        Label("Log it now", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(Brand.red).foregroundColor(.white).clipShape(Capsule())
+                    }
+                }
+            }
+            .padding(.top, 2)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -621,6 +651,27 @@ struct LeadDetailView: View {
     }
 
     // MARK: - Record (id / owner / timestamps)
+
+    /// Humanised NBA action label (the payload sends raw verbs like "call").
+    private func nbaActionLabel(_ a: String) -> String {
+        switch a.lowercased() {
+        case "call": return "Call the lead"
+        case "meeting": return "Schedule a meeting"
+        case "qualify": return "Qualify the lead"
+        case "nurture": return "Nurture the lead"
+        case "disqualify": return "Review / disqualify"
+        default: return a.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    /// Map an NBA action to the activity type logged by "Log it now".
+    private func nbaActivityType(_ a: String) -> String {
+        switch a.lowercased() {
+        case "call": return "call"
+        case "meeting": return "meeting"
+        default: return "note"
+        }
+    }
 
     // MARK: - Recent Updates (web parity: append-only notes timeline)
 
