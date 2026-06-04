@@ -48,7 +48,7 @@ struct BroadcastItemView: View {
             HStack {
                 Text(broadcast.createdAt?.prefix(10) ?? "Announced")
                     .font(.caption)
-                    .foregroundColor(.blue)
+                    .foregroundColor(Brand.red)
                 
                 Spacer()
                 
@@ -143,9 +143,9 @@ struct LearningHubView: View {
                         .tint(.green)
                 }
                 .padding()
-                .background(Color.blue.opacity(0.15))
+                .background(Brand.red.opacity(0.15))
                 .cornerRadius(20)
-                .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.blue.opacity(0.2), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(Brand.red.opacity(0.2), lineWidth: 1))
                 .padding()
             }
             
@@ -228,12 +228,12 @@ struct FilterChip: View {
                 .font(.system(size: 13, weight: .semibold))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(isSelected ? Color.blue.opacity(0.2) : Color(uiColor: .label).opacity(0.05))
-                .foregroundColor(isSelected ? .blue : .gray)
+                .background(isSelected ? Brand.red.opacity(0.2) : Color(uiColor: .label).opacity(0.05))
+                .foregroundColor(isSelected ? Brand.red : .gray)
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(isSelected ? Color.blue.opacity(0.3) : Color.clear, lineWidth: 1)
+                        .stroke(isSelected ? Brand.red.opacity(0.3) : Color.clear, lineWidth: 1)
                 )
         }
     }
@@ -324,8 +324,8 @@ struct LearningMaterialRow: View {
         switch type.lowercased() {
         case "video": return .red
         case "pdf": return .orange
-        case "image": return .blue
-        case "link": return .teal
+        case "image": return Brand.red
+        case "link": return Brand.red
         default: return .gray
         }
     }
@@ -510,7 +510,7 @@ struct ProfileView: View {
             HStack(spacing: 12) {
                 ProfileStatCard(title: "Forms", value: "\(appState.summary?.tffCount ?? 0)", color: .red)
                 ProfileStatCard(title: "TFF", value: "0", color: .green)
-                ProfileStatCard(title: "Days", value: "0", color: .blue)
+                ProfileStatCard(title: "Days", value: "0", color: Brand.red)
             }
             .padding(.horizontal)
         }
@@ -555,7 +555,7 @@ struct ProfileRow: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .foregroundColor(.blue.opacity(0.8))
+                .foregroundColor(Brand.red.opacity(0.8))
                 .font(.system(size: 18))
                 .frame(width: 30)
             

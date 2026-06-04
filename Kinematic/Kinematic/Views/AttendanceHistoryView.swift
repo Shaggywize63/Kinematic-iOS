@@ -59,9 +59,9 @@ struct AttendanceHistoryView: View {
             return records.isEmpty ? 0 : total / Double(records.count)
         }()
         return HStack(spacing: 12) {
-            statTile(label: "Days", value: "\(records.count)", icon: "calendar", color: .blue)
+            statTile(label: "Days", value: "\(records.count)", icon: "calendar", color: Brand.red)
             statTile(label: "Present", value: "\(present)", icon: "checkmark.seal.fill", color: .green)
-            statTile(label: "Avg hrs", value: String(format: "%.1f", avgHours), icon: "clock.fill", color: .indigo)
+            statTile(label: "Avg hrs", value: String(format: "%.1f", avgHours), icon: "clock.fill", color: Brand.red)
         }
     }
 

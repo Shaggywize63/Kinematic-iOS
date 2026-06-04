@@ -61,13 +61,13 @@ struct SideMenuView: View {
             // Priority 3: Navigation Menu
             ScrollView {
                 VStack(spacing: 8) {
-                    MenuButton(icon: "house.fill", title: "Dashboard", isSelected: appState.selectedTab == 0, color: .blue) {
+                    MenuButton(icon: "house.fill", title: "Dashboard", isSelected: appState.selectedTab == 0, color: Brand.red) {
                         withAnimation { isOpen = false; appState.selectedTab = 0 }
                     }
 
                     // ── CRM Module — only visible to clients who own the CRM SKU ──
                     if hasCrm {
-                        MenuButton(icon: "person.2.crop.square.stack.fill", title: "CRM", isSelected: false, color: .indigo) {
+                        MenuButton(icon: "person.2.crop.square.stack.fill", title: "CRM", isSelected: false, color: Brand.red) {
                             withAnimation { isOpen = false }
                             // Defer presentation until the menu close animation finishes
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -88,7 +88,7 @@ struct SideMenuView: View {
                     }
                 }
 
-                MenuButton(icon: "bell.fill", title: "Notifications", isSelected: false, color: .indigo) {
+                MenuButton(icon: "bell.fill", title: "Notifications", isSelected: false, color: Brand.red) {
                     withAnimation { isOpen = false }
                     appState.activeSecondaryRoute = ModalRoute(route: .notifications)
                 }
@@ -99,7 +99,7 @@ struct SideMenuView: View {
                         appState.activeSecondaryRoute = ModalRoute(route: .leaderboard)
                     }
 
-                    MenuButton(icon: "doc.text.fill", title: "Activity Feed", isSelected: false, color: .teal) {
+                    MenuButton(icon: "doc.text.fill", title: "Activity Feed", isSelected: false, color: Brand.red) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .activity)
                     }
@@ -116,13 +116,13 @@ struct SideMenuView: View {
                 }
 
                 if hasModule("grievances") {
-                    MenuButton(icon: "exclamationmark.bubble.fill", title: "Grievance", isSelected: false, color: .pink) {
+                    MenuButton(icon: "exclamationmark.bubble.fill", title: "Grievance", isSelected: false, color: Brand.red) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .grievance)
                     }
                 }
 
-                MenuButton(icon: "sparkles", title: "Learning Hub", isSelected: false, color: .purple) {
+                MenuButton(icon: "sparkles", title: "Learning Hub", isSelected: false, color: Brand.red) {
                     withAnimation { isOpen = false }
                     appState.activeSecondaryRoute = ModalRoute(route: .learning)
                 }
@@ -225,7 +225,7 @@ struct MenuButton: View {
     let icon: String
     let title: String
     let isSelected: Bool
-    var color: Color = .blue
+    var color: Color = Brand.red
     let action: () -> Void
     
     var body: some View {

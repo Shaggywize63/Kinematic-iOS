@@ -323,11 +323,11 @@ private struct PlanogramAuditCard: View {
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(Color.blue.opacity(0.12))
+                        .fill(Brand.red.opacity(0.12))
                         .frame(width: 46, height: 46)
                     Image(systemName: "square.grid.3x3.fill")
                         .font(.system(size: 18))
-                        .foregroundColor(.blue)
+                        .foregroundColor(Brand.red)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Planogram audit")
@@ -335,7 +335,7 @@ private struct PlanogramAuditCard: View {
                         .foregroundColor(Color(uiColor: .label))
                     Text("CAPTURE SHELF · AI COMPLIANCE")
                         .font(.system(size: 10, weight: .black))
-                        .foregroundColor(.blue)
+                        .foregroundColor(Brand.red)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
