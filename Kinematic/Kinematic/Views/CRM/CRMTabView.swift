@@ -79,6 +79,27 @@ struct CRMMoreMenu: View {
     @EnvironmentObject var appState: KiniAppState
     @State private var showLogoutConfirm: Bool = false
 
+    /// The user's actual display picture (or initials fallback) so the More
+    /// tab surfaces the photo, not a generic glyph.
+    @ViewBuilder private var profileAvatar: some View {
+        let initials = String((Session.currentUser?.name ?? "U").prefix(1)).uppercased()
+        ZStack {
+            Circle().fill(Brand.red.opacity(0.15))
+            if let s = Session.currentUser?.avatarUrl, let url = URL(string: s), !s.isEmpty {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img): img.resizable().scaledToFill()
+                    default: Text(initials).font(.system(size: 18, weight: .black)).foregroundColor(Brand.red)
+                    }
+                }
+            } else {
+                Text(initials).font(.system(size: 18, weight: .black)).foregroundColor(Brand.red)
+            }
+        }
+        .frame(width: 44, height: 44)
+        .clipShape(Circle())
+    }
+
     var body: some View {
         List {
             // Profile sits at the top so the user has a one-tap way into
@@ -88,9 +109,18 @@ struct CRMMoreMenu: View {
                 Button {
                     appState.activeSecondaryRoute = ModalRoute(route: .profile)
                 } label: {
-                    HStack {
-                        MoreRow(icon: "person.crop.circle.fill", title: Session.currentUser?.name ?? "Profile", tint: Brand.red)
+                    HStack(spacing: 12) {
+                        profileAvatar
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Session.currentUser?.name ?? "My Profile")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.primary)
+                            Text((Session.currentUser?.role ?? "Tap to edit your photo")
+                                    .replacingOccurrences(of: "_", with: " ").capitalized)
+                                .font(.caption).foregroundColor(.secondary)
+                        }
                         Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.secondary)
                     }
                 }
                 .foregroundColor(.primary)
