@@ -101,8 +101,14 @@ struct LeadAnalyticsView: View {
 private struct WidgetCard<Content: View>: View {
     let title: String
     let systemImage: String
+    /// One-line explainer of what the widget measures — surfaced via the (i)
+    /// button so reps understand each metric (web parity with the chart-card
+    /// info tooltips).
+    var info: String = ""
     @Binding var size: WidgetSize
     @ViewBuilder var content: (WidgetSize) -> Content
+
+    @State private var showInfo = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -111,6 +117,23 @@ private struct WidgetCard<Content: View>: View {
                 Text(title)
                     .font(.system(size: 14, weight: .black))
                     .foregroundColor(Color(uiColor: .label))
+                if !info.isEmpty {
+                    Button { showInfo = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About this widget")
+                    .popover(isPresented: $showInfo) {
+                        Text(info)
+                            .font(.callout)
+                            .foregroundColor(Color(uiColor: .label))
+                            .padding(16)
+                            .frame(maxWidth: 280)
+                            .presentationCompactAdaptation(.popover)
+                    }
+                }
                 Spacer()
                 sizeMenu
             }
@@ -168,7 +191,8 @@ private struct FunnelWidgetCard: View {
     @State private var size: WidgetSize = .medium
 
     var body: some View {
-        WidgetCard(title: "Pipeline Funnel", systemImage: "line.3.horizontal.decrease.circle.fill", size: $size) { size in
+        WidgetCard(title: "Pipeline Funnel", systemImage: "line.3.horizontal.decrease.circle.fill",
+                   info: "How many leads sit at each pipeline stage right now. A sharp drop between two stages flags where deals stall.", size: $size) { size in
             if stages.isEmpty {
                 emptyPlaceholder("No funnel data yet.")
             } else {
@@ -197,7 +221,8 @@ private struct LeadVelocityWidgetCard: View {
     @State private var size: WidgetSize = .medium
 
     var body: some View {
-        WidgetCard(title: "Lead Velocity", systemImage: "chart.line.uptrend.xyaxis", size: $size) { size in
+        WidgetCard(title: "Lead Velocity", systemImage: "chart.line.uptrend.xyaxis",
+                   info: "Qualified leads per month and the month-over-month change. Rising velocity means the top of your funnel is healthy.", size: $size) { size in
             if points.isEmpty {
                 emptyPlaceholder("No velocity data yet.")
             } else {
@@ -264,7 +289,8 @@ private struct LostReasonsWidgetCard: View {
     @State private var size: WidgetSize = .medium
 
     var body: some View {
-        WidgetCard(title: "Lost Reasons", systemImage: "xmark.circle.fill", size: $size) { size in
+        WidgetCard(title: "Lost Reasons", systemImage: "xmark.circle.fill",
+                   info: "Why deals were marked lost, grouped by reason. The biggest slice is where you're leaking the most pipeline.", size: $size) { size in
             if reasons.isEmpty {
                 emptyPlaceholder("No lost-reason data yet.")
             } else {
@@ -340,7 +366,8 @@ private struct StageConversionWidgetCard: View {
     @State private var size: WidgetSize = .medium
 
     var body: some View {
-        WidgetCard(title: "Stage Conversion", systemImage: "arrow.right.arrow.left.circle.fill", size: $size) { size in
+        WidgetCard(title: "Stage Conversion", systemImage: "arrow.right.arrow.left.circle.fill",
+                   info: "The percentage of leads that move from one stage to the next. Low rates show which hand-off needs coaching.", size: $size) { size in
             if rows.isEmpty {
                 emptyPlaceholder("No stage-conversion data yet.")
             } else {
@@ -396,7 +423,8 @@ private struct LeadsAtRiskWidgetCard: View {
     @State private var size: WidgetSize = .medium
 
     var body: some View {
-        WidgetCard(title: "Leads at Risk", systemImage: "exclamationmark.triangle.fill", size: $size) { size in
+        WidgetCard(title: "Leads at Risk", systemImage: "exclamationmark.triangle.fill",
+                   info: "High-scoring leads that have gone quiet (no recent activity). Re-engage these before they go cold.", size: $size) { size in
             if leads.isEmpty {
                 emptyPlaceholder("No at-risk leads — good news.")
             } else {
@@ -453,7 +481,8 @@ private struct LeadSourceROIWidgetCard: View {
     @State private var size: WidgetSize = .medium
 
     var body: some View {
-        WidgetCard(title: "Lead Source ROI", systemImage: "indianrupeesign.circle.fill", size: $size) { size in
+        WidgetCard(title: "Lead Source ROI", systemImage: "indianrupeesign.circle.fill",
+                   info: "Revenue won by lead source against its cost. Positive ROI sources deserve more budget; negative ones need review.", size: $size) { size in
             if rows.isEmpty {
                 emptyPlaceholder("No source ROI data yet.")
             } else {
