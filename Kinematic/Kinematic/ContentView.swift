@@ -259,9 +259,10 @@ struct HomeView: View {
         ZStack {
             ScrollView {
                 VStack(spacing: 26) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Kinematic").font(.system(size: 28, weight: .black, design: .rounded)).foregroundColor(Color(uiColor: .label))
+                    HStack(spacing: 10) {
+                        KinematicBrandMark(size: 32)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Kinematic").font(.title2.bold()).foregroundColor(Color(uiColor: .label))
                             Text("Field Operations Hub").font(.caption).fontWeight(.semibold).foregroundColor(.secondary).tracking(0.5)
                         }
                         Spacer()
@@ -270,7 +271,7 @@ struct HomeView: View {
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(Color(uiColor: .label))
                                 .frame(width: 40, height: 40)
-                                .background(.regularMaterial, in: Circle())
+                                .background(Color(uiColor: .secondarySystemBackground), in: Circle())
                         }
                     }
                     .padding(.horizontal, 20)
@@ -353,7 +354,9 @@ struct HomeView: View {
                             Text("No stores assigned for today").font(.subheadline).foregroundColor(.secondary).padding(.vertical, 8)
                         }
                     }
-                    .padding(20).liquidGlass().padding(.horizontal, 20)
+                    .padding(20)
+                    .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
+                    .padding(.horizontal, 20)
 
                     Spacer().frame(height: 110)
                 }
@@ -484,21 +487,33 @@ struct SelfieStatusCard: View {
 }
 
 struct StatTile: View {
-    let label: String; let value: String; let icon: String; let color: Color
+    let label: String; let value: String; let icon: String
+    // `color` retained for call-site compatibility, but the field-ops home now
+    // follows the CRM design system: a single Brand.red accent on flat
+    // secondarySystemBackground cards (no multi-colour glass), matching the
+    // CRM dashboard's KPI tiles.
+    var color: Color = Brand.red
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             ZStack {
-                Circle().fill(color.opacity(0.1)).frame(width: 44, height: 44)
-                Image(systemName: icon).foregroundColor(color).font(.system(size: 18, weight: .bold))
+                Circle().fill(Brand.red.opacity(0.12)).frame(width: 42, height: 42)
+                Image(systemName: icon).foregroundColor(Brand.red).font(.system(size: 17, weight: .bold))
             }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label.uppercased()).font(.system(size: 8, weight: .black)).foregroundColor(.secondary).tracking(1)
-                Text(value).font(.system(size: 20, weight: .black, design: .rounded)).foregroundColor(Color(uiColor: .label))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 22, weight: .black))
+                    .foregroundColor(Color(uiColor: .label))
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                Text(label.uppercased())
+                    .font(.system(size: 9, weight: .black)).tracking(0.5)
+                    .foregroundColor(.gray)
+                    .lineLimit(1).minimumScaleFactor(0.7)
             }
             Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16).padding(.vertical, 16).liquidGlass()
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
     }
 }
 
