@@ -223,7 +223,7 @@ struct ActivitySubmissionView: View {
             .disabled(isSubmitting)
             .padding(.vertical, 12)
         }
-        .background(.ultraThinMaterial)
+        .background(Color(uiColor: .secondarySystemBackground))
     }
 
     private var submitLabel: String {
