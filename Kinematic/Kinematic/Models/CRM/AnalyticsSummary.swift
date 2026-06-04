@@ -43,6 +43,13 @@ struct CRMClientOption: Codable, Identifiable, Hashable {
     let name: String
 }
 
+/// A lead source (web/referral/cold-call …) used by the leads-list source
+/// filter. Mirrors the web `LeadSource` row shape (`{ id, name }`).
+struct CRMLeadSource: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+}
+
 struct FunnelStageMetric: Codable, Identifiable, Hashable {
     var id: String { stageName }
     let stageName: String

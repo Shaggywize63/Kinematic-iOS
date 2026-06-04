@@ -13,6 +13,11 @@ final class LeadsViewModel: ObservableObject {
     @Published var minScore: Int = 0                // 0 = no minimum
     @Published var lifecycleFilter: String = "all"  // all | subscriber | lead | mql | sql | opportunity | customer
     @Published var convertedFilter: String = "all"  // all | yes | no
+    @Published var ownerFilter: String = "all"      // "all" or an owner user id
+    @Published var sourceFilter: String = "all"     // "all" or a lead-source id
+    // Options for the owner / source pickers (loaded lazily when the sheet opens).
+    @Published var owners: [AssignableUser] = []
+    @Published var sources: [CRMLeadSource] = []
     @Published var isLoading = false
     @Published var isLoadingMore = false
     @Published var errorMessage: String?
@@ -29,13 +34,23 @@ final class LeadsViewModel: ObservableObject {
         if minScore > 0 { n += 1 }
         if lifecycleFilter != "all" { n += 1 }
         if convertedFilter != "all" { n += 1 }
+        if ownerFilter != "all" { n += 1 }
+        if sourceFilter != "all" { n += 1 }
         if dateFrom != nil || dateTo != nil { n += 1 }
         return n
     }
 
     func resetFilters() {
         gradeFilter = "all"; minScore = 0; lifecycleFilter = "all"; convertedFilter = "all"
+        ownerFilter = "all"; sourceFilter = "all"
         dateFrom = nil; dateTo = nil
+    }
+
+    /// Lazily load the owner + source picker options the first time the filter
+    /// sheet opens. Both are best-effort (empty on error / 403).
+    func loadFilterOptions() async {
+        if owners.isEmpty { owners = await api.listAssignableUsers() }
+        if sources.isEmpty { sources = await api.listLeadSources() }
     }
 
     private let api = CRMService.shared
@@ -71,7 +86,9 @@ final class LeadsViewModel: ObservableObject {
             scoreGrade: gradeFilter == "all" ? nil : gradeFilter,
             scoreGte: minScore > 0 ? minScore : nil,
             lifecycle: lifecycleFilter == "all" ? nil : lifecycleFilter,
-            isConverted: convertedFilter == "all" ? nil : (convertedFilter == "yes")
+            isConverted: convertedFilter == "all" ? nil : (convertedFilter == "yes"),
+            ownerId: ownerFilter == "all" ? nil : ownerFilter,
+            sourceId: sourceFilter == "all" ? nil : sourceFilter
         )
     }
 

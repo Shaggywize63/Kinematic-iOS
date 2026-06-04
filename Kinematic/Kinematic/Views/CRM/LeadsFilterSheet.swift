@@ -33,6 +33,18 @@ struct LeadsFilterSheet: View {
                         Text("All").tag("all"); Text("Converted").tag("yes"); Text("Not converted").tag("no")
                     }.pickerStyle(.segmented)
                 }
+                Section("Owner") {
+                    Picker("Owner", selection: $vm.ownerFilter) {
+                        Text("All owners").tag("all")
+                        ForEach(vm.owners) { u in Text(u.displayName).tag(u.id) }
+                    }
+                }
+                Section("Source") {
+                    Picker("Source", selection: $vm.sourceFilter) {
+                        Text("All sources").tag("all")
+                        ForEach(vm.sources) { s in Text(s.name).tag(s.id) }
+                    }
+                }
                 Section("Created Date") {
                     DatePicker("From", selection: Binding(
                         get: { vm.dateFrom ?? Date() },
@@ -47,6 +59,7 @@ struct LeadsFilterSheet: View {
             }
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
+            .task { await vm.loadFilterOptions() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Reset") { vm.resetFilters(); Task { await vm.refresh() } }
