@@ -89,22 +89,59 @@ struct CustomLeadAnalyticsView: View {
     }
 }
 
+// Per-card tile size — lets the user customise how much of each widget shows,
+// mirroring the web's resizable analytics cards. Small = headline rows only,
+// Large = full list with taller bars.
+private enum TileSize: String, CaseIterable {
+    case small = "Small", medium = "Medium", large = "Large"
+    var rows: Int { self == .small ? 3 : self == .medium ? 6 : 10 }
+    var barHeight: CGFloat { self == .small ? 5 : self == .medium ? 7 : 11 }
+    var next: TileSize {
+        switch self { case .small: return .medium; case .medium: return .large; case .large: return .small }
+    }
+    var icon: String {
+        switch self {
+        case .small: return "rectangle.compress.vertical"
+        case .medium: return "rectangle"
+        case .large: return "rectangle.expand.vertical"
+        }
+    }
+}
+
 // Renders one widget: top rows of its endpoint as a labelled bar list.
 private struct AnalyticsWidgetCard: View {
     let meta: AnalyticsWidgetMeta
     @State private var rows: [(label: String, value: Double)] = []
     @State private var loading = true
+    @State private var size: TileSize = .medium
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(meta.title).font(.headline)
+            HStack {
+                Text(meta.title).font(.headline)
+                Spacer()
+                // Labeled size control — tap to cycle Small → Medium → Large.
+                Button { withAnimation(.spring(response: 0.3)) { size = size.next } } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: size.icon)
+                        Text(size.rawValue)
+                        Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(Brand.red)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Capsule().fill(Brand.red.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Resize tile")
+            }
             if loading {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 80)
             } else if rows.isEmpty {
                 Text("No data.").font(.caption).foregroundColor(.secondary)
             } else {
                 let maxV = max(rows.map { $0.value }.max() ?? 1, 1)
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                ForEach(Array(rows.prefix(size.rows).enumerated()), id: \.offset) { _, r in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
                             Text(r.label).font(.system(size: 12)).lineLimit(1)
@@ -114,9 +151,9 @@ private struct AnalyticsWidgetCard: View {
                         GeometryReader { geo in
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(Brand.red.opacity(0.85))
-                                .frame(width: max(geo.size.width * CGFloat(r.value / maxV), 2), height: 6)
+                                .frame(width: max(geo.size.width * CGFloat(r.value / maxV), 2), height: size.barHeight)
                         }
-                        .frame(height: 6)
+                        .frame(height: size.barHeight)
                     }
                 }
             }
