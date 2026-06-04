@@ -88,23 +88,24 @@ struct LoginView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
 
-                    Spacer().frame(height: 80)
+                    Spacer().frame(height: 36)
 
-                    // Brand lockup — mark + wordmark + signature line, matching
-                    // the splash so the cold-start flow reads as one brand.
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 12) {
-                            KinematicBrandMark(size: 40)
+                    // Brand lockup — mark on top, then the wordmark + signature
+                    // line grouped tightly beneath it. Matches the splash and
+                    // keeps the header compact (no big top gap).
+                    VStack(alignment: .leading, spacing: 14) {
+                        KinematicBrandMark(size: 56)
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("Kinematic")
-                                .font(Brand.Display.extraBold(24))
-                                .tracking(-0.3)
+                                .font(Brand.Display.extraBold(30))
+                                .tracking(-0.4)
                                 .foregroundColor(theme.text)
+                            Text("Motion, made measurable.")
+                                .font(Brand.Display.medium(14))
+                                .foregroundColor(theme.textMuted)
                         }
-                        Text("Motion, made measurable.")
-                            .font(Brand.Display.medium(13))
-                            .foregroundColor(theme.textMuted)
                     }
-                    .padding(.bottom, 36)
+                    .padding(.bottom, 32)
 
                     Text("Welcome back")
                         .font(Brand.Display.bold(30))

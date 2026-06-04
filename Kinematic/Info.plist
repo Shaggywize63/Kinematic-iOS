@@ -63,9 +63,7 @@
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
-		<string>DeepNavy</string>
-		<key>UIImageName</key>
-		<string>LaunchLogo</string>
+		<string>LaunchBackground</string>
 	</dict>
 	<key>UIStatusBarStyle</key>
 	<string>UIStatusBarStyleLightContent</string>
