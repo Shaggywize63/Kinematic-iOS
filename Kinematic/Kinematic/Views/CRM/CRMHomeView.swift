@@ -34,10 +34,7 @@ struct CRMHomeView: View {
                     // navigation bar's "CRM" title so reps don't see two
                     // headings stacked on the same screen.
                     HStack(spacing: 10) {
-                        Image("KinematicMark")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 36, height: 36)
+                        KinematicBrandMark(size: 36)
                         Text("Kinematic CRM")
                             .font(.title3.bold())
                         Spacer()
