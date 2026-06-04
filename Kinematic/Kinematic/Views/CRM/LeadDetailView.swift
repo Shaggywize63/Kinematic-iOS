@@ -19,6 +19,7 @@ struct LeadDetailView: View {
 
     @State private var editing = false
     @State private var updateText = ""
+    @State private var showNbaHow = false
     @State private var converting = false
     @State private var showAssignSheet = false
     @State private var confirmDeactivate = false
@@ -48,7 +49,7 @@ struct LeadDetailView: View {
                     lifecycleSection(lead: lead)
                     actionsBar(lead: lead)
                     if vm.isConverted { convertedToCard }
-                    if let nba = vm.nextBestAction { nextBestActionSection(nba: nba) }
+                    nbaContainer
                     LeadScoreBoostCard(
                         lead: lead,
                         isTata: ClientFeatures.isTataTiscon,
@@ -539,6 +540,32 @@ struct LeadDetailView: View {
     /// NBA card on the lead detail. Sourced from the lead-scoped NBA endpoint
     /// so it works for every lead (converted or not). Auto-loads on open; the
     /// refresh button re-runs the inference.
+    /// Always-present NBA slot: shows a loading card while the recommendation
+    /// is computing, then the real card. Keeps the lead detail from looking
+    /// like it has no action card during the (sometimes slow) AI call.
+    @ViewBuilder private var nbaContainer: some View {
+        if let nba = vm.nextBestAction {
+            nextBestActionSection(nba: nba)
+                .sheet(isPresented: $showNbaHow) { NbaHowSheet(nba: nba) }
+        } else if vm.nbaLoading {
+            HStack(spacing: 10) {
+                ProgressView().tint(Brand.red)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("NEXT BEST ACTION")
+                        .font(.system(size: 11, weight: .black)).tracking(0.8).foregroundColor(Brand.red)
+                    Text("Computing the best next move…").font(.caption).foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16).fill(Brand.red.opacity(0.06))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.red.opacity(0.2), lineWidth: 1))
+            )
+        }
+    }
+
     private func nextBestActionSection(nba: NextBestAction) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -550,6 +577,16 @@ struct LeadDetailView: View {
                         .foregroundColor(Brand.red)
                 }
                 Spacer()
+                if nba.methodology != nil {
+                    Button { showNbaHow = true } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "questionmark.circle")
+                            Text("How")
+                        }
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Brand.red)
+                    }
+                }
                 Button {
                     Task { await vm.refreshNextBestAction() }
                 } label: {
