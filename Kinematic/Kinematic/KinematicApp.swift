@@ -1916,6 +1916,9 @@ struct KinematicApp: App {
     @StateObject private var locationService = LocationTrackingService.shared
     @StateObject private var appState = KiniAppState.shared
     @Environment(\.scenePhase) private var scenePhase
+    /// Brand splash shown for a brief minimum on launch (parity with Android).
+    /// Dismissed purely on a timer so it can never hang on a setup task.
+    @State private var showSplash = true
 
     init() {
         print("🚀 APP_LIFE: KinematicApp launched")
@@ -1931,6 +1934,7 @@ struct KinematicApp: App {
             // to flip if the awaited setup task got cancelled). ContentView
             // now mounts directly — the system launch screen seamlessly
             // hands off to our app.
+            ZStack {
             ContentView()
                 .environmentObject(locationService)
                 .environmentObject(appState)
@@ -1963,6 +1967,19 @@ struct KinematicApp: App {
                     // AttendanceViewModel.captureSelfie. Pre-warming on
                     // launch was part of the first-install hang.
                 }
+
+                if showSplash {
+                    SplashView()
+                        .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
+                        .transition(.opacity)
+                        .zIndex(10)
+                }
+            }
+            .task {
+                // Pure timer — never gated on auth/network, so it can't hang.
+                try? await Task.sleep(nanoseconds: 1_600_000_000)
+                withAnimation(.easeInOut(duration: 0.35)) { showSplash = false }
+            }
         }
     }
 }

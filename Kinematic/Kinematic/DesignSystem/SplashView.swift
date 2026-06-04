@@ -1,8 +1,7 @@
-// Brand splash — shown briefly on app launch before routing to login or the main app.
-// Theme-aware: Deep Navy on dark, Paper White on light. Uses the real
-// `KinematicLogo` asset (light/dark variants) instead of a hand-drawn
-// Canvas approximation — the canvas version didn't match the brand mark
-// the user actually wanted on the splash.
+// Brand splash — shown briefly on app launch before routing to login or the
+// main app. Theme-aware: Deep Navy on dark, Paper White on light, with the
+// Kinematic mark in the matching PNG variant (coloured on light, white reverse
+// on dark) so it's always fully visible. Mirrors the Android BrandSplashScreen.
 
 import SwiftUI
 
@@ -15,33 +14,37 @@ public struct SplashView: View {
     public var body: some View {
         let isDark = colorScheme == .dark
         let bg: Color = isDark ? Brand.navy : Brand.paper
-        let textColor: Color = isDark ? Brand.paper : Brand.navy
+        let textColor: Color = isDark ? Brand.paper : Brand.ink
 
         ZStack {
             bg.ignoresSafeArea()
 
-            VStack(spacing: 22) {
-                // Real brand logo from the asset catalogue (KinematicLogo
-                // ships separate light + dark variants — SwiftUI's Image
-                // picks the right one automatically via the appearance
-                // metadata in Contents.json).
-                Image("KinematicLogo")
+            VStack(spacing: 18) {
+                // Explicit PNG mark per appearance so the black satellite discs
+                // never disappear on the dark navy background (the reverse mark
+                // is white). Both are PNG assets.
+                Image(isDark ? "KinematicMarkReverse" : "KinematicMarkPrimary")
                     .resizable()
                     .renderingMode(.original)
                     .aspectRatio(contentMode: .fit)
-                    .frame(height: 110)
-                    .scaleEffect(appeared ? 1.0 : 0.94)
+                    .frame(width: 96, height: 96)
+                    .scaleEffect(appeared ? 1.0 : 0.92)
                     .opacity(appeared ? 1.0 : 0.0)
                     .accessibilityLabel("Kinematic")
 
-                Text("FIELD FORCE, IN MOTION")
-                    .font(Brand.Mono.bold(Brand.Scale.eyebrow))
-                    .tracking(1.6)
-                    .foregroundColor(textColor.opacity(0.55))
+                Text("Kinematic")
+                    .font(Brand.Display.bold(40))
+                    .tracking(-0.5)
+                    .foregroundColor(textColor)
+                    .opacity(appeared ? 1.0 : 0.0)
+
+                Text("Motion, made measurable.")
+                    .font(Brand.Body.regular(15))
+                    .foregroundColor(textColor.opacity(0.6))
                     .opacity(appeared ? 1.0 : 0.0)
             }
             .onAppear {
-                withAnimation(.easeOut(duration: 0.45)) { appeared = true }
+                withAnimation(.easeOut(duration: 0.5)) { appeared = true }
             }
         }
     }
