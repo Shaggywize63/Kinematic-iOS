@@ -163,14 +163,19 @@ private struct WidgetCard<Content: View>: View {
                 }
             }
         } label: {
-            Image(systemName: size.systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Brand.red)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule().fill(Brand.red.opacity(0.12))
-                )
+            // Labeled control so "customize tile size" is obvious, not a bare icon.
+            HStack(spacing: 4) {
+                Image(systemName: size.systemImage)
+                Text(size.label)
+                Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+            }
+            .font(.system(size: 12, weight: .bold))
+            .foregroundColor(Brand.red)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule().fill(Brand.red.opacity(0.12))
+            )
         }
         .accessibilityLabel("Resize widget")
         .simultaneousGesture(TapGesture().onEnded {
