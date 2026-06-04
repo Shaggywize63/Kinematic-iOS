@@ -13,26 +13,16 @@ extension View {
 struct LiquidGlassModifier: ViewModifier {
     var cornerRadius: CGFloat
     var opacity: Double
-    // Slimmed down from the original 6-layer stack (ultraThinMaterial +
-    // diagonal gradient + soft inner blur + GeometryReader-driven
-    // specular glint + prismatic stroke + 20pt shadow). The
-    // GeometryReader was reading `frame(in: .global).minY` to slide a
-    // glint with scroll position, which invalidated layout for every
-    // card on every scroll tick. With 6+ cards on Home, that was the
-    // cause of the home-screen freeze the user reported.
-    //
-    // Current stack: ultraThinMaterial fill (the actual glass) + a soft
-    // hairline stroke for definition + a smaller shadow. Reads as
-    // "glass" but renders cheaply enough that scrolling stays at 60fps.
+    // The field-ops section now follows the CRM design system: a single flat
+    // `secondarySystemBackground` card, no glass/material/stroke/shadow. The
+    // modifier name is kept so the dozens of existing call-sites don't churn —
+    // redefining it here re-skins every field-force surface in one place.
     func body(content: Content) -> some View {
         content
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
+            .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                    .allowsHitTesting(false)
+                    .fill(Color(uiColor: .secondarySystemBackground))
             )
-            .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
     }
 }
 
@@ -655,7 +645,7 @@ struct RoutePlansView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Color(uiColor: .label))
                             .frame(width: 40, height: 40)
-                            .background(.regularMaterial, in: Circle()) 
+                            .background(Color(uiColor: .secondarySystemBackground), in: Circle()) 
                     }
                     Text("Today's Route").font(.title3).fontWeight(.bold).foregroundColor(Color(uiColor: .label)).padding(.leading, 8)
                     Spacer()
@@ -897,7 +887,7 @@ struct AttendanceView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Color(uiColor: .label))
                             .frame(width: 40, height: 40)
-                            .background(.regularMaterial, in: Circle()) 
+                            .background(Color(uiColor: .secondarySystemBackground), in: Circle()) 
                     }
                     Spacer()
                 }
