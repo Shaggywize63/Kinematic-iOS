@@ -74,24 +74,17 @@ private extension View {
 
 struct LoginView: View {
     let onSuccess: () -> Void
-    @State private var email = ""
-    @State private var password = ""
-    @State private var isLoading = false
-    @State private var errorMessage = ""
-    @State private var showPassword = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        loginContent
-    }
-
-    private var loginContent: some View {
         let theme = LoginTheme(isDark: colorScheme == .dark)
         // VibrantBackgroundView is mounted once at ContentView root, so we
-        // don't re-mount it here. Doing so was rendering the heavy blurred
-        // gradient twice and re-rasterizing it on every keystroke, which
-        // is what made typing into the email/password fields feel laggy.
-        return ZStack {
+        // don't re-mount it here. The email/password state lives in
+        // `CredentialsForm` (a child view) rather than here, so a keystroke
+        // only re-renders that small subtree — the custom-font header, labels
+        // and footer below are NOT rebuilt on every character, which is what
+        // made typing feel laggy.
+        ZStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
 
@@ -122,104 +115,7 @@ struct LoginView: View {
                         .foregroundColor(theme.textDim)
                         .padding(.bottom, 48)
 
-                    Text("EMAIL")
-                        .font(Brand.Mono.bold(Brand.Scale.eyebrow))
-                        .tracking(0.8)
-                        .foregroundColor(theme.textMuted)
-                        .padding(.bottom, 10)
-
-                    HStack(spacing: 12) {
-                        Image(systemName: "envelope")
-                            .foregroundColor(Brand.red)
-                            .font(.system(size: 15, weight: .medium))
-                        TextField(
-                            "",
-                            text: $email,
-                            prompt: Text("you@company.com").foregroundColor(theme.placeholder)
-                        )
-                        .foregroundColor(theme.fieldText)
-                        .font(Brand.Body.medium(15))
-                        .textFieldStyle(.plain)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.emailAddress)
-                        .textContentType(.username)
-                    }
-                    .brandFieldChrome()
-                    .padding(.bottom, 24)
-
-                    Text("PASSWORD")
-                        .font(Brand.Mono.bold(Brand.Scale.eyebrow))
-                        .tracking(0.8)
-                        .foregroundColor(theme.textMuted)
-                        .padding(.bottom, 10)
-
-                    HStack(spacing: 12) {
-                        Image(systemName: "lock")
-                            .foregroundColor(Brand.red)
-                            .font(.system(size: 15, weight: .medium))
-                        if showPassword {
-                            TextField(
-                                "",
-                                text: $password,
-                                prompt: Text("Enter your password").foregroundColor(theme.placeholder)
-                            )
-                            .foregroundColor(theme.fieldText)
-                            .font(Brand.Body.medium(15))
-                            .textFieldStyle(.plain)
-                            .textContentType(.password)
-                        } else {
-                            SecureField(
-                                "",
-                                text: $password,
-                                prompt: Text("Enter your password").foregroundColor(theme.placeholder)
-                            )
-                            .foregroundColor(theme.fieldText)
-                            .font(Brand.Body.medium(15))
-                            .textFieldStyle(.plain)
-                            .textContentType(.password)
-                        }
-                        Button(action: { showPassword.toggle() }) {
-                            Image(systemName: showPassword ? "eye.slash" : "eye")
-                                .foregroundColor(theme.textMuted)
-                                .font(.system(size: 14, weight: .medium))
-                        }
-                    }
-                    .brandFieldChrome()
-
-                    if !errorMessage.isEmpty {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .foregroundColor(Brand.red)
-                                .font(.system(size: 14))
-                            Text(errorMessage)
-                                .font(Brand.Body.medium(13))
-                                .foregroundColor(Brand.red)
-                        }
-                        .padding(.top, 12)
-                    }
-
-                    Button(action: performLogin) {
-                        HStack(spacing: 10) {
-                            if isLoading {
-                                ProgressView().tint(Brand.paper)
-                            } else {
-                                Text("Sign in")
-                                    .font(Brand.Display.semiBold(16))
-                                Image(systemName: "arrow.right")
-                                    .font(.system(size: 14, weight: .semibold))
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .foregroundColor(Brand.paper)
-                        .background(Brand.red)
-                        .cornerRadius(14)
-                        .shadow(color: Brand.red.opacity(0.30), radius: 18, y: 8)
-                    }
-                    .disabled(isLoading || email.isEmpty || password.isEmpty)
-                    .opacity((isLoading || email.isEmpty || password.isEmpty) ? 0.7 : 1.0)
-                    .padding(.top, 28)
+                    CredentialsForm(theme: theme, onSuccess: onSuccess)
 
                     Text("Forgot your password? Contact your administrator.")
                         .font(Brand.Body.regular(12))
@@ -247,6 +143,123 @@ struct LoginView: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 24)
             .ignoresSafeArea(.keyboard)
+        }
+    }
+}
+
+/// Email + password fields, error, and the sign-in button. Owns the text
+/// state so a keystroke only re-renders this subtree, not the whole login
+/// screen (custom-font header/footer above stay untouched → no typing lag).
+private struct CredentialsForm: View {
+    let theme: LoginTheme
+    let onSuccess: () -> Void
+
+    @State private var email = ""
+    @State private var password = ""
+    @State private var isLoading = false
+    @State private var errorMessage = ""
+    @State private var showPassword = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("EMAIL")
+                .font(Brand.Mono.bold(Brand.Scale.eyebrow))
+                .tracking(0.8)
+                .foregroundColor(theme.textMuted)
+                .padding(.bottom, 10)
+
+            HStack(spacing: 12) {
+                Image(systemName: "envelope")
+                    .foregroundColor(Brand.red)
+                    .font(.system(size: 15, weight: .medium))
+                TextField(
+                    "",
+                    text: $email,
+                    prompt: Text("you@company.com").foregroundColor(theme.placeholder)
+                )
+                .foregroundColor(theme.fieldText)
+                .font(Brand.Body.medium(15))
+                .textFieldStyle(.plain)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.emailAddress)
+                .textContentType(.username)
+            }
+            .brandFieldChrome()
+            .padding(.bottom, 24)
+
+            Text("PASSWORD")
+                .font(Brand.Mono.bold(Brand.Scale.eyebrow))
+                .tracking(0.8)
+                .foregroundColor(theme.textMuted)
+                .padding(.bottom, 10)
+
+            HStack(spacing: 12) {
+                Image(systemName: "lock")
+                    .foregroundColor(Brand.red)
+                    .font(.system(size: 15, weight: .medium))
+                if showPassword {
+                    TextField(
+                        "",
+                        text: $password,
+                        prompt: Text("Enter your password").foregroundColor(theme.placeholder)
+                    )
+                    .foregroundColor(theme.fieldText)
+                    .font(Brand.Body.medium(15))
+                    .textFieldStyle(.plain)
+                    .textContentType(.password)
+                } else {
+                    SecureField(
+                        "",
+                        text: $password,
+                        prompt: Text("Enter your password").foregroundColor(theme.placeholder)
+                    )
+                    .foregroundColor(theme.fieldText)
+                    .font(Brand.Body.medium(15))
+                    .textFieldStyle(.plain)
+                    .textContentType(.password)
+                }
+                Button(action: { showPassword.toggle() }) {
+                    Image(systemName: showPassword ? "eye.slash" : "eye")
+                        .foregroundColor(theme.textMuted)
+                        .font(.system(size: 14, weight: .medium))
+                }
+            }
+            .brandFieldChrome()
+
+            if !errorMessage.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundColor(Brand.red)
+                        .font(.system(size: 14))
+                    Text(errorMessage)
+                        .font(Brand.Body.medium(13))
+                        .foregroundColor(Brand.red)
+                }
+                .padding(.top, 12)
+            }
+
+            Button(action: performLogin) {
+                HStack(spacing: 10) {
+                    if isLoading {
+                        ProgressView().tint(Brand.paper)
+                    } else {
+                        Text("Sign in")
+                            .font(Brand.Display.semiBold(16))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .foregroundColor(Brand.paper)
+                .background(Brand.red)
+                .cornerRadius(14)
+                .shadow(color: Brand.red.opacity(0.30), radius: 18, y: 8)
+            }
+            .disabled(isLoading || email.isEmpty || password.isEmpty)
+            .opacity((isLoading || email.isEmpty || password.isEmpty) ? 0.7 : 1.0)
+            .padding(.top, 28)
         }
     }
 
