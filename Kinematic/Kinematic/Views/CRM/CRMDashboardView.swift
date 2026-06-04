@@ -20,6 +20,8 @@ struct CRMDashboardView: View {
                 }
                 .padding(.top, 4)
 
+                if vm.canSwitchClient { clientScopePicker }
+
                 kpiGrid
                 DashboardLeadsMapCard()
                 funnelCard
@@ -54,10 +56,53 @@ struct CRMDashboardView: View {
         }
         .refreshable { await vm.refresh() }
         .task { await vm.refresh() }
+        .task { await vm.loadClientsIfNeeded() }
         .overlay {
             if vm.isLoading && vm.summary == nil {
                 ProgressView().scaleEffect(1.3)
             }
+        }
+    }
+
+    /// Org-level admin client filter. Picking a client stamps X-Client-Id on
+    /// every CRM call and re-pulls the dashboard scoped to that client; "All
+    /// Clients" clears the scope back to the org-wide view. Mirrors the web
+    /// ClientSelect + CrmScopeBadge behaviour.
+    private var clientScopePicker: some View {
+        Menu {
+            Button {
+                Task { await vm.selectClient(nil) }
+            } label: {
+                Label("All Clients", systemImage: vm.selectedClientId == nil ? "checkmark" : "globe")
+            }
+            Divider()
+            ForEach(vm.clients) { c in
+                Button {
+                    Task { await vm.selectClient(c.id) }
+                } label: {
+                    Label(c.name, systemImage: vm.selectedClientId == c.id ? "checkmark" : "building.2")
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: vm.selectedClientId == nil ? "globe" : "building.2.fill")
+                    .foregroundColor(Brand.red)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(vm.selectedClientId == nil ? "ORG-WIDE VIEW" : "VIEWING CLIENT")
+                        .font(.system(size: 9, weight: .black)).tracking(0.6)
+                        .foregroundColor(.gray)
+                    Text(vm.selectedClientName)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(uiColor: .label))
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.gray)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground)))
         }
     }
 
