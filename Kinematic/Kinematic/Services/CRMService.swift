@@ -369,6 +369,17 @@ final class CRMService {
         return try await perform(req)
     }
 
+    // MARK: - Lead Updates (Recent Updates timeline)
+
+    func listLeadUpdates(leadId: String) async throws -> [LeadUpdate] {
+        try await get("/api/v1/crm/leads/\(leadId)/updates", query: ["limit": "50"])
+    }
+
+    @discardableResult
+    func addLeadUpdate(leadId: String, body: String) async throws -> LeadUpdate {
+        try await postJSON("/api/v1/crm/leads/\(leadId)/updates", body: ["body": body])
+    }
+
     // MARK: - Lead Analytics layout (per-user, synced with web)
 
     struct AnalyticsLayoutWidget: Codable {

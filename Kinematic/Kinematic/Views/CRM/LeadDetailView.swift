@@ -18,6 +18,7 @@ struct LeadDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var editing = false
+    @State private var updateText = ""
     @State private var converting = false
     @State private var showAssignSheet = false
     @State private var confirmDeactivate = false
@@ -59,6 +60,7 @@ struct LeadDetailView: View {
                     if lead.latitude != nil || lead.longitude != nil { locationCard(lead: lead) }
                     if let score = vm.score { scoreCard(score: score) }
                     if !vm.relatedDeals.isEmpty { relatedDealsCard }
+                    recentUpdatesSection
                     recordCard(lead: lead)
                     activitiesSection
                 } else if vm.isLoading {
@@ -619,6 +621,52 @@ struct LeadDetailView: View {
     }
 
     // MARK: - Record (id / owner / timestamps)
+
+    // MARK: - Recent Updates (web parity: append-only notes timeline)
+
+    private var recentUpdatesSection: some View {
+        Card(title: "RECENT UPDATES") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    TextField("Add an update…", text: $updateText, axis: .vertical)
+                        .lineLimit(1...4)
+                        .textFieldStyle(.roundedBorder)
+                    Button {
+                        let t = updateText
+                        updateText = ""
+                        Task { await vm.addUpdate(t) }
+                    } label: {
+                        if vm.postingUpdate {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "paperplane.fill").foregroundColor(Brand.red)
+                        }
+                    }
+                    .disabled(vm.postingUpdate || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                if vm.updates.isEmpty {
+                    Text("No updates yet.").font(.caption).foregroundColor(.secondary)
+                } else {
+                    ForEach(vm.updates) { u in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(u.body).font(.system(size: 13)).foregroundColor(.primary)
+                            HStack(spacing: 6) {
+                                if let who = u.authorName, !who.isEmpty {
+                                    Text(who).font(.caption2).foregroundColor(.secondary)
+                                }
+                                if let when = u.createdAt {
+                                    Text(formatDate(when)).font(.caption2).foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
 
     private func recordCard(lead: Lead) -> some View {
         Card(title: "RECORD") {
