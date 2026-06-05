@@ -249,10 +249,15 @@ final class CRMService {
         return try await get("/api/v1/crm/activities/calendar", query: q)
     }
 
-    func listActivities(dealId: String? = nil, leadId: String? = nil) async throws -> [Activity] {
+    func listActivities(dealId: String? = nil, leadId: String? = nil, ownerId: String? = nil, city: String? = nil, state: String? = nil, from: String? = nil, to: String? = nil) async throws -> [Activity] {
         var q: [String: String] = [:]
         if let dealId { q["deal_id"] = dealId }
         if let leadId { q["lead_id"] = leadId }
+        if let ownerId, !ownerId.isEmpty { q["owner_id"] = ownerId }
+        if let city, !city.isEmpty { q["city"] = city }
+        if let state, !state.isEmpty { q["state"] = state }
+        if let from, !from.isEmpty { q["from"] = from }
+        if let to, !to.isEmpty { q["to"] = to }
         return try await get("/api/v1/crm/activities", query: q)
     }
     func createActivity(_ body: [String: Any]) async throws -> Activity {

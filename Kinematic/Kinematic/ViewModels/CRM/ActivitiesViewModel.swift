@@ -5,24 +5,50 @@ import Combine
 final class ActivitiesViewModel: ObservableObject {
     @Published var activities: [Activity] = []
     @Published var typeFilter: String
+    @Published var ownerFilter: String = "all"      // user_id or "all"
+    @Published var owners: [AssignableUser] = []
+    @Published var dateFrom: Date? = nil
+    @Published var dateTo: Date? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
 
     private let api = CRMService.shared
+    private let location = CRMLocationStore.shared
+    private var cancellables = Set<AnyCancellable>()
 
     init(initialFilter: String = "all") {
         self.typeFilter = initialFilter
+        // Re-fetch when the global city/state scope changes (mirrors leads).
+        location.$state.combineLatest(location.$city)
+            .dropFirst()
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in Task { await self?.refresh() } }
+            .store(in: &cancellables)
     }
 
     var filtered: [Activity] {
         typeFilter == "all" ? activities : activities.filter { ($0.type ?? "") == typeFilter }
     }
 
+    private static let isoDate: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+
+    func loadOwners() async {
+        owners = await api.listAssignableUsers()
+    }
+
     func refresh() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            activities = try await api.listActivities()
+            activities = try await api.listActivities(
+                ownerId: ownerFilter == "all" ? nil : ownerFilter,
+                city: location.city,
+                state: location.state,
+                from: dateFrom.map { Self.isoDate.string(from: $0) },
+                to: dateTo.map { Self.isoDate.string(from: $0) }
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
