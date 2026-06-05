@@ -50,6 +50,16 @@ struct CRMLeadSource: Codable, Identifiable, Hashable {
     let name: String
 }
 
+/// The signed-in FE's daily lead target + how many they've added today.
+/// Drives the dashboard ticker and the lead-add "1/5" progress badge.
+struct CRMTarget: Codable, Hashable {
+    let metric: String?
+    let period: String?
+    let target: Int
+    let achieved: Int
+    var hasTarget: Bool { target > 0 }
+}
+
 struct FunnelStageMetric: Codable, Identifiable, Hashable {
     var id: String { stageName }
     let stageName: String

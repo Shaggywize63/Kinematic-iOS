@@ -13,6 +13,8 @@ struct LeadCreateView: View {
     @State private var phone = ""
     @State private var source = "web"
     @State private var isB2C = false
+    /// Today's lead-target progress badge (achieved/target).
+    @State private var target: CRMTarget?
 
     // B2B fields
     @State private var company = ""
@@ -47,6 +49,21 @@ struct LeadCreateView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let t = target, t.hasTarget {
+                    Section {
+                        HStack(spacing: 10) {
+                            Image(systemName: t.achieved >= t.target ? "checkmark.seal.fill" : "target")
+                                .foregroundColor(t.achieved >= t.target ? Brand.success : Brand.red)
+                            Text("Today's lead target")
+                                .font(.system(size: 14, weight: .semibold))
+                            Spacer()
+                            Text("\(t.achieved)/\(t.target)")
+                                .font(.system(size: 16, weight: .black))
+                                .foregroundColor(t.achieved >= t.target ? Brand.success : Brand.red)
+                        }
+                    }
+                }
+
                 Section {
                     Picker("Lead type", selection: $isB2C) {
                         Text("B2B (Business)").tag(false)
@@ -141,6 +158,7 @@ struct LeadCreateView: View {
                 }
             }
             .navigationTitle("New Lead")
+            .task { target = await CRMService.shared.myTarget() }
             .onAppear {
                 // Auto-capture the submission location as soon as the form
                 // opens so it's attached by the time the rep taps Save.

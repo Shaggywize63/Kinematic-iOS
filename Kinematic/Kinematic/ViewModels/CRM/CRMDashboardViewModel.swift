@@ -10,6 +10,8 @@ final class CRMDashboardViewModel: ObservableObject {
     @Published var forecast: [ForecastPoint] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// The signed-in FE's daily lead target + today's achievement (ticker).
+    @Published var target: CRMTarget?
 
     // ── Multi-tenant client picker (org-level admins only) ──────────────
     @Published var clients: [CRMClientOption] = []
@@ -50,10 +52,12 @@ final class CRMDashboardViewModel: ObservableObject {
             async let funnelTask  = api.funnel()
             async let winTask     = api.winRate()
             async let forecastTask = api.forecast()
+            async let targetTask  = api.myTarget()
             self.summary = try await summaryTask
             self.funnel  = (try? await funnelTask) ?? []
             self.winRate = (try? await winTask) ?? []
             self.forecast = (try? await forecastTask) ?? []
+            self.target  = await targetTask
         } catch {
             errorMessage = error.localizedDescription
         }

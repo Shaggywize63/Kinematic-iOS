@@ -19,6 +19,8 @@ struct CRMDashboardView: View {
 
                 if vm.canSwitchClient { clientScopePicker }
 
+                if let t = vm.target, t.hasTarget { targetTicker(t) }
+
                 kpiGrid
                 DashboardLeadsMapCard()
                 funnelCard
@@ -101,6 +103,38 @@ struct CRMDashboardView: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground)))
         }
+    }
+
+    /// Today's lead-target ticker for field executives. Shows progress toward
+    /// the daily target set by their manager (Settings → Targets).
+    private func targetTicker(_ t: CRMTarget) -> some View {
+        let pct = t.target > 0 ? min(Double(t.achieved) / Double(t.target), 1.0) : 0
+        let done = t.achieved >= t.target
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: done ? "checkmark.seal.fill" : "target")
+                    .foregroundColor(done ? Brand.success : Brand.red)
+                Text("TODAY'S TARGET")
+                    .font(.system(size: 11, weight: .black)).tracking(0.8).foregroundColor(.gray)
+                Spacer()
+                Text("\(t.achieved)/\(t.target) leads")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundColor(done ? Brand.success : Color(uiColor: .label))
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(uiColor: .tertiarySystemFill)).frame(height: 8)
+                    Capsule().fill(done ? Brand.success : Brand.red)
+                        .frame(width: max(geo.size.width * pct, pct > 0 ? 8 : 0), height: 8)
+                }
+            }
+            .frame(height: 8)
+            Text(done ? "Target reached — nice work." : "\(max(t.target - t.achieved, 0)) more to hit today's goal")
+                .font(.caption).foregroundColor(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
     }
 
     private var kpiGrid: some View {
