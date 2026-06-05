@@ -12,6 +12,14 @@ struct TargetsAdminView: View {
 
     var body: some View {
         Form {
+            Section {
+                NavigationLink {
+                    TargetsLeaderboardView()
+                } label: {
+                    Label("View leaderboard", systemImage: "chart.bar.fill")
+                        .foregroundColor(Brand.red)
+                }
+            }
             if loading {
                 HStack { Spacer(); ProgressView(); Spacer() }
             } else if levels.isEmpty {
