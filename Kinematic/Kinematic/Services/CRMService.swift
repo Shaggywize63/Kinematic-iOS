@@ -337,7 +337,7 @@ final class CRMService {
 
     /// Manager: org hierarchy tiers (Consumer Champion, Area Sales Officer, …).
     func listHierarchyLevels() async -> [CRMHierarchyLevel] {
-        (try? await get("/api/v1/crm/hierarchy/levels")) ?? []
+        (try? await get("/api/v1/crm/targets/levels")) ?? []
     }
     /// Manager: currently configured per-level targets + fallback default.
     func listTargetsAdmin() async -> CRMTargetsAdmin? {
