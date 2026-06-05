@@ -35,6 +35,9 @@ struct LeadCreateView: View {
     @State private var marketingConsent = false
     @State private var whatsappConsent = false
 
+    /// Admin-defined custom fields for leads, scoped to the user's org role.
+    @StateObject private var customFields = CustomFieldsModel()
+
     let onSubmit: ([String: Any]) async -> Void
 
     // Tata Tiscon requires the submission location to be captured automatically
@@ -120,6 +123,9 @@ struct LeadCreateView: View {
                     }
                 }
 
+                // Admin-defined custom fields for this user's hierarchy role.
+                CustomFieldsSection(model: customFields)
+
                 // Geo-location is captured automatically — no button, no manual
                 // entry. We start a one-shot GPS fix when the form opens so the
                 // coordinates are ready by the time the rep taps Save.
@@ -159,6 +165,7 @@ struct LeadCreateView: View {
             }
             .navigationTitle("New Lead")
             .task { target = await CRMService.shared.myTarget() }
+            .task { await customFields.load(entity: "lead") }
             .onAppear {
                 // Auto-capture the submission location as soon as the form
                 // opens so it's attached by the time the rep taps Save.
@@ -220,6 +227,9 @@ struct LeadCreateView: View {
         // valid numbers, so a half-typed value never reaches the API.
         if let lat = Double(latitude.trimmingCharacters(in: .whitespaces)) { body["latitude"] = lat }
         if let lon = Double(longitude.trimmingCharacters(in: .whitespaces)) { body["longitude"] = lon }
+        // Admin-defined custom fields (scoped to the user's role).
+        let cf = customFields.jsonValues
+        if !cf.isEmpty { body["custom_fields"] = cf }
         return body
     }
 }
