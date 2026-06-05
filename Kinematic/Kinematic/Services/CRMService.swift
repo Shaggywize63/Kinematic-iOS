@@ -328,6 +328,13 @@ final class CRMService {
         try await get("/api/v1/misc/clients")
     }
 
+    // MARK: Targets
+    /// The signed-in FE's daily lead target + today's achievement. Best-effort —
+    /// returns nil when no target is set or the call fails.
+    func myTarget() async -> CRMTarget? {
+        try? await get("/api/v1/crm/targets/me")
+    }
+
     // MARK: Analytics
     func dashboardSummary() async throws -> CRMAnalyticsSummary {
         try await get("/api/v1/crm/analytics/dashboard-summary")
