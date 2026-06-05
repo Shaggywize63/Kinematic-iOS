@@ -60,6 +60,24 @@ struct CRMTarget: Codable, Hashable {
     var hasTarget: Bool { target > 0 }
 }
 
+/// An org hierarchy tier (e.g. Tata "Consumer Champion", "Area Sales Officer").
+struct CRMHierarchyLevel: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+}
+
+/// Manager view of configured targets — the per-level values + the fallback.
+struct CRMLevelTarget: Codable, Hashable {
+    let hierarchyLevelId: String
+    let targetValue: Int
+    enum CodingKeys: String, CodingKey { case hierarchyLevelId = "hierarchy_level_id"; case targetValue = "target_value" }
+}
+struct CRMTargetsAdmin: Codable, Hashable {
+    let defaultTarget: Int
+    let perLevel: [CRMLevelTarget]
+    enum CodingKeys: String, CodingKey { case defaultTarget = "default_target"; case perLevel = "per_level" }
+}
+
 struct FunnelStageMetric: Codable, Identifiable, Hashable {
     var id: String { stageName }
     let stageName: String
