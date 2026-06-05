@@ -31,7 +31,7 @@ struct NotificationBell: View {
             .frame(width: 32, height: 32)
         }
         .sheet(isPresented: $showList) {
-            NotificationCenterView(notifications: notifications, reload: load, onRead: markRead, onClearAll: markAllRead)
+            NotificationCenterView(notifications: notifications, reload: load, onRead: markRead, onClearAll: clearAll)
         }
         .task { startPolling() }
         .onDisappear { pollTask?.cancel() }
@@ -63,12 +63,11 @@ struct NotificationBell: View {
         Task { await CRMService.shared.markNotificationRead(id: id) }
     }
 
-    /// Clear the badge by marking every notification read (web + Android parity).
-    private func markAllRead() {
-        notifications = notifications.map {
-            CRMNotification(id: $0.id, title: $0.title, body: $0.body, data: $0.data, isRead: true, createdAt: $0.createdAt)
-        }
-        Task { await CRMService.shared.markAllNotificationsRead() }
+    /// "Clear all" empties the entire list (deletes every notification),
+    /// not just marks them read.
+    private func clearAll() {
+        notifications = []
+        Task { await CRMService.shared.clearNotifications() }
     }
 }
 
@@ -107,7 +106,7 @@ private struct NotificationCenterView: View {
                 ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 14) {
-                        if hasUnread {
+                        if !notifications.isEmpty {
                             Button("Clear all") { onClearAll() }
                                 .font(.system(size: 14, weight: .semibold))
                         }
