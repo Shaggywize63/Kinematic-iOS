@@ -335,6 +335,23 @@ final class CRMService {
         try? await get("/api/v1/crm/targets/me")
     }
 
+    /// Manager: org hierarchy tiers (Consumer Champion, Area Sales Officer, …).
+    func listHierarchyLevels() async -> [CRMHierarchyLevel] {
+        (try? await get("/api/v1/crm/hierarchy/levels")) ?? []
+    }
+    /// Manager: currently configured per-level targets + fallback default.
+    func listTargetsAdmin() async -> CRMTargetsAdmin? {
+        try? await get("/api/v1/crm/targets")
+    }
+    /// Manager: set the daily target for everyone at a hierarchy level.
+    @discardableResult
+    func setLevelTarget(levelId: String, value: Int) async -> Bool {
+        struct Ack: Codable { let id: String? }
+        let r: Ack? = try? await sendJSON("/api/v1/crm/targets", method: "PUT",
+                                          body: ["hierarchy_level_id": levelId, "target_value": value])
+        return r != nil
+    }
+
     // MARK: Analytics
     func dashboardSummary() async throws -> CRMAnalyticsSummary {
         try await get("/api/v1/crm/analytics/dashboard-summary")

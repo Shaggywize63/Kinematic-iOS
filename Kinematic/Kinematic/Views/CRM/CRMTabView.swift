@@ -85,6 +85,13 @@ struct CRMMoreMenu: View {
     @EnvironmentObject var appState: KiniAppState
     @State private var showLogoutConfirm: Bool = false
 
+    /// Field executives see their own target ticker; everyone above them can
+    /// set targets, so the Targets admin row is gated to non-FE roles.
+    private var isManager: Bool {
+        let r = (Session.currentUser?.role ?? "").lowercased()
+        return r != "executive" && r != "field_executive"
+    }
+
     /// The user's actual display picture (or initials fallback) so the More
     /// tab surfaces the photo, not a generic glyph.
     @ViewBuilder private var profileAvatar: some View {
@@ -163,6 +170,15 @@ struct CRMMoreMenu: View {
                 NavigationLink {
                     CustomLeadAnalyticsView()
                 } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: "Lead Analytics", tint: Brand.red) }
+            }
+            // Targets — managers set the daily lead target per hierarchy level.
+            // Hidden for field executives (they see their target as a ticker).
+            if isManager {
+                Section("Manage") {
+                    NavigationLink {
+                        TargetsAdminView()
+                    } label: { MoreRow(icon: "target", title: "Targets", tint: Brand.red) }
+                }
             }
             // Help & lifecycle — single-tap onboarding so any new rep can
             // understand how a Lead → Contact → Deal flows through the CRM
