@@ -117,10 +117,10 @@ struct ActivitiesView: View {
             }
         }
         .sheet(isPresented: $showCompose) {
-            ActivityComposeView { type, subject, desc, imageUrl, when in
+            ActivityComposeView(allowLeadPicker: true) { type, subject, desc, imageUrl, when, leadId in
                 await vm.log(
                     type: type, subject: subject, description: desc,
-                    dealId: nil, leadId: nil, imageUrl: imageUrl, completedAt: when
+                    dealId: nil, leadId: leadId, imageUrl: imageUrl, completedAt: when
                 )
             }
         }

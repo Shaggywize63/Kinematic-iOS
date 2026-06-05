@@ -47,7 +47,7 @@ struct AccountDetailView: View {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject
-            ) { type, subject, description, imageUrl, when in
+            ) { type, subject, description, imageUrl, when, _ in
                 await logActivity(
                     type: type, subject: subject, description: description,
                     imageUrl: imageUrl, completedAt: when
