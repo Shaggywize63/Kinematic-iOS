@@ -78,6 +78,49 @@ struct CRMTargetsAdmin: Codable, Hashable {
     enum CodingKeys: String, CodingKey { case defaultTarget = "default_target"; case perLevel = "per_level" }
 }
 
+// MARK: Targets leaderboard
+struct CRMLeaderboardPerson: Codable, Hashable {
+    let name: String
+    let leads: Int
+}
+struct CRMLeaderboardStats: Codable, Hashable {
+    let participants: Int
+    let totalLeads: Int
+    let averageLeads: Double
+    let meetingTarget: Int
+    let targetParticipants: Int
+    let topPerformer: CRMLeaderboardPerson?
+    let lowestPerformer: CRMLeaderboardPerson?
+    enum CodingKeys: String, CodingKey {
+        case participants
+        case totalLeads = "total_leads"
+        case averageLeads = "average_leads"
+        case meetingTarget = "meeting_target"
+        case targetParticipants = "target_participants"
+        case topPerformer = "top_performer"
+        case lowestPerformer = "lowest_performer"
+    }
+}
+struct CRMLeaderboardEntry: Codable, Identifiable, Hashable {
+    let userId: String
+    let name: String
+    let city: String?
+    let leads: Int
+    let target: Int
+    let pct: Int?
+    var id: String { userId }
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case name, city, leads, target, pct
+    }
+}
+struct CRMLeaderboard: Codable, Hashable {
+    let stats: CRMLeaderboardStats
+    let entries: [CRMLeaderboardEntry]
+    let roleId: String?
+    enum CodingKeys: String, CodingKey { case stats, entries; case roleId = "role_id" }
+}
+
 struct FunnelStageMetric: Codable, Identifiable, Hashable {
     var id: String { stageName }
     let stageName: String

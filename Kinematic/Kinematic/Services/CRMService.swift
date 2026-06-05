@@ -366,6 +366,25 @@ final class CRMService {
         return r != nil
     }
 
+    /// Manager: leaderboard for the chosen window (today | week | month).
+    func leaderboard(period: String) async -> CRMLeaderboard? {
+        try? await get("/api/v1/crm/targets/leaderboard", query: ["period": period])
+    }
+    /// Manager: the hierarchy role the leaderboard is scoped to (nil = all).
+    func getLeaderboardRole() async -> String? {
+        struct R: Codable { let roleId: String?; enum CodingKeys: String, CodingKey { case roleId = "role_id" } }
+        let r: R? = try? await get("/api/v1/crm/targets/leaderboard-role")
+        return r?.roleId
+    }
+    /// Manager: set the leaderboard's hierarchy role (nil clears it).
+    @discardableResult
+    func setLeaderboardRole(_ roleId: String?) async -> Bool {
+        struct Ack: Codable { let roleId: String?; enum CodingKeys: String, CodingKey { case roleId = "role_id" } }
+        let r: Ack? = try? await sendJSON("/api/v1/crm/targets/leaderboard-role", method: "PUT",
+                                          body: ["role_id": roleId ?? NSNull()])
+        return r != nil
+    }
+
     // MARK: Analytics
     func dashboardSummary() async throws -> CRMAnalyticsSummary {
         try await get("/api/v1/crm/analytics/dashboard-summary")
