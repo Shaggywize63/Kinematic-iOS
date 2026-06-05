@@ -366,6 +366,19 @@ final class CRMService {
         return r != nil
     }
 
+    /// Active custom-field definitions for all entities (best-effort).
+    /// The form filters by entity + the caller's org role.
+    func listCustomFields() async -> [CRMCustomFieldDef] {
+        (try? await get("/api/v1/crm/custom-fields")) ?? []
+    }
+    /// The signed-in user's org role id (from /auth/me), used to filter which
+    /// custom fields they see. nil when the user has no role / call fails.
+    func myOrgRoleId() async -> String? {
+        struct Me: Codable { let orgRoleId: String?; enum CodingKeys: String, CodingKey { case orgRoleId = "org_role_id" } }
+        let me: Me? = try? await get("/api/v1/auth/me")
+        return me?.orgRoleId
+    }
+
     /// Manager: leaderboard for the chosen window (today | week | month).
     func leaderboard(period: String) async -> CRMLeaderboard? {
         try? await get("/api/v1/crm/targets/leaderboard", query: ["period": period])
