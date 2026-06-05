@@ -3,6 +3,7 @@ import SwiftUI
 struct ActivitiesView: View {
     @StateObject var vm: ActivitiesViewModel
     @State private var showCompose = false
+    @State private var showDateSheet = false
     @State private var layout: Layout = .list
     @State private var calendarMonth: Date = {
         let d = Date()
@@ -47,6 +48,41 @@ struct ActivitiesView: View {
                 }.padding()
             }
 
+            // Owner + date-range filters (city/state come from the global scope).
+            HStack(spacing: 8) {
+                if !vm.owners.isEmpty {
+                    Menu {
+                        Button("All owners") { vm.ownerFilter = "all"; Task { await vm.refresh() } }
+                        ForEach(vm.owners) { u in
+                            Button(u.displayName) { vm.ownerFilter = u.id; Task { await vm.refresh() } }
+                        }
+                    } label: {
+                        Label(vm.ownerFilter == "all" ? "Owner" : (vm.owners.first { $0.id == vm.ownerFilter }?.displayName ?? "Owner"),
+                              systemImage: "person.crop.circle")
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color(uiColor: .secondarySystemBackground))
+                            .foregroundColor(vm.ownerFilter == "all" ? .gray : Brand.red)
+                            .cornerRadius(8)
+                    }
+                }
+                Button { showDateSheet = true } label: {
+                    Label("Dates", systemImage: "calendar")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .foregroundColor(vm.dateFrom != nil || vm.dateTo != nil ? Brand.red : .gray)
+                        .cornerRadius(8)
+                }
+                if vm.dateFrom != nil || vm.dateTo != nil {
+                    Button { vm.dateFrom = nil; vm.dateTo = nil; Task { await vm.refresh() } } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal).padding(.bottom, 4)
+
             if layout == .list {
                 ScrollView {
                     LazyVStack(spacing: 10) {
@@ -88,7 +124,12 @@ struct ActivitiesView: View {
                 )
             }
         }
-        .task { await vm.refresh() }
+        .sheet(isPresented: $showDateSheet) {
+            DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Activity date") {
+                Task { await vm.refresh() }
+            }
+        }
+        .task { await vm.refresh(); await vm.loadOwners() }
     }
 }
 
