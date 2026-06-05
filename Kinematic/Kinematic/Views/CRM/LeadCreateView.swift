@@ -67,11 +67,15 @@ struct LeadCreateView: View {
                     }
                 }
 
-                Section {
-                    Picker("Lead type", selection: $isB2C) {
-                        Text("B2B (Business)").tag(false)
-                        Text("B2C (Consumer)").tag(true)
-                    }.pickerStyle(.segmented)
+                // Tata Tiscon is consumer-only — never offer the B2B option.
+                // isB2C is forced true on appear (below).
+                if !isTata {
+                    Section {
+                        Picker("Lead type", selection: $isB2C) {
+                            Text("B2B (Business)").tag(false)
+                            Text("B2C (Consumer)").tag(true)
+                        }.pickerStyle(.segmented)
+                    }
                 }
 
                 Section("Identity") {
@@ -167,6 +171,8 @@ struct LeadCreateView: View {
             .task { target = await CRMService.shared.myTarget() }
             .task { await customFields.load(entity: "lead") }
             .onAppear {
+                // Tata Tiscon only ever creates B2C (consumer) leads.
+                if isTata { isB2C = true }
                 // Auto-capture the submission location as soon as the form
                 // opens so it's attached by the time the rep taps Save.
                 if !hasValidCoords && !locator.isLocating {

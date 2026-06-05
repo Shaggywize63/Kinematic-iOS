@@ -513,6 +513,13 @@ final class CRMService {
         _ = try? await (sendJSON("/api/v1/notifications/read", method: "PATCH", body: [:]) as Ack)
     }
 
+    /// Permanently delete every notification for the signed-in user (the
+    /// "Clear all" action empties the list, not just marks read).
+    func clearNotifications() async {
+        struct Ack: Codable { let success: Bool? }
+        _ = try? await (sendJSON("/api/v1/notifications/clear", method: "DELETE", body: [:]) as Ack)
+    }
+
     private func postJSON<T: Codable>(_ path: String, body: [String: Any]) async throws -> T {
         let data = body.isEmpty
             ? Data("{}".utf8)
