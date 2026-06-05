@@ -59,6 +59,15 @@ final class CRMService {
         return try await get("/api/v1/crm/leads", query: q)
     }
     func getLead(id: String) async throws -> Lead { try await get("/api/v1/crm/leads/\(id)") }
+    /// Lightweight geo points for the map — every geo-tagged lead (up to
+    /// 5000), bypassing the 200-row list cap. Decodes into Lead (the geo
+    /// payload is a subset of Lead's fields). Honours the city/state scope.
+    func listLeadsGeo(city: String? = nil, state: String? = nil) async throws -> [Lead] {
+        var q: [String: String] = [:]
+        if let city, !city.isEmpty { q["city"] = city }
+        if let state, !state.isEmpty { q["state"] = state }
+        return try await get("/api/v1/crm/leads/geo", query: q)
+    }
     /// Outcome of an offline-aware lead create.
     enum CreateLeadOutcome {
         case success(Lead)

@@ -70,7 +70,7 @@ struct DashboardLeadsMapCard: View {
     private func load() async {
         loading = true
         defer { loading = false }
-        let leads = (try? await CRMService.shared.listLeads(limit: 200)) ?? []
+        let leads = (try? await CRMService.shared.listLeadsGeo(city: CRMLocationStore.shared.city, state: CRMLocationStore.shared.state)) ?? []
         let built: [LeadPin] = leads.compactMap { lead in
             guard let lat = lead.latitude, let lon = lead.longitude,
                   !(lat == 0 && lon == 0) else { return nil }
