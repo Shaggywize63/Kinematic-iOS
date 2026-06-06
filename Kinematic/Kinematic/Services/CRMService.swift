@@ -371,6 +371,16 @@ final class CRMService {
     func listCustomFields() async -> [CRMCustomFieldDef] {
         (try? await get("/api/v1/crm/custom-fields")) ?? []
     }
+    /// Google Places address autocomplete via the backend proxy. Empty on
+    /// failure / no key configured server-side.
+    func placesAutocomplete(_ q: String) async -> [CRMPlacePrediction] {
+        (try? await get("/api/v1/crm/places/autocomplete", query: ["q": q])) ?? []
+    }
+    /// Resolve a picked place id to address parts + coordinates.
+    func placeDetails(_ placeId: String) async -> CRMPlaceDetail? {
+        try? await get("/api/v1/crm/places/details", query: ["place_id": placeId])
+    }
+
     /// The signed-in user's org role id (from /auth/me), used to filter which
     /// custom fields they see. nil when the user has no role / call fails.
     func myOrgRoleId() async -> String? {

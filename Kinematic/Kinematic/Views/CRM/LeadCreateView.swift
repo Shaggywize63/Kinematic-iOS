@@ -114,6 +114,7 @@ struct LeadCreateView: View {
                         }
                     }
                     Section("Address") {
+                        AddressSearchField(addressLine1: $addressLine1, city: $city, state: $state, postalCode: $postalCode)
                         TextField("Address line 1", text: $addressLine1)
                         TextField("Address line 2", text: $addressLine2)
                         TextField("City", text: $city)
