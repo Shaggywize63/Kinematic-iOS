@@ -61,12 +61,6 @@ struct Lead: Codable, Identifiable, Hashable {
     let lostReason: String?
     let disqualifiedAt: String?
 
-    // Geo — populated by the dashboard's coordinate-capture flow and the
-    // /api/v1/crm/leads/bulk-coordinates backfill. Used by the More tab's
-    // "Nearest Leads" screen to sort by distance from the device.
-    let latitude: Double?
-    let longitude: Double?
-
     var displayName: String {
         let f = firstName ?? ""
         let l = lastName ?? ""
@@ -121,8 +115,6 @@ struct Lead: Codable, Identifiable, Hashable {
         case longitude
         case lostReason = "lost_reason"
         case disqualifiedAt = "disqualified_at"
-        case latitude
-        case longitude
     }
 }
 
