@@ -89,8 +89,33 @@ struct ActivitiesView: View {
                         if vm.filtered.isEmpty {
                             Text("No activity yet.").foregroundColor(.gray).padding(.top, 60)
                         } else {
-                            ForEach(vm.filtered) { a in
-                                ActivityTimelineItem(activity: a)
+                            // ── Today section ────────────────────────────
+                            // On-device split — the activities endpoint
+                            // doesn't have a `view=today` shortcut, so we
+                            // partition the existing payload by whether
+                            // due_at / completed_at falls within today's
+                            // local calendar day. Keeps the network
+                            // round-trip identical to before.
+                            let buckets = Self.partitionToday(vm.filtered)
+                            if !buckets.today.isEmpty {
+                                ActivitySectionHeader(
+                                    title: "Today",
+                                    count: buckets.today.count,
+                                    accent: Brand.red,
+                                )
+                                ForEach(buckets.today) { a in
+                                    ActivityTimelineItem(activity: a)
+                                }
+                            }
+                            if !buckets.rest.isEmpty {
+                                ActivitySectionHeader(
+                                    title: buckets.today.isEmpty ? "All activity" : "Earlier",
+                                    count: buckets.rest.count,
+                                    accent: .secondary,
+                                )
+                                ForEach(buckets.rest) { a in
+                                    ActivityTimelineItem(activity: a)
+                                }
                             }
                         }
                     }.padding()
@@ -300,5 +325,61 @@ private struct DayCard: View {
                     .frame(width: 4)
             }
         }
+    }
+}
+
+// MARK: - Today partition + section header
+
+extension ActivitiesView {
+    /// Splits the activity list into "today" vs "everything else" using the
+    /// device's local calendar. Today buckets by `completedAt` if present,
+    /// else `dueAt`, else `createdAt` — the same fallback the timeline item
+    /// uses for its date suffix, so the split feels consistent with what
+    /// the row labels say.
+    static func partitionToday(_ activities: [Activity]) -> (today: [Activity], rest: [Activity]) {
+        let cal = Calendar.current
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoFallback = ISO8601DateFormatter()
+
+        func date(for a: Activity) -> Date? {
+            let raw = a.completedAt ?? a.dueAt ?? a.createdAt
+            guard let raw, !raw.isEmpty else { return nil }
+            return iso.date(from: raw) ?? isoFallback.date(from: raw)
+        }
+
+        var today: [Activity] = []
+        var rest: [Activity] = []
+        for a in activities {
+            if let d = date(for: a), cal.isDateInToday(d) {
+                today.append(a)
+            } else {
+                rest.append(a)
+            }
+        }
+        return (today, rest)
+    }
+}
+
+private struct ActivitySectionHeader: View {
+    let title: String
+    let count: Int
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.primary)
+            Text("\(count)")
+                .font(.system(size: 10, weight: .bold))
+                .padding(.horizontal, 6).padding(.vertical, 1)
+                .foregroundColor(accent == .secondary ? .secondary : .white)
+                .background(
+                    Capsule().fill(accent == .secondary ? Color(uiColor: .tertiarySystemFill) : accent)
+                )
+            Spacer()
+        }
+        .padding(.top, 4)
     }
 }

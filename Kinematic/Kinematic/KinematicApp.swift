@@ -1976,9 +1976,15 @@ struct KinematicApp: App {
                 }
             }
             .task {
-                // Pure timer — never gated on auth/network, so it can't hang.
-                try? await Task.sleep(nanoseconds: 1_600_000_000)
-                withAnimation(.easeInOut(duration: 0.35)) { showSplash = false }
+                // The iOS launch screen (now configured with UIImageName=LaunchLogo
+                // in Info.plist) already shows the brand mark on cold launch, so
+                // the SwiftUI SplashView is mostly a hand-off cross-fade. Keeping
+                // it at 1.6s caused the login UI to feel locked behind a static
+                // image on first install — drop to a brief 350ms so the splash
+                // dissolves almost immediately into the interactive view. Pure
+                // timer, never gated on auth/network, so it can't hang.
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                withAnimation(.easeInOut(duration: 0.25)) { showSplash = false }
             }
         }
     }
