@@ -64,6 +64,14 @@ final class CRMService {
     /// payload is a subset of Lead's fields). Honours the city/state scope.
     /// Also drives the More → Nearest Leads view, which sorts by haversine
     /// distance on-device.
+    /// Home aggregator — composes today's target + near-to-close leads
+    /// + top-3 next actions (with rules-based reasoning) + today's
+    /// activity stats + productivity tips into a single payload. One
+    /// round-trip per Home tab focus.
+    func crmHome() async throws -> HomePayload {
+        try await get("/api/v1/crm/home")
+    }
+
     func listLeadsGeo(city: String? = nil, state: String? = nil) async throws -> [Lead] {
         var q: [String: String] = [:]
         if let city, !city.isEmpty { q["city"] = city }

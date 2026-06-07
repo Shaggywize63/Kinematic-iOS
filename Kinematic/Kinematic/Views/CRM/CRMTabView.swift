@@ -31,8 +31,13 @@ struct CRMTabView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             TabView(selection: $selectedTab) {
-                Tab("Dashboard", systemImage: "chart.bar.fill", value: 0) {
-                    NavigationStack { CRMDashboardView() }
+                // Home is the rep's daily mission control: target progress,
+                // top-3 next actions with reasoning, near-to-close leads,
+                // today's activity, productivity playbook. Slots Dashboard
+                // (the analytics widgets) into More so the bottom bar
+                // stays at 5 tabs without compromising reachability.
+                Tab("Home", systemImage: "house.fill", value: 0) {
+                    NavigationStack { HomeView() }
                 }
                 Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 1) {
                     NavigationStack { LeadsListView() }
@@ -169,6 +174,12 @@ struct CRMMoreMenu: View {
                 } label: { MoreRow(icon: "location.north.line.fill", title: "Nearest Leads", tint: Brand.red) }
             }
             Section("Insights") {
+                // Dashboard moved here when the bottom-nav slot was given
+                // to the new Home (mission control) tab. Same widgets,
+                // one tap deeper.
+                NavigationLink {
+                    CRMDashboardView()
+                } label: { MoreRow(icon: "chart.bar.fill", title: "Dashboard", tint: Brand.red) }
                 NavigationLink {
                     CRMReportsHubView()
                 } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
