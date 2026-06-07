@@ -138,6 +138,46 @@ struct APIEnvelope<T: Codable>: Codable {
     let error: String?
     let message: String?
     let pagination: PageMeta?
+
+    private enum CodingKeys: String, CodingKey { case success, data, error, message, pagination }
+
+    // The backend ships `error` in two shapes:
+    //   - a plain string (legacy 4xx responses)
+    //   - `{ code, message }` (newer quota / RBAC failures — including the
+    //     KINI 429 path)
+    // When the second shape was decoded as `String?`, the whole envelope
+    // failed to parse and `try? decoder.decode(...)` swallowed it — leaving
+    // the chat surface with no quota message to render. Accept both shapes
+    // and normalise to the message string so the existing
+    // `env.error ?? env.message` consumers keep working.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.success = try c.decodeIfPresent(Bool.self, forKey: .success)
+        self.data = try c.decodeIfPresent(T.self, forKey: .data)
+        self.message = try c.decodeIfPresent(String.self, forKey: .message)
+        self.pagination = try c.decodeIfPresent(PageMeta.self, forKey: .pagination)
+        if let s = try? c.decodeIfPresent(String.self, forKey: .error) {
+            self.error = s
+        } else if let obj = try? c.decodeIfPresent(ErrorObject.self, forKey: .error) {
+            self.error = obj.message
+        } else {
+            self.error = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(success, forKey: .success)
+        try c.encodeIfPresent(data, forKey: .data)
+        try c.encodeIfPresent(error, forKey: .error)
+        try c.encodeIfPresent(message, forKey: .message)
+        try c.encodeIfPresent(pagination, forKey: .pagination)
+    }
+
+    private struct ErrorObject: Codable {
+        let code: String?
+        let message: String?
+    }
 }
 
 /// Server pagination block returned alongside `data` on list endpoints

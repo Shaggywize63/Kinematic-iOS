@@ -62,6 +62,8 @@ final class CRMService {
     /// Lightweight geo points for the map — every geo-tagged lead (up to
     /// 5000), bypassing the 200-row list cap. Decodes into Lead (the geo
     /// payload is a subset of Lead's fields). Honours the city/state scope.
+    /// Also drives the More → Nearest Leads view, which sorts by haversine
+    /// distance on-device.
     func listLeadsGeo(city: String? = nil, state: String? = nil) async throws -> [Lead] {
         var q: [String: String] = [:]
         if let city, !city.isEmpty { q["city"] = city }

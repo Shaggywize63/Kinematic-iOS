@@ -160,6 +160,14 @@ struct CRMMoreMenu: View {
                     ProductsListView()
                 } label: { MoreRow(icon: "shippingbox.fill", title: "Products", tint: Brand.red) }
             }
+            // Field tools that ride on the rep's current location. Distinct
+            // from "Records" because reps think of these as "where am I
+            // going next?" — not a directory.
+            Section("Field") {
+                NavigationLink {
+                    NearbyLeadsView()
+                } label: { MoreRow(icon: "location.north.line.fill", title: "Nearest Leads", tint: Brand.red) }
+            }
             Section("Insights") {
                 NavigationLink {
                     CRMReportsHubView()
