@@ -36,8 +36,18 @@ struct CRMTabView: View {
                 // today's activity, productivity playbook. Slots Dashboard
                 // (the analytics widgets) into More so the bottom bar
                 // stays at 5 tabs without compromising reachability.
-                Tab("Home", systemImage: "house.fill", value: 0) {
-                    NavigationStack { HomeView() }
+                //
+                // Hidden for Tata Tiscon (a1f67468-…) while the surface is
+                // being tuned for their consumer-only workflow — those
+                // users land back on the analytics Dashboard in slot 0.
+                if Session.currentUser?.clientId == "a1f67468-526e-4734-be3a-2cb132cc2804" {
+                    Tab("Dashboard", systemImage: "chart.bar.fill", value: 0) {
+                        NavigationStack { CRMDashboardView() }
+                    }
+                } else {
+                    Tab("Home", systemImage: "house.fill", value: 0) {
+                        NavigationStack { HomeView() }
+                    }
                 }
                 Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 1) {
                     NavigationStack { LeadsListView() }
