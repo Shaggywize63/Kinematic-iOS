@@ -472,10 +472,17 @@ private struct NearbyLeadCard: View {
     let row: NearbyLead
 
     var body: some View {
-        NavigationLink {
-            LeadDetailView(leadId: row.lead.id)
-        } label: {
-            VStack(spacing: 0) {
+        // The card body splits into two regions with separate tap handlers:
+        //   - upper: a NavigationLink to LeadDetail (taps here push the
+        //     standard detail screen)
+        //   - lower: real Buttons (Call / WhatsApp / Navigate) whose
+        //     actions fire instead of bubbling up to the link
+        // Previously the whole card was wrapped in one NavigationLink, so
+        // tapping any quick-action just navigated to the lead page.
+        VStack(spacing: 0) {
+            NavigationLink {
+                LeadDetailView(leadId: row.lead.id)
+            } label: {
                 HStack(spacing: 12) {
                     BearingArrow(degrees: row.bearingDegrees)
                     ScoreAvatar(name: row.lead.displayName, grade: scoreTier(row.lead.score))
@@ -499,41 +506,45 @@ private struct NearbyLeadCard: View {
                         }
                     }
                     Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.secondary)
                 }
                 .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 10)
-
-                Divider().padding(.horizontal, 14)
-
-                HStack(spacing: 0) {
-                    QuickAction(label: "Call", systemImage: "phone.fill", enabled: !(row.lead.phone ?? "").isEmpty) {
-                        guard let phone = row.lead.phone, !phone.isEmpty,
-                              let url = URL(string: "tel://\(phone.filter { !$0.isWhitespace })") else { return }
-                        UIApplication.shared.open(url)
-                    }
-                    Divider().frame(height: 22)
-                    QuickAction(label: "WhatsApp", systemImage: "message.fill", enabled: !(row.lead.phone ?? "").isEmpty) {
-                        guard let phone = row.lead.phone, !phone.isEmpty else { return }
-                        let digits = phone.filter(\.isNumber)
-                        guard let url = URL(string: "https://wa.me/\(digits)") else { return }
-                        UIApplication.shared.open(url)
-                    }
-                    Divider().frame(height: 22)
-                    QuickAction(label: "Navigate", systemImage: "arrow.triangle.turn.up.right.diamond.fill", enabled: true) {
-                        openInMaps()
-                    }
-                }
-                .padding(.vertical, 6)
+                .contentShape(Rectangle())
             }
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
-            )
+            .buttonStyle(.plain)
+
+            Divider().padding(.horizontal, 14)
+
+            HStack(spacing: 0) {
+                QuickAction(label: "Call", icon: .system("phone.fill"), enabled: !(row.lead.phone ?? "").isEmpty) {
+                    guard let phone = row.lead.phone, !phone.isEmpty,
+                          let url = URL(string: "tel://\(phone.filter { !$0.isWhitespace })") else { return }
+                    UIApplication.shared.open(url)
+                }
+                Divider().frame(height: 22)
+                QuickAction(label: "WhatsApp", icon: .whatsapp, enabled: WhatsAppHelper.canOpen(phone: row.lead.phone)) {
+                    guard let phone = row.lead.phone else { return }
+                    _ = WhatsAppHelper.open(phone: phone)
+                }
+                Divider().frame(height: 22)
+                // paperplane.fill reads as "go to / send me there" and is
+                // distinct from the bearing arrow used inside the card.
+                QuickAction(label: "Navigate", icon: .system("paperplane.fill"), enabled: row.lead.latitude != nil && row.lead.longitude != nil) {
+                    openInMaps()
+                }
+            }
+            .padding(.vertical, 6)
         }
-        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+        )
     }
 
     private func openInMaps() {
@@ -621,25 +632,51 @@ private struct StatusChip: View {
     }
 }
 
+/// QuickAction supports either an SF Symbol or the bespoke WhatsAppLogo
+/// canvas glyph so the WhatsApp row renders the brand-correct mark
+/// (#25D366 speech bubble with handset) instead of a generic chat icon.
 private struct QuickAction: View {
+    enum IconKind {
+        case system(String)
+        case whatsapp
+    }
     let label: String
-    let systemImage: String
+    let icon: IconKind
     let enabled: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: systemImage).font(.system(size: 12, weight: .semibold))
+            HStack(spacing: 5) {
+                iconView
                 Text(label).font(.caption.weight(.semibold))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
-            .foregroundColor(enabled ? Brand.red : .secondary)
+            .foregroundColor(enabled ? labelColor : .secondary)
             .opacity(enabled ? 1 : 0.5)
+            .contentShape(Rectangle())
         }
         .disabled(!enabled)
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var iconView: some View {
+        switch icon {
+        case .system(let name):
+            Image(systemName: name).font(.system(size: 13, weight: .semibold))
+        case .whatsapp:
+            // Tinted to WhatsApp green when enabled, secondary tint when
+            // the phone number is missing so the strip stays cohesive.
+            WhatsAppLogo(size: 14, color: enabled ? Color(red: 0.145, green: 0.827, blue: 0.4) : .secondary)
+        }
+    }
+
+    private var labelColor: Color {
+        // WhatsApp action stays brand-green; the others sit on brand red.
+        if case .whatsapp = icon { return Color(red: 0.145, green: 0.827, blue: 0.4) }
+        return Brand.red
     }
 }
 
