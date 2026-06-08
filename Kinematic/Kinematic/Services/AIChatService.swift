@@ -63,6 +63,12 @@ final class AIChatService {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
+        // Scope KINI tool calls to the active client so the assistant only
+        // searches leads/deals belonging to the rep's tenant. Mirrors the
+        // same X-Client-Id header that CRMService sends on every CRM call.
+        if let cid = CRMClientScope.selectedClientId(), !cid.isEmpty {
+            req.setValue(cid, forHTTPHeaderField: "X-Client-Id")
+        }
         req.httpBody = body
         req.timeoutInterval = 60
         return req
