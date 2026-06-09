@@ -67,7 +67,7 @@ private extension CRMService {
 
 // Static helpers so we don't poke at the file-scoped helpers in CRMService.swift.
 private extension CRMService {
-    static var baseHostURL: URL { URL(string: "https://kinematic-production.up.railway.app")! }
+    static var baseHostURL: URL { URL(string: "https://api.kinematicapp.com")! }
 
     static func buildURL(path: String, query: [String: String]) throws -> URL {
         var components = URLComponents(url: baseHostURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)

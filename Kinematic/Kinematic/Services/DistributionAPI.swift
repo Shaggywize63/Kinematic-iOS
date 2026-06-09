@@ -25,7 +25,7 @@ enum DistributionAPIError: Error, LocalizedError {
 
 struct DistributionAPI {
     static let shared = DistributionAPI()
-    private let baseURL = "https://kinematic-production.up.railway.app/api/v1"
+    private let baseURL = "https://api.kinematicapp.com/api/v1"
 
     private func request(_ path: String, method: String = "GET", body: Encodable? = nil, idempotencyKey: String? = nil) async throws -> Data {
         guard let url = URL(string: "\(baseURL)\(path)") else { throw DistributionAPIError.noResponse }

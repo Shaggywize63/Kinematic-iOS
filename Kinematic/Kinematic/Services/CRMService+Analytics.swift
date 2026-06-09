@@ -76,7 +76,7 @@ private extension CRMService {
 }
 
 private enum AnalyticsHelpers {
-    static let baseHostURL: URL = URL(string: "https://kinematic-production.up.railway.app")!
+    static let baseHostURL: URL = URL(string: "https://api.kinematicapp.com")!
 
     static func buildURL(path: String, query: [String: String]) throws -> URL {
         var components = URLComponents(url: baseHostURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)

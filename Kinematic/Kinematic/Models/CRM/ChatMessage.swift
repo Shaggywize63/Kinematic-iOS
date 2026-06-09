@@ -44,7 +44,11 @@ struct AIChatResponse: Codable {
             self.text = try c.decodeIfPresent(String.self, forKey: .reply) ?? ""
         }
         self.cards = try c.decodeIfPresent([KiniCard].self, forKey: .cards)
-        self.toolCalls = try c.decodeIfPresent([String].self, forKey: .toolCalls)
+        // tool_calls from the backend is [{name, args}] — an array of objects,
+        // not strings. Using try? so a type mismatch silently returns nil rather
+        // than throwing and collapsing the entire response decode. iOS doesn't
+        // render tool_calls directly (cards carry the displayable results).
+        self.toolCalls = try? c.decodeIfPresent([String].self, forKey: .toolCalls)
         self.usage = try c.decodeIfPresent(KiniUsage.self, forKey: .usage)
     }
 
