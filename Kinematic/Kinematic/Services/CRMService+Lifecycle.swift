@@ -35,7 +35,7 @@ extension CRMService {
     /// a thin shim so this extension doesn't need to duplicate the auth /
     /// envelope handling already living on the main file.
     private func postJSONPublic<T: Codable>(_ path: String, body: [String: Any]) async throws -> T {
-        let url = URL(string: "https://kinematic-production.up.railway.app")!.appendingPathComponent(path)
+        let url = URL(string: "https://api.kinematicapp.com")!.appendingPathComponent(path)
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

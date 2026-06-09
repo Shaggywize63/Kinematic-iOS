@@ -9,7 +9,7 @@ import Combine
 
 /// Production API base. Mirrors `KinematicRepository.baseURL`.
 /// Keep these two constants in sync if the backend host moves.
-private let kParityBaseURL = "https://kinematic-production.up.railway.app/api/v1"
+private let kParityBaseURL = "https://api.kinematicapp.com/api/v1"
 
 private enum ParityAPI {
     /// GET / DELETE / no-body variant.
@@ -180,7 +180,7 @@ class NotificationsViewModel: ObservableObject {
 
         // Hit the raw endpoint and decode tolerantly so a single odd field
         // (enum value, missing column, etc.) doesn't blank the whole list.
-        let baseURL = "https://kinematic-production.up.railway.app/api/v1"
+        let baseURL = "https://api.kinematicapp.com/api/v1"
         guard let url = URL(string: "\(baseURL)/notifications") else {
             errorMessage = "Bad URL"
             return

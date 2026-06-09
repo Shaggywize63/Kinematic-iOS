@@ -29,7 +29,7 @@ enum CRMServiceError: LocalizedError {
 final class CRMService {
     static let shared = CRMService()
 
-    private let baseHost: URL = URL(string: "https://kinematic-production.up.railway.app")!
+    private let baseHost: URL = URL(string: "https://api.kinematicapp.com")!
     private let session: URLSession
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()

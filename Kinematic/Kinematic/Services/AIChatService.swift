@@ -8,7 +8,7 @@ import Foundation
 final class AIChatService {
     static let shared = AIChatService()
 
-    private let baseHost: URL = URL(string: "https://kinematic-production.up.railway.app")!
+    private let baseHost: URL = URL(string: "https://api.kinematicapp.com")!
     private let session: URLSession
     private let decoder = JSONDecoder()
 

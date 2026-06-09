@@ -44,7 +44,7 @@ private extension CRMService {
 }
 
 private enum EditHelpers {
-    static let baseHostURL: URL = URL(string: "https://kinematic-production.up.railway.app")!
+    static let baseHostURL: URL = URL(string: "https://api.kinematicapp.com")!
 
     static func buildURL(path: String) throws -> URL {
         guard let url = URL(string: path, relativeTo: baseHostURL)?.absoluteURL else {

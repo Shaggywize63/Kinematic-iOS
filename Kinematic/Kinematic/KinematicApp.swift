@@ -1192,7 +1192,7 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
 
 class KinematicRepository {
     static let shared = KinematicRepository()
-    private let baseURL = "https://kinematic-production.up.railway.app/api/v1"
+    private let baseURL = "https://api.kinematicapp.com/api/v1"
     private let cachedMobileHomeKey = "cached_mobile_home_payload"
     private let cachedRoutePlanKey = "cached_route_plan_payload"
     
