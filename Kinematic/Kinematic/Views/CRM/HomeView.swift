@@ -1,5 +1,10 @@
 //
-//  HomeView.swift
+//  CrmHomeMissionView.swift (file kept as HomeView.swift for git history;
+//  the symbols below are renamed from HomeView/HomeViewModel to
+//  CrmHomeMissionView/CrmHomeMissionViewModel to avoid clashing with the
+//  legacy field-force HomeView in ContentView.swift and the legacy
+//  HomeViewModel in ViewModels/ViewModels.swift, both of which still drive
+//  the non-CRM home tab in the field-force navigation).
 //  Kinematic CRM
 //
 //  Daily mission control — mirrors the web /dashboard/crm/home and the
@@ -22,7 +27,7 @@ import SwiftUI
 // MARK: - ViewModel
 
 @MainActor
-final class HomeViewModel: ObservableObject {
+final class CrmHomeMissionViewModel: ObservableObject {
     @Published var payload: HomePayload?
     @Published var loading: Bool = false
     @Published var refreshing: Bool = false
@@ -42,10 +47,10 @@ final class HomeViewModel: ObservableObject {
     }
 }
 
-// MARK: - HomeView
+// MARK: - CrmHomeMissionView
 
-struct HomeView: View {
-    @StateObject private var vm = HomeViewModel()
+struct CrmHomeMissionView: View {
+    @StateObject private var vm = CrmHomeMissionViewModel()
     @State private var selectedLeadId: String?
 
     var body: some View {

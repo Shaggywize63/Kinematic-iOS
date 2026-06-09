@@ -46,7 +46,11 @@ struct CRMTabView: View {
                     }
                 } else {
                     Tab("Home", systemImage: "house.fill", value: 0) {
-                        NavigationStack { HomeView() }
+                        // CrmHomeMissionView is the CRM-specific "daily mission
+                        // control" home — renamed from HomeView to disambiguate
+                        // from the legacy field-force HomeView in
+                        // ContentView.swift, which still drives the FFM tab.
+                        NavigationStack { CrmHomeMissionView() }
                     }
                 }
                 Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 1) {
