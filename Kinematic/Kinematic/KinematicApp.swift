@@ -23,6 +23,14 @@ struct User: Codable, Identifiable {
     let enabledPackages: [String]
     /// Legacy per-user RBAC grants from user_module_permissions.
     let permissions: [String]
+    /// Org-role designation (e.g. "Consumer Champion", "Business Manager").
+    /// Source of truth is `org_roles.name` joined via `users.org_role_id`.
+    let orgRoleName: String?
+    /// Data-scope of the user's org role: own | team | all. Used by the CRM
+    /// UI to gate write actions — reps with 'own' scope can only see leads
+    /// they own, so reassignment must NOT be offered (it would hide the
+    /// record from them entirely).
+    let orgRoleDataScope: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, email, role, mobile, permissions
@@ -31,6 +39,8 @@ struct User: Codable, Identifiable {
         case avatarUrl = "avatar_url"
         case enabledModules = "enabled_modules"
         case enabledPackages = "enabled_packages"
+        case orgRoleName = "org_role_name"
+        case orgRoleDataScope = "org_role_data_scope"
     }
 
     init(from decoder: Decoder) throws {
@@ -46,6 +56,8 @@ struct User: Codable, Identifiable {
         enabledModules  = (try? c.decode([String].self, forKey: .enabledModules)) ?? []
         enabledPackages = (try? c.decode([String].self, forKey: .enabledPackages)) ?? []
         permissions     = (try? c.decode([String].self, forKey: .permissions)) ?? []
+        orgRoleName     = try c.decodeIfPresent(String.self, forKey: .orgRoleName)
+        orgRoleDataScope = try c.decodeIfPresent(String.self, forKey: .orgRoleDataScope)
     }
 }
 

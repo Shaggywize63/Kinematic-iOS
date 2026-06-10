@@ -419,7 +419,10 @@ struct LeadDetailView: View {
             secondaryAction("AI Score", icon: "sparkles", busy: vm.aiBusy) {
                 Task { await vm.runAIScore() }
             }
-            if !vm.assignableUsers.isEmpty {
+            // Reps with data_scope='own' (e.g. Consumer Champion) can only
+            // see leads they own — reassigning would hide the record from
+            // them, so suppress the affordance.
+            if !vm.assignableUsers.isEmpty && ClientFeatures.canReassignLeads {
                 secondaryAction("Assign", icon: "person.badge.plus", busy: vm.assignBusy) {
                     showAssignSheet = true
                 }

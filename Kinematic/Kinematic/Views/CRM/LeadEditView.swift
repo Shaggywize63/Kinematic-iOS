@@ -70,16 +70,22 @@ struct LeadEditView: View {
         _notes = State(initialValue: lead.notes ?? "")
     }
 
+    /// Tata Tiscon is consumer-only — never offer the B2B option. Forced
+    /// `isB2C = true` on appear so existing records stay consistent.
+    private var isTata: Bool { ClientFeatures.isTataTiscon }
+
     var body: some View {
         NavigationStack {
             Form {
-                // ── Type toggle ────────────────────────────────────
-                Section {
-                    Picker("Type", selection: $isB2C) {
-                        Text("Business (B2B)").tag(false)
-                        Text("Consumer (B2C)").tag(true)
+                // ── Type toggle (hidden for Tata Tiscon) ───────────
+                if !isTata {
+                    Section {
+                        Picker("Type", selection: $isB2C) {
+                            Text("Business (B2B)").tag(false)
+                            Text("Consumer (B2C)").tag(true)
+                        }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
                 }
 
                 // ── Contact ────────────────────────────────────────
@@ -160,10 +166,14 @@ struct LeadEditView: View {
                             Text(src.name).tag(src.id)
                         }
                     }
-                    Picker("Owner", selection: $ownerId) {
-                        Text("Unassigned").tag("")
-                        ForEach(owners, id: \.id) { u in
-                            Text(u.name ?? u.email ?? "User").tag(u.id)
+                    // Reps with data_scope='own' (e.g. Consumer Champion)
+                    // would lose visibility of the lead by reassigning it.
+                    if ClientFeatures.canReassignLeads {
+                        Picker("Owner", selection: $ownerId) {
+                            Text("Unassigned").tag("")
+                            ForEach(owners, id: \.id) { u in
+                                Text(u.name ?? u.email ?? "User").tag(u.id)
+                            }
                         }
                     }
                 }
@@ -185,6 +195,11 @@ struct LeadEditView: View {
             .navigationTitle("Edit Lead")
             .navigationBarTitleDisplayMode(.inline)
             .task { await loadPickerOptions() }
+            .onAppear {
+                // Tata Tiscon is consumer-only — lock the toggle even if a
+                // legacy record was somehow saved with is_b2c=false.
+                if isTata { isB2C = true }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
