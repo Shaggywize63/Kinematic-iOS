@@ -1,5 +1,13 @@
 import SwiftUI
 
+// Categorized lead edit screen — mirrors the web LeadEditModal's section
+// taxonomy (Contact / Business / Personal / Address / Lifecycle / Consent /
+// Notes) so the same fields exist on every platform. SwiftUI Form + Section
+// is the most native categorized form on iOS; the section headers handle
+// the grouping the user asked for without inventing custom card chrome.
+//
+// Deferred to a follow-up: alternate_mobiles (chip list) and per-tenant
+// custom_fields editor — both need new dedicated components.
 struct LeadEditView: View {
     let lead: Lead
     let onSaved: (Lead) -> Void
@@ -10,6 +18,8 @@ struct LeadEditView: View {
     @State private var email: String
     @State private var phone: String
     @State private var status: String
+    @State private var sourceId: String
+    @State private var ownerId: String
     @State private var company: String
     @State private var title: String
     @State private var industry: String
@@ -17,6 +27,7 @@ struct LeadEditView: View {
     @State private var dateOfBirth: String
     @State private var gender: String
     @State private var addressLine1: String
+    @State private var addressLine2: String
     @State private var city: String
     @State private var state: String
     @State private var postalCode: String
@@ -24,6 +35,10 @@ struct LeadEditView: View {
     @State private var preferredContactMethod: String
     @State private var marketingConsent: Bool
     @State private var whatsappConsent: Bool
+    @State private var notes: String
+
+    @State private var owners: [AssignableUser] = []
+    @State private var sources: [CRMLeadSource] = []
     @State private var saving = false
     @State private var errorMessage: String?
 
@@ -35,13 +50,16 @@ struct LeadEditView: View {
         _email = State(initialValue: lead.email ?? "")
         _phone = State(initialValue: lead.phone ?? "")
         _status = State(initialValue: lead.status ?? "new")
+        _sourceId = State(initialValue: lead.source ?? "")
+        _ownerId = State(initialValue: lead.ownerId ?? "")
         _company = State(initialValue: lead.company ?? "")
         _title = State(initialValue: lead.title ?? "")
-        _industry = State(initialValue: "") // not on iOS Lead model
+        _industry = State(initialValue: "")
         _isB2C = State(initialValue: lead.isB2c ?? false)
         _dateOfBirth = State(initialValue: lead.dateOfBirth ?? "")
         _gender = State(initialValue: lead.gender ?? "")
         _addressLine1 = State(initialValue: lead.addressLine1 ?? "")
+        _addressLine2 = State(initialValue: lead.addressLine2 ?? "")
         _city = State(initialValue: lead.city ?? "")
         _state = State(initialValue: lead.state ?? "")
         _postalCode = State(initialValue: lead.postalCode ?? "")
@@ -49,62 +67,124 @@ struct LeadEditView: View {
         _preferredContactMethod = State(initialValue: lead.preferredContactMethod ?? "")
         _marketingConsent = State(initialValue: lead.marketingConsent ?? false)
         _whatsappConsent = State(initialValue: lead.whatsappConsent ?? false)
+        _notes = State(initialValue: lead.notes ?? "")
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                // ── Type toggle ────────────────────────────────────
                 Section {
                     Picker("Type", selection: $isB2C) {
-                        Text("B2B (Business)").tag(false)
-                        Text("B2C (Consumer)").tag(true)
+                        Text("Business (B2B)").tag(false)
+                        Text("Consumer (B2C)").tag(true)
                     }
                     .pickerStyle(.segmented)
                 }
-                Section("Personal") {
+
+                // ── Contact ────────────────────────────────────────
+                Section("Contact") {
                     TextField("First name", text: $firstName)
+                        .textContentType(.givenName)
                     TextField("Last name", text: $lastName)
-                    TextField("Email", text: $email).keyboardType(.emailAddress).autocapitalization(.none)
-                    TextField("Phone", text: $phone).keyboardType(.phonePad)
-                    Picker("Status", selection: $status) {
-                        ForEach(["new","working","qualified","unqualified","converted"], id: \.self) {
-                            Text($0.capitalized).tag($0)
-                        }
-                    }
-                }
-                if !isB2C {
-                    Section("Business") {
-                        TextField("Company", text: $company)
-                        TextField("Job title", text: $title)
-                        TextField("Industry", text: $industry)
-                    }
-                } else {
-                    Section("Customer") {
-                        TextField("Date of birth (YYYY-MM-DD)", text: $dateOfBirth)
-                        Picker("Gender", selection: $gender) {
-                            ForEach(["","male","female","other","prefer_not_to_say"], id: \.self) {
-                                Text($0.isEmpty ? "—" : $0.replacingOccurrences(of: "_", with: " ").capitalized).tag($0)
-                            }
-                        }
+                        .textContentType(.familyName)
+                    TextField("Email", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .autocapitalization(.none)
+                    TextField("Phone", text: $phone)
+                        .keyboardType(.phonePad)
+                        .textContentType(.telephoneNumber)
+                    if isB2C {
                         Picker("Preferred channel", selection: $preferredContactMethod) {
-                            ForEach(["","email","phone","whatsapp","sms"], id: \.self) {
+                            ForEach(["", "email", "phone", "whatsapp", "sms"], id: \.self) {
                                 Text($0.isEmpty ? "—" : $0.capitalized).tag($0)
                             }
                         }
                     }
-                    Section("Address") {
-                        TextField("Address line 1", text: $addressLine1)
-                        LocationPicker(state: $state, city: $city)
-                        TextField("Postal code", text: $postalCode)
-                        TextField("Country", text: $country)
+                }
+
+                // ── Business (B2B only) ────────────────────────────
+                if !isB2C {
+                    Section("Business Details") {
+                        TextField("Company", text: $company)
+                            .textContentType(.organizationName)
+                        TextField("Job title", text: $title)
+                            .textContentType(.jobTitle)
+                        TextField("Industry", text: $industry)
                     }
-                    Section("Consent") {
+                }
+
+                // ── Personal (B2C only) ────────────────────────────
+                if isB2C {
+                    Section("Personal") {
+                        TextField("Date of birth (YYYY-MM-DD)", text: $dateOfBirth)
+                        Picker("Gender", selection: $gender) {
+                            ForEach(["", "male", "female", "other", "prefer_not_to_say"], id: \.self) {
+                                Text($0.isEmpty ? "—" : $0.replacingOccurrences(of: "_", with: " ").capitalized).tag($0)
+                            }
+                        }
+                    }
+                }
+
+                // ── Address — shown for both B2B and B2C so reps can
+                //    geo-target every lead.
+                Section("Address") {
+                    TextField("Line 1", text: $addressLine1)
+                    TextField("Line 2", text: $addressLine2)
+                    LocationPicker(state: $state, city: $city)
+                    TextField("Postal code", text: $postalCode)
+                        .keyboardType(.numberPad)
+                    TextField("Country", text: $country)
+                    if let lat = lead.latitude, let lng = lead.longitude {
+                        HStack {
+                            Text("Coordinates")
+                            Spacer()
+                            Text(String(format: "%.4f, %.4f", lat, lng))
+                                .font(.system(.footnote, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                // ── Lifecycle & Assignment ─────────────────────────
+                Section("Lifecycle & Assignment") {
+                    Picker("Status", selection: $status) {
+                        ForEach(["new", "working", "qualified", "unqualified", "converted", "lost"], id: \.self) {
+                            Text($0.capitalized).tag($0)
+                        }
+                    }
+                    Picker("Source", selection: $sourceId) {
+                        Text("—").tag("")
+                        ForEach(sources, id: \.id) { src in
+                            Text(src.name).tag(src.id)
+                        }
+                    }
+                    Picker("Owner", selection: $ownerId) {
+                        Text("Unassigned").tag("")
+                        ForEach(owners, id: \.id) { u in
+                            Text(u.name ?? u.email ?? "User").tag(u.id)
+                        }
+                    }
+                }
+
+                // ── Consent (B2C only) ─────────────────────────────
+                if isB2C {
+                    Section("Consent & Preferences") {
                         Toggle("Marketing consent", isOn: $marketingConsent)
                         Toggle("WhatsApp consent", isOn: $whatsappConsent)
                     }
                 }
+
+                // ── Notes ──────────────────────────────────────────
+                Section("Notes") {
+                    TextField("Internal notes", text: $notes, axis: .vertical)
+                        .lineLimit(3...8)
+                }
             }
             .navigationTitle("Edit Lead")
+            .navigationBarTitleDisplayMode(.inline)
+            .task { await loadPickerOptions() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -113,7 +193,7 @@ struct LeadEditView: View {
                     Button {
                         Task { await save() }
                     } label: {
-                        if saving { ProgressView() } else { Text("Save") }
+                        if saving { ProgressView() } else { Text("Save").fontWeight(.semibold) }
                     }
                     .disabled(saving)
                 }
@@ -124,32 +204,45 @@ struct LeadEditView: View {
         }
     }
 
+    private func loadPickerOptions() async {
+        // Fire both lookups in parallel — they're independent and the form
+        // is usable without either while they load.
+        async let ownersTask  = CRMService.shared.listAssignableUsers()
+        async let sourcesTask = CRMService.shared.listLeadSources()
+        owners  = await ownersTask
+        sources = await sourcesTask
+    }
+
     private func save() async {
         saving = true
         defer { saving = false }
         var body: [String: Any] = [
             "first_name": firstName.isEmpty ? NSNull() : firstName,
-            "last_name": lastName.isEmpty ? NSNull() : lastName,
-            "email": email.isEmpty ? NSNull() : email,
-            "phone": phone.isEmpty ? NSNull() : phone,
-            "status": status,
-            "is_b2c": isB2C,
+            "last_name":  lastName.isEmpty  ? NSNull() : lastName,
+            "email":      email.isEmpty     ? NSNull() : email,
+            "phone":      phone.isEmpty     ? NSNull() : phone,
+            "status":     status,
+            "is_b2c":     isB2C,
+            "owner_id":   ownerId.isEmpty   ? NSNull() : ownerId,
+            "source_id":  sourceId.isEmpty  ? NSNull() : sourceId,
+            "notes":      notes.isEmpty     ? NSNull() : notes,
+            "address_line1": addressLine1.isEmpty ? NSNull() : addressLine1,
+            "address_line2": addressLine2.isEmpty ? NSNull() : addressLine2,
+            "city":          city.isEmpty         ? NSNull() : city,
+            "state":         state.isEmpty        ? NSNull() : state,
+            "postal_code":   postalCode.isEmpty   ? NSNull() : postalCode,
+            "country":       country.isEmpty      ? NSNull() : country,
         ]
         if !isB2C {
             body["company"] = company.isEmpty ? NSNull() : company
-            body["title"] = title.isEmpty ? NSNull() : title
+            body["title"]   = title.isEmpty   ? NSNull() : title
             if !industry.isEmpty { body["industry"] = industry }
         } else {
             body["date_of_birth"] = dateOfBirth.isEmpty ? NSNull() : dateOfBirth
-            body["gender"] = gender.isEmpty ? NSNull() : gender
-            body["address_line1"] = addressLine1.isEmpty ? NSNull() : addressLine1
-            body["city"] = city.isEmpty ? NSNull() : city
-            body["state"] = state.isEmpty ? NSNull() : state
-            body["postal_code"] = postalCode.isEmpty ? NSNull() : postalCode
-            body["country"] = country.isEmpty ? NSNull() : country
+            body["gender"]        = gender.isEmpty ? NSNull() : gender
             body["preferred_contact_method"] = preferredContactMethod.isEmpty ? NSNull() : preferredContactMethod
             body["marketing_consent"] = marketingConsent
-            body["whatsapp_consent"] = whatsappConsent
+            body["whatsapp_consent"]  = whatsappConsent
         }
         do {
             let updated = try await CRMService.shared.patchLead(id: lead.id, body: body)
