@@ -15,4 +15,14 @@ enum ClientFeatures {
     static var isTataTiscon: Bool {
         Session.currentUser?.clientId == TATA_TISCON_CLIENT_ID
     }
+
+    /// True when the signed-in user is allowed to reassign a lead's owner.
+    /// Reps with `data_scope='own'` (e.g. Tata Tiscon's Consumer Champion
+    /// designation) only see leads they own — handing one off would hide
+    /// the record from them entirely, so the assign affordance must be
+    /// suppressed for them in the UI. Backend permissions still enforce
+    /// the rule independently; this just hides the dead control.
+    static var canReassignLeads: Bool {
+        (Session.currentUser?.orgRoleDataScope ?? "all") != "own"
+    }
 }
