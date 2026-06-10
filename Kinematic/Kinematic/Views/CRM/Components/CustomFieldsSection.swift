@@ -26,6 +26,38 @@ final class CustomFieldsModel: ObservableObject {
             .sorted { ($0.position ?? 0) < ($1.position ?? 0) }
     }
 
+    /// Seed the per-type stores from a record's existing `custom_fields`
+    /// blob so the Edit screen shows the current values. Idempotent —
+    /// keys not present in `defs` are ignored, and missing values default
+    /// to empty/false so the form is always renderable.
+    func hydrate(from raw: [String: AnyCodable]?) {
+        guard let raw else { return }
+        for d in defs {
+            let stored = raw[d.fieldKey]?.value
+            switch d.fieldType {
+            case "boolean":
+                if let s = stored?.lowercased() {
+                    bool[d.fieldKey] = (s == "true" || s == "1" || s == "yes")
+                }
+            case "multiselect":
+                // Stored as JSON-encoded array string by AnyCodable. We
+                // accept both a CSV fallback and JSON for forward-compat.
+                if let s = stored {
+                    let trimmed = s.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix("["),
+                       let data = trimmed.data(using: .utf8),
+                       let arr = try? JSONSerialization.jsonObject(with: data) as? [String] {
+                        multi[d.fieldKey] = Set(arr)
+                    } else if !trimmed.isEmpty {
+                        multi[d.fieldKey] = Set(trimmed.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) })
+                    }
+                }
+            default:
+                if let s = stored { text[d.fieldKey] = s }
+            }
+        }
+    }
+
     /// Plain JSON-serialisable values (String / Double / Bool / [String]) for
     /// the create body. Empty entries are skipped.
     var jsonValues: [String: Any] {

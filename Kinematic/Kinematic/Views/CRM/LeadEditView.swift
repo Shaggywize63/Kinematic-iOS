@@ -2,12 +2,12 @@ import SwiftUI
 
 // Categorized lead edit screen — mirrors the web LeadEditModal's section
 // taxonomy (Contact / Business / Personal / Address / Lifecycle / Consent /
-// Notes) so the same fields exist on every platform. SwiftUI Form + Section
-// is the most native categorized form on iOS; the section headers handle
-// the grouping the user asked for without inventing custom card chrome.
+// Custom Fields / Notes) so the same fields exist on every platform.
+// SwiftUI Form + Section is the most native categorized form on iOS; the
+// section headers handle the grouping the user asked for without inventing
+// custom card chrome.
 //
-// Deferred to a follow-up: alternate_mobiles (chip list) and per-tenant
-// custom_fields editor — both need new dedicated components.
+// Deferred to a follow-up: alternate_mobiles chip list editor.
 struct LeadEditView: View {
     let lead: Lead
     let onSaved: (Lead) -> Void
@@ -39,6 +39,9 @@ struct LeadEditView: View {
 
     @State private var owners: [AssignableUser] = []
     @State private var sources: [CRMLeadSource] = []
+    /// Admin-defined custom fields scoped to the rep's org role. Loaded
+    /// (and hydrated from `lead.customFields`) inside `.task`.
+    @StateObject private var customFields = CustomFieldsModel()
     @State private var saving = false
     @State private var errorMessage: String?
 
@@ -186,6 +189,11 @@ struct LeadEditView: View {
                     }
                 }
 
+                // ── Custom Fields — admin-defined per-tenant fields ──
+                //     (e.g. Tata Tiscon's "First Visit Date", "Brand").
+                //     Hidden when no defs apply to the rep's role.
+                CustomFieldsSection(model: customFields)
+
                 // ── Notes ──────────────────────────────────────────
                 Section("Notes") {
                     TextField("Internal notes", text: $notes, axis: .vertical)
@@ -220,12 +228,18 @@ struct LeadEditView: View {
     }
 
     private func loadPickerOptions() async {
-        // Fire both lookups in parallel — they're independent and the form
-        // is usable without either while they load.
+        // Fire all three lookups in parallel — they're independent and
+        // the form is usable without any of them while they load.
         async let ownersTask  = CRMService.shared.listAssignableUsers()
         async let sourcesTask = CRMService.shared.listLeadSources()
+        async let cfTask: Void = customFields.load(entity: "lead")
         owners  = await ownersTask
         sources = await sourcesTask
+        _ = await cfTask
+        // Hydrate the form with the lead's existing custom-field values
+        // after the defs land, so each value lands in the right type
+        // bucket (text / bool / multi).
+        customFields.hydrate(from: lead.customFields)
     }
 
     private func save() async {
@@ -247,6 +261,9 @@ struct LeadEditView: View {
             "state":         state.isEmpty        ? NSNull() : state,
             "postal_code":   postalCode.isEmpty   ? NSNull() : postalCode,
             "country":       country.isEmpty      ? NSNull() : country,
+            // Admin-defined custom fields. Empty dict is sent so the
+            // backend can persist a "the rep cleared everything" state.
+            "custom_fields": customFields.jsonValues,
         ]
         if !isB2C {
             body["company"] = company.isEmpty ? NSNull() : company
