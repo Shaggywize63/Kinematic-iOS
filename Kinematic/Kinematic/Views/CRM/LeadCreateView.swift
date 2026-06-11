@@ -38,6 +38,12 @@ struct LeadCreateView: View {
     /// Admin-defined custom fields for leads, scoped to the user's org role.
     @StateObject private var customFields = CustomFieldsModel()
 
+    /// Tata Tiscon affordance — checkbox in the create form that asks
+    /// the backend to atomically spawn a `site_visit` activity tied to
+    /// the new lead. Default true on Tata (most adds happen at the
+    /// retailer counter); ignored entirely for any other tenant.
+    @State private var logAsSiteVisit = true
+
     let onSubmit: ([String: Any]) async -> Void
 
     // Tata Tiscon requires the submission location to be captured automatically
@@ -167,6 +173,18 @@ struct LeadCreateView: View {
                     latitude = String(format: "%.6f", c.latitude)
                     longitude = String(format: "%.6f", c.longitude)
                 }
+
+                // Tata Tiscon site-visit affordance — most leads are added
+                // while the rep is physically at the consumer / dealer
+                // counter, so we default it on. Backend spawns the
+                // matching activity in the same round-trip.
+                if isTata {
+                    Section {
+                        Toggle("Also log this lead as a Site Visit activity", isOn: $logAsSiteVisit)
+                    } footer: {
+                        Text("Creates a completed Site Visit activity tied to this lead — visible on the lead detail timeline.")
+                    }
+                }
             }
             .navigationTitle("New Lead")
             .task { target = await CRMService.shared.myTarget() }
@@ -237,6 +255,10 @@ struct LeadCreateView: View {
         // Admin-defined custom fields (scoped to the user's role).
         let cf = customFields.jsonValues
         if !cf.isEmpty { body["custom_fields"] = cf }
+        // Tata Tiscon site-visit affordance — backend reads this flag,
+        // strips it before persisting the lead, and atomically spawns a
+        // completed `site_visit` activity tied to the new lead.
+        if isTata && logAsSiteVisit { body["_auto_log_site_visit"] = true }
         return body
     }
 }
