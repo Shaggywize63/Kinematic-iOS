@@ -42,8 +42,14 @@ struct LeadEditView: View {
     /// Admin-defined custom fields scoped to the rep's org role. Loaded
     /// (and hydrated from `lead.customFields`) inside `.task`.
     @StateObject private var customFields = CustomFieldsModel()
+    /// Tata Tiscon affordance — mirrors the create form. Lets the rep
+    /// log a follow-up site visit while editing. Default off so saving
+    /// the form doesn't accidentally spawn duplicate visits.
+    @State private var logAsSiteVisit = false
     @State private var saving = false
     @State private var errorMessage: String?
+
+    private var isTata: Bool { ClientFeatures.isTataTiscon }
 
     init(lead: Lead, onSaved: @escaping (Lead) -> Void) {
         self.lead = lead
@@ -194,6 +200,15 @@ struct LeadEditView: View {
                 //     Hidden when no defs apply to the rep's role.
                 CustomFieldsSection(model: customFields)
 
+                // ── Tata Tiscon: site-visit affordance on edit too ──
+                if isTata {
+                    Section {
+                        Toggle("Also log a Site Visit", isOn: $logAsSiteVisit)
+                    } footer: {
+                        Text("Creates a completed Site Visit on this lead's timeline using the lead's saved photo.")
+                    }
+                }
+
                 // ── Notes ──────────────────────────────────────────
                 Section("Notes") {
                     TextField("Internal notes", text: $notes, axis: .vertical)
@@ -265,6 +280,9 @@ struct LeadEditView: View {
             // backend can persist a "the rep cleared everything" state.
             "custom_fields": customFields.jsonValues,
         ]
+        // Tata Tiscon: backend pops this flag and spawns a fresh
+        // site_visit activity tied to the lead.
+        if isTata && logAsSiteVisit { body["_auto_log_site_visit"] = true }
         if !isB2C {
             body["company"] = company.isEmpty ? NSNull() : company
             body["title"]   = title.isEmpty   ? NSNull() : title
