@@ -81,7 +81,7 @@ struct LeadEditView: View {
 
     /// Tata Tiscon is consumer-only — never offer the B2B option. Forced
     /// `isB2C = true` on appear so existing records stay consistent.
-    private var isTata: Bool { ClientFeatures.isTataTiscon }
+    /// (`isTata` is declared higher up alongside the @State fields.)
 
     var body: some View {
         NavigationStack {
