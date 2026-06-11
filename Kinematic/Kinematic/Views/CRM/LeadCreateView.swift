@@ -40,9 +40,10 @@ struct LeadCreateView: View {
 
     /// Tata Tiscon affordance — checkbox in the create form that asks
     /// the backend to atomically spawn a `site_visit` activity tied to
-    /// the new lead. Default true on Tata (most adds happen at the
-    /// retailer counter); ignored entirely for any other tenant.
-    @State private var logAsSiteVisit = true
+    /// the new lead. Default OFF — the rep ticks it deliberately for
+    /// the leads where they actually performed a visit, so spurious
+    /// site_visit activities don't pollute the timeline.
+    @State private var logAsSiteVisit = false
 
     let onSubmit: ([String: Any]) async -> Void
 
