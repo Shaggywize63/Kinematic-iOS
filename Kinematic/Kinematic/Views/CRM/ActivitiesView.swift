@@ -10,7 +10,10 @@ struct ActivitiesView: View {
         let cal = Calendar.current
         return cal.date(from: cal.dateComponents([.year, .month], from: d)) ?? d
     }()
-    let typeOptions = ["all", "call", "email", "meeting", "note", "task"]
+    // Meeting first — matches the field-force usage pattern and the
+    // web dashboard's reordered activity type picker.
+    let typeOptions = ["all", "meeting", "call", "email", "note", "task"]
+    @State private var showLeadPicker = false
 
     enum Layout: String, CaseIterable, Identifiable { case list, calendar; var id: String { rawValue } }
 
@@ -76,6 +79,26 @@ struct ActivitiesView: View {
                 }
                 if vm.dateFrom != nil || vm.dateTo != nil {
                     Button { vm.dateFrom = nil; vm.dateTo = nil; Task { await vm.refresh() } } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                    }
+                }
+                // Search-by-lead chip. Tapping it opens a searchable lead
+                // sheet; picking a lead filters the list via .eq(lead_id).
+                Button { showLeadPicker = true } label: {
+                    Label(vm.leadFilterLabel ?? "Lead", systemImage: "person.crop.rectangle")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .foregroundColor(vm.leadFilterId == nil ? .gray : Brand.red)
+                        .cornerRadius(8)
+                        .lineLimit(1)
+                }
+                if vm.leadFilterId != nil {
+                    Button {
+                        vm.leadFilterId = nil
+                        vm.leadFilterLabel = nil
+                        Task { await vm.refresh() }
+                    } label: {
                         Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
                     }
                 }
@@ -151,6 +174,13 @@ struct ActivitiesView: View {
         }
         .sheet(isPresented: $showDateSheet) {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Activity date") {
+                Task { await vm.refresh() }
+            }
+        }
+        .sheet(isPresented: $showLeadPicker) {
+            LeadSearchPickerSheet { lead in
+                vm.leadFilterId = lead.id
+                vm.leadFilterLabel = lead.displayName
                 Task { await vm.refresh() }
             }
         }

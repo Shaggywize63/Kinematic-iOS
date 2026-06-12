@@ -9,6 +9,10 @@ final class ActivitiesViewModel: ObservableObject {
     @Published var owners: [AssignableUser] = []
     @Published var dateFrom: Date? = nil
     @Published var dateTo: Date? = nil
+    // Search-by-lead filter — picking a lead in the filter strip sets
+    // these; the backend list endpoint is filtered via .eq('lead_id',…).
+    @Published var leadFilterId: String? = nil
+    @Published var leadFilterLabel: String? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -47,7 +51,8 @@ final class ActivitiesViewModel: ObservableObject {
                 city: location.city,
                 state: location.state,
                 from: dateFrom.map { Self.isoDate.string(from: $0) },
-                to: dateTo.map { Self.isoDate.string(from: $0) }
+                to: dateTo.map { Self.isoDate.string(from: $0) },
+                leadId: leadFilterId
             )
         } catch {
             errorMessage = error.localizedDescription
