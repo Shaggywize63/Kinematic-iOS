@@ -1199,7 +1199,16 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
         }
     }
     
-    func startTracking() { locationManager.startUpdatingLocation() }
+    func startTracking() {
+        // Tata Tiscon reps reported battery drain — continuous tracking
+        // is disabled for that tenant. The one-shot OneShotLocationProvider
+        // used by lead-create / activity capture is unaffected.
+        if ClientFeatures.isTataTiscon {
+            locationManager.stopUpdatingLocation()
+            return
+        }
+        locationManager.startUpdatingLocation()
+    }
     func stopTracking() { locationManager.stopUpdatingLocation() }
     
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -1238,6 +1247,13 @@ class KinematicRepository {
     }
     
     func sendLiveTrackingPing(lat: Double, lng: Double, battery: Int) async -> Bool {
+        // Hard kill switch for Tata Tiscon — even if a stale timer fires
+        // (e.g. user logged in elsewhere then the JWT swapped), skip the
+        // network round-trip so we don't drain battery on a 204 from
+        // the backend.
+        if ClientFeatures.isTataTiscon {
+            return true
+        }
         do {
             let payload = UserStatusUpdate.heartbeat(lat: lat, lng: lng, battery: battery)
             let body = try? JSONEncoder().encode(payload)
