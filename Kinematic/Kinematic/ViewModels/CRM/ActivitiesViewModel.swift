@@ -47,12 +47,12 @@ final class ActivitiesViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             activities = try await api.listActivities(
+                leadId: leadFilterId,
                 ownerId: ownerFilter == "all" ? nil : ownerFilter,
                 city: location.city,
                 state: location.state,
                 from: dateFrom.map { Self.isoDate.string(from: $0) },
-                to: dateTo.map { Self.isoDate.string(from: $0) },
-                leadId: leadFilterId
+                to: dateTo.map { Self.isoDate.string(from: $0) }
             )
         } catch {
             errorMessage = error.localizedDescription

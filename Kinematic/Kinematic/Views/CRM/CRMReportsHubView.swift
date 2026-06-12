@@ -86,16 +86,39 @@ enum CRMReportCatalog {
 }
 
 struct CRMReportsHubView: View {
+    /// Report IDs shown to Consumer Champion reps — a focused set covering
+    /// the three metrics that matter most to their field workflow.
+    /// All other analytical reports (team performance, pipeline analytics,
+    /// lead analytics, etc.) are hidden for this role.
+    private static let championReportIds: Set<String> = [
+        "lead-tracker",   // Total leads captured
+        "stage-funnel",   // Total deals (by stage)
+        "win-loss",       // Win / Loss
+    ]
+
+    /// Filtered report list — full catalog for managers, champion-only
+    /// subset for Consumer Champion reps.
+    private var visibleReports: [CRMReportSpec] {
+        if ClientFeatures.isConsumerChampion {
+            return CRMReportCatalog.reports.filter { Self.championReportIds.contains($0.id) }
+        }
+        return CRMReportCatalog.reports
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
                 // Raw-data CSV export (existing screen).
-                NavigationLink(destination: CRMReportsView()) {
-                    reportCard(title: "Export Data (CSV)",
-                               desc: "Download leads, contacts or deals as CSV.",
-                               icon: "arrow.down.doc.fill", highlight: true)
+                // Hidden for Consumer Champions — the export contains contacts
+                // and accounts data that isn't relevant to their role.
+                if !ClientFeatures.isConsumerChampion {
+                    NavigationLink(destination: CRMReportsView()) {
+                        reportCard(title: "Export Data (CSV)",
+                                   desc: "Download leads, contacts or deals as CSV.",
+                                   icon: "arrow.down.doc.fill", highlight: true)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 Text("ANALYTICAL REPORTS")
                     .font(.system(size: 11, weight: .black)).tracking(0.8)
@@ -103,7 +126,7 @@ struct CRMReportsHubView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 6)
 
-                ForEach(CRMReportCatalog.reports) { spec in
+                ForEach(visibleReports) { spec in
                     NavigationLink(destination: CRMReportDetailView(spec: spec)) {
                         reportCard(title: spec.title, desc: spec.desc,
                                    icon: "chart.bar.doc.horizontal.fill", highlight: false)
