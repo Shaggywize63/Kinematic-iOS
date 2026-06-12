@@ -38,7 +38,7 @@ struct ActivityComposeView: View {
     @State private var showSourceSheet: Bool = false
 
     init(
-        initialType: String = "call",
+        initialType: String = "meeting",
         initialSubject: String = "",
         allowLeadPicker: Bool = false,
         onSubmit: @escaping (String, String, String, String?, Date, String?) async -> Void
@@ -56,7 +56,9 @@ struct ActivityComposeView: View {
             Form {
                 Section("Type") {
                     Picker("Type", selection: $type) {
-                        ForEach(["call", "email", "meeting", "note", "task"], id: \.self) {
+                        // "Meeting" leads — matches field-force usage. Order
+                        // mirrors the web dashboard's activity type picker.
+                        ForEach(["meeting", "call", "email", "note", "task"], id: \.self) {
                             Text($0.capitalized).tag($0)
                         }
                     }.pickerStyle(.segmented)
@@ -158,7 +160,7 @@ struct ActivityComposeView: View {
                 ImagePicker(image: $pickedImage, sourceType: .photoLibrary)
             }
             .sheet(isPresented: $showLeadPicker) {
-                ActivityLeadPickerList { lead in selectedLead = lead }
+                LeadSearchPickerSheet { lead in selectedLead = lead }
             }
             .onChange(of: pickedImage) { _, newImage in
                 guard let img = newImage else { return }
@@ -179,8 +181,9 @@ struct ActivityComposeView: View {
 
 /// Searchable lead list for attaching a lead to a global activity. Shows each
 /// lead's name + phone so the rep can pick the right one. Server-side search
-/// via `?q=` (matches name and phone).
-private struct ActivityLeadPickerList: View {
+/// via `?q=` (matches name and phone). Reused by the Activities list
+/// "Search by lead" filter, so this is module-internal (not file-private).
+struct LeadSearchPickerSheet: View {
     let onPick: (Lead) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""

@@ -90,7 +90,12 @@ struct LeadCreateView: View {
                     TextField("Last name", text: $lastName)
                 }
                 Section("Contact") {
-                    TextField("Email", text: $email).keyboardType(.emailAddress).autocapitalization(.none)
+                    // Email field hidden for Tata Tiscon — their FE walk-in
+                    // flow doesn't collect email; prompting just to skip it
+                    // adds friction.
+                    if !ClientFeatures.isTataTiscon {
+                        TextField("Email", text: $email).keyboardType(.emailAddress).autocapitalization(.none)
+                    }
                     TextField("Phone", text: $phone).keyboardType(.phonePad)
                     Picker("Source", selection: $source) {
                         ForEach(["web", "referral", "event", "cold_call", "social", "whatsapp", "other"], id: \.self) {

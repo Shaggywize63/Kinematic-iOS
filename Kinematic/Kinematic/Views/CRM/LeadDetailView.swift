@@ -50,16 +50,21 @@ struct LeadDetailView: View {
                     actionsBar(lead: lead)
                     if vm.isConverted { convertedToCard }
                     nbaContainer
-                    LeadScoreBoostCard(
-                        lead: lead,
-                        isTata: ClientFeatures.isTataTiscon,
-                        busy: vm.qualifyBusy,
-                        onEdit: { editing = true },
-                        onQualify: { Task { await vm.qualify() } }
-                    )
+                    // Lead-score breakdown + Boost-score suggestions are
+                    // hidden for Consumer Champion FEs — manager-tier
+                    // surfaces, not for field reps.
+                    if !ClientFeatures.isConsumerChampion {
+                        LeadScoreBoostCard(
+                            lead: lead,
+                            isTata: ClientFeatures.isTataTiscon,
+                            busy: vm.qualifyBusy,
+                            onEdit: { editing = true },
+                            onQualify: { Task { await vm.qualify() } }
+                        )
+                    }
                     if lead.isB2c == true { b2cProfileCard(lead: lead) }
                     if lead.latitude != nil || lead.longitude != nil { locationCard(lead: lead) }
-                    if let score = vm.score { scoreCard(score: score) }
+                    if !ClientFeatures.isConsumerChampion, let score = vm.score { scoreCard(score: score) }
                     if !vm.relatedDeals.isEmpty { relatedDealsCard }
                     recentUpdatesSection
                     recordCard(lead: lead)
@@ -413,11 +418,37 @@ struct LeadDetailView: View {
         FlexibleHStack(spacing: 10) {
             if !vm.isConverted && !vm.isDisqualified {
                 primaryAction("Convert", icon: "arrow.triangle.branch", busy: vm.convertBusy) {
+                    // Tata Tiscon: skip the create-account / create-deal
+                    // options sheet entirely. Their flow is deal-only and
+                    // line items live on the Deal screen, so we convert
+                    // straight to a deal with sensible defaults.
+                    if ClientFeatures.isTataTiscon, let lead = vm.lead {
+                        Task {
+                            let defaultName: String = {
+                                if let c = lead.company, !c.isEmpty { return "\(c) Opportunity" }
+                                let nm = ([lead.firstName, lead.lastName].compactMap { $0 }.joined(separator: " ")).trimmingCharacters(in: .whitespaces)
+                                return nm.isEmpty ? "New Opportunity" : "\(nm) Opportunity"
+                            }()
+                            await vm.convert(
+                                createAccount: false,
+                                createDeal: true,
+                                dealName: defaultName,
+                                dealAmount: nil,
+                                dealVolumeKg: nil,
+                                dealProductId: nil
+                            )
+                        }
+                        return
+                    }
                     converting = true
                 }
             }
-            secondaryAction("AI Score", icon: "sparkles", busy: vm.aiBusy) {
-                Task { await vm.runAIScore() }
+            // AI Score is a Champion-hidden manager affordance — mirrors
+            // the score-card gating above.
+            if !ClientFeatures.isConsumerChampion {
+                secondaryAction("AI Score", icon: "sparkles", busy: vm.aiBusy) {
+                    Task { await vm.runAIScore() }
+                }
             }
             // Reps with data_scope='own' (e.g. Consumer Champion) can only
             // see leads they own — reassigning would hide the record from

@@ -187,22 +187,27 @@ struct CRMMoreMenu: View {
                     NearbyLeadsView()
                 } label: { MoreRow(icon: "location.north.line.fill", title: "Nearest Leads", tint: Brand.red) }
             }
-            Section("Insights") {
-                // Dashboard moved here when the bottom-nav slot was given
-                // to the new Home (mission control) tab. Same widgets,
-                // one tap deeper.
-                NavigationLink {
-                    CRMDashboardView()
-                } label: { MoreRow(icon: "chart.bar.fill", title: "Dashboard", tint: Brand.red) }
-                NavigationLink {
-                    CRMReportsHubView()
-                } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
-                // Read-only Lead Analytics surface — six widget cards with a
-                // per-card size cycle. Mirrors the dashboard's
-                // /dashboard/crm/analytics screen, scoped down to mobile.
-                NavigationLink {
-                    CustomLeadAnalyticsView()
-                } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: "Lead Analytics", tint: Brand.red) }
+            // Insights section is hidden in its entirety for Consumer
+            // Champion reps — Dashboard / Reports / Lead Analytics are
+            // manager-tier and clutter the FE-tier nav.
+            if !ClientFeatures.isConsumerChampion {
+                Section("Insights") {
+                    // Dashboard moved here when the bottom-nav slot was given
+                    // to the new Home (mission control) tab. Same widgets,
+                    // one tap deeper.
+                    NavigationLink {
+                        CRMDashboardView()
+                    } label: { MoreRow(icon: "chart.bar.fill", title: "Dashboard", tint: Brand.red) }
+                    NavigationLink {
+                        CRMReportsHubView()
+                    } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
+                    // Read-only Lead Analytics surface — six widget cards with a
+                    // per-card size cycle. Mirrors the dashboard's
+                    // /dashboard/crm/analytics screen, scoped down to mobile.
+                    NavigationLink {
+                        CustomLeadAnalyticsView()
+                    } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: "Lead Analytics", tint: Brand.red) }
+                }
             }
             // Targets — managers set the daily lead target per hierarchy level.
             // Hidden for field executives (they see their target as a ticker).

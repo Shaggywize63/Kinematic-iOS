@@ -103,10 +103,13 @@ struct LeadEditView: View {
                         .textContentType(.givenName)
                     TextField("Last name", text: $lastName)
                         .textContentType(.familyName)
-                    TextField("Email", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textContentType(.emailAddress)
-                        .autocapitalization(.none)
+                    // Email hidden for Tata Tiscon — matches LeadCreateView.
+                    if !ClientFeatures.isTataTiscon {
+                        TextField("Email", text: $email)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.emailAddress)
+                            .autocapitalization(.none)
+                    }
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                         .textContentType(.telephoneNumber)

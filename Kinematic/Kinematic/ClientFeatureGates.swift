@@ -16,6 +16,17 @@ enum ClientFeatures {
         Session.currentUser?.clientId == TATA_TISCON_CLIENT_ID
     }
 
+    /// True when the signed-in user is a Consumer Champion (Tata Tiscon's
+    /// frontline FE designation). Gates manager-tier surfaces — Lead
+    /// Score breakdown, Boost-score suggestions, and Lead Analytics —
+    /// which clutter the field rep's workflow without giving them
+    /// anything actionable. Matched against `orgRoleName` so admin
+    /// renames in `org_roles` are picked up without an app release.
+    static var isConsumerChampion: Bool {
+        let raw = Session.currentUser?.orgRoleName ?? ""
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Consumer Champion") == .orderedSame
+    }
+
     /// True when the signed-in user is allowed to reassign a lead's owner.
     /// Reps with `data_scope='own'` (e.g. Tata Tiscon's Consumer Champion
     /// designation) only see leads they own — handing one off would hide
