@@ -105,6 +105,23 @@ struct ActivityTimelineItem: View {
                 }
                 .padding(.leading, 50)
             }
+
+            // ── Linked record: lead / contact / deal name ───────────────
+            // Backend stamps lead_name, contact_name, deal_name on every
+            // activity response so we can surface context inline without a
+            // secondary fetch. Priority: lead → contact → deal.
+            if let linkedName = linkedRecordName {
+                HStack(spacing: 5) {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Brand.red)
+                    Text(linkedName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Brand.red)
+                        .lineLimit(1)
+                }
+                .padding(.leading, 50)
+            }
         }
         .padding(14)
         .background(
@@ -118,6 +135,16 @@ struct ActivityTimelineItem: View {
     }
 
     // MARK: Derived
+
+    /// The best available linked-record name to display on the card.
+    /// Falls back through lead → contact → deal so the card always shows
+    /// some context if the backend stamped any of the three fields.
+    private var linkedRecordName: String? {
+        if let n = activity.leadName?.trimmingCharacters(in: .whitespaces), !n.isEmpty { return n }
+        if let n = activity.contactName?.trimmingCharacters(in: .whitespaces), !n.isEmpty { return n }
+        if let n = activity.dealName?.trimmingCharacters(in: .whitespaces), !n.isEmpty { return n }
+        return nil
+    }
 
     private var hasFooterMeta: Bool {
         (activity.ownerName?.isEmpty == false) ||

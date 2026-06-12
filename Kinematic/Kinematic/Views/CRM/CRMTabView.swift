@@ -162,13 +162,20 @@ struct CRMMoreMenu: View {
             // dashboard. Email Templates was removed from web; CRM Settings
             // is intentionally a web-console-only control. Keep the mobile
             // CRM More menu lean — Accounts / Contacts / Products / Reports.
+            // Accounts is hidden for Consumer Champions and Tata Tiscon (their
+            // workflow is lead/deal-centric — account management lives with
+            // admins). Contacts is hidden for Consumer Champions only.
             Section("Records") {
-                NavigationLink {
-                    AccountsListView()
-                } label: { MoreRow(icon: "building.2.fill", title: "Accounts", tint: Brand.red) }
-                NavigationLink {
-                    ContactsListView()
-                } label: { MoreRow(icon: "person.2.fill", title: "Contacts", tint: Brand.red) }
+                if !ClientFeatures.isConsumerChampion && !ClientFeatures.isTataTiscon {
+                    NavigationLink {
+                        AccountsListView()
+                    } label: { MoreRow(icon: "building.2.fill", title: "Accounts", tint: Brand.red) }
+                }
+                if !ClientFeatures.isConsumerChampion {
+                    NavigationLink {
+                        ContactsListView()
+                    } label: { MoreRow(icon: "person.2.fill", title: "Contacts", tint: Brand.red) }
+                }
                 // Pipeline (kanban) — moved here from the bottom tab in
                 // favour of the higher-frequency Deals list. Same view,
                 // one tap deeper.
