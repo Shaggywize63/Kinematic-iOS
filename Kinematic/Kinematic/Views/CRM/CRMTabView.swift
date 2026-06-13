@@ -171,11 +171,9 @@ struct CRMMoreMenu: View {
                         AccountsListView()
                     } label: { MoreRow(icon: "building.2.fill", title: "Accounts", tint: Brand.red) }
                 }
-                if !ClientFeatures.isConsumerChampion {
-                    NavigationLink {
-                        ContactsListView()
-                    } label: { MoreRow(icon: "person.2.fill", title: "Contacts", tint: Brand.red) }
-                }
+                // Contacts hidden from mobile entirely — Tata's intake
+                // flow doesn't surface contacts; reinstate this row if a
+                // future tenant ever needs the contacts surface here.
                 // Pipeline (kanban) — moved here from the bottom tab in
                 // favour of the higher-frequency Deals list. Same view,
                 // one tap deeper.
@@ -216,15 +214,10 @@ struct CRMMoreMenu: View {
                     } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: "Lead Analytics", tint: Brand.red) }
                 }
             }
-            // Targets — managers set the daily lead target per hierarchy level.
-            // Hidden for field executives (they see their target as a ticker).
-            if isManager {
-                Section("Manage") {
-                    NavigationLink {
-                        TargetsAdminView()
-                    } label: { MoreRow(icon: "target", title: "Targets", tint: Brand.red) }
-                }
-            }
+            // Targets removed from mobile entirely — the manager-tier
+            // hierarchy admin lives on the web console; reps see their
+            // own target as a dashboard ticker without needing the
+            // settings row here.
             // Help & lifecycle — single-tap onboarding so any new rep can
             // understand how a Lead → Contact → Deal flows through the CRM
             // without needing a training session.
