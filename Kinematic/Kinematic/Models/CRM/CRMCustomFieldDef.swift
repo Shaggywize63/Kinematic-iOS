@@ -13,6 +13,9 @@ struct CRMCustomFieldDef: Codable, Identifiable, Hashable {
     let required: Bool?
     let position: Int?
     let orgRoleIds: [String]?
+    // Lookup-only — the table whose rows the picker searches when
+    // fieldType == "lookup". Decoded from `target_table` on the JSON row.
+    let targetTable: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -24,5 +27,6 @@ struct CRMCustomFieldDef: Codable, Identifiable, Hashable {
         case required
         case position
         case orgRoleIds = "org_role_ids"
+        case targetTable = "target_table"
     }
 }
