@@ -48,11 +48,16 @@ struct LeadDetailView: View {
                     headerCard(lead: lead)
                     lifecycleSection(lead: lead)
                     actionsBar(lead: lead)
+                    // Products the rep captured on the lead form — read-only
+                    // mirror of the multi-row picker so the basket is
+                    // visible without entering edit mode.
+                    LeadProductsCard(lead: lead)
                     nbaContainer
                     // Lead-score breakdown + Boost-score suggestions are
-                    // hidden for Consumer Champion FEs — manager-tier
-                    // surfaces, not for field reps.
-                    if !ClientFeatures.isConsumerChampion {
+                    // hidden for Consumer Champion FEs (manager-tier
+                    // surfaces) AND for the entire Tata Tiscon tenant —
+                    // their flow doesn't use the AI score-boost loop.
+                    if !ClientFeatures.isConsumerChampion && !ClientFeatures.isTataTiscon {
                         LeadScoreBoostCard(
                             lead: lead,
                             isTata: ClientFeatures.isTataTiscon,
@@ -818,7 +823,12 @@ struct LeadDetailView: View {
     private func recordCard(lead: Lead) -> some View {
         Card(title: "RECORD") {
             VStack(alignment: .leading, spacing: 6) {
-                if let owner = lead.ownerName, !owner.isEmpty { profileRow("Owner", value: owner) }
+                // Consumer Champions own everything they create — the
+                // Owner row is redundant for them.
+                if !ClientFeatures.isConsumerChampion,
+                   let owner = lead.ownerName, !owner.isEmpty {
+                    profileRow("Owner", value: owner)
+                }
                 if let created = lead.createdAt { profileRow("Created", value: formatDate(created)) }
                 if let updated = lead.updatedAt { profileRow("Updated", value: formatDate(updated)) }
             }
