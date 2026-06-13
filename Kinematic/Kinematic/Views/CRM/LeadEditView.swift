@@ -181,7 +181,9 @@ struct LeadEditView: View {
                     }
                     // Reps with data_scope='own' (e.g. Consumer Champion)
                     // would lose visibility of the lead by reassigning it.
-                    if ClientFeatures.canReassignLeads {
+                    // Explicitly gate Consumer Champion too in case the
+                    // backend's data_scope returns looser than 'own'.
+                    if ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion {
                         Picker("Owner", selection: $ownerId) {
                             Text("Unassigned").tag("")
                             ForEach(owners, id: \.id) { u in
