@@ -350,24 +350,85 @@ struct DealDetailView: View {
     }
 
     private func headerCard(_ d: Deal) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Hero card — Amount + Weight as the two dominant numbers, then
+        // stage / close date below. Mirrors the web deal-detail hero so
+        // reps see the ₹ and the tonnage at a glance.
+        let kg = derivedWeightKg(d)
+        return VStack(alignment: .leading, spacing: 12) {
             Text(d.name).font(.system(size: 20, weight: .black))
-            HStack {
-                Image(systemName: "indianrupeesign.circle.fill").foregroundColor(Brand.red)
-                Text(formattedAmount(d)).font(.headline).foregroundColor(Brand.red)
+            HStack(alignment: .firstTextBaseline, spacing: 20) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("AMOUNT")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .tracking(0.8)
+                    Text(formattedAmount(d))
+                        .font(.system(size: 26, weight: .heavy))
+                        .foregroundColor(.primary)
+                }
+                if kg > 0 {
+                    Divider().frame(height: 36)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("WEIGHT")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .tracking(0.8)
+                        Text(formatKg(kg))
+                            .font(.system(size: 26, weight: .heavy))
+                            .foregroundColor(.primary)
+                    }
+                }
                 Spacer()
+            }
+            HStack {
                 if let stage = d.stageName {
                     Text(stage.uppercased()).font(.system(size: 10, weight: .black))
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Brand.red.opacity(0.15)).foregroundColor(Brand.red).cornerRadius(4)
                 }
-            }
-            if let close = d.expectedCloseDate?.prefix(10) {
-                Label("Closes \(close)", systemImage: "calendar").font(.caption).foregroundColor(.secondary)
+                if let close = d.expectedCloseDate?.prefix(10) {
+                    Label("Closes \(close)", systemImage: "calendar").font(.caption).foregroundColor(.secondary)
+                }
             }
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    /// Total weight (kg) for the deal — prefers custom_fields.volume_kg,
+    /// falls back to recomputing from product_lines so deals saved before
+    /// the volume mirror landed still surface a number.
+    private func derivedWeightKg(_ d: Deal) -> Double {
+        let cf: [String: Any] = (d.customFields ?? [:]).compactMapValues { $0.raw?.any }
+        if let v = cf["volume_kg"] as? Double, v > 0 { return v }
+        if let v = cf["volume_kg"] as? Int, v > 0 { return Double(v) }
+        guard let lines = cf["product_lines"] as? [[String: Any]] else { return 0 }
+        var total = 0.0
+        for l in lines {
+            let qty: Double = {
+                if let n = l["quantity"] as? Double { return n }
+                if let n = l["quantity"] as? Int { return Double(n) }
+                if let s = l["quantity"] as? String { return Double(s) ?? 0 }
+                return 0
+            }()
+            guard qty > 0 else { continue }
+            let unit = (l["measuring_unit"] as? String)?.lowercased() ?? ""
+            total += qty * (unit == "tonne" ? 1000 : 1)
+        }
+        return total
+    }
+
+    /// Compact kg / t formatter — kg under a tonne, tonnes otherwise.
+    private func formatKg(_ kg: Double) -> String {
+        if kg < 1000 {
+            let f = NumberFormatter(); f.numberStyle = .decimal; f.maximumFractionDigits = 0
+            return "\(f.string(from: NSNumber(value: kg)) ?? "0") kg"
+        }
+        let tons = kg / 1000
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = tons < 10 ? 2 : 1
+        return "\(f.string(from: NSNumber(value: tons)) ?? "0") t"
     }
 
     private func formattedAmount(_ d: Deal) -> String {
