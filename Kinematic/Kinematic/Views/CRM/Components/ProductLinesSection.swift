@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// iOS counterpart of the web ProductLinesSection / Android
 /// CrmProductLinesSection. Renders the four product-line custom fields
