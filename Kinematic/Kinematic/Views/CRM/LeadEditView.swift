@@ -42,6 +42,7 @@ struct LeadEditView: View {
     /// Admin-defined custom fields scoped to the rep's org role. Loaded
     /// (and hydrated from `lead.customFields`) inside `.task`.
     @StateObject private var customFields = CustomFieldsModel()
+    @StateObject private var productLines = ProductLinesModel()
     /// Tata Tiscon affordance — mirrors the create form. Lets the rep
     /// log a follow-up site visit while editing. Default off so saving
     /// the form doesn't accidentally spawn duplicate visits.
@@ -203,6 +204,12 @@ struct LeadEditView: View {
                 //     Hidden when no defs apply to the rep's role.
                 CustomFieldsSection(model: customFields)
 
+                // ── Products of Interest — multi-row picker that drives
+                //     custom_fields.product_lines plus the four legacy
+                //     mirror keys (product_interested / quantity /
+                //     measuring_unit / estimated_amount). ─────────────
+                ProductLinesSection(model: productLines)
+
                 // ── Tata Tiscon: site-visit affordance on edit too ──
                 if isTata {
                     Section {
@@ -246,18 +253,21 @@ struct LeadEditView: View {
     }
 
     private func loadPickerOptions() async {
-        // Fire all three lookups in parallel — they're independent and
+        // Fire all four lookups in parallel — they're independent and
         // the form is usable without any of them while they load.
         async let ownersTask  = CRMService.shared.listAssignableUsers()
         async let sourcesTask = CRMService.shared.listLeadSources()
         async let cfTask: Void = customFields.load(entity: "lead")
+        async let plTask: Void = productLines.load()
         owners  = await ownersTask
         sources = await sourcesTask
         _ = await cfTask
+        _ = await plTask
         // Hydrate the form with the lead's existing custom-field values
         // after the defs land, so each value lands in the right type
         // bucket (text / bool / multi).
         customFields.hydrate(from: lead.customFields)
+        productLines.hydrate(from: lead.customFields)
     }
 
     private func save() async {
@@ -279,9 +289,15 @@ struct LeadEditView: View {
             "state":         state.isEmpty        ? NSNull() : state,
             "postal_code":   postalCode.isEmpty   ? NSNull() : postalCode,
             "country":       country.isEmpty      ? NSNull() : country,
-            // Admin-defined custom fields. Empty dict is sent so the
-            // backend can persist a "the rep cleared everything" state.
-            "custom_fields": customFields.jsonValues,
+            // Admin-defined custom fields plus the product-lines block.
+            // Merge productLines.jsonValues last so its product_lines /
+            // mirror keys overwrite any stale values left in the generic
+            // bag — same shape the create form sends.
+            "custom_fields": ({
+                var merged = customFields.jsonValues
+                for (k, v) in productLines.jsonValues { merged[k] = v }
+                return merged
+            })(),
         ]
         // Tata Tiscon: backend pops this flag and spawns a fresh
         // site_visit activity tied to the lead.
