@@ -38,6 +38,11 @@ struct LeadCreateView: View {
     /// Admin-defined custom fields for leads, scoped to the user's org role.
     @StateObject private var customFields = CustomFieldsModel()
     @StateObject private var productLines = ProductLinesModel()
+    /// Built-in field overrides (hide / relabel / required) from
+    /// /api/v1/crm/settings. Reads the same source the web form does
+    /// so DOB / Gender / Preferred Channel disappear here when the
+    /// admin has hidden them via Settings → Custom Fields.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     /// Tata Tiscon affordance — checkbox in the create form that asks
     /// the backend to atomically spawn a `site_visit` activity tied to
@@ -111,19 +116,34 @@ struct LeadCreateView: View {
                         TextField("Industry", text: $industry)
                     }
                 } else {
-                    Section("Customer Details") {
-                        Toggle("Set date of birth", isOn: $hasDOB)
-                        if hasDOB {
-                            DatePicker("Date of birth", selection: $dateOfBirth, displayedComponents: .date)
-                        }
-                        Picker("Gender", selection: $gender) {
-                            Text("Male").tag("male")
-                            Text("Female").tag("female")
-                            Text("Other").tag("other")
-                            Text("Prefer not to say").tag("prefer_not_to_say")
-                        }
-                        Picker("Preferred channel", selection: $preferredChannel) {
-                            ForEach(["email", "phone", "whatsapp", "sms"], id: \.self) { Text($0.capitalized).tag($0) }
+                    // Customer Details section — each field individually
+                    // gated against the admin's hide flag so the form
+                    // matches what the rep sees on the web. The Section
+                    // header is skipped entirely when all three fields
+                    // are hidden so we don't render an empty bucket.
+                    if !fieldOverrides.isHidden("date_of_birth", isB2C: isB2C)
+                        || !fieldOverrides.isHidden("gender", isB2C: isB2C)
+                        || !fieldOverrides.isHidden("preferred_contact_method", isB2C: isB2C) {
+                        Section("Customer Details") {
+                            if !fieldOverrides.isHidden("date_of_birth", isB2C: isB2C) {
+                                Toggle("Set date of birth", isOn: $hasDOB)
+                                if hasDOB {
+                                    DatePicker("Date of birth", selection: $dateOfBirth, displayedComponents: .date)
+                                }
+                            }
+                            if !fieldOverrides.isHidden("gender", isB2C: isB2C) {
+                                Picker("Gender", selection: $gender) {
+                                    Text("Male").tag("male")
+                                    Text("Female").tag("female")
+                                    Text("Other").tag("other")
+                                    Text("Prefer not to say").tag("prefer_not_to_say")
+                                }
+                            }
+                            if !fieldOverrides.isHidden("preferred_contact_method", isB2C: isB2C) {
+                                Picker("Preferred channel", selection: $preferredChannel) {
+                                    ForEach(["email", "phone", "whatsapp", "sms"], id: \.self) { Text($0.capitalized).tag($0) }
+                                }
+                            }
                         }
                     }
                     Section("Address") {
@@ -202,6 +222,7 @@ struct LeadCreateView: View {
             .task { target = await CRMService.shared.myTarget() }
             .task { await customFields.load(entity: "lead") }
             .task { await productLines.load() }
+            .task { await fieldOverrides.load() }
             .onAppear {
                 // Tata Tiscon only ever creates B2C (consumer) leads.
                 if isTata { isB2C = true }
@@ -225,39 +246,62 @@ struct LeadCreateView: View {
                             dismiss()
                         }
                     }
-                    .disabled(firstName.isEmpty && email.isEmpty)
+                    // last_name is required by the backend leadCreateSchema;
+                    // the gate previously allowed save on any (firstName OR
+                    // email), so reps submitted bodies the server 400'd. Add
+                    // the explicit last-name guard so the button stays
+                    // disabled until the form would actually save.
+                    .disabled(lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
     }
 
     private func buildBody() -> [String: Any] {
+        // Helper — only include non-empty trimmed strings. Empty values
+        // were tripping the backend's Zod validator (e.g. `email` with
+        // `""` fails .email()), which surfaced as "leads not saving".
+        func put(_ key: String, _ value: String?, into body: inout [String: Any]) {
+            guard let v = value?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { return }
+            body[key] = v
+        }
+        // last_name is required by the backend; first_name optional.
+        guard !lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [:] }
+
         var body: [String: Any] = [
-            "first_name": firstName,
-            "last_name":  lastName,
-            "email":      email,
-            "phone":      phone,
-            "source":     source,
-            "status":     "new",
-            "is_b2c":     isB2C,
+            "last_name": lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+            "status":    "new",
+            "is_b2c":    isB2C,
         ]
+        put("first_name", firstName, into: &body)
+        put("email",      email,     into: &body)
+        put("phone",      phone,     into: &body)
+        // source is a UUID field on the backend (crm_lead_sources). The
+        // old string-source path silently dropped on the server. Skip
+        // the field entirely until iOS gets a source picker.
         if !isB2C {
-            body["company"]  = company
-            body["title"]    = title
-            body["industry"] = industry
+            put("company",  company,  into: &body)
+            put("title",    title,    into: &body)
+            put("industry", industry, into: &body)
         } else {
-            if hasDOB {
+            // Honour the admin's "hidden" flag — fields the rep can't
+            // see shouldn't quietly persist a value.
+            if hasDOB, !fieldOverrides.isHidden("date_of_birth", isB2C: true) {
                 let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
                 body["date_of_birth"] = f.string(from: dateOfBirth)
             }
-            body["gender"] = gender
-            body["preferred_contact_method"] = preferredChannel
-            body["address_line1"] = addressLine1
-            body["address_line2"] = addressLine2
-            body["city"]          = city
-            body["state"]         = state
-            body["postal_code"]   = postalCode
-            body["country"]       = country
+            if !fieldOverrides.isHidden("gender", isB2C: true) {
+                put("gender", gender, into: &body)
+            }
+            if !fieldOverrides.isHidden("preferred_contact_method", isB2C: true) {
+                put("preferred_contact_method", preferredChannel, into: &body)
+            }
+            put("address_line1",            addressLine1,     into: &body)
+            put("address_line2",            addressLine2,     into: &body)
+            put("city",                     city,             into: &body)
+            put("state",                    state,            into: &body)
+            put("postal_code",              postalCode,       into: &body)
+            put("country",                  country,          into: &body)
             body["marketing_consent"] = marketingConsent
             body["whatsapp_consent"]  = whatsappConsent
         }
