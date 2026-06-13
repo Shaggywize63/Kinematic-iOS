@@ -12,6 +12,10 @@ struct LeadCreateView: View {
     @State private var email = ""
     @State private var phone = ""
     @State private var source = "web"
+    // Source picker — backed by /api/v1/crm/lead-sources (now scoped
+    // by client_id so Tata reps only see Tata sources like Site Visit).
+    @State private var sources: [CRMLeadSource] = []
+    @State private var sourceId: String = ""
     @State private var isB2C = false
     /// Today's lead-target progress badge (achieved/target).
     @State private var target: CRMTarget?
@@ -92,20 +96,50 @@ struct LeadCreateView: View {
                 }
 
                 Section("Identity") {
-                    TextField("First name", text: $firstName)
-                    TextField("Last name", text: $lastName)
+                    if !fieldOverrides.isHidden("first_name", isB2C: isB2C) {
+                        labelledField(
+                            label: fieldOverrides.labelFor("first_name", defaultLabel: "First name", isB2C: isB2C),
+                            required: fieldOverrides.requiredFor("first_name", defaultRequired: false, isB2C: isB2C),
+                            text: $firstName,
+                        )
+                    }
+                    if !fieldOverrides.isHidden("last_name", isB2C: isB2C) {
+                        labelledField(
+                            label: fieldOverrides.labelFor("last_name", defaultLabel: "Last name", isB2C: isB2C),
+                            required: fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C),
+                            text: $lastName,
+                        )
+                    }
                 }
                 Section("Contact") {
                     // Email field hidden for Tata Tiscon — their FE walk-in
                     // flow doesn't collect email; prompting just to skip it
-                    // adds friction.
-                    if !ClientFeatures.isTataTiscon {
-                        TextField("Email", text: $email).keyboardType(.emailAddress).autocapitalization(.none)
+                    // adds friction. Admin override stacks on top.
+                    if !ClientFeatures.isTataTiscon && !fieldOverrides.isHidden("email", isB2C: isB2C) {
+                        labelledField(
+                            label: fieldOverrides.labelFor("email", defaultLabel: "Email", isB2C: isB2C),
+                            required: fieldOverrides.requiredFor("email", defaultRequired: false, isB2C: isB2C),
+                            text: $email,
+                            keyboard: .emailAddress,
+                            autocapitalize: false,
+                        )
                     }
-                    TextField("Phone", text: $phone).keyboardType(.phonePad)
-                    Picker("Source", selection: $source) {
-                        ForEach(["web", "referral", "event", "cold_call", "social", "whatsapp", "other"], id: \.self) {
-                            Text($0.replacingOccurrences(of: "_", with: " ").capitalized).tag($0)
+                    if !fieldOverrides.isHidden("phone", isB2C: isB2C) {
+                        labelledField(
+                            label: fieldOverrides.labelFor("phone", defaultLabel: "Primary Mobile", isB2C: isB2C),
+                            required: fieldOverrides.requiredFor("phone", defaultRequired: true, isB2C: isB2C),
+                            text: $phone,
+                            keyboard: .phonePad,
+                        )
+                    }
+                    // Source picker — bound to crm_lead_sources so reps see
+                    // the same options admins configure on the web console
+                    // (e.g. Site Visit on Tata Tiscon). Loaded async; falls
+                    // back to "Unspecified" while empty.
+                    Picker("Source", selection: $sourceId) {
+                        Text("— Unspecified —").tag("")
+                        ForEach(sources, id: \.id) { s in
+                            Text(s.name).tag(s.id)
                         }
                     }
                 }
@@ -223,6 +257,7 @@ struct LeadCreateView: View {
             .task { await customFields.load(entity: "lead") }
             .task { await productLines.load() }
             .task { await fieldOverrides.load() }
+            .task { sources = await CRMService.shared.listLeadSources() }
             .onAppear {
                 // Tata Tiscon only ever creates B2C (consumer) leads.
                 if isTata { isB2C = true }
@@ -257,6 +292,31 @@ struct LeadCreateView: View {
         }
     }
 
+    /// Render a TextField with an inline label + red asterisk when the
+    /// field is required. Used in place of SwiftUI's bare TextField so
+    /// the rep sees the same * markers the web form shows.
+    @ViewBuilder
+    private func labelledField(
+        label: String,
+        required: Bool,
+        text: Binding<String>,
+        keyboard: UIKeyboardType = .default,
+        autocapitalize: Bool = true,
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(label)
+                .foregroundColor(.secondary)
+            if required {
+                Text("*").foregroundColor(.red).accessibilityHidden(true)
+            }
+            Spacer()
+            TextField("", text: text)
+                .multilineTextAlignment(.trailing)
+                .keyboardType(keyboard)
+                .autocapitalization(autocapitalize ? .sentences : .none)
+        }
+    }
+
     private func buildBody() -> [String: Any] {
         // Helper — only include non-empty trimmed strings. Empty values
         // were tripping the backend's Zod validator (e.g. `email` with
@@ -276,9 +336,10 @@ struct LeadCreateView: View {
         put("first_name", firstName, into: &body)
         put("email",      email,     into: &body)
         put("phone",      phone,     into: &body)
-        // source is a UUID field on the backend (crm_lead_sources). The
-        // old string-source path silently dropped on the server. Skip
-        // the field entirely until iOS gets a source picker.
+        // source_id — UUID from /api/v1/crm/lead-sources, picked by the
+        // rep above. Old string-source path silently dropped on the
+        // server; this is the canonical column.
+        if !sourceId.isEmpty { body["source_id"] = sourceId }
         if !isB2C {
             put("company",  company,  into: &body)
             put("title",    title,    into: &body)
