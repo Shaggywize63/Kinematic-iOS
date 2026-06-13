@@ -171,6 +171,18 @@ final class CRMService {
         (try? await get("/api/v1/crm/lead-sources")) ?? []
     }
 
+    /// Per-tenant CRM settings — business_type + the free-form `config`
+    /// blob the web Settings → Custom Fields page writes
+    /// (field_overrides, etc.). Best-effort; returns nil on any error so
+    /// the lead form falls back to its built-in defaults.
+    struct CRMSettingsRaw: Codable {
+        let business_type: String?
+        let config: AnyJSON?
+    }
+    func getCRMSettings() async -> CRMSettingsRaw? {
+        try? await get("/api/v1/crm/settings")
+    }
+
     // MARK: Contacts
     func listContacts(search: String? = nil) async throws -> [Contact] {
         var q: [String: String] = [:]

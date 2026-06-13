@@ -13,39 +13,37 @@ final class LeadFieldOverridesModel: ObservableObject {
     @Published private(set) var overrides: [String: FieldOverride] = [:]
     @Published private(set) var businessType: String = "both"
 
-    struct FieldOverride: Decodable {
+    struct FieldOverride {
         let label: String?
         let required: Bool?
         let hidden: Bool?
     }
 
-    private struct SettingsResponse: Decodable {
-        let data: SettingsData?
-        struct SettingsData: Decodable {
-            let business_type: String?
-            let config: Config?
-            struct Config: Decodable {
-                let field_overrides: [String: FieldOverride]?
-            }
-        }
-    }
-
-    /// Pull the per-tenant overrides + business_type once. Best-effort —
-    /// failures leave the form in its built-in default state so a 4xx
-    /// from /settings never blocks lead capture.
+    /// Pull the per-tenant overrides + business_type once. Routes through
+    /// CRMService.getCRMSettings() so we reuse the project's auth +
+    /// transport instead of poking at private state on the service.
     func load() async {
-        do {
-            let url = URL(string: "https://api.kinematicapp.com/api/v1/crm/settings")!
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 20
-            if let token = CRMService.shared.authToken {
-                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
-            let (data, _) = try await URLSession.shared.data(for: req)
-            let decoded = try JSONDecoder().decode(SettingsResponse.self, from: data)
-            overrides = decoded.data?.config?.field_overrides ?? [:]
-            businessType = decoded.data?.business_type ?? "both"
-        } catch { /* silent fallback */ }
+        guard let raw = await CRMService.shared.getCRMSettings() else { return }
+        if let bt = raw.business_type { businessType = bt }
+        // Drill into config.field_overrides which is `[String:
+        // {label?, required?, hidden?}]`. AnyJSON exposes a typed
+        // `.any` graph so we walk it without a second decode.
+        guard
+            case let .object(cfg)? = raw.config,
+            case let .object(fo)? = cfg["field_overrides"]
+        else { return }
+        var out: [String: FieldOverride] = [:]
+        for (key, val) in fo {
+            guard case let .object(props) = val else { continue }
+            var label: String?
+            var required: Bool?
+            var hidden: Bool?
+            if case let .string(s)? = props["label"]    { label = s }
+            if case let .bool(b)?   = props["required"] { required = b }
+            if case let .bool(b)?   = props["hidden"]   { hidden = b }
+            out[key] = FieldOverride(label: label, required: required, hidden: hidden)
+        }
+        overrides = out
     }
 
     /// Look up a field key for the active business-type scope. Scoped
