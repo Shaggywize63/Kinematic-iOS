@@ -46,6 +46,9 @@ struct LeadEditView: View {
     /// log a follow-up site visit while editing. Default off so saving
     /// the form doesn't accidentally spawn duplicate visits.
     @State private var logAsSiteVisit = false
+    /// Sub-flag for logAsSiteVisit — sets the spawned activity's subject
+    /// to "First visit — {lead name}" instead of "Site visit — {lead name}".
+    @State private var siteVisitIsFirst = false
     @State private var saving = false
     @State private var errorMessage: String?
 
@@ -207,8 +210,13 @@ struct LeadEditView: View {
                 if isTata {
                     Section {
                         Toggle("Also log a Site Visit", isOn: $logAsSiteVisit)
+                        if logAsSiteVisit {
+                            Toggle("First visit", isOn: $siteVisitIsFirst)
+                        }
                     } footer: {
-                        Text("Creates a completed Site Visit on this lead's timeline using the lead's saved photo.")
+                        Text(logAsSiteVisit && siteVisitIsFirst
+                             ? "Creates a completed First Visit activity on this lead's timeline."
+                             : "Creates a completed Site Visit on this lead's timeline using the lead's saved photo.")
                     }
                 }
 
@@ -285,7 +293,10 @@ struct LeadEditView: View {
         ]
         // Tata Tiscon: backend pops this flag and spawns a fresh
         // site_visit activity tied to the lead.
-        if isTata && logAsSiteVisit { body["_auto_log_site_visit"] = true }
+        if isTata && logAsSiteVisit {
+            body["_auto_log_site_visit"] = true
+            if siteVisitIsFirst { body["_site_visit_first"] = true }
+        }
         if !isB2C {
             body["company"] = company.isEmpty ? NSNull() : company
             body["title"]   = title.isEmpty   ? NSNull() : title

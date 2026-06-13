@@ -44,6 +44,9 @@ struct LeadCreateView: View {
     /// the leads where they actually performed a visit, so spurious
     /// site_visit activities don't pollute the timeline.
     @State private var logAsSiteVisit = false
+    /// Sub-flag — when on, the spawned site_visit activity's subject reads
+    /// "First visit — {lead name}" instead of "Site visit — {lead name}".
+    @State private var siteVisitIsFirst = false
 
     let onSubmit: ([String: Any]) async -> Void
 
@@ -187,8 +190,13 @@ struct LeadCreateView: View {
                 if isTata {
                     Section {
                         Toggle("Also log this lead as a Site Visit activity", isOn: $logAsSiteVisit)
+                        if logAsSiteVisit {
+                            Toggle("First visit", isOn: $siteVisitIsFirst)
+                        }
                     } footer: {
-                        Text("Creates a completed Site Visit activity tied to this lead — visible on the lead detail timeline.")
+                        Text(logAsSiteVisit && siteVisitIsFirst
+                             ? "Creates a completed First Visit activity tied to this lead — visible on the lead detail timeline."
+                             : "Creates a completed Site Visit activity tied to this lead — visible on the lead detail timeline.")
                     }
                 }
             }
@@ -264,7 +272,10 @@ struct LeadCreateView: View {
         // Tata Tiscon site-visit affordance — backend reads this flag,
         // strips it before persisting the lead, and atomically spawns a
         // completed `site_visit` activity tied to the new lead.
-        if isTata && logAsSiteVisit { body["_auto_log_site_visit"] = true }
+        if isTata && logAsSiteVisit {
+            body["_auto_log_site_visit"] = true
+            if siteVisitIsFirst { body["_site_visit_first"] = true }
+        }
         return body
     }
 }
