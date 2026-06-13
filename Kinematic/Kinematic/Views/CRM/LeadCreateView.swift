@@ -99,7 +99,8 @@ struct LeadCreateView: View {
                     if !fieldOverrides.isHidden("first_name", isB2C: isB2C) {
                         labelledField(
                             label: fieldOverrides.labelFor("first_name", defaultLabel: "First name", isB2C: isB2C),
-                            required: fieldOverrides.requiredFor("first_name", defaultRequired: false, isB2C: isB2C),
+                            // Match web default — first name is required.
+                            required: fieldOverrides.requiredFor("first_name", defaultRequired: true, isB2C: isB2C),
                             text: $firstName,
                         )
                     }
@@ -293,8 +294,11 @@ struct LeadCreateView: View {
     }
 
     /// Render a TextField with an inline label + red asterisk when the
-    /// field is required. Used in place of SwiftUI's bare TextField so
-    /// the rep sees the same * markers the web form shows.
+    /// field is required. Uses LabeledContent so the trailing TextField
+    /// fills the remaining width and stays tappable — the older
+    /// HStack + Spacer + trailing-aligned TextField left a zero-width
+    /// hit area and reps couldn't type into First Name / Last Name /
+    /// Primary Mobile at all.
     @ViewBuilder
     private func labelledField(
         label: String,
@@ -303,17 +307,18 @@ struct LeadCreateView: View {
         keyboard: UIKeyboardType = .default,
         autocapitalize: Bool = true,
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(label)
-                .foregroundColor(.secondary)
-            if required {
-                Text("*").foregroundColor(.red).accessibilityHidden(true)
-            }
-            Spacer()
+        LabeledContent {
             TextField("", text: text)
                 .multilineTextAlignment(.trailing)
                 .keyboardType(keyboard)
                 .autocapitalization(autocapitalize ? .sentences : .none)
+        } label: {
+            HStack(spacing: 4) {
+                Text(label).foregroundColor(.secondary)
+                if required {
+                    Text("*").foregroundColor(.red).accessibilityHidden(true)
+                }
+            }
         }
     }
 
