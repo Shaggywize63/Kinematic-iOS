@@ -100,6 +100,7 @@ private struct DealHistoryRow: View {
         case "amount_changed": return "indianrupeesign.circle.fill"
         case "created":        return "sparkles"
         case "updated":        return "pencil.circle.fill"
+        case "note":           return "text.badge.checkmark"
         case "won":            return "trophy.fill"
         case "lost":           return "xmark.octagon.fill"
         case "reopened":       return "arrow.uturn.left.circle.fill"
@@ -113,6 +114,7 @@ private struct DealHistoryRow: View {
         case "amount_changed": return .green
         case "created":        return .blue
         case "updated":        return .orange
+        case "note":           return .blue
         case "won":            return .green
         case "lost":           return .red
         case "reopened":       return .blue
@@ -134,6 +136,8 @@ private struct DealHistoryRow: View {
             return "Deal created"
         case "updated":
             return "Deal updated"
+        case "note":
+            return "Update"
         case "won":
             return "Deal won"
         case "lost":
@@ -146,8 +150,11 @@ private struct DealHistoryRow: View {
     }
 
     private var subtitle: String? {
-        // Reserved for future per-event detail (e.g. who changed it).
-        nil
+        // Free-text annotation written by the backend for non-stage edits
+        // (e.g. "Updated closed quantities: Tiscon 32mm: 0 → 5"). Surfaces
+        // the per-product delta directly under the headline.
+        guard let n = event.note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty else { return nil }
+        return n
     }
 
     private var relativeTime: String {
