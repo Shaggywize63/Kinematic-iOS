@@ -165,8 +165,29 @@ struct CustomFieldsSection: View {
                         }))
                 }
             }
+        case "date":
+            // Render a native DatePicker so reps don't have to type
+            // YYYY-MM-DD by hand. Stored value stays a plain string in
+            // the same format the backend / web write, so this round-trips
+            // through hydrate(from:) without a schema change.
+            DatePicker(
+                d.label,
+                selection: Binding(
+                    get: { Self.parseISODate(model.text[d.fieldKey]) ?? Date() },
+                    set: { newDate in model.text[d.fieldKey] = Self.formatISODate(newDate) }
+                ),
+                displayedComponents: .date
+            )
+        case "datetime":
+            DatePicker(
+                d.label,
+                selection: Binding(
+                    get: { Self.parseISODateTime(model.text[d.fieldKey]) ?? Date() },
+                    set: { newDate in model.text[d.fieldKey] = Self.formatISODateTime(newDate) }
+                )
+            )
         default:
-            // text / longtext / number / currency / url / email / phone / date / datetime
+            // text / longtext / number / currency / url / email / phone
             HStack {
                 Text(d.label)
                 Spacer()
@@ -178,6 +199,38 @@ struct CustomFieldsSection: View {
             }
         }
     }
+
+    // Date helpers — kept static so the row builder can call them from
+    // its Binding closures without capturing self. Format YYYY-MM-DD
+    // matches what the backend stores in custom_fields for date types
+    // (and what the web DatePicker writes), so round-tripping doesn't
+    // need a server-side migration.
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    private static let dateTimeFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    fileprivate static func parseISODate(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
+        // Tolerate full ISO datetimes too — the backend sometimes stores
+        // a timestamp where a date is expected.
+        if let d = dateFormatter.date(from: String(s.prefix(10))) { return d }
+        return dateTimeFormatter.date(from: s)
+    }
+    fileprivate static func formatISODate(_ d: Date) -> String { dateFormatter.string(from: d) }
+    fileprivate static func parseISODateTime(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
+        if let d = dateTimeFormatter.date(from: s) { return d }
+        return dateFormatter.date(from: String(s.prefix(10)))
+    }
+    fileprivate static func formatISODateTime(_ d: Date) -> String { dateTimeFormatter.string(from: d) }
 
     private func keyboard(for type: String) -> UIKeyboardType {
         switch type {
