@@ -1,0 +1,235 @@
+import SwiftUI
+
+/// iOS counterpart of the web ProductLinesSection / Android
+/// CrmProductLinesSection. Renders the four product-line custom fields
+/// (product_interested / quantity / measuring_unit / estimated_amount)
+/// as one Card per product line plus an "Add another product" button.
+///
+/// Estimated Amount auto-computes per row:
+///
+///   amount = (product.price / product.weight_kg) × (quantity × unitFactor)
+///
+/// where unitFactor is 1000 for "Tonne" and 1 for "Kg". Rounded to 2 dp.
+///
+/// Rows persist on `customFields.text["product_lines"]` (JSON-encoded
+/// array of dicts). Row 0 is mirrored onto the legacy single-field
+/// keys (product_interested / quantity / measuring_unit / estimated_amount)
+/// so reports and exports that read those scalars keep working — and
+/// the sum of line amounts goes to estimated_amount so the basket total
+/// matches the web/Android total.
+
+@MainActor
+final class ProductLinesModel: ObservableObject {
+    @Published var products: [Product] = []
+    @Published var lines: [ProductLine] = [ProductLine()]
+
+    struct ProductLine: Identifiable, Equatable {
+        let id = UUID()
+        var productId: String?
+        var quantityText: String = ""
+        var measuringUnit: String?
+        // Cached display amount — recomputed each setter call so the UI
+        // doesn't need a separate derivedStateOf.
+        var estimatedAmount: Double = 0
+    }
+
+    func load() async {
+        if let items = try? await CRMService.shared.listProducts() {
+            products = items.filter { $0.isActive != false }
+        }
+    }
+
+    func computeAmount(_ line: ProductLine) -> Double {
+        guard let id = line.productId, !id.isEmpty,
+              let p = products.first(where: { $0.id == id }) else { return 0 }
+        let price = p.unitPrice ?? 0
+        let weight = p.weightKg ?? 0
+        let qty = Double(line.quantityText) ?? 0
+        guard price > 0, weight > 0, qty > 0 else { return 0 }
+        let factor = (line.measuringUnit?.lowercased() == "tonne") ? 1000.0 : 1.0
+        let raw = (price / weight) * (qty * factor)
+        return (raw * 100).rounded() / 100
+    }
+
+    func updateLine(at idx: Int, transform: (inout ProductLine) -> Void) {
+        guard idx < lines.count else { return }
+        var l = lines[idx]
+        transform(&l)
+        l.estimatedAmount = computeAmount(l)
+        lines[idx] = l
+    }
+
+    func addLine() {
+        lines.append(ProductLine())
+    }
+
+    func removeLine(at idx: Int) {
+        guard idx < lines.count else { return }
+        if lines.count <= 1 {
+            // Never drop the last row — clear it instead so the rep
+            // can't end up with zero slots.
+            lines[idx] = ProductLine()
+            return
+        }
+        lines.remove(at: idx)
+    }
+
+    var basketTotal: Double {
+        lines.reduce(0) { $0 + $1.estimatedAmount }
+    }
+
+    /// Plain JSON-serialisable rows + legacy mirror keys for merging into
+    /// the lead's custom_fields blob on save.
+    var jsonValues: [String: Any] {
+        var out: [String: Any] = [:]
+        let rows: [[String: Any]] = lines.map { l in
+            var dict: [String: Any] = [:]
+            if let id = l.productId, !id.isEmpty { dict["product_id"] = id }
+            if let qty = Double(l.quantityText) { dict["quantity"] = qty }
+            if let u = l.measuringUnit, !u.isEmpty { dict["measuring_unit"] = u }
+            if l.estimatedAmount > 0 { dict["estimated_amount"] = l.estimatedAmount }
+            return dict
+        }
+        out["product_lines"] = rows
+        if let head = lines.first {
+            if let id = head.productId, !id.isEmpty { out["product_interested"] = id }
+            if let qty = Double(head.quantityText) { out["quantity"] = qty }
+            if let u = head.measuringUnit, !u.isEmpty { out["measuring_unit"] = u }
+        }
+        let total = basketTotal
+        if total > 0 { out["estimated_amount"] = total }
+        return out
+    }
+}
+
+struct ProductLinesSection: View {
+    @ObservedObject var model: ProductLinesModel
+
+    var body: some View {
+        Section {
+            // Header card — kept compact so it doesn't dwarf the inputs.
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Products of Interest")
+                    .font(.headline)
+                Text("Pick a product and quantity; the estimated amount fills in automatically from price ÷ weight × quantity.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                if model.basketTotal > 0 {
+                    Text("Basket total: ₹\(formatINR(model.basketTotal))")
+                        .font(.subheadline.bold())
+                        .padding(.top, 2)
+                }
+            }
+            .padding(.vertical, 4)
+
+            ForEach(Array(model.lines.enumerated()), id: \.element.id) { idx, _ in
+                LineRowView(model: model, index: idx)
+                    .padding(.vertical, 6)
+            }
+
+            Button {
+                model.addLine()
+            } label: {
+                Label("Add another product", systemImage: "plus.circle.fill")
+            }
+        }
+    }
+
+    private func formatINR(_ v: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        formatter.groupingSeparator = ","
+        return formatter.string(from: NSNumber(value: v)) ?? "\(v)"
+    }
+}
+
+/// One Card-style row binding directly to model.lines[index].
+private struct LineRowView: View {
+    @ObservedObject var model: ProductLinesModel
+    let index: Int
+
+    var body: some View {
+        let line = model.lines[indexClamped]
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Product \(index + 1)")
+                    .font(.caption.bold())
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button(role: .destructive) {
+                    model.removeLine(at: index)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Product Interested — Picker.
+            Picker("Product Interested", selection: Binding(
+                get: { line.productId ?? "" },
+                set: { newId in
+                    model.updateLine(at: index) { $0.productId = newId.isEmpty ? nil : newId }
+                }
+            )) {
+                Text("—").tag("")
+                ForEach(model.products) { p in
+                    Text(p.sku?.isEmpty == false ? "\(p.name) (\(p.sku!))" : p.name).tag(p.id)
+                }
+            }
+
+            // Quantity + Unit on the same row.
+            HStack {
+                TextField("Quantity", text: Binding(
+                    get: { line.quantityText },
+                    set: { newVal in
+                        model.updateLine(at: index) { $0.quantityText = newVal }
+                    }
+                ))
+                .keyboardType(.decimalPad)
+                .textFieldStyle(.roundedBorder)
+
+                Picker("Unit", selection: Binding(
+                    get: { line.measuringUnit ?? "" },
+                    set: { newUnit in
+                        model.updateLine(at: index) { $0.measuringUnit = newUnit.isEmpty ? nil : newUnit }
+                    }
+                )) {
+                    Text("Unit").tag("")
+                    Text("Kg").tag("Kg")
+                    Text("Tonne").tag("Tonne")
+                }
+                .pickerStyle(.menu)
+            }
+
+            // Estimated Amount — readonly.
+            HStack {
+                Text("Estimated Amount")
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(line.estimatedAmount > 0
+                     ? "₹\(format2(line.estimatedAmount))"
+                     : "Auto")
+                    .foregroundColor(line.estimatedAmount > 0 ? .primary : .secondary)
+                    .font(.body.monospacedDigit())
+            }
+            .padding(.top, 2)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+    }
+
+    // Defensive — model.lines may temporarily shrink between a delete
+    // and the next layout pass. Clamp so we never index out of range.
+    private var indexClamped: Int { min(index, max(0, model.lines.count - 1)) }
+
+    private func format2(_ v: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        formatter.groupingSeparator = ","
+        return formatter.string(from: NSNumber(value: v)) ?? "\(v)"
+    }
+}

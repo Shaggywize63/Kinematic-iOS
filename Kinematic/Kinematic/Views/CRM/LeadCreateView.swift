@@ -37,6 +37,7 @@ struct LeadCreateView: View {
 
     /// Admin-defined custom fields for leads, scoped to the user's org role.
     @StateObject private var customFields = CustomFieldsModel()
+    @StateObject private var productLines = ProductLinesModel()
 
     /// Tata Tiscon affordance — checkbox in the create form that asks
     /// the backend to atomically spawn a `site_visit` activity tied to
@@ -143,6 +144,11 @@ struct LeadCreateView: View {
                 // Admin-defined custom fields for this user's hierarchy role.
                 CustomFieldsSection(model: customFields)
 
+                // Multi-row product picker — drives custom_fields.product_lines
+                // and mirrors row 0 onto the legacy product_interested /
+                // quantity / measuring_unit / estimated_amount keys.
+                ProductLinesSection(model: productLines)
+
                 // Geo-location is captured automatically — no button, no manual
                 // entry. We start a one-shot GPS fix when the form opens so the
                 // coordinates are ready by the time the rep taps Save.
@@ -195,6 +201,7 @@ struct LeadCreateView: View {
             .navigationTitle("New Lead")
             .task { target = await CRMService.shared.myTarget() }
             .task { await customFields.load(entity: "lead") }
+            .task { await productLines.load() }
             .onAppear {
                 // Tata Tiscon only ever creates B2C (consumer) leads.
                 if isTata { isB2C = true }
@@ -258,8 +265,13 @@ struct LeadCreateView: View {
         // valid numbers, so a half-typed value never reaches the API.
         if let lat = Double(latitude.trimmingCharacters(in: .whitespaces)) { body["latitude"] = lat }
         if let lon = Double(longitude.trimmingCharacters(in: .whitespaces)) { body["longitude"] = lon }
-        // Admin-defined custom fields (scoped to the user's role).
-        let cf = customFields.jsonValues
+        // Admin-defined custom fields (scoped to the user's role) merged
+        // with the product-lines block. ProductLinesModel.jsonValues
+        // contains product_lines + the mirrored legacy keys; merging it
+        // last lets it override any stale empty values left by the generic
+        // form.
+        var cf = customFields.jsonValues
+        for (k, v) in productLines.jsonValues { cf[k] = v }
         if !cf.isEmpty { body["custom_fields"] = cf }
         // Tata Tiscon site-visit affordance — backend reads this flag,
         // strips it before persisting the lead, and atomically spawns a

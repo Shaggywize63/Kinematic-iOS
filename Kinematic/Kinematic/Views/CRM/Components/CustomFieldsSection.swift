@@ -22,6 +22,13 @@ final class CustomFieldsModel: ObservableObject {
         defs = all
             .filter { d in
                 guard d.entityType == entity else { return false }
+                // The four product-line keys are rendered by the dedicated
+                // ProductLinesSection card on the lead form, so drop them
+                // here to avoid double-rendering.
+                let productLineKeys: Set<String> = [
+                    "product_interested", "quantity", "measuring_unit", "estimated_amount",
+                ]
+                if entity == "lead", productLineKeys.contains(d.fieldKey) { return false }
                 // No roles tagged = universal; otherwise must include my role.
                 guard let roles = d.orgRoleIds, !roles.isEmpty else { return true }
                 guard let rid = roleId else { return false }
