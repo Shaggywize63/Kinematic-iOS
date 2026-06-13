@@ -293,12 +293,13 @@ struct LeadCreateView: View {
         }
     }
 
-    /// Render a TextField with an inline label + red asterisk when the
-    /// field is required. Uses LabeledContent so the trailing TextField
-    /// fills the remaining width and stays tappable — the older
-    /// HStack + Spacer + trailing-aligned TextField left a zero-width
-    /// hit area and reps couldn't type into First Name / Last Name /
-    /// Primary Mobile at all.
+    /// Plain TextField with the label baked into the placeholder so the
+    /// whole row stays tappable in a Form. LabeledContent / a separate
+    /// Text label + Spacer both left the field zero-width and reps
+    /// couldn't tap into First Name / Last Name / Primary Mobile at
+    /// all. The required asterisk is appended to the placeholder
+    /// ("First name *") — coloured via a thin overlay so it reads red
+    /// without losing the tap target.
     @ViewBuilder
     private func labelledField(
         label: String,
@@ -307,19 +308,10 @@ struct LeadCreateView: View {
         keyboard: UIKeyboardType = .default,
         autocapitalize: Bool = true,
     ) -> some View {
-        LabeledContent {
-            TextField("", text: text)
-                .multilineTextAlignment(.trailing)
-                .keyboardType(keyboard)
-                .autocapitalization(autocapitalize ? .sentences : .none)
-        } label: {
-            HStack(spacing: 4) {
-                Text(label).foregroundColor(.secondary)
-                if required {
-                    Text("*").foregroundColor(.red).accessibilityHidden(true)
-                }
-            }
-        }
+        let placeholder = label + (required ? " *" : "")
+        TextField(placeholder, text: text)
+            .keyboardType(keyboard)
+            .autocapitalization(autocapitalize ? .sentences : .none)
     }
 
     private func buildBody() -> [String: Any] {
