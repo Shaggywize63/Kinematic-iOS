@@ -20,12 +20,16 @@ import Foundation
 /// the JSON `id` is missing.
 struct DealHistoryEvent: Codable, Identifiable, Hashable {
     let backendId: String?
-    let eventType: String       // stage_changed | amount_changed | created | updated | won | lost | reopened
+    let eventType: String       // stage_changed | amount_changed | created | updated | won | lost | reopened | note
     let fromStage: String?
     let toStage: String?
     let fromAmount: Double?
     let toAmount: Double?
     let createdAt: String?
+    /// Free-text annotation written by the backend for non-stage / non-amount
+    /// edits (e.g. "Updated closed quantities: Tiscon 32mm: 0 → 5"). Optional
+    /// — older rows / synthesized rollups don't carry it.
+    let note: String?
 
     /// Stable identifier for SwiftUI lists. Falls back to a deterministic
     /// composite key (event_type + created_at + from/to fields) when the
@@ -37,7 +41,7 @@ struct DealHistoryEvent: Codable, Identifiable, Hashable {
         let toS = toStage ?? ""
         let fa = fromAmount.map { String($0) } ?? ""
         let ta = toAmount.map { String($0) } ?? ""
-        return "\(eventType)|\(ts)|\(fs)→\(toS)|\(fa)→\(ta)"
+        return "\(eventType)|\(ts)|\(fs)→\(toS)|\(fa)→\(ta)|\(note ?? "")"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -48,6 +52,7 @@ struct DealHistoryEvent: Codable, Identifiable, Hashable {
         case fromAmount = "from_amount"
         case toAmount   = "to_amount"
         case createdAt  = "created_at"
+        case note
     }
 
     init(from decoder: Decoder) throws {
@@ -59,5 +64,6 @@ struct DealHistoryEvent: Codable, Identifiable, Hashable {
         self.fromAmount = try c.decodeIfPresent(Double.self, forKey: .fromAmount)
         self.toAmount   = try c.decodeIfPresent(Double.self, forKey: .toAmount)
         self.createdAt  = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        self.note       = try c.decodeIfPresent(String.self, forKey: .note)
     }
 }
