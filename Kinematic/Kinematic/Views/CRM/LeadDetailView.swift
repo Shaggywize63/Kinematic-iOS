@@ -48,7 +48,6 @@ struct LeadDetailView: View {
                     headerCard(lead: lead)
                     lifecycleSection(lead: lead)
                     actionsBar(lead: lead)
-                    if vm.isConverted { convertedToCard }
                     nbaContainer
                     // Lead-score breakdown + Boost-score suggestions are
                     // hidden for Consumer Champion FEs — manager-tier
@@ -262,7 +261,10 @@ struct LeadDetailView: View {
         case "unqualified", "lost":
             disqualifiedBanner(lead: lead, status: status)
         case "converted":
-            convertedBanner(lead: lead)
+            // Converted banner intentionally hidden — the lead has already
+            // crossed to its account/contact/deal and the user wanted the
+            // green callout removed.
+            EmptyView()
         default:
             disqualifyButtonsRow()
         }
