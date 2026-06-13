@@ -7,8 +7,10 @@ import Combine
 ///
 ///   Product · Quantity · Closed Qty · Balance · Est. Amt · Closed Amt · Bal. Amt
 ///
-/// Closed Quantity is editable; debounce-saves to
+/// Closed Quantity is editable; rep taps the Save button to persist
 /// `deal.custom_fields.closed_quantities = { [product_id]: number }`.
+/// Mirrors the web pattern: one PATCH per Save = one deal_history note
+/// row (vs N rows from the previous debounced auto-save).
 ///
 /// Arrow logic on Balance / Balance Amount:
 ///   closed < estimated → RED ▼ (short of target)
@@ -28,7 +30,8 @@ struct DealProductsCard: View {
     @State private var closed: [String: Double] = [:]
     @State private var drafts: [String: String] = [:]
     @State private var dealCustomFields: [String: Any] = [:]
-    @State private var saveTask: Task<Void, Never>?
+    @State private var savedClosed: [String: Double] = [:]
+    @State private var saving: Bool = false
 
     struct ProductRow: Identifiable {
         let id: String  // == productId
@@ -100,7 +103,6 @@ struct DealProductsCard: View {
                                     } else if let n = Double(newVal) {
                                         closed[row.id] = n
                                     }
-                                    scheduleSave()
                                 }
                             ))
                             .keyboardType(.decimalPad)
@@ -119,7 +121,32 @@ struct DealProductsCard: View {
                     }
                 }
             }
+            HStack {
+                Spacer()
+                if dirty {
+                    Button("Reset") {
+                        closed = savedClosed
+                        drafts = [:]
+                    }
+                    .disabled(saving)
+                }
+                Button {
+                    Task { await saveClosed() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if saving { ProgressView().scaleEffect(0.7) }
+                        Text(saving ? "Saving…" : "Save")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!dirty || saving)
+            }
+            .padding(.top, 4)
         }
+    }
+
+    private var dirty: Bool {
+        !loading && closed != savedClosed
     }
 
     private func hdr(_ text: String, width: CGFloat) -> some View {
@@ -157,7 +184,10 @@ struct DealProductsCard: View {
                     else if let s = v as? String, let n = Double(s) { out[k] = n }
                 }
                 closed = out
+            } else {
+                closed = [:]
             }
+            savedClosed = closed
             guard let lid = deal.leadId else { rows = []; return }
             async let leadFetch = CRMService.shared.getLead(id: lid)
             async let productsFetch = (try? CRMService.shared.listProducts()) ?? []
@@ -199,16 +229,21 @@ struct DealProductsCard: View {
         }
     }
 
-    // MARK: – Persist (debounced)
+    // MARK: – Persist (explicit Save button)
 
-    private func scheduleSave() {
-        saveTask?.cancel()
-        saveTask = Task { [closedCopy = closed, cf = dealCustomFields, dealIdCopy = dealId] in
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            if Task.isCancelled { return }
-            var next = cf
-            next["closed_quantities"] = closedCopy.reduce(into: [String: Double]()) { $0[$1.key] = $1.value }
-            _ = try? await CRMService.shared.patchDeal(id: dealIdCopy, body: ["custom_fields": next])
+    @MainActor
+    private func saveClosed() async {
+        if saving { return }
+        saving = true
+        defer { saving = false }
+        var next = dealCustomFields
+        next["closed_quantities"] = closed.reduce(into: [String: Double]()) { $0[$1.key] = $1.value }
+        do {
+            _ = try await CRMService.shared.patchDeal(id: dealId, body: ["custom_fields": next])
+            dealCustomFields = next
+            savedClosed = closed
+        } catch {
+            // Swallow; user can retry from the same Save button.
         }
     }
 
