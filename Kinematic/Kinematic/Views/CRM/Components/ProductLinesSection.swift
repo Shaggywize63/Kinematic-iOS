@@ -150,8 +150,13 @@ private struct LineRowView: View {
     let index: Int
 
     var body: some View {
-        let line = model.lines[indexClamped]
-        VStack(alignment: .leading, spacing: 10) {
+        // Defensive clamp against the rare race where a remove happens
+        // mid-layout. Pulled into a local so the body stays a single
+        // expression — multi-statement view bodies need an explicit
+        // `return` and complicate the type checker.
+        let safeIdx = min(index, max(0, model.lines.count - 1))
+        let line = model.lines[safeIdx]
+        return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Product \(index + 1)")
                     .font(.caption.bold())
@@ -175,7 +180,7 @@ private struct LineRowView: View {
             )) {
                 Text("—").tag("")
                 ForEach(model.products) { p in
-                    Text(p.sku?.isEmpty == false ? "\(p.name) (\(p.sku!))" : p.name).tag(p.id)
+                    Text(productLabel(p)).tag(p.id)
                 }
             }
 
@@ -220,9 +225,10 @@ private struct LineRowView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
     }
 
-    // Defensive — model.lines may temporarily shrink between a delete
-    // and the next layout pass. Clamp so we never index out of range.
-    private var indexClamped: Int { min(index, max(0, model.lines.count - 1)) }
+    private func productLabel(_ p: Product) -> String {
+        if let sku = p.sku, !sku.isEmpty { return "\(p.name) (\(sku))" }
+        return p.name
+    }
 
     private func format2(_ v: Double) -> String {
         let formatter = NumberFormatter()
