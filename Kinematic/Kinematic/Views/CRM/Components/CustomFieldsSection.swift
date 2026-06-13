@@ -11,6 +11,10 @@ final class CustomFieldsModel: ObservableObject {
     @Published var text: [String: String] = [:]
     @Published var bool: [String: Bool] = [:]
     @Published var multi: [String: Set<String>] = [:]
+    // Lookup-field options, keyed by field_key. Populated after load() when
+    // any def has fieldType == "lookup". One entry per row holds the id
+    // (used in `text` as the stored value) and a human label for display.
+    @Published var lookupOptions: [String: [(id: String, label: String)]] = [:]
 
     func load(entity: String) async {
         let all = await CRMService.shared.listCustomFields()
@@ -24,6 +28,20 @@ final class CustomFieldsModel: ObservableObject {
                 return roles.contains(rid)
             }
             .sorted { ($0.position ?? 0) < ($1.position ?? 0) }
+        // Fetch lookup target rows so each lookup field renders as a Picker
+        // instead of a free-text input. Only crm_products is fully wired
+        // today — other targets fall back to the generic text input until
+        // their own picker is added.
+        for d in defs where d.fieldType == "lookup" {
+            switch d.targetTable {
+            case "crm_products":
+                if let items = try? await CRMService.shared.listProducts() {
+                    lookupOptions[d.fieldKey] = items.map { ($0.id, $0.name) }
+                }
+            default:
+                break
+            }
+        }
     }
 
     /// Seed the per-type stores from a record's existing `custom_fields`
@@ -107,6 +125,26 @@ struct CustomFieldsSection: View {
                     Text("—").tag("")
                     ForEach(d.options ?? [], id: \.self) { Text($0).tag($0) }
                 }
+        case "lookup":
+            // Stored value is the picked row's UUID; the label is what the
+            // rep sees in the dropdown. Falls back to a text input when
+            // the lookup target hasn't been wired yet (no options loaded).
+            if let opts = model.lookupOptions[d.fieldKey], !opts.isEmpty {
+                Picker(d.label, selection: Binding(
+                    get: { model.text[d.fieldKey] ?? "" },
+                    set: { model.text[d.fieldKey] = $0 })) {
+                        Text("—").tag("")
+                        ForEach(opts, id: \.id) { opt in
+                            Text(opt.label).tag(opt.id)
+                        }
+                    }
+            } else {
+                HStack {
+                    Text(d.label)
+                    Spacer()
+                    Text("—").foregroundColor(.secondary)
+                }
+            }
         case "multiselect":
             VStack(alignment: .leading, spacing: 6) {
                 Text(d.label).font(.caption).foregroundColor(.secondary)
