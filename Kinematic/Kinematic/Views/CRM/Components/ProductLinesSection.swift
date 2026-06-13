@@ -40,6 +40,47 @@ final class ProductLinesModel: ObservableObject {
         }
     }
 
+    /// Seed `lines` from an existing record's `custom_fields` blob so the
+    /// edit form lands on the rep's previously-captured rows. Reads the
+    /// rich `raw.any` graph (product_lines array) when present, otherwise
+    /// falls back to the legacy single-field shape. Idempotent — calling
+    /// twice just re-seeds with the latest values.
+    func hydrate(from raw: [String: AnyCodable]?) {
+        guard let raw else { return }
+        let pairs = raw.compactMapValues { $0.raw?.any }
+        if let arr = pairs["product_lines"] as? [[String: Any]], !arr.isEmpty {
+            lines = arr.map { row in
+                var l = ProductLine()
+                if let pid = row["product_id"] as? String { l.productId = pid }
+                if let q = row["quantity"] as? Double { l.quantityText = String(q) }
+                else if let q = row["quantity"] as? Int { l.quantityText = String(q) }
+                else if let q = row["quantity"] as? String { l.quantityText = q }
+                if let u = row["measuring_unit"] as? String { l.measuringUnit = u }
+                l.estimatedAmount = computeAmount(l)
+                return l
+            }
+            return
+        }
+        // Legacy fallback — seed a single row from the four scalar keys
+        // so older leads still surface a row to the rep.
+        let pid = pairs["product_interested"] as? String
+        let qty: Double? = {
+            if let n = pairs["quantity"] as? Double { return n }
+            if let n = pairs["quantity"] as? Int { return Double(n) }
+            if let s = pairs["quantity"] as? String { return Double(s) }
+            return nil
+        }()
+        let unit = pairs["measuring_unit"] as? String
+        if pid != nil || qty != nil {
+            var l = ProductLine()
+            l.productId = pid
+            if let q = qty { l.quantityText = String(q) }
+            l.measuringUnit = unit
+            l.estimatedAmount = computeAmount(l)
+            lines = [l]
+        }
+    }
+
     func computeAmount(_ line: ProductLine) -> Double {
         guard let id = line.productId, !id.isEmpty,
               let p = products.first(where: { $0.id == id }) else { return 0 }
