@@ -188,7 +188,7 @@ struct LeadCreateView: View {
                     Section {
                         Toggle("Also log this lead as a Site Visit activity", isOn: $logAsSiteVisit)
                     } footer: {
-                        Text("Creates a completed Site Visit activity tied to this lead — visible on the lead detail timeline. When the First Visit Date custom field is filled in, the activity is recorded as a First Visit instead.")
+                        Text("Creates a completed Site Visit activity tied to this lead — visible on the lead detail timeline. When the First Visit Date custom field is filled in, the activity is recorded as a First Site Visit instead.")
                     }
                 }
             }
