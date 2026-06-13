@@ -70,7 +70,7 @@ struct DealDetailView: View {
                             .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
                         }
                     }
-                    LineItemsCard(dealId: dealId)
+                    DealProductsCard(dealId: dealId)
                     if let nba = nextAction {
                         NextBestActionCard(action: nba) {
                             // Wire "Schedule it" → activity composer prefilled

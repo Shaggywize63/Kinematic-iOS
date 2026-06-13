@@ -119,20 +119,81 @@ struct Lead: Codable, Identifiable, Hashable {
 }
 
 /// A loose container for arbitrary JSON values (custom_fields, etc.).
+/// Loose JSON box. `value` stays a `String?` for back-compat — callers that
+/// only need a scalar string keep working unchanged. `raw` is the typed
+/// underlying value (nested arrays / dicts included) so the Products card
+/// can decode `product_lines` (array of dicts) and `closed_quantities`
+/// (dict of numbers) without ditching the Codable model.
 struct AnyCodable: Codable, Hashable {
     let value: String?
+    let raw: AnyJSON?
 
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
-        if let s = try? c.decode(String.self) { value = s; return }
-        if let i = try? c.decode(Int.self)    { value = String(i); return }
-        if let d = try? c.decode(Double.self) { value = String(d); return }
-        if let b = try? c.decode(Bool.self)   { value = String(b); return }
+        if let s = try? c.decode(String.self) { value = s; raw = .string(s); return }
+        if let i = try? c.decode(Int.self)    { value = String(i); raw = .number(Double(i)); return }
+        if let d = try? c.decode(Double.self) { value = String(d); raw = .number(d); return }
+        if let b = try? c.decode(Bool.self)   { value = String(b); raw = .bool(b); return }
+        if let arr = try? c.decode([AnyJSON].self) { value = nil; raw = .array(arr); return }
+        if let obj = try? c.decode([String: AnyJSON].self) { value = nil; raw = .object(obj); return }
         value = nil
+        raw = nil
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
+        if let r = raw { try c.encode(r); return }
         try c.encode(value)
+    }
+}
+
+/// Typed JSON value — replaces the older string-only AnyCodable so we can
+/// round-trip nested arrays + objects (product_lines, closed_quantities).
+indirect enum AnyJSON: Codable, Hashable {
+    case null
+    case bool(Bool)
+    case number(Double)
+    case string(String)
+    case array([AnyJSON])
+    case object([String: AnyJSON])
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self = .null; return }
+        if let b = try? c.decode(Bool.self) { self = .bool(b); return }
+        if let i = try? c.decode(Int.self) { self = .number(Double(i)); return }
+        if let d = try? c.decode(Double.self) { self = .number(d); return }
+        if let s = try? c.decode(String.self) { self = .string(s); return }
+        if let a = try? c.decode([AnyJSON].self) { self = .array(a); return }
+        if let o = try? c.decode([String: AnyJSON].self) { self = .object(o); return }
+        self = .null
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .null: try c.encodeNil()
+        case .bool(let b): try c.encode(b)
+        case .number(let n): try c.encode(n)
+        case .string(let s): try c.encode(s)
+        case .array(let a): try c.encode(a)
+        case .object(let o): try c.encode(o)
+        }
+    }
+
+    /// Convert back to a plain `Any` graph (matching the JSONSerialization
+    /// world) so the Products card can read it through subscripts.
+    var any: Any {
+        switch self {
+        case .null: return NSNull()
+        case .bool(let b): return b
+        case .number(let n):
+            // Preserve ints when possible so subscript `as? Int` keeps working.
+            if n == n.rounded(), abs(n) < Double(Int.max) { return Int(n) }
+            return n
+        case .string(let s): return s
+        case .array(let a): return a.map { $0.any }
+        case .object(let o): return o.mapValues { $0.any }
+        }
     }
 }

@@ -37,6 +37,22 @@ extension CRMService {
     func dealLineItems(dealId: String) async throws -> [DealLineItem] {
         try await getList("/api/v1/crm/deals/\(dealId)/line-items")
     }
+
+    /// Partial PATCH on a deal — accepts any JSON-encodable dictionary.
+    /// Used by the Products card to persist `custom_fields.closed_quantities`
+    /// without round-tripping every other column.
+    @discardableResult
+    func patchDeal(id: String, body: [String: Any]) async throws -> Deal {
+        let url = try Self.buildURL(path: "/api/v1/crm/deals/\(id)", query: [:])
+        var req = URLRequest(url: url)
+        req.httpMethod = "PATCH"
+        req.timeoutInterval = 30
+        Self.applyHeaders(to: &req)
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        struct Wrapped: Decodable { let data: Deal }
+        return try JSONDecoder().decode(Wrapped.self, from: data).data
+    }
 }
 
 // MARK: - Generic helpers used only here (private to file)

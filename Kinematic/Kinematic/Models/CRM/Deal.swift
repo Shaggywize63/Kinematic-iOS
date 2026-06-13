@@ -23,6 +23,12 @@ struct Deal: Codable, Identifiable, Hashable {
     let tags: [String]?
     let createdAt: String?
     let updatedAt: String?
+    // Linked lead — set on conversion-style deal creation. The Products
+    // section reads its product_lines from this lead.
+    let leadId: String?
+    // Free-form jsonb. The Products section persists closed_quantities
+    // here under `closed_quantities = { [product_id]: number }`.
+    let customFields: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -45,5 +51,7 @@ struct Deal: Codable, Identifiable, Hashable {
         case tags
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case leadId = "lead_id"
+        case customFields = "custom_fields"
     }
 }
