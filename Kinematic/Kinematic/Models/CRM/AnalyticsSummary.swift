@@ -15,6 +15,9 @@ struct CRMAnalyticsSummary: Codable, Hashable {
     let averageDealSize: Double?
     let activitiesToday: Int?
     let tasksDue: Int?
+    /// Sum of `custom_fields.estimated_amount` across the rep's leads
+    /// in scope. Powers the Champion "Total Estimates Raised" tile.
+    let estimatesRaised: Double?
 
     // Keys must match the backend `dashboardSummary()` payload exactly. The
     // previous mapping (open_pipeline_value, win_rate, …) was stale and decoded
@@ -31,6 +34,7 @@ struct CRMAnalyticsSummary: Codable, Hashable {
         case winRate = "win_rate_30d"
         case averageDealSize = "avg_deal_size"
         case activitiesToday = "activities_7d"
+        case estimatesRaised = "estimates_raised"
         // Backend does not emit a tasks_due figure; leave nil → tile shows 0.
         case tasksDue = "tasks_due"
     }
