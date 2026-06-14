@@ -8,10 +8,22 @@ import Combine
 /// dashboard uses, so the create / edit forms surface the same
 /// "hidden / required / relabel" decisions the admin configured on the
 /// web console.
+///
+/// Perf note: SwiftUI re-runs the form body on every keystroke. Reps
+/// reported "too much lag" while typing into the lead form because
+/// each render triggered ~45 lookups (15 fields × 3 helper calls),
+/// each one doing 2 dict reads + a FieldOverride struct allocation +
+/// per-property merge. We now pre-compute the merged (scoped over
+/// universal) result for both B2C and B2B scopes once at `load()`
+/// time and stash it in two flat dicts. Per-render calls are then a
+/// single dict lookup.
 @MainActor
 final class LeadFieldOverridesModel: ObservableObject {
     @Published private(set) var overrides: [String: FieldOverride] = [:]
     @Published private(set) var businessType: String = "both"
+    // Pre-merged per-scope snapshots — see perf note above.
+    @Published private(set) var b2cMerged: [String: FieldOverride] = [:]
+    @Published private(set) var b2bMerged: [String: FieldOverride] = [:]
 
     struct FieldOverride {
         let label: String?
@@ -25,9 +37,6 @@ final class LeadFieldOverridesModel: ObservableObject {
     func load() async {
         guard let raw = await CRMService.shared.getCRMSettings() else { return }
         if let bt = raw.business_type { businessType = bt }
-        // Drill into config.field_overrides which is `[String:
-        // {label?, required?, hidden?}]`. AnyJSON exposes a typed
-        // `.any` graph so we walk it without a second decode.
         guard
             case let .object(cfg)? = raw.config,
             case let .object(fo)? = cfg["field_overrides"]
@@ -44,21 +53,45 @@ final class LeadFieldOverridesModel: ObservableObject {
             out[key] = FieldOverride(label: label, required: required, hidden: hidden)
         }
         overrides = out
+        b2cMerged = buildMerged(for: true, from: out)
+        b2bMerged = buildMerged(for: false, from: out)
     }
 
-    /// Look up a field key for the active business-type scope. Scoped
-    /// values (`lead.key@b2c`) win over the universal entry on every
-    /// property they define, mirroring the web `buildFieldHelpers` merge.
+    /// Walk the raw `lead.<key>` and `lead.<key>@scope` entries and emit a
+    /// flat `key → mergedOverride` dict for the requested scope. The
+    /// merge rule is "scoped wins per-property" — same as the web's
+    /// `buildFieldHelpers`.
+    private func buildMerged(for isB2C: Bool, from raw: [String: FieldOverride]) -> [String: FieldOverride] {
+        let suffix = "@" + (isB2C ? "b2c" : "b2b")
+        var keys = Set<String>()
+        for k in raw.keys {
+            guard k.hasPrefix("lead.") else { continue }
+            // Strip the optional scope tail so universal + scoped keys
+            // collapse to the same field name in the merged dict.
+            let bare = k.split(separator: "@").first.map(String.init) ?? k
+            // Drop the "lead." prefix to match how callers index us
+            // (`isHidden("first_name")`, not `isHidden("lead.first_name")`).
+            let field = String(bare.dropFirst("lead.".count))
+            keys.insert(field)
+        }
+        var out: [String: FieldOverride] = [:]
+        out.reserveCapacity(keys.count)
+        for field in keys {
+            let uni = raw["lead.\(field)"]
+            let scoped = raw["lead.\(field)\(suffix)"]
+            if uni == nil && scoped == nil { continue }
+            out[field] = FieldOverride(
+                label: scoped?.label ?? uni?.label,
+                required: scoped?.required ?? uni?.required,
+                hidden: scoped?.hidden ?? uni?.hidden,
+            )
+        }
+        return out
+    }
+
+    /// O(1) lookup against the pre-merged scope snapshot.
     private func lookup(_ key: String, isB2C: Bool) -> FieldOverride? {
-        let uni = overrides["lead.\(key)"]
-        let scoped = overrides["lead.\(key)@\(isB2C ? "b2c" : "b2b")"]
-        if uni == nil && scoped == nil { return nil }
-        // Merge: scoped wins per-property.
-        return FieldOverride(
-            label: scoped?.label ?? uni?.label,
-            required: scoped?.required ?? uni?.required,
-            hidden: scoped?.hidden ?? uni?.hidden,
-        )
+        (isB2C ? b2cMerged : b2bMerged)[key]
     }
 
     func isHidden(_ key: String, isB2C: Bool) -> Bool {
