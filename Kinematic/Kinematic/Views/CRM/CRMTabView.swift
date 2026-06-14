@@ -192,23 +192,20 @@ struct CRMMoreMenu: View {
                     NearbyLeadsView()
                 } label: { MoreRow(icon: "location.north.line.fill", title: "Nearest Leads", tint: Brand.red) }
             }
-            // Insights section is hidden in its entirety for Consumer
-            // Champion reps — Dashboard / Reports / Lead Analytics are
-            // manager-tier and clutter the FE-tier nav.
-            if !ClientFeatures.isConsumerChampion {
-                Section("Insights") {
-                    // Dashboard moved here when the bottom-nav slot was given
-                    // to the new Home (mission control) tab. Same widgets,
-                    // one tap deeper.
+            // Insights section is split for Consumer Champion reps —
+            // they still get a slimmed-down Reports view (3 KPI tiles)
+            // but Dashboard + Lead Analytics are manager-tier surfaces
+            // and stay hidden for FE-tier nav clarity.
+            Section("Insights") {
+                if !ClientFeatures.isConsumerChampion {
                     NavigationLink {
                         CRMDashboardView()
                     } label: { MoreRow(icon: "chart.bar.fill", title: "Dashboard", tint: Brand.red) }
-                    NavigationLink {
-                        CRMReportsHubView()
-                    } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
-                    // Read-only Lead Analytics surface — six widget cards with a
-                    // per-card size cycle. Mirrors the dashboard's
-                    // /dashboard/crm/analytics screen, scoped down to mobile.
+                }
+                NavigationLink {
+                    CRMReportsHubView()
+                } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
+                if !ClientFeatures.isConsumerChampion {
                     NavigationLink {
                         CustomLeadAnalyticsView()
                     } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: "Lead Analytics", tint: Brand.red) }

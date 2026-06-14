@@ -105,38 +105,77 @@ struct CRMReportsHubView: View {
         return CRMReportCatalog.reports
     }
 
+    /// Champions see three KPI tiles + nothing else. Loaded on appear.
+    @State private var summary: CRMAnalyticsSummary?
+
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                // Raw-data CSV export (existing screen).
-                // Hidden for Consumer Champions — the export contains contacts
-                // and accounts data that isn't relevant to their role.
-                if !ClientFeatures.isConsumerChampion {
+                if ClientFeatures.isConsumerChampion {
+                    // Champion KPI trio. Same metric set as the Android
+                    // ReportsScreen — kept in lock-step intentionally so
+                    // a Champion's view doesn't drift between platforms.
+                    kpiCard(label: "TOTAL LEADS ADDED",
+                            value: "\(summary?.totalLeads ?? 0)",
+                            sub: "\(summary?.newLeadsThisWeek ?? 0) new in last 30 days")
+                    kpiCard(label: "TOTAL DEALS CONVERTED",
+                            value: "\(summary?.dealsWonThisMonth ?? 0)",
+                            sub: "deals won in the last 30 days")
+                    kpiCard(label: "TOTAL ESTIMATES RAISED",
+                            value: formatRupees(summary?.estimatesRaised ?? 0),
+                            sub: "₹ committed across captured leads")
+                } else {
                     NavigationLink(destination: CRMReportsView()) {
                         reportCard(title: "Export Data (CSV)",
                                    desc: "Download leads, contacts or deals as CSV.",
                                    icon: "arrow.down.doc.fill", highlight: true)
                     }
                     .buttonStyle(.plain)
-                }
 
-                Text("ANALYTICAL REPORTS")
-                    .font(.system(size: 11, weight: .black)).tracking(0.8)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 6)
+                    Text("ANALYTICAL REPORTS")
+                        .font(.system(size: 11, weight: .black)).tracking(0.8)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 6)
 
-                ForEach(visibleReports) { spec in
-                    NavigationLink(destination: CRMReportDetailView(spec: spec)) {
-                        reportCard(title: spec.title, desc: spec.desc,
-                                   icon: "chart.bar.doc.horizontal.fill", highlight: false)
+                    ForEach(visibleReports) { spec in
+                        NavigationLink(destination: CRMReportDetailView(spec: spec)) {
+                            reportCard(title: spec.title, desc: spec.desc,
+                                       icon: "chart.bar.doc.horizontal.fill", highlight: false)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding()
         }
         .navigationTitle("Reports")
+        .task {
+            if ClientFeatures.isConsumerChampion {
+                summary = try? await CRMService.shared.dashboardSummary()
+            }
+        }
+    }
+
+    private func kpiCard(label: String, value: String, sub: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.system(size: 11, weight: .black)).tracking(0.8)
+                .foregroundColor(.secondary)
+            Text(value).font(.system(size: 30, weight: .black)).foregroundColor(Brand.red)
+            Text(sub).font(.caption).foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    private func formatRupees(_ v: Double) -> String {
+        if v <= 0 { return "₹0" }
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        f.groupingSeparator = ","
+        return "₹\(f.string(from: NSNumber(value: v)) ?? String(format: "%.0f", v))"
     }
 
     private func reportCard(title: String, desc: String, icon: String, highlight: Bool) -> some View {

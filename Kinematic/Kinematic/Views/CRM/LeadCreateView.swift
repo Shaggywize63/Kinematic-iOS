@@ -472,9 +472,26 @@ struct LeadCreateView: View {
         autocapitalize: Bool = true,
     ) -> some View {
         let placeholder = label + (required ? " *" : "")
-        TextField(placeholder, text: text)
-            .keyboardType(keyboard)
-            .autocapitalization(autocapitalize ? .sentences : .none)
+        // 10-digit-only restriction on phone fields. The backend's
+        // leadCreateSchema rejects anything other than exactly 10 digits
+        // (it was previously a free-form max(40), which let reps paste
+        // in country codes / spaces and break the city / source roll-
+        // ups). Strip non-digits + clamp to 10 chars at input time so
+        // the rep can't even type an invalid mobile.
+        let isPhone = keyboard == .phonePad || keyboard == .numberPad
+        return TextField(placeholder, text: Binding(
+            get: { text.wrappedValue },
+            set: { raw in
+                if isPhone {
+                    let digits = raw.filter { $0.isNumber }
+                    text.wrappedValue = String(digits.prefix(10))
+                } else {
+                    text.wrappedValue = raw
+                }
+            },
+        ))
+        .keyboardType(keyboard)
+        .autocapitalization(autocapitalize ? .sentences : .none)
     }
 
     private func buildBody() -> [String: Any] {
