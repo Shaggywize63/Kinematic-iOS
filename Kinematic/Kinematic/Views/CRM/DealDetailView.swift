@@ -71,6 +71,7 @@ struct DealDetailView: View {
                         }
                     }
                     DealProductsCard(dealId: dealId)
+                    CustomFieldsDetailCard(entity: "deal", customFields: initialDeal?.customFields)
                     if let nba = nextAction {
                         NextBestActionCard(action: nba) {
                             // Wire "Schedule it" → activity composer prefilled
