@@ -36,17 +36,20 @@ final class CustomFieldsModel: ObservableObject {
             }
             .sorted { ($0.position ?? 0) < ($1.position ?? 0) }
         // Fetch lookup target rows so each lookup field renders as a Picker
-        // instead of a free-text input. Only crm_products is fully wired
-        // today — other targets fall back to the generic text input until
-        // their own picker is added.
+        // instead of a free-text input. Uses the generic /lookup/search
+        // endpoint so any admin-configured target_table works (not just
+        // crm_products — matches the web behaviour).
         for d in defs where d.fieldType == "lookup" {
-            switch d.targetTable {
-            case "crm_products":
-                if let items = try? await CRMService.shared.listProducts() {
-                    lookupOptions[d.fieldKey] = items.map { ($0.id, $0.name) }
-                }
-            default:
-                break
+            guard let target = d.targetTable, !target.isEmpty else { continue }
+            let filterJson: String? = {
+                guard let clauses = d.lookupFilter, !clauses.isEmpty else { return nil }
+                let encoder = JSONEncoder()
+                guard let data = try? encoder.encode(clauses) else { return nil }
+                return String(data: data, encoding: .utf8)
+            }()
+            let opts = await CRMService.shared.lookupSearch(target: target, q: nil, filter: filterJson)
+            if !opts.isEmpty {
+                lookupOptions[d.fieldKey] = opts.map { ($0.id, $0.label) }
             }
         }
     }
@@ -84,7 +87,9 @@ final class CustomFieldsModel: ObservableObject {
     }
 
     /// Plain JSON-serialisable values (String / Double / Bool / [String]) for
-    /// the create body. Empty entries are skipped.
+    /// the create body. Empty entries are skipped. Formula fields are
+    /// skipped entirely — the backend recomputes + stamps them on save,
+    /// so writing a stale client value would only race the server.
     var jsonValues: [String: Any] {
         var out: [String: Any] = [:]
         for d in defs {
@@ -95,6 +100,8 @@ final class CustomFieldsModel: ObservableObject {
                 if let s = multi[d.fieldKey], !s.isEmpty { out[d.fieldKey] = Array(s) }
             case "number", "currency":
                 if let t = text[d.fieldKey], !t.isEmpty, let n = Double(t) { out[d.fieldKey] = n }
+            case "formula":
+                continue
             default:
                 if let t = text[d.fieldKey], !t.isEmpty { out[d.fieldKey] = t }
             }
@@ -164,6 +171,17 @@ struct CustomFieldsSection: View {
                             model.multi[d.fieldKey] = s
                         }))
                 }
+            }
+        case "formula":
+            // Backend evaluates the formula and stamps the result back
+            // into custom_fields on save. We show the most recent value
+            // (from hydrate()) read-only so the rep can preview it.
+            HStack {
+                Text(d.label)
+                Spacer()
+                let stored = model.text[d.fieldKey] ?? ""
+                Text(stored.isEmpty ? "—" : stored)
+                    .foregroundColor(.secondary)
             }
         case "date":
             // Render a native DatePicker so reps don't have to type

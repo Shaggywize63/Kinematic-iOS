@@ -393,6 +393,17 @@ final class CRMService {
     func listCustomFields() async -> [CRMCustomFieldDef] {
         (try? await get("/api/v1/crm/custom-fields")) ?? []
     }
+    /// Searches an admin-configured lookup target table. Used by the
+    /// lookup-typed custom field picker so every target — not just
+    /// crm_products — populates a real dropdown. `filter` should be a
+    /// JSON-encoded list of clauses (`[{ field, op, value }]`) the admin
+    /// attached to the field def.
+    func lookupSearch(target: String, q: String? = nil, filter: String? = nil) async -> [CRMLookupOption] {
+        var qs: [String: String] = ["target": target]
+        if let q, !q.isEmpty { qs["q"] = q }
+        if let filter, !filter.isEmpty { qs["filter"] = filter }
+        return (try? await get("/api/v1/crm/lookup/search", query: qs)) ?? []
+    }
     /// Google Places address autocomplete via the backend proxy. Empty on
     /// failure / no key configured server-side.
     func placesAutocomplete(_ q: String) async -> [CRMPlacePrediction] {

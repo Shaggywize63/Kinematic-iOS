@@ -16,6 +16,10 @@ struct CRMCustomFieldDef: Codable, Identifiable, Hashable {
     // Lookup-only — the table whose rows the picker searches when
     // fieldType == "lookup". Decoded from `target_table` on the JSON row.
     let targetTable: String?
+    // Lookup-only — admin-configured filter clauses (e.g. `[{ field:
+    // 'is_active', op: 'eq', value: true }]`) that narrow the search.
+    // Encoded as JSON in the /lookup/search ?filter= query string.
+    let lookupFilter: [LookupFilterClause]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -28,5 +32,21 @@ struct CRMCustomFieldDef: Codable, Identifiable, Hashable {
         case position
         case orgRoleIds = "org_role_ids"
         case targetTable = "target_table"
+        case lookupFilter = "lookup_filter"
     }
+}
+
+/// One filter clause attached to a lookup-typed custom field. Backend
+/// honours `eq | ne | contains | gte | lte`.
+struct LookupFilterClause: Codable, Hashable {
+    let field: String
+    let op: String
+    let value: AnyCodable?
+}
+
+/// One row from GET /api/v1/crm/lookup/search. The picker stores `id`
+/// in the custom_fields blob and shows `label` in the dropdown.
+struct CRMLookupOption: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
 }
