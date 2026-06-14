@@ -52,6 +52,7 @@ struct LeadDetailView: View {
                     // mirror of the multi-row picker so the basket is
                     // visible without entering edit mode.
                     LeadProductsCard(lead: lead)
+                    CustomFieldsDetailCard(entity: "lead", customFields: lead.customFields)
                     nbaContainer
                     // Lead-score breakdown + Boost-score suggestions are
                     // hidden for Consumer Champion FEs (manager-tier

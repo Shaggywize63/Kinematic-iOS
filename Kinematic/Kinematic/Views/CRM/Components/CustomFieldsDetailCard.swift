@@ -1,0 +1,181 @@
+import SwiftUI
+
+/// Read-only card that surfaces admin-defined custom fields on the
+/// lead / deal detail screen. The lead detail page previously had no
+/// generic custom-field view at all — values entered on the form (DOB,
+/// monthly volume, gender, lookup picks, formula results) were stored
+/// but never displayed back. This card iterates the field defs for the
+/// entity, looks up each value in `customFields`, and renders one
+/// labelled row per non-empty entry.
+///
+/// Product-line keys are skipped — LeadProductsCard / DealProductsCard
+/// already render them in their own multi-column tables.
+struct CustomFieldsDetailCard: View {
+    let entity: String                // "lead" | "deal" | "contact" | "account"
+    let customFields: [String: AnyCodable]?
+    /// Optional client_id so the def lookup honours per-client scoping
+    /// (today the iOS service hits the universal endpoint, which is
+    /// already filtered server-side by client_id — passed through here
+    /// for forward-compat).
+    var clientId: String? = nil
+
+    @State private var defs: [CRMCustomFieldDef] = []
+    @State private var loading: Bool = true
+
+    private static let productLineKeys: Set<String> = [
+        "product_interested", "quantity", "measuring_unit", "estimated_amount", "product_lines",
+    ]
+
+    var body: some View {
+        // Drop the card entirely when there's nothing to show — avoids a
+        // blank "Additional details" header on leads with no custom data.
+        let rows = visibleRows()
+        if !loading && rows.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Additional details")
+                    .font(.headline)
+                if loading {
+                    HStack {
+                        ProgressView().scaleEffect(0.7)
+                        Text("Loading…").font(.caption).foregroundColor(.secondary)
+                    }
+                } else {
+                    ForEach(rows, id: \.key) { row in
+                        HStack(alignment: .top) {
+                            Text(row.label)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(row.display)
+                                .font(.subheadline)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
+            .task { await load() }
+        }
+    }
+
+    @MainActor
+    private func load() async {
+        loading = true
+        defer { loading = false }
+        let all = await CRMService.shared.listCustomFields()
+        defs = all
+            .filter { $0.entityType == entity }
+            .sorted { ($0.position ?? 0) < ($1.position ?? 0) }
+    }
+
+    private struct Row {
+        let key: String
+        let label: String
+        let display: String
+    }
+
+    /// Walk the loaded defs and pull a display string for each one that
+    /// has a populated value. Format depends on type:
+    ///   boolean   → Yes / No
+    ///   number    → grouped thousands
+    ///   currency  → ₹X,XXX
+    ///   date      → 13 Jun 2026
+    ///   multiselect → comma-joined
+    ///   lookup    → raw id (label hydration is a future iteration —
+    ///               keeps the card cheap, no per-row API calls)
+    ///   default   → raw string
+    private func visibleRows() -> [Row] {
+        guard let raw = customFields, !raw.isEmpty else { return [] }
+        var out: [Row] = []
+        for d in defs {
+            if Self.productLineKeys.contains(d.fieldKey) { continue }
+            guard let any = raw[d.fieldKey]?.raw?.any else { continue }
+            let display: String? = formatValue(any, type: d.fieldType)
+            guard let display, !display.isEmpty else { continue }
+            out.append(Row(key: d.fieldKey, label: d.label, display: display))
+        }
+        return out
+    }
+
+    private func formatValue(_ v: Any, type: String) -> String? {
+        switch type {
+        case "boolean":
+            if let b = v as? Bool { return b ? "Yes" : "No" }
+            if let s = v as? String { return s.lowercased() == "true" ? "Yes" : "No" }
+            return nil
+        case "number":
+            if let n = v as? Double { return Self.numberFmt.string(from: NSNumber(value: n)) }
+            if let n = v as? Int { return Self.numberFmt.string(from: NSNumber(value: n)) }
+            if let s = v as? String, let n = Double(s) { return Self.numberFmt.string(from: NSNumber(value: n)) }
+            return nil
+        case "currency":
+            if let n = v as? Double { return "₹" + (Self.intFmt.string(from: NSNumber(value: n)) ?? "0") }
+            if let n = v as? Int { return "₹" + (Self.intFmt.string(from: NSNumber(value: n)) ?? "0") }
+            if let s = v as? String, let n = Double(s) { return "₹" + (Self.intFmt.string(from: NSNumber(value: n)) ?? "0") }
+            return nil
+        case "date":
+            if let s = v as? String, let d = Self.parseIso(s) {
+                return Self.displayDate.string(from: d)
+            }
+            return v as? String
+        case "datetime":
+            if let s = v as? String, let d = Self.parseIso(s) {
+                return Self.displayDateTime.string(from: d)
+            }
+            return v as? String
+        case "multiselect":
+            if let arr = v as? [Any] { return arr.map { String(describing: $0) }.joined(separator: ", ") }
+            return v as? String
+        case "formula":
+            return String(describing: v)
+        default:
+            if let s = v as? String { return s }
+            return String(describing: v)
+        }
+    }
+
+    // MARK: – Formatters
+
+    private static let numberFmt: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 2
+        return f
+    }()
+    private static let intFmt: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        return f
+    }()
+    private static let displayDate: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "d MMM yyyy"
+        return f
+    }()
+    private static let displayDateTime: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "d MMM yyyy · h:mm a"
+        return f
+    }()
+    private static let isoDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    private static let isoDateTimeFmt: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    private static func parseIso(_ s: String) -> Date? {
+        if let d = isoDateFmt.date(from: String(s.prefix(10))) { return d }
+        return isoDateTimeFmt.date(from: s)
+    }
+}
