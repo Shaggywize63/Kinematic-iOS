@@ -75,6 +75,15 @@ struct LeadCreateView: View {
         Double(latitude.trimmingCharacters(in: .whitespaces)) != nil &&
         Double(longitude.trimmingCharacters(in: .whitespaces)) != nil
     }
+    /// Sticky-bottom Create button gate. Same single hard rule as the
+    /// toolbar Save: last_name required unless the admin flipped it
+    /// optional via field overrides.
+    private var saveCtaEnabled: Bool {
+        if saving { return false }
+        let req = fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
+        if req && lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
+        return true
+    }
 
     var body: some View {
         NavigationStack {
@@ -333,6 +342,52 @@ struct LeadCreateView: View {
                         Text("Creates a completed Site Visit activity tied to this lead — visible on the lead detail timeline. When the First Visit Date custom field is filled in, the activity is recorded as a First Site Visit instead.")
                     }
                 }
+            }
+            // Sticky Create button pinned to the bottom safe area so it
+            // stays in reach no matter how far the rep has scrolled —
+            // matches the Android Scaffold.bottomBar version. Toolbar
+            // Save above is kept for power users + parity with the rest
+            // of the app's confirm/cancel pattern.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    Divider()
+                    Button {
+                        if !hasValidCoords { locator.requestLocation() }
+                        Task {
+                            saving = true
+                            let body = buildBody()
+                            guard !body.isEmpty else {
+                                saving = false
+                                saveError = "Fill in the required fields before saving."
+                                return
+                            }
+                            let ok = await onSubmit(body)
+                            saving = false
+                            if ok {
+                                dismiss()
+                            } else {
+                                saveError = "Couldn't save this lead. Check the details and try again."
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if saving { ProgressView().tint(.white) }
+                            Text(saving ? "Saving…" : "Create lead")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(saveCtaEnabled ? Brand.red : Color.gray.opacity(0.4))
+                        )
+                    }
+                    .disabled(!saveCtaEnabled)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                }
+                .background(.bar)
             }
             .navigationTitle("New Lead")
             .task { target = await CRMService.shared.myTarget() }
