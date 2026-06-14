@@ -81,6 +81,12 @@ struct DealDetailView: View {
                     if !ClientFeatures.isConsumerChampion {
                         if let nba = nextAction {
                             NextBestActionCard(action: nba) {
+                                // Wire "Schedule it" → activity composer prefilled
+                                // from the NBA recommendation. Maps the NBA action
+                                // verb to an activity type, drops the displayable
+                                // label as the subject, and presents the same
+                                // composer the in-deal quick actions use so the
+                                // saved row lands on the deal timeline.
                                 composerInitialType = activityTypeFor(nba.action)
                                 composerInitialSubject = NextBestActionCard.displayAction(nba.action)
                                 loggingActivity = true
