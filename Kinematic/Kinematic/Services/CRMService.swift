@@ -127,6 +127,23 @@ final class CRMService {
         if let cid = clientId, !cid.isEmpty { req.setValue(cid, forHTTPHeaderField: "X-Client-Id") }
         return try await perform(req)
     }
+
+    /// Generic authenticated mutation runner used by OfflineMutationQueue
+    /// to replay any (method, path, body) tuple captured offline. Returns
+    /// the HTTP status code so the queue can decide transient-vs-fatal,
+    /// without forcing the queue to know how to decode every endpoint's
+    /// response shape. Throws on transport failure (queue treats as
+    /// transient — retry on next path-satisfied callback).
+    func sendRawMutation(method: String, path: String, body: [String: Any], idempotencyKey: String, clientId: String?) async throws -> Int {
+        let data = body.isEmpty
+            ? Data("{}".utf8)
+            : try JSONSerialization.data(withJSONObject: body, options: [])
+        var req = try makeRequest(path: path, method: method, body: data)
+        req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        if let cid = clientId, !cid.isEmpty { req.setValue(cid, forHTTPHeaderField: "X-Client-Id") }
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        return (resp as? HTTPURLResponse)?.statusCode ?? 0
+    }
     func updateLead(id: String, body: [String: Any]) async throws -> Lead {
         try await sendJSON("/api/v1/crm/leads/\(id)", method: "PATCH", body: body)
     }

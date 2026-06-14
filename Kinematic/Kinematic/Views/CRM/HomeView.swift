@@ -115,9 +115,20 @@ struct CrmHomeMissionView: View {
         }
         .background(Color(uiColor: .systemBackground))
         .refreshable { await vm.load(silent: true) }
-        .task { await vm.load() }
+        .task {
+            await vm.load()
+            // Kick the queue on every Home entry so anything captured
+            // in a prior session (or in the background while the app
+            // was suspended) drains the moment the rep reopens it.
+            OfflineMutationQueue.shared.drain()
+        }
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                PendingSyncChip()
+            }
+        }
         .navigationDestination(item: $selectedLeadId) { id in
             LeadDetailView(leadId: id)
         }
