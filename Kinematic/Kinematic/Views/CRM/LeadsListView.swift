@@ -237,11 +237,20 @@ struct LeadsListView: View {
         .sheet(isPresented: $showCreate) {
             LeadCreateView { body in
                 let outcome = await vm.create(body: body)
-                if case .offline = outcome {
+                switch outcome {
+                case .online:
+                    return true
+                case .offline:
                     // Defer to the toast — UI presents this via the
                     // viewmodel's errorMessage / OfflineLeadQueue.pendingCount
-                    // observer in LeadsListView. The form just dismisses.
+                    // observer in LeadsListView. Dismiss the form so the
+                    // rep can move on; the queued lead syncs in the bg.
                     NotificationCenter.default.post(name: .kmLeadSavedOffline, object: nil)
+                    return true
+                case .error:
+                    // Keep the form open so the rep can fix + retry —
+                    // the alert inside LeadCreateView surfaces the failure.
+                    return false
                 }
             }
         }

@@ -55,7 +55,17 @@ struct LeadCreateView: View {
     /// site_visit activities don't pollute the timeline.
     @State private var logAsSiteVisit = false
 
-    let onSubmit: ([String: Any]) async -> Void
+    // Save flow state — surfaced so we can show a spinner on the toolbar
+    // button and keep the sheet open if the server rejects the body.
+    @State private var saving: Bool = false
+    @State private var saveError: String?
+
+    /// Returns true when the lead was created (or queued offline); false
+    /// when the parent's create call failed. The form keeps itself open
+    /// on false so the rep can adjust + retry — the previous Void
+    /// signature dismissed unconditionally and swallowed every backend
+    /// error, which is the "leads not getting saved" symptom from users.
+    let onSubmit: ([String: Any]) async -> Bool
 
     // Tata Tiscon requires the submission location to be captured automatically
     // and is non-editable + mandatory (parity with the web lead form). Other
@@ -344,24 +354,49 @@ struct LeadCreateView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button {
                         // Fetch the location on Save if we still don't have a
                         // fix (e.g. permission was just granted) — best effort.
                         if !hasValidCoords { locator.requestLocation() }
                         Task {
-                            await onSubmit(buildBody())
-                            dismiss()
+                            saving = true
+                            let body = buildBody()
+                            // Empty body means the require-gate caught a
+                            // bad state (e.g. last_name required + blank);
+                            // surface that to the rep instead of POSTing
+                            // `{}` to the server and silently dismissing.
+                            guard !body.isEmpty else {
+                                saving = false
+                                saveError = "Fill in the required fields before saving."
+                                return
+                            }
+                            let ok = await onSubmit(body)
+                            saving = false
+                            if ok {
+                                dismiss()
+                            } else {
+                                saveError = "Couldn't save this lead. Check the details and try again."
+                            }
                         }
+                    } label: {
+                        if saving { ProgressView() } else { Text("Save") }
                     }
                     // Save is gated on whatever the admin marked required.
                     // Default: last_name is required (matches leadCreateSchema)
                     // — override flips the gate off when an admin sets
                     // last_name optional via field overrides.
                     .disabled(
-                        fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
-                        && lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        saving ||
+                        (fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
+                         && lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     )
                 }
+            }
+            .alert("Save failed",
+                   isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(saveError ?? "")
             }
         }
     }
