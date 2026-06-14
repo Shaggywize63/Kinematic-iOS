@@ -188,7 +188,11 @@ final class LeadDetailViewModel: ObservableObject {
         updates = (try? await api.listLeadUpdates(leadId: leadId)) ?? []
     }
 
-    /// Post a new update, then prepend it to the timeline.
+    /// Post a new update, then prepend it to the timeline. Offline-
+    /// aware: when the rep is on weak signal the note is captured in
+    /// OfflineMutationQueue + an optimistic local row goes in the
+    /// timeline so they see what they typed. The queue drains the
+    /// moment NWPathMonitor sees a satisfied path.
     func addUpdate(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -197,6 +201,30 @@ final class LeadDetailViewModel: ObservableObject {
         do {
             let created = try await api.addLeadUpdate(leadId: leadId, body: trimmed)
             updates.insert(created, at: 0)
+        } catch let urlError as URLError where [
+            .notConnectedToInternet, .timedOut, .cannotConnectToHost,
+            .networkConnectionLost, .dataNotAllowed,
+        ].contains(urlError.code) {
+            let label = "Note · " + String(trimmed.prefix(40))
+            OfflineMutationQueue.shared.enqueue(
+                method: "POST",
+                path: "/api/v1/crm/leads/\(leadId)/updates",
+                body: ["body": trimmed],
+                displayLabel: label,
+                clientId: Session.currentUser?.clientId,
+                lastError: urlError.localizedDescription,
+            )
+            // Optimistic insert so the timeline shows what the rep
+            // typed; will be reconciled with the canonical server row
+            // on the next refresh after the queue drains.
+            let optimistic = LeadUpdate(
+                id: "pending-\(UUID().uuidString)",
+                body: trimmed,
+                authorName: "You",
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+            )
+            updates.insert(optimistic, at: 0)
+            errorMessage = "Saved offline — will sync when online"
         } catch {
             errorMessage = error.localizedDescription
         }

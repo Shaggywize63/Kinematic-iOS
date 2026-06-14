@@ -321,6 +321,27 @@ struct LeadEditView: View {
             let updated = try await CRMService.shared.patchLead(id: lead.id, body: body)
             onSaved(updated)
             dismiss()
+        } catch let urlError as URLError where [
+            .notConnectedToInternet, .timedOut, .cannotConnectToHost,
+            .networkConnectionLost, .dataNotAllowed,
+        ].contains(urlError.code) {
+            // Offline / weak signal — queue the PATCH so the rep's
+            // edits don't vanish between the form and the wire. The
+            // header chip surfaces the pending count.
+            let label = "Lead edit · " + (firstName.isEmpty ? lastName : firstName)
+            OfflineMutationQueue.shared.enqueue(
+                method: "PATCH",
+                path: "/api/v1/crm/leads/\(lead.id)",
+                body: body,
+                displayLabel: label.isEmpty ? "Lead edit" : label,
+                clientId: Session.currentUser?.clientId,
+                lastError: urlError.localizedDescription,
+            )
+            // Dismiss as if saved — the optimistic onSaved(lead) keeps
+            // the parent screen in sync with the typed values until
+            // the canonical server row arrives on next refresh.
+            onSaved(lead)
+            dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }
