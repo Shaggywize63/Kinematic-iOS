@@ -326,6 +326,26 @@ final class LeadDetailViewModel: ObservableObject {
         do {
             let created = try await api.createActivity(body)
             activities.insert(created, at: 0)
+        } catch let urlError as URLError where [
+            .notConnectedToInternet, .timedOut, .cannotConnectToHost,
+            .networkConnectionLost, .dataNotAllowed,
+        ].contains(urlError.code) {
+            // Offline / weak signal — capture locally so reps in the
+            // field don't lose the entry while they walk back into
+            // coverage. OfflineMutationQueue drains automatically when
+            // NWPathMonitor sees the path become .satisfied. The
+            // header chip surfaces queued work so the rep knows it
+            // hasn't vanished.
+            let label = "Activity · \(trimmedSubject.prefix(40))"
+            OfflineMutationQueue.shared.enqueue(
+                method: "POST",
+                path: "/api/v1/crm/activities",
+                body: body,
+                displayLabel: label,
+                clientId: Session.currentUser?.clientId,
+                lastError: urlError.localizedDescription,
+            )
+            errorMessage = "Saved offline — will sync when online"
         } catch {
             errorMessage = error.localizedDescription
         }
