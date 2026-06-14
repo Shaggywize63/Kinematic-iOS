@@ -48,50 +48,58 @@ struct DealDetailView: View {
                     if let contact = primaryContact, let phone = contact.phone ?? contact.mobile, !phone.isEmpty {
                         primaryContactCard(contact: contact, phone: phone, dealName: d.name)
                     }
-                    HStack(alignment: .top, spacing: 16) {
-                        if let wp = winProb {
-                            WinProbabilityGauge(
-                                probability: wp.probability,
-                                label: wp.band?.uppercased(),
-                                reasoning: wp.reasoning,
-                                breakdown: wp.breakdown
-                            )
-                            .frame(maxWidth: .infinity)
-                        } else {
-                            VStack(spacing: 6) {
-                                Text("Powered by KINI AI")
-                                    .font(.system(size: 9, weight: .black))
-                                    .tracking(1)
-                                    .foregroundColor(Brand.red)
-                                Text("Win probability").font(.caption).foregroundColor(.gray)
-                                Button { Task { await loadWinProb() } } label: { Text("Compute").font(.caption).bold() }
+                    // Win Probability + Next Best Action are manager-tier
+                    // surfaces. Champion FEs work the floor and don't act on
+                    // these AI signals — matches the web gate on the deal
+                    // page (`!isConsumerChampion`).
+                    if !ClientFeatures.isConsumerChampion {
+                        HStack(alignment: .top, spacing: 16) {
+                            if let wp = winProb {
+                                WinProbabilityGauge(
+                                    probability: wp.probability,
+                                    label: wp.band?.uppercased(),
+                                    reasoning: wp.reasoning,
+                                    breakdown: wp.breakdown
+                                )
+                                .frame(maxWidth: .infinity)
+                            } else {
+                                VStack(spacing: 6) {
+                                    Text("Powered by KINI AI")
+                                        .font(.system(size: 9, weight: .black))
+                                        .tracking(1)
+                                        .foregroundColor(Brand.red)
+                                    Text("Win probability").font(.caption).foregroundColor(.gray)
+                                    Button { Task { await loadWinProb() } } label: { Text("Compute").font(.caption).bold() }
+                                }
+                                .frame(maxWidth: .infinity).padding()
+                                .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
                             }
-                            .frame(maxWidth: .infinity).padding()
-                            .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
                         }
                     }
                     DealProductsCard(dealId: dealId)
                     CustomFieldsDetailCard(entity: "deal", customFields: initialDeal?.customFields)
-                    if let nba = nextAction {
-                        NextBestActionCard(action: nba) {
-                            // Wire "Schedule it" → activity composer prefilled
-                            // from the NBA recommendation. Maps the NBA action
-                            // verb to an activity type, drops the displayable
-                            // label as the subject, and presents the same
-                            // composer the in-deal quick actions use so the
-                            // saved row lands on the deal timeline.
-                            composerInitialType = activityTypeFor(nba.action)
-                            composerInitialSubject = NextBestActionCard.displayAction(nba.action)
-                            loggingActivity = true
-                        }
-                    } else {
-                        Button { Task { await loadNextAction() } } label: {
-                            HStack {
-                                if aiBusy { ProgressView().tint(.white) } else { Image(systemName: "sparkles") }
-                                Text("Suggest next action")
+                    if !ClientFeatures.isConsumerChampion {
+                        if let nba = nextAction {
+                            NextBestActionCard(action: nba) {
+                                // Wire "Schedule it" → activity composer prefilled
+                                // from the NBA recommendation. Maps the NBA action
+                                // verb to an activity type, drops the displayable
+                                // label as the subject, and presents the same
+                                // composer the in-deal quick actions use so the
+                                // saved row lands on the deal timeline.
+                                composerInitialType = activityTypeFor(nba.action)
+                                composerInitialSubject = NextBestActionCard.displayAction(nba.action)
+                                loggingActivity = true
                             }
-                            .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10)
-                            .background(Brand.red).foregroundColor(.white).cornerRadius(10)
+                        } else {
+                            Button { Task { await loadNextAction() } } label: {
+                                HStack {
+                                    if aiBusy { ProgressView().tint(.white) } else { Image(systemName: "sparkles") }
+                                    Text("Suggest next action")
+                                }
+                                .font(.system(size: 13, weight: .bold)).padding(.horizontal, 14).padding(.vertical, 10)
+                                .background(Brand.red).foregroundColor(.white).cornerRadius(10)
+                            }
                         }
                     }
                     DealHistorySection(dealId: dealId, refreshTick: historyRefreshTick)
