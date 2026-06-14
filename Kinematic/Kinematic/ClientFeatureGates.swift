@@ -20,11 +20,12 @@ enum ClientFeatures {
     /// frontline FE designation). Gates manager-tier surfaces — Lead
     /// Score breakdown, Boost-score suggestions, and Lead Analytics —
     /// which clutter the field rep's workflow without giving them
-    /// anything actionable. Matched against `orgRoleName` so admin
-    /// renames in `org_roles` are picked up without an app release.
+    /// anything actionable. Matched against `orgRoleName` as a
+    /// substring so admin variants like "Consumer Champion Manager"
+    /// also collapse into the same gate without an app release.
     static var isConsumerChampion: Bool {
         let raw = Session.currentUser?.orgRoleName ?? ""
-        return raw.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Consumer Champion") == .orderedSame
+        return raw.lowercased().contains("consumer champion")
     }
 
     /// True when the signed-in user is allowed to reassign a lead's owner.
