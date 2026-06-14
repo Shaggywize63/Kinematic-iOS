@@ -136,19 +136,42 @@ struct LeadCreateView: View {
                     // Source picker — bound to crm_lead_sources so reps see
                     // the same options admins configure on the web console
                     // (e.g. Site Visit on Tata Tiscon). Loaded async; falls
-                    // back to "Unspecified" while empty.
-                    Picker("Source", selection: $sourceId) {
-                        Text("— Unspecified —").tag("")
-                        ForEach(sources, id: \.id) { s in
-                            Text(s.name).tag(s.id)
+                    // back to "Unspecified" while empty. Override-aware
+                    // (hide / relabel / require) like every other field.
+                    if !fieldOverrides.isHidden("source_id", isB2C: isB2C) {
+                        let req = fieldOverrides.requiredFor("source_id", defaultRequired: false, isB2C: isB2C)
+                        let lbl = fieldOverrides.labelFor("source_id", defaultLabel: "Source", isB2C: isB2C) + (req ? " *" : "")
+                        Picker(lbl, selection: $sourceId) {
+                            Text("— Unspecified —").tag("")
+                            ForEach(sources, id: \.id) { s in
+                                Text(s.name).tag(s.id)
+                            }
                         }
                     }
                 }
                 if !isB2C {
                     Section("Business Details") {
-                        TextField("Company", text: $company)
-                        TextField("Job Title", text: $title)
-                        TextField("Industry", text: $industry)
+                        if !fieldOverrides.isHidden("company", isB2C: false) {
+                            labelledField(
+                                label: fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: false),
+                                required: fieldOverrides.requiredFor("company", defaultRequired: false, isB2C: false),
+                                text: $company,
+                            )
+                        }
+                        if !fieldOverrides.isHidden("title", isB2C: false) {
+                            labelledField(
+                                label: fieldOverrides.labelFor("title", defaultLabel: "Job Title", isB2C: false),
+                                required: fieldOverrides.requiredFor("title", defaultRequired: false, isB2C: false),
+                                text: $title,
+                            )
+                        }
+                        if !fieldOverrides.isHidden("industry", isB2C: false) {
+                            labelledField(
+                                label: fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false),
+                                required: fieldOverrides.requiredFor("industry", defaultRequired: false, isB2C: false),
+                                text: $industry,
+                            )
+                        }
                     }
                 } else {
                     // Customer Details section — each field individually
@@ -183,16 +206,64 @@ struct LeadCreateView: View {
                     }
                     Section("Address") {
                         AddressSearchField(addressLine1: $addressLine1, city: $city, state: $state, postalCode: $postalCode)
-                        TextField("Address line 1", text: $addressLine1)
-                        TextField("Address line 2", text: $addressLine2)
-                        TextField("City", text: $city)
-                        TextField("State", text: $state)
-                        TextField("Postal code", text: $postalCode).keyboardType(.numberPad)
-                        TextField("Country", text: $country)
+                        if !fieldOverrides.isHidden("address_line1", isB2C: true) {
+                            labelledField(
+                                label: fieldOverrides.labelFor("address_line1", defaultLabel: "Address line 1", isB2C: true),
+                                required: fieldOverrides.requiredFor("address_line1", defaultRequired: false, isB2C: true),
+                                text: $addressLine1,
+                            )
+                        }
+                        if !fieldOverrides.isHidden("address_line2", isB2C: true) {
+                            labelledField(
+                                label: fieldOverrides.labelFor("address_line2", defaultLabel: "Address line 2", isB2C: true),
+                                required: false,
+                                text: $addressLine2,
+                            )
+                        }
+                        if !fieldOverrides.isHidden("city", isB2C: true) {
+                            labelledField(
+                                label: fieldOverrides.labelFor("city", defaultLabel: "City", isB2C: true),
+                                required: fieldOverrides.requiredFor("city", defaultRequired: false, isB2C: true),
+                                text: $city,
+                            )
+                        }
+                        if !fieldOverrides.isHidden("state", isB2C: true) {
+                            labelledField(
+                                label: fieldOverrides.labelFor("state", defaultLabel: "State", isB2C: true),
+                                required: fieldOverrides.requiredFor("state", defaultRequired: false, isB2C: true),
+                                text: $state,
+                            )
+                        }
+                        if !fieldOverrides.isHidden("postal_code", isB2C: true) {
+                            labelledField(
+                                label: fieldOverrides.labelFor("postal_code", defaultLabel: "Postal code", isB2C: true),
+                                required: fieldOverrides.requiredFor("postal_code", defaultRequired: false, isB2C: true),
+                                text: $postalCode,
+                                keyboard: .numberPad,
+                            )
+                        }
+                        if !fieldOverrides.isHidden("country", isB2C: true) {
+                            labelledField(
+                                label: fieldOverrides.labelFor("country", defaultLabel: "Country", isB2C: true),
+                                required: false,
+                                text: $country,
+                            )
+                        }
                     }
-                    Section("Consent") {
-                        Toggle("Marketing emails", isOn: $marketingConsent)
-                        Toggle("WhatsApp messages", isOn: $whatsappConsent)
+                    // Consent toggles only render when the admin hasn't
+                    // hidden BOTH. We drop the header too — an empty
+                    // "Consent" section reads as a bug, not a feature.
+                    let showMarketing = !fieldOverrides.isHidden("marketing_consent", isB2C: true)
+                    let showWhatsapp  = !fieldOverrides.isHidden("whatsapp_consent", isB2C: true)
+                    if showMarketing || showWhatsapp {
+                        Section("Consent") {
+                            if showMarketing {
+                                Toggle(fieldOverrides.labelFor("marketing_consent", defaultLabel: "Marketing emails", isB2C: true), isOn: $marketingConsent)
+                            }
+                            if showWhatsapp {
+                                Toggle(fieldOverrides.labelFor("whatsapp_consent", defaultLabel: "WhatsApp messages", isB2C: true), isOn: $whatsappConsent)
+                            }
+                        }
                     }
                 }
 
@@ -282,12 +353,14 @@ struct LeadCreateView: View {
                             dismiss()
                         }
                     }
-                    // last_name is required by the backend leadCreateSchema;
-                    // the gate previously allowed save on any (firstName OR
-                    // email), so reps submitted bodies the server 400'd. Add
-                    // the explicit last-name guard so the button stays
-                    // disabled until the form would actually save.
-                    .disabled(lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    // Save is gated on whatever the admin marked required.
+                    // Default: last_name is required (matches leadCreateSchema)
+                    // — override flips the gate off when an admin sets
+                    // last_name optional via field overrides.
+                    .disabled(
+                        fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
+                        && lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
                 }
             }
         }
@@ -322,14 +395,18 @@ struct LeadCreateView: View {
             guard let v = value?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { return }
             body[key] = v
         }
-        // last_name is required by the backend; first_name optional.
-        guard !lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [:] }
+        // last_name defaults to required (matches leadCreateSchema).
+        // Admin override can flip it optional — keep the empty-body guard
+        // in line with whatever requirement the form rendered.
+        let lastNameRequired = fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
+        let trimmedLast = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if lastNameRequired && trimmedLast.isEmpty { return [:] }
 
         var body: [String: Any] = [
-            "last_name": lastName.trimmingCharacters(in: .whitespacesAndNewlines),
-            "status":    "new",
-            "is_b2c":    isB2C,
+            "status": "new",
+            "is_b2c": isB2C,
         ]
+        if !trimmedLast.isEmpty { body["last_name"] = trimmedLast }
         put("first_name", firstName, into: &body)
         put("email",      email,     into: &body)
         put("phone",      phone,     into: &body)
@@ -338,9 +415,9 @@ struct LeadCreateView: View {
         // server; this is the canonical column.
         if !sourceId.isEmpty { body["source_id"] = sourceId }
         if !isB2C {
-            put("company",  company,  into: &body)
-            put("title",    title,    into: &body)
-            put("industry", industry, into: &body)
+            if !fieldOverrides.isHidden("company",  isB2C: false) { put("company",  company,  into: &body) }
+            if !fieldOverrides.isHidden("title",    isB2C: false) { put("title",    title,    into: &body) }
+            if !fieldOverrides.isHidden("industry", isB2C: false) { put("industry", industry, into: &body) }
         } else {
             // Honour the admin's "hidden" flag — fields the rep can't
             // see shouldn't quietly persist a value.
@@ -354,14 +431,14 @@ struct LeadCreateView: View {
             if !fieldOverrides.isHidden("preferred_contact_method", isB2C: true) {
                 put("preferred_contact_method", preferredChannel, into: &body)
             }
-            put("address_line1",            addressLine1,     into: &body)
-            put("address_line2",            addressLine2,     into: &body)
-            put("city",                     city,             into: &body)
-            put("state",                    state,            into: &body)
-            put("postal_code",              postalCode,       into: &body)
-            put("country",                  country,          into: &body)
-            body["marketing_consent"] = marketingConsent
-            body["whatsapp_consent"]  = whatsappConsent
+            if !fieldOverrides.isHidden("address_line1", isB2C: true) { put("address_line1", addressLine1, into: &body) }
+            if !fieldOverrides.isHidden("address_line2", isB2C: true) { put("address_line2", addressLine2, into: &body) }
+            if !fieldOverrides.isHidden("city",          isB2C: true) { put("city",          city,         into: &body) }
+            if !fieldOverrides.isHidden("state",         isB2C: true) { put("state",         state,        into: &body) }
+            if !fieldOverrides.isHidden("postal_code",   isB2C: true) { put("postal_code",   postalCode,   into: &body) }
+            if !fieldOverrides.isHidden("country",       isB2C: true) { put("country",       country,      into: &body) }
+            if !fieldOverrides.isHidden("marketing_consent", isB2C: true) { body["marketing_consent"] = marketingConsent }
+            if !fieldOverrides.isHidden("whatsapp_consent",  isB2C: true) { body["whatsapp_consent"]  = whatsappConsent }
         }
         // Geo coordinates (both B2B + B2C). Only sent when they parse as
         // valid numbers, so a half-typed value never reaches the API.
