@@ -45,12 +45,19 @@ final class OfflineMutationQueue: ObservableObject {
         let method: String
         /// Full API path, e.g. `/api/v1/crm/activities`
         let path: String
-        /// JSON string of the body the form built — replayed verbatim.
-        let payloadJSON: String
+        /// JSON string of the body the form built — replayed verbatim
+        /// after any kinematic-offline:// placeholders have been
+        /// swapped for real uploaded URLs.
+        var payloadJSON: String
         let clientId: String?
         let createdAt: Date
         var attempt: Int
         var lastError: String?
+    }
+
+    private enum ImageResolution {
+        case ok(String)
+        case deferred
     }
 
     // MARK: - File location
@@ -138,6 +145,20 @@ final class OfflineMutationQueue: ObservableObject {
             try? FileManager.default.removeItem(at: file)
             return true
         }
+        // Resolve any kinematic-offline://image-… placeholders first.
+        // If an upload defers (no signal mid-replay), leave the row
+        // queued for the next path-satisfied callback so the activity
+        // doesn't post with a dangling placeholder URL.
+        let resolved = await drainOfflineImages(in: row.payloadJSON)
+        switch resolved {
+        case .deferred:
+            row.attempt += 1
+            row.lastError = "Image upload deferred"
+            if let d = try? JSONEncoder().encode(row) { try? d.write(to: file, options: [.atomic]) }
+            return false
+        case .ok(let rewritten):
+            row.payloadJSON = rewritten
+        }
         let payload: [String: Any]
         if let bodyData = row.payloadJSON.data(using: .utf8),
            let dict = try? JSONSerialization.jsonObject(with: bodyData, options: []) as? [String: Any] {
@@ -190,5 +211,86 @@ final class OfflineMutationQueue: ObservableObject {
             .filter { $0.pathExtension == "json" }
             .count) ?? 0
         self.pendingCount = n
+    }
+
+    /// Walk the payload for `kinematic-offline://image-…` placeholders.
+    /// Upload each backing file to `/upload/activity_form`; on any
+    /// transient failure return `.deferred` so the row stays queued
+    /// for the next path-satisfied tick.
+    private nonisolated func drainOfflineImages(in payloadJSON: String) async -> ImageResolution {
+        if !payloadJSON.contains(OfflineImageCache.placeholderPrefix) {
+            return .ok(payloadJSON)
+        }
+        var working = payloadJSON
+        // Naïve regex over the source — these placeholders only ever
+        // appear inside JSON-encoded string values, so a literal scan
+        // is safe enough.
+        let pattern = OfflineImageCache.placeholderPrefix + "[A-Za-z0-9._-]+"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return .ok(working)
+        }
+        var matches: Set<String> = []
+        let ns = working as NSString
+        for m in regex.matches(in: working, range: NSRange(location: 0, length: ns.length)) {
+            matches.insert(ns.substring(with: m.range))
+        }
+        for placeholder in matches {
+            guard let file = OfflineImageCache.fileURL(for: placeholder),
+                  let data = try? Data(contentsOf: file) else {
+                // Local file gone — drop the placeholder so the
+                // activity still persists with no attachment.
+                working = working.replacingOccurrences(of: placeholder, with: "")
+                continue
+            }
+            do {
+                let url = try await uploadActivityImageData(data)
+                working = working.replacingOccurrences(of: placeholder, with: url)
+                OfflineImageCache.delete(placeholder)
+            } catch {
+                return .deferred
+            }
+        }
+        return .ok(working)
+    }
+
+    /// Multipart upload to /upload/activity_form. Mirrors the
+    /// KinematicRepository.uploadImage shape so the server stores the
+    /// asset in the same bucket the live (online) path uses.
+    private nonisolated func uploadActivityImageData(_ data: Data) async throws -> String {
+        struct UploadOutcome: Decodable { let url: String? }
+        let token = Session.sharedToken
+        // Same endpoint the online ActivityComposeView path uses, so
+        // the queued attachment lands in the same bucket as live
+        // captures. Kept inline to avoid coupling the queue to
+        // CRMService internals (makeRequest / perform are private).
+        guard !token.isEmpty,
+              let url = URL(string: "https://api.kinematicapp.com/api/v1/upload/activity_form") else {
+            throw URLError(.badURL)
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let orgId = Session.currentUser?.orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
+        let boundary = "Boundary-\(UUID().uuidString)"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"queued.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
+        let (respData, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        // Backend wraps responses in `{ success, data: { url } }` for
+        // most upload endpoints; fall back to a bare top-level `url`
+        // if the shape changes.
+        if let any = try? JSONSerialization.jsonObject(with: respData) as? [String: Any] {
+            if let data = any["data"] as? [String: Any], let url = data["url"] as? String { return url }
+            if let url = any["url"] as? String { return url }
+        }
+        throw URLError(.cannotParseResponse)
     }
 }

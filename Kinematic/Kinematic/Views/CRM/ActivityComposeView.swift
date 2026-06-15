@@ -172,10 +172,16 @@ struct ActivityComposeView: View {
     private func upload(image: UIImage) async {
         uploading = true
         defer { uploading = false }
-        // Reuses the existing /upload/activity_form bucket already wired
-        // for form attachments. Returns a public URL on success or nil on
-        // any failure (user can re-attempt by removing + re-attaching).
-        imageUrl = await KinematicRepository.shared.uploadImage(image: image, type: "activity_form")
+        // Try the live upload first. On success → public URL stamped
+        // on the activity. On failure (network down, transient 5xx →
+        // returns nil today) fall back to OfflineImageCache so the
+        // rep can still log the activity in the field — the queue
+        // re-uploads + swaps the URL when MutationSyncWorker drains.
+        if let url = await KinematicRepository.shared.uploadImage(image: image, type: "activity_form") {
+            imageUrl = url
+        } else if let data = image.jpegData(compressionQuality: 0.85) {
+            imageUrl = OfflineImageCache.save(data, ext: "jpg")
+        }
     }
 }
 
