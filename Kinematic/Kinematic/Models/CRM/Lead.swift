@@ -22,6 +22,10 @@ struct Lead: Codable, Identifiable, Hashable {
     let ownerId: String?
     let ownerName: String?
     let assignedTo: String?
+    /// User id that originally captured this lead — drives the edit
+    /// gate (only the creator + CRM admins may PATCH). Surfaced from
+    /// the backend's stamped `created_by` column.
+    let createdBy: String?
     let convertedAt: String?
     let convertedContactId: String?
     let convertedAccountId: String?
@@ -88,6 +92,7 @@ struct Lead: Codable, Identifiable, Hashable {
         case ownerId = "owner_id"
         case ownerName = "owner_name"
         case assignedTo = "assigned_to"
+        case createdBy = "created_by"
         case convertedAt = "converted_at"
         case convertedContactId = "converted_contact_id"
         case convertedAccountId = "converted_account_id"
