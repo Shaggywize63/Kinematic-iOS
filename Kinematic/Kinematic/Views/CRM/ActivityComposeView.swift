@@ -36,6 +36,11 @@ struct ActivityComposeView: View {
     @State private var uploading: Bool = false
     @State private var imageUrl: String? = nil
     @State private var showSourceSheet: Bool = false
+    /// Admin-curated subject presets from /api/v1/crm/activity-subjects.
+    /// Loaded on appear; default order from the backend already puts
+    /// Meeting first (position=0). Tapping a row replaces the subject
+    /// text; free-typing still works.
+    @State private var subjectPresets: [String] = []
 
     init(
         initialType: String = "meeting",
@@ -86,6 +91,18 @@ struct ActivityComposeView: View {
                     }
                 }
                 Section("Details") {
+                    if !subjectPresets.isEmpty {
+                        // Subject preset picker — pulled from the admin
+                        // catalogue. Picking a row replaces the free-text
+                        // input with the preset (still editable below).
+                        Picker("Subject preset", selection: Binding(
+                            get: { "" },
+                            set: { newVal in if !newVal.isEmpty { subject = newVal } }
+                        )) {
+                            Text("— pick a preset —").tag("")
+                            ForEach(subjectPresets, id: \.self) { Text($0).tag($0) }
+                        }
+                    }
                     TextField("Subject", text: $subject)
                     TextField("Description", text: $desc, axis: .vertical).lineLimit(3...6)
                     // Editable time. Default is now; tap to change. Reps
@@ -218,6 +235,12 @@ struct LeadSearchPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .task { await load() }
+            // Load admin-curated subject presets in parallel with the
+            // lead list. Backend returns active rows ordered by
+            // position (Meeting first); we just take the names.
+            .task {
+                subjectPresets = await CRMService.shared.listActivitySubjects()
+            }
         }
     }
 
