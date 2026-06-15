@@ -108,22 +108,79 @@ struct CRMReportsHubView: View {
     /// Champions see three KPI tiles + nothing else. Loaded on appear.
     @State private var summary: CRMAnalyticsSummary?
 
+    /// Date-range presets the Champion can pick. "custom" reveals two
+    /// DatePickers so reps can scope the KPIs to an arbitrary window.
+    enum DateRangePreset: String, CaseIterable, Identifiable {
+        case today, yesterday, last7, thisMonth, custom
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .today: return "Today"
+            case .yesterday: return "Yesterday"
+            case .last7: return "Last 7 days"
+            case .thisMonth: return "This month"
+            case .custom: return "Custom"
+            }
+        }
+    }
+    @State private var range: DateRangePreset = .last7
+    @State private var customFrom: Date = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    @State private var customTo: Date = Date()
+
+    /// Resolve the picked preset → ISO from/to dates the backend honours.
+    /// Returns nils for unbounded windows so the server-side defaults
+    /// (last 30 days) still apply if the rep clears the filter.
+    private var rangeISO: (from: String?, to: String?) {
+        let cal = Calendar.current
+        let startOfDay = cal.startOfDay(for: Date())
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        switch range {
+        case .today:
+            return (f.string(from: startOfDay), f.string(from: Date()))
+        case .yesterday:
+            let yStart = cal.date(byAdding: .day, value: -1, to: startOfDay) ?? startOfDay
+            return (f.string(from: yStart), f.string(from: startOfDay))
+        case .last7:
+            let weekAgo = cal.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+            return (f.string(from: weekAgo), f.string(from: Date()))
+        case .thisMonth:
+            let comps = cal.dateComponents([.year, .month], from: Date())
+            let monthStart = cal.date(from: comps) ?? Date()
+            return (f.string(from: monthStart), f.string(from: Date()))
+        case .custom:
+            return (f.string(from: customFrom), f.string(from: customTo))
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
                 if ClientFeatures.isConsumerChampion {
+                    // Date-range picker — drives the KPI window. Champions
+                    // wanted to see today / yesterday / last-7 / month /
+                    // custom; the underlying dashboard-summary endpoint
+                    // already honours ?from=&to=.
+                    Picker("Range", selection: $range) {
+                        ForEach(DateRangePreset.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    if range == .custom {
+                        DatePicker("From", selection: $customFrom, displayedComponents: .date)
+                        DatePicker("To", selection: $customTo, displayedComponents: .date)
+                    }
                     // Champion KPI trio. Same metric set as the Android
                     // ReportsScreen — kept in lock-step intentionally so
                     // a Champion's view doesn't drift between platforms.
                     kpiCard(label: "TOTAL LEADS ADDED",
                             value: "\(summary?.totalLeads ?? 0)",
-                            sub: "\(summary?.newLeadsThisWeek ?? 0) new in last 30 days")
+                            sub: "for \(range.label.lowercased())")
                     kpiCard(label: "TOTAL DEALS CONVERTED",
                             value: "\(summary?.dealsWonThisMonth ?? 0)",
-                            sub: "deals won in the last 30 days")
+                            sub: "deals won for \(range.label.lowercased())")
                     kpiCard(label: "TOTAL ESTIMATES RAISED",
                             value: formatRupees(summary?.estimatesRaised ?? 0),
-                            sub: "₹ committed across captured leads")
+                            sub: "₹ committed for \(range.label.lowercased())")
                 } else {
                     NavigationLink(destination: CRMReportsView()) {
                         reportCard(title: "Export Data (CSV)",
@@ -150,9 +207,13 @@ struct CRMReportsHubView: View {
             .padding()
         }
         .navigationTitle("Reports")
-        .task {
+        // Refetch whenever the rep changes the preset or either custom
+        // date — .task(id:) reruns on identity change, so this is the
+        // "subscribe to filter" pattern SwiftUI wants here.
+        .task(id: "\(range.rawValue)|\(customFrom.timeIntervalSince1970)|\(customTo.timeIntervalSince1970)") {
             if ClientFeatures.isConsumerChampion {
-                summary = try? await CRMService.shared.dashboardSummary()
+                let r = rangeISO
+                summary = try? await CRMService.shared.dashboardSummary(from: r.from, to: r.to)
             }
         }
     }
