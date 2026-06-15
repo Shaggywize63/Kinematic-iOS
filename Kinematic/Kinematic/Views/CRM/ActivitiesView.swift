@@ -187,9 +187,10 @@ struct ActivitiesView: View {
                 initialSubject: act.subject ?? "",
                 allowLeadPicker: false,
             ) { type, subject, desc, imageUrl, when, _ in
-                if let id = act.id {
-                    await vm.update(id: id, type: type, subject: subject, description: desc, imageUrl: imageUrl, completedAt: when)
-                }
+                // Activity.id is non-optional in the model — pass it
+                // straight through without a guard. (Earlier draft
+                // used `if let` which the iOS 26 toolchain refused.)
+                await vm.update(id: act.id, type: type, subject: subject, description: desc, imageUrl: imageUrl, completedAt: when)
             }
         }
         // Delete confirmation — guards against an accidental long-press.
@@ -199,7 +200,7 @@ struct ActivitiesView: View {
         )) {
             Button("Cancel", role: .cancel) { deletingActivity = nil }
             Button("Delete", role: .destructive) {
-                if let id = deletingActivity?.id { Task { await vm.delete(id: id) } }
+                if let id = deletingActivity?.id { Task { await vm.delete(id: id) } } // id is non-optional on Activity but the chain through optional `deletingActivity` keeps it Optional<String> — guard remains required.
                 deletingActivity = nil
             }
         } message: {
