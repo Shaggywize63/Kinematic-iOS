@@ -90,4 +90,49 @@ final class ActivitiesViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+
+    /// PATCH an existing activity from the tap-to-edit row. Updates
+    /// the local cache in place so the list reflects the change
+    /// without a full refresh round-trip. Same body shape as `log`.
+    func update(
+        id: String,
+        type: String,
+        subject: String,
+        description: String,
+        imageUrl: String? = nil,
+        completedAt: Date? = nil
+    ) async {
+        let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSubject.isEmpty else { return }
+        do {
+            var body: [String: Any] = ["type": type, "subject": trimmedSubject]
+            let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            body["description"] = trimmedDesc.isEmpty ? NSNull() : trimmedDesc
+            if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
+            if type != "task" {
+                let stamp = completedAt ?? Date()
+                body["completed_at"] = ISO8601DateFormatter().string(from: stamp)
+                body["status"] = "completed"
+            } else if let due = completedAt {
+                body["due_at"] = ISO8601DateFormatter().string(from: due)
+            }
+            let updated = try await api.updateActivity(id: id, body: body)
+            if let idx = activities.firstIndex(where: { $0.id == id }) {
+                activities[idx] = updated
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Delete an activity from the timeline. Confirmed via an alert
+    /// in the view so this can't fire on an accidental long-press.
+    func delete(id: String) async {
+        do {
+            try await api.deleteActivity(id: id)
+            activities.removeAll { $0.id == id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
