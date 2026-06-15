@@ -131,7 +131,7 @@ struct LeadEditView: View {
                         .keyboardType(.phonePad)
                         .textContentType(.telephoneNumber)
                     }
-                    if isB2C && !fieldOverrides.isHidden("preferred_contact_method", isB2C: isB2C) {
+                    if isB2C && fieldOverrides.didLoad && !fieldOverrides.isHidden("preferred_contact_method", isB2C: isB2C) {
                         Picker(fieldOverrides.labelFor("preferred_contact_method", defaultLabel: "Preferred channel", isB2C: isB2C), selection: $preferredContactMethod) {
                             ForEach(["", "email", "phone", "whatsapp", "sms"], id: \.self) {
                                 Text($0.isEmpty ? "—" : $0.capitalized).tag($0)
@@ -158,7 +158,10 @@ struct LeadEditView: View {
                 }
 
                 // ── Personal (B2C only) ────────────────────────────
-                if isB2C {
+                // Defer rendering admin-gated rows until the override
+                // map has loaded so the form doesn't briefly show fields
+                // the admin had hidden.
+                if isB2C && fieldOverrides.didLoad {
                     Section("Personal") {
                         if !fieldOverrides.isHidden("date_of_birth", isB2C: true) {
                             TextField(fieldOverrides.labelFor("date_of_birth", defaultLabel: "Date of birth (YYYY-MM-DD)", isB2C: true), text: $dateOfBirth)
@@ -233,7 +236,8 @@ struct LeadEditView: View {
                 }
 
                 // ── Consent (B2C only) ─────────────────────────────
-                if isB2C {
+                // Same loaded-gate as the Personal block above.
+                if isB2C && fieldOverrides.didLoad {
                     let showMarketing = !fieldOverrides.isHidden("marketing_consent", isB2C: true)
                     let showWhatsapp = !fieldOverrides.isHidden("whatsapp_consent", isB2C: true)
                     if showMarketing || showWhatsapp {
