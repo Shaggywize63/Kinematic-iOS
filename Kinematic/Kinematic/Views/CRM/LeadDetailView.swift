@@ -41,6 +41,16 @@ struct LeadDetailView: View {
         _vm = StateObject(wrappedValue: LeadDetailViewModel(leadId: leadId))
     }
 
+    /// Edit RBAC — only the rep who created this lead may edit it
+    /// (plus system-tier CRM admins). Owner / assigned grants read
+    /// access but not edit. Mirrors the backend PATCH gate.
+    private func canEditLead(_ lead: Lead) -> Bool {
+        let sysRole = (Session.currentUser?.role ?? "").lowercased()
+        if ["super_admin", "admin", "sub_admin"].contains(sysRole) { return true }
+        guard let me = Session.currentUser?.id, let creator = lead.createdBy else { return false }
+        return creator == me
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -63,7 +73,7 @@ struct LeadDetailView: View {
                             lead: lead,
                             isTata: ClientFeatures.isTataTiscon,
                             busy: vm.qualifyBusy,
-                            onEdit: { editing = true },
+                            onEdit: canEditLead(lead) ? { editing = true } : {},
                             onQualify: { Task { await vm.qualify() } }
                         )
                     }
@@ -85,7 +95,11 @@ struct LeadDetailView: View {
         .navigationTitle("Lead")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if vm.lead != nil {
+                // Edit RBAC — only the rep who CREATED this lead may
+                // edit it (plus system-tier CRM admins). Mirrors the
+                // backend PATCH /leads/:id gate so reps aren't promised
+                // an affordance the server will then 403.
+                if let l = vm.lead, canEditLead(l) {
                     Button("Edit") { editing = true }.tint(Brand.red)
                 }
             }
