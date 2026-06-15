@@ -43,6 +43,10 @@ struct LeadEditView: View {
     /// (and hydrated from `lead.customFields`) inside `.task`.
     @StateObject private var customFields = CustomFieldsModel()
     @StateObject private var productLines = ProductLinesModel()
+    /// Admin-defined per-tenant overrides — visibility / label / required
+    /// for built-in lead fields. Mirrors LeadCreateView so editing honours
+    /// the same admin policy as creation.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
     /// Tata Tiscon affordance — mirrors the create form. Lets the rep
     /// log a follow-up site visit while editing. Default off so saving
     /// the form doesn't accidentally spawn duplicate visits.
@@ -99,29 +103,36 @@ struct LeadEditView: View {
                 }
 
                 // ── Contact ────────────────────────────────────────
+                // Each row is guarded by fieldOverrides.isHidden so the
+                // tenant's admin can hide a built-in field for the rep's
+                // org-role — same policy the create form honours.
                 Section("Contact") {
-                    TextField("First name", text: $firstName)
-                        .textContentType(.givenName)
-                    TextField("Last name", text: $lastName)
-                        .textContentType(.familyName)
-                    // Email hidden for Tata Tiscon — matches LeadCreateView.
-                    if !ClientFeatures.isTataTiscon {
-                        TextField("Email", text: $email)
+                    if !fieldOverrides.isHidden("first_name", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor("first_name", defaultLabel: "First name", isB2C: isB2C), text: $firstName)
+                            .textContentType(.givenName)
+                    }
+                    if !fieldOverrides.isHidden("last_name", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor("last_name", defaultLabel: "Last name", isB2C: isB2C), text: $lastName)
+                            .textContentType(.familyName)
+                    }
+                    if !ClientFeatures.isTataTiscon && !fieldOverrides.isHidden("email", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor("email", defaultLabel: "Email", isB2C: isB2C), text: $email)
                             .keyboardType(.emailAddress)
                             .textContentType(.emailAddress)
                             .autocapitalization(.none)
                     }
-                    // Strip non-digits + clamp to 10 at input time so the rep
-                    // can't type/paste spaces or formatting that the backend's
-                    // 10-digit regex rejects. Mirrors LeadCreateView.
-                    TextField("Phone", text: Binding(
-                        get: { phone },
-                        set: { raw in phone = String(raw.filter { $0.isNumber }.prefix(10)) }
-                    ))
-                    .keyboardType(.phonePad)
-                    .textContentType(.telephoneNumber)
-                    if isB2C {
-                        Picker("Preferred channel", selection: $preferredContactMethod) {
+                    if !fieldOverrides.isHidden("phone", isB2C: isB2C) {
+                        // Strip non-digits + clamp to 10 at input time so the rep
+                        // can't type/paste spaces. Mirrors LeadCreateView.
+                        TextField(fieldOverrides.labelFor("phone", defaultLabel: "Phone", isB2C: isB2C), text: Binding(
+                            get: { phone },
+                            set: { raw in phone = String(raw.filter { $0.isNumber }.prefix(10)) }
+                        ))
+                        .keyboardType(.phonePad)
+                        .textContentType(.telephoneNumber)
+                    }
+                    if isB2C && !fieldOverrides.isHidden("preferred_contact_method", isB2C: isB2C) {
+                        Picker(fieldOverrides.labelFor("preferred_contact_method", defaultLabel: "Preferred channel", isB2C: isB2C), selection: $preferredContactMethod) {
                             ForEach(["", "email", "phone", "whatsapp", "sms"], id: \.self) {
                                 Text($0.isEmpty ? "—" : $0.capitalized).tag($0)
                             }
@@ -132,21 +143,31 @@ struct LeadEditView: View {
                 // ── Business (B2B only) ────────────────────────────
                 if !isB2C {
                     Section("Business Details") {
-                        TextField("Company", text: $company)
-                            .textContentType(.organizationName)
-                        TextField("Job title", text: $title)
-                            .textContentType(.jobTitle)
-                        TextField("Industry", text: $industry)
+                        if !fieldOverrides.isHidden("company", isB2C: false) {
+                            TextField(fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: false), text: $company)
+                                .textContentType(.organizationName)
+                        }
+                        if !fieldOverrides.isHidden("title", isB2C: false) {
+                            TextField(fieldOverrides.labelFor("title", defaultLabel: "Job title", isB2C: false), text: $title)
+                                .textContentType(.jobTitle)
+                        }
+                        if !fieldOverrides.isHidden("industry", isB2C: false) {
+                            TextField(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false), text: $industry)
+                        }
                     }
                 }
 
                 // ── Personal (B2C only) ────────────────────────────
                 if isB2C {
                     Section("Personal") {
-                        TextField("Date of birth (YYYY-MM-DD)", text: $dateOfBirth)
-                        Picker("Gender", selection: $gender) {
-                            ForEach(["", "male", "female", "other", "prefer_not_to_say"], id: \.self) {
-                                Text($0.isEmpty ? "—" : $0.replacingOccurrences(of: "_", with: " ").capitalized).tag($0)
+                        if !fieldOverrides.isHidden("date_of_birth", isB2C: true) {
+                            TextField(fieldOverrides.labelFor("date_of_birth", defaultLabel: "Date of birth (YYYY-MM-DD)", isB2C: true), text: $dateOfBirth)
+                        }
+                        if !fieldOverrides.isHidden("gender", isB2C: true) {
+                            Picker(fieldOverrides.labelFor("gender", defaultLabel: "Gender", isB2C: true), selection: $gender) {
+                                ForEach(["", "male", "female", "other", "prefer_not_to_say"], id: \.self) {
+                                    Text($0.isEmpty ? "—" : $0.replacingOccurrences(of: "_", with: " ").capitalized).tag($0)
+                                }
                             }
                         }
                     }
@@ -155,12 +176,24 @@ struct LeadEditView: View {
                 // ── Address — shown for both B2B and B2C so reps can
                 //    geo-target every lead.
                 Section("Address") {
-                    TextField("Line 1", text: $addressLine1)
-                    TextField("Line 2", text: $addressLine2)
-                    LocationPicker(state: $state, city: $city)
-                    TextField("Postal code", text: $postalCode)
-                        .keyboardType(.numberPad)
-                    TextField("Country", text: $country)
+                    if !fieldOverrides.isHidden("address_line1", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor("address_line1", defaultLabel: "Line 1", isB2C: isB2C), text: $addressLine1)
+                    }
+                    if !fieldOverrides.isHidden("address_line2", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor("address_line2", defaultLabel: "Line 2", isB2C: isB2C), text: $addressLine2)
+                    }
+                    // State + City share a LocationPicker so hide them together
+                    // if either is hidden — partial hide would leave a half-form.
+                    if !fieldOverrides.isHidden("city", isB2C: isB2C) && !fieldOverrides.isHidden("state", isB2C: isB2C) {
+                        LocationPicker(state: $state, city: $city)
+                    }
+                    if !fieldOverrides.isHidden("postal_code", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor("postal_code", defaultLabel: "Postal code", isB2C: isB2C), text: $postalCode)
+                            .keyboardType(.numberPad)
+                    }
+                    if !fieldOverrides.isHidden("country", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor("country", defaultLabel: "Country", isB2C: isB2C), text: $country)
+                    }
                     if let lat = lead.latitude, let lng = lead.longitude {
                         HStack {
                             Text("Coordinates")
@@ -201,9 +234,17 @@ struct LeadEditView: View {
 
                 // ── Consent (B2C only) ─────────────────────────────
                 if isB2C {
-                    Section("Consent & Preferences") {
-                        Toggle("Marketing consent", isOn: $marketingConsent)
-                        Toggle("WhatsApp consent", isOn: $whatsappConsent)
+                    let showMarketing = !fieldOverrides.isHidden("marketing_consent", isB2C: true)
+                    let showWhatsapp = !fieldOverrides.isHidden("whatsapp_consent", isB2C: true)
+                    if showMarketing || showWhatsapp {
+                        Section("Consent & Preferences") {
+                            if showMarketing {
+                                Toggle(fieldOverrides.labelFor("marketing_consent", defaultLabel: "Marketing consent", isB2C: true), isOn: $marketingConsent)
+                            }
+                            if showWhatsapp {
+                                Toggle(fieldOverrides.labelFor("whatsapp_consent", defaultLabel: "WhatsApp consent", isB2C: true), isOn: $whatsappConsent)
+                            }
+                        }
                     }
                 }
 
@@ -264,16 +305,18 @@ struct LeadEditView: View {
     }
 
     private func loadPickerOptions() async {
-        // Fire all four lookups in parallel — they're independent and
+        // Fire all five lookups in parallel — they're independent and
         // the form is usable without any of them while they load.
         async let ownersTask  = CRMService.shared.listAssignableUsers()
         async let sourcesTask = CRMService.shared.listLeadSources()
         async let cfTask: Void = customFields.load(entity: "lead")
         async let plTask: Void = productLines.load()
+        async let foTask: Void = fieldOverrides.load()
         owners  = await ownersTask
         sources = await sourcesTask
         _ = await cfTask
         _ = await plTask
+        _ = await foTask
         // Hydrate the form with the lead's existing custom-field values
         // after the defs land, so each value lands in the right type
         // bucket (text / bool / multi).
