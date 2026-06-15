@@ -111,9 +111,15 @@ struct LeadEditView: View {
                             .textContentType(.emailAddress)
                             .autocapitalization(.none)
                     }
-                    TextField("Phone", text: $phone)
-                        .keyboardType(.phonePad)
-                        .textContentType(.telephoneNumber)
+                    // Strip non-digits + clamp to 10 at input time so the rep
+                    // can't type/paste spaces or formatting that the backend's
+                    // 10-digit regex rejects. Mirrors LeadCreateView.
+                    TextField("Phone", text: Binding(
+                        get: { phone },
+                        set: { raw in phone = String(raw.filter { $0.isNumber }.prefix(10)) }
+                    ))
+                    .keyboardType(.phonePad)
+                    .textContentType(.telephoneNumber)
                     if isB2C {
                         Picker("Preferred channel", selection: $preferredContactMethod) {
                             ForEach(["", "email", "phone", "whatsapp", "sms"], id: \.self) {
