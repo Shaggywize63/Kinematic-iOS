@@ -471,8 +471,11 @@ final class CRMService {
     /// Returns the names only (already sorted by position on the
     /// backend, so "Meeting" lands first).
     func listActivitySubjects() async -> [String] {
-        struct SubjectRow: Decodable { let name: String; let is_active: Bool? }
-        struct Wrap: Decodable { let success: Bool?; let data: [SubjectRow]? }
+        // Codable (Encodable + Decodable) because the project's
+        // generic `get<T: Codable>` requires both — even though we
+        // only ever decode the response, the constraint enforces it.
+        struct SubjectRow: Codable { let name: String; let is_active: Bool? }
+        struct Wrap: Codable { let success: Bool?; let data: [SubjectRow]? }
         do {
             let r: Wrap = try await get("/api/v1/crm/activity-subjects")
             return (r.data ?? [])
