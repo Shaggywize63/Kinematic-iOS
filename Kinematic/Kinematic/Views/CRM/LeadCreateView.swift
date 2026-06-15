@@ -50,10 +50,12 @@ struct LeadCreateView: View {
 
     /// Tata Tiscon affordance — checkbox in the create form that asks
     /// the backend to atomically spawn a `site_visit` activity tied to
-    /// the new lead. Default OFF — the rep ticks it deliberately for
-    /// the leads where they actually performed a visit, so spurious
-    /// site_visit activities don't pollute the timeline.
-    @State private var logAsSiteVisit = false
+    /// the new lead. Default ON for Tata — every Champion lead is a
+    /// physical visit; reps weren't reliably ticking the toggle and
+    /// the activity section never populated. They can still uncheck
+    /// for leads they didn't visit. Toggle stays hidden on non-Tata
+    /// tenants so other tenants aren't affected.
+    @State private var logAsSiteVisit = true
 
     // Save flow state — surfaced so we can show a spinner on the toolbar
     // button and keep the sheet open if the server rejects the body.
