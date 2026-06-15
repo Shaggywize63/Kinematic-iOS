@@ -4,6 +4,12 @@ struct ActivitiesView: View {
     @StateObject var vm: ActivitiesViewModel
     @State private var showCompose = false
     @State private var showDateSheet = false
+    /// Activity the rep tapped to edit. Drives the edit sheet; nil hides it.
+    /// Reps wanted to open an existing activity to enrich notes or change
+    /// status — the row was a static badge before, now it's tappable.
+    @State private var editingActivity: Activity? = nil
+    /// Activity pending deletion confirmation; nil hides the alert.
+    @State private var deletingActivity: Activity? = nil
     @State private var layout: Layout = .list
     @State private var calendarMonth: Date = {
         let d = Date()
@@ -127,7 +133,7 @@ struct ActivitiesView: View {
                                     accent: Brand.red,
                                 )
                                 ForEach(buckets.today) { a in
-                                    ActivityTimelineItem(activity: a)
+                                    activityRow(a)
                                 }
                             }
                             if !buckets.rest.isEmpty {
@@ -137,7 +143,7 @@ struct ActivitiesView: View {
                                     accent: .secondary,
                                 )
                                 ForEach(buckets.rest) { a in
-                                    ActivityTimelineItem(activity: a)
+                                    activityRow(a)
                                 }
                             }
                         }
@@ -172,6 +178,33 @@ struct ActivitiesView: View {
                 )
             }
         }
+        // Edit sheet — tap a row to open the same compose view with
+        // the activity's existing subject/type pre-filled, then save
+        // patches the row instead of creating a new one.
+        .sheet(item: $editingActivity) { act in
+            ActivityComposeView(
+                initialType: act.type ?? "meeting",
+                initialSubject: act.subject ?? "",
+                allowLeadPicker: false,
+            ) { type, subject, desc, imageUrl, when, _ in
+                if let id = act.id {
+                    await vm.update(id: id, type: type, subject: subject, description: desc, imageUrl: imageUrl, completedAt: when)
+                }
+            }
+        }
+        // Delete confirmation — guards against an accidental long-press.
+        .alert("Delete this activity?", isPresented: .init(
+            get: { deletingActivity != nil },
+            set: { if !$0 { deletingActivity = nil } },
+        )) {
+            Button("Cancel", role: .cancel) { deletingActivity = nil }
+            Button("Delete", role: .destructive) {
+                if let id = deletingActivity?.id { Task { await vm.delete(id: id) } }
+                deletingActivity = nil
+            }
+        } message: {
+            Text(deletingActivity?.subject ?? "This activity will be removed from the timeline.")
+        }
         .sheet(isPresented: $showDateSheet) {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Activity date") {
                 Task { await vm.refresh() }
@@ -185,6 +218,22 @@ struct ActivitiesView: View {
             }
         }
         .task { await vm.refresh(); await vm.loadOwners() }
+    }
+
+    /// Activity row with tap-to-edit and long-press context menu.
+    /// The row itself stays read-only at-a-glance; tap opens the
+    /// compose view pre-filled for editing, long-press surfaces a
+    /// Delete action behind a confirmation alert so a misfire on a
+    /// crowded screen can't silently remove a logged call.
+    @ViewBuilder
+    private func activityRow(_ a: Activity) -> some View {
+        ActivityTimelineItem(activity: a)
+            .contentShape(Rectangle())
+            .onTapGesture { editingActivity = a }
+            .contextMenu {
+                Button { editingActivity = a } label: { Label("Edit", systemImage: "pencil") }
+                Button(role: .destructive) { deletingActivity = a } label: { Label("Delete", systemImage: "trash") }
+            }
     }
 }
 

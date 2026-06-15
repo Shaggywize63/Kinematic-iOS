@@ -317,6 +317,13 @@ final class CRMService {
     func updateActivity(id: String, body: [String: Any]) async throws -> Activity {
         try await sendJSON("/api/v1/crm/activities/\(id)", method: "PATCH", body: body)
     }
+    /// Soft-delete an activity. Used by the long-press → Delete flow
+    /// on the activities timeline. Backend handles the deleted_at
+    /// stamp; we just need to remove the row from the local cache
+    /// after the call returns.
+    func deleteActivity(id: String) async throws {
+        let _: EmptyAck = try await delete("/api/v1/crm/activities/\(id)")
+    }
     func listNotes(leadId: String? = nil, dealId: String? = nil) async throws -> [CRMNote] {
         var q: [String: String] = [:]
         if let leadId { q["lead_id"] = leadId }
