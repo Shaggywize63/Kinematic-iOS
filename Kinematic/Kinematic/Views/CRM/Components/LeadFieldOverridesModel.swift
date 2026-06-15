@@ -24,6 +24,11 @@ final class LeadFieldOverridesModel: ObservableObject {
     // Pre-merged per-scope snapshots — see perf note above.
     @Published private(set) var b2cMerged: [String: FieldOverride] = [:]
     @Published private(set) var b2bMerged: [String: FieldOverride] = [:]
+    /// True once the /api/v1/crm/settings request has completed (success
+    /// or empty). The lead form defers rendering admin-gated rows until
+    /// this flips so it doesn't race the network and briefly show fields
+    /// (and default labels) the admin had hidden.
+    @Published private(set) var didLoad: Bool = false
 
     struct FieldOverride {
         let label: String?
@@ -35,6 +40,9 @@ final class LeadFieldOverridesModel: ObservableObject {
     /// CRMService.getCRMSettings() so we reuse the project's auth +
     /// transport instead of poking at private state on the service.
     func load() async {
+        // Always flip didLoad=true at the end so the form un-blocks
+        // even if the tenant has no overrides configured.
+        defer { didLoad = true }
         guard let raw = await CRMService.shared.getCRMSettings() else { return }
         if let bt = raw.business_type { businessType = bt }
         guard

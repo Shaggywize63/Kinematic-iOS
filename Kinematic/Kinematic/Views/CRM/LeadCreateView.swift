@@ -200,9 +200,15 @@ struct LeadCreateView: View {
                     // matches what the rep sees on the web. The Section
                     // header is skipped entirely when all three fields
                     // are hidden so we don't render an empty bucket.
-                    if !fieldOverrides.isHidden("date_of_birth", isB2C: isB2C)
+                    // Defer rendering admin-gated rows until the override
+                    // map has loaded — otherwise the form races the network
+                    // and briefly shows fields (with default labels) the
+                    // admin had hidden in the web console.
+                    if fieldOverrides.didLoad && (
+                        !fieldOverrides.isHidden("date_of_birth", isB2C: isB2C)
                         || !fieldOverrides.isHidden("gender", isB2C: isB2C)
-                        || !fieldOverrides.isHidden("preferred_contact_method", isB2C: isB2C) {
+                        || !fieldOverrides.isHidden("preferred_contact_method", isB2C: isB2C)
+                    ) {
                         Section("Customer Details") {
                             if !fieldOverrides.isHidden("date_of_birth", isB2C: isB2C) {
                                 Toggle("Set date of birth", isOn: $hasDOB)
