@@ -292,7 +292,12 @@ struct LeadCreateView: View {
                 // Multi-row product picker — drives custom_fields.product_lines
                 // and mirrors row 0 onto the legacy product_interested /
                 // quantity / measuring_unit / estimated_amount keys.
-                ProductLinesSection(model: productLines)
+                // Products of Interest is a Tata Tiscon affordance only —
+                // their B2C flow needs the basket capture inline on the
+                // lead form. Hidden for every other tenant.
+                if isTata {
+                    ProductLinesSection(model: productLines)
+                }
 
                 // Geo-location is captured automatically — no button, no manual
                 // entry. We start a one-shot GPS fix when the form opens so the
