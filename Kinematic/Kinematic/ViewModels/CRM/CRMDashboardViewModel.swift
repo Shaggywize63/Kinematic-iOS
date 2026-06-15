@@ -17,6 +17,53 @@ final class CRMDashboardViewModel: ObservableObject {
     @Published var clients: [CRMClientOption] = []
     @Published var selectedClientId: String? = CRMClientScope.selectedClientId()
 
+    // ── Date-range preset for the dashboard ──────────────────────────
+    // The user wanted "show each data by default for 7 days", so the
+    // default range is .last7. The dashboard refresh re-fires whenever
+    // this changes (.task(id:) in the view). Custom reveals two date
+    // pickers; ISO strings get resolved from this enum + the customFrom/
+    // customTo dates and forwarded to all five analytics endpoints.
+    enum DateRangePreset: String, CaseIterable, Identifiable {
+        case today, yesterday, last7, thisMonth, custom
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .today: return "Today"
+            case .yesterday: return "Yesterday"
+            case .last7: return "Last 7 days"
+            case .thisMonth: return "This month"
+            case .custom: return "Custom"
+            }
+        }
+    }
+    @Published var range: DateRangePreset = .last7
+    @Published var customFrom: Date = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    @Published var customTo: Date = Date()
+
+    /// Resolve the picked preset → ISO (from, to) the backend honours.
+    var rangeISO: (from: String?, to: String?) {
+        let cal = Calendar.current
+        let startOfDay = cal.startOfDay(for: Date())
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        switch range {
+        case .today:
+            return (f.string(from: startOfDay), f.string(from: Date()))
+        case .yesterday:
+            let yStart = cal.date(byAdding: .day, value: -1, to: startOfDay) ?? startOfDay
+            return (f.string(from: yStart), f.string(from: startOfDay))
+        case .last7:
+            let weekAgo = cal.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+            return (f.string(from: weekAgo), f.string(from: Date()))
+        case .thisMonth:
+            let comps = cal.dateComponents([.year, .month], from: Date())
+            let monthStart = cal.date(from: comps) ?? Date()
+            return (f.string(from: monthStart), f.string(from: Date()))
+        case .custom:
+            return (f.string(from: customFrom), f.string(from: customTo))
+        }
+    }
+
     private let api = CRMService.shared
 
     /// Org-level admins (no pinned `client_id` on their profile) can hop
@@ -47,11 +94,15 @@ final class CRMDashboardViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        // Forward the picked range to every analytics endpoint so the
+        // funnel / win-rate / forecast all stay coherent with the same
+        // window the headline numbers respect.
+        let r = rangeISO
         do {
-            async let summaryTask = api.dashboardSummary()
-            async let funnelTask  = api.funnel()
-            async let winTask     = api.winRate()
-            async let forecastTask = api.forecast()
+            async let summaryTask = api.dashboardSummary(from: r.from, to: r.to)
+            async let funnelTask  = api.funnel(from: r.from, to: r.to)
+            async let winTask     = api.winRate(from: r.from, to: r.to)
+            async let forecastTask = api.forecast(from: r.from, to: r.to)
             async let targetTask  = api.myTarget()
             self.summary = try await summaryTask
             self.funnel  = (try? await funnelTask) ?? []

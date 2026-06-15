@@ -49,13 +49,13 @@ struct LeadCreateView: View {
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     /// Tata Tiscon affordance — checkbox in the create form that asks
-    /// the backend to atomically spawn a `site_visit` activity tied to
-    /// the new lead. Default ON for Tata — every Champion lead is a
-    /// physical visit; reps weren't reliably ticking the toggle and
-    /// the activity section never populated. They can still uncheck
-    /// for leads they didn't visit. Toggle stays hidden on non-Tata
-    /// tenants so other tenants aren't affected.
-    @State private var logAsSiteVisit = true
+    /// the backend to echo back an `auto_log_site_visit_prefill` block
+    /// (lead_id + suggested subject + type). The compose screen reads
+    /// that block to land pre-filled, so the rep can attach notes +
+    /// outcome before actually saving the activity. Default OFF —
+    /// otherwise every Tata Champion would be bounced into the compose
+    /// screen on every lead save, even when they didn't visit.
+    @State private var logAsSiteVisit = false
 
     // Save flow state — surfaced so we can show a spinner on the toolbar
     // button and keep the sheet open if the server rejects the body.

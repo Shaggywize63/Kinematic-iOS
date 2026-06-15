@@ -465,16 +465,24 @@ final class CRMService {
         if let to { q["to"] = to }
         return try await get("/api/v1/crm/analytics/dashboard-summary", query: q)
     }
-    func funnel(pipelineId: String? = nil) async throws -> [FunnelStageMetric] {
+    func funnel(pipelineId: String? = nil, from: String? = nil, to: String? = nil) async throws -> [FunnelStageMetric] {
         var q: [String: String] = [:]
         if let pipelineId { q["pipeline_id"] = pipelineId }
+        if let from { q["from"] = from }
+        if let to { q["to"] = to }
         return try await get("/api/v1/crm/analytics/funnel", query: q)
     }
-    func winRate(period: String = "month") async throws -> [WinRateBucket] {
-        try await get("/api/v1/crm/analytics/win-rate", query: ["period": period])
+    func winRate(period: String = "month", from: String? = nil, to: String? = nil) async throws -> [WinRateBucket] {
+        var q: [String: String] = ["period": period]
+        if let from { q["from"] = from }
+        if let to { q["to"] = to }
+        return try await get("/api/v1/crm/analytics/win-rate", query: q)
     }
-    func forecast() async throws -> [ForecastPoint] {
-        try await get("/api/v1/crm/analytics/forecast")
+    func forecast(from: String? = nil, to: String? = nil) async throws -> [ForecastPoint] {
+        var q: [String: String] = [:]
+        if let from { q["from"] = from }
+        if let to { q["to"] = to }
+        return try await get("/api/v1/crm/analytics/forecast", query: q)
     }
 
     // MARK: AI shortcuts (other than chat — chat lives in AIChatService)

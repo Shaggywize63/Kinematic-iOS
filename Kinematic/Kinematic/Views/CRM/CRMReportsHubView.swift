@@ -172,8 +172,13 @@ struct CRMReportsHubView: View {
                     // Champion KPI trio. Same metric set as the Android
                     // ReportsScreen — kept in lock-step intentionally so
                     // a Champion's view doesn't drift between platforms.
+                    // `newLeadsThisWeek` is the windowed count (new_leads_30d
+                    // on the wire — backend renames it to "in window"). Using
+                    // it instead of `totalLeads` is what makes the date-range
+                    // filter actually affect the headline number — totalLeads
+                    // is lifetime.
                     kpiCard(label: "TOTAL LEADS ADDED",
-                            value: "\(summary?.totalLeads ?? 0)",
+                            value: "\(summary?.newLeadsThisWeek ?? 0)",
                             sub: "for \(range.label.lowercased())")
                     kpiCard(label: "TOTAL DEALS CONVERTED",
                             value: "\(summary?.dealsWonThisMonth ?? 0)",
