@@ -19,13 +19,28 @@ struct CRMDashboardView: View {
 
                 if vm.canSwitchClient { clientScopePicker }
 
+                // Date-range filter — drives every analytics card below
+                // (kpi / funnel / win-rate). Default is "Last 7 days"
+                // per the user's "show each data by default for 7 days".
+                Picker("Range", selection: $vm.range) {
+                    ForEach(CRMDashboardViewModel.DateRangePreset.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                if vm.range == .custom {
+                    DatePicker("From", selection: $vm.customFrom, displayedComponents: .date)
+                    DatePicker("To", selection: $vm.customTo, displayedComponents: .date)
+                }
+
                 if let t = vm.target, t.hasTarget { targetTicker(t) }
 
                 kpiGrid
                 DashboardLeadsMapCard()
                 funnelCard
                 winRateCard
-                forecastCard
+                // Forecast (Quarter) card removed at the user's request — its
+                // rolling-quarter window didn't line up with the date filter
+                // and was confusing reps. The detail report stays reachable
+                // through the Reports hub.
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 40)
@@ -54,7 +69,12 @@ struct CRMDashboardView: View {
             }
         }
         .refreshable { await vm.refresh() }
-        .task { await vm.refresh() }
+        // .task(id:) re-fires the refresh when the rep picks a new
+        // preset or moves a custom date, so the dashboard reactively
+        // re-pulls every analytics endpoint with the new window.
+        .task(id: "\(vm.range.rawValue)|\(vm.customFrom.timeIntervalSince1970)|\(vm.customTo.timeIntervalSince1970)") {
+            await vm.refresh()
+        }
         .task { await vm.loadClientsIfNeeded() }
         .overlay {
             if vm.isLoading && vm.summary == nil {
