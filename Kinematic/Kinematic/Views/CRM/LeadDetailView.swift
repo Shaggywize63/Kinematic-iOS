@@ -15,6 +15,13 @@ import SwiftUI
 /// per-card themes; every highlight, badge, icon and active button is red.
 struct LeadDetailView: View {
     @StateObject var vm: LeadDetailViewModel
+    /// Admin field-overrides for built-in lead columns. The detail
+    /// view used to render DOB / Gender / Preferred Channel
+    /// unconditionally — so even after the admin hid those fields on
+    /// the web console, mobile reps still saw the columns on every
+    /// lead detail screen. Loading the same model the create/edit
+    /// forms use lets us gate the rendered rows.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
     @Environment(\.dismiss) private var dismiss
 
     @State private var editing = false
@@ -196,6 +203,7 @@ struct LeadDetailView: View {
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .task { await vm.load() }
+        .task { await fieldOverrides.load() }
     }
 
     // MARK: - Header
@@ -731,14 +739,28 @@ struct LeadDetailView: View {
     // MARK: - B2C profile
 
     private func b2cProfileCard(lead: Lead) -> some View {
-        Card(title: "CUSTOMER PROFILE") {
-            VStack(alignment: .leading, spacing: 6) {
-                if let dob = lead.dateOfBirth { profileRow("Date of Birth", value: dob) }
-                if let g = lead.gender { profileRow("Gender", value: g.replacingOccurrences(of: "_", with: " ").capitalized) }
-                if let pcm = lead.preferredContactMethod { profileRow("Preferred Channel", value: pcm.capitalized) }
-                if let addr = lead.fullAddress { profileRow("Address", value: addr) }
-                profileRow("Marketing Consent", value: (lead.marketingConsent ?? false) ? "Yes" : "No")
-                profileRow("WhatsApp Consent", value: (lead.whatsappConsent ?? false) ? "Yes" : "No")
+        // Gate every row on the admin's field-overrides — when a
+        // field is hidden in the web console, the corresponding row
+        // on mobile drops too. Without this, hidden DOB / Gender /
+        // Preferred Channel were still visible on every lead detail.
+        let showDOB = !fieldOverrides.isHidden("date_of_birth", isB2C: true)
+        let showGender = !fieldOverrides.isHidden("gender", isB2C: true)
+        let showChannel = !fieldOverrides.isHidden("preferred_contact_method", isB2C: true)
+        let showMarketing = !fieldOverrides.isHidden("marketing_consent", isB2C: true)
+        let showWhatsapp = !fieldOverrides.isHidden("whatsapp_consent", isB2C: true)
+        let anyRow = showDOB || showGender || showChannel || showMarketing || showWhatsapp || (lead.fullAddress != nil)
+        return Group {
+            if anyRow {
+                Card(title: "CUSTOMER PROFILE") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if showDOB, let dob = lead.dateOfBirth { profileRow(fieldOverrides.labelFor("date_of_birth", defaultLabel: "Date of Birth", isB2C: true), value: dob) }
+                        if showGender, let g = lead.gender { profileRow(fieldOverrides.labelFor("gender", defaultLabel: "Gender", isB2C: true), value: g.replacingOccurrences(of: "_", with: " ").capitalized) }
+                        if showChannel, let pcm = lead.preferredContactMethod { profileRow(fieldOverrides.labelFor("preferred_contact_method", defaultLabel: "Preferred Channel", isB2C: true), value: pcm.capitalized) }
+                        if let addr = lead.fullAddress { profileRow("Address", value: addr) }
+                        if showMarketing { profileRow(fieldOverrides.labelFor("marketing_consent", defaultLabel: "Marketing Consent", isB2C: true), value: (lead.marketingConsent ?? false) ? "Yes" : "No") }
+                        if showWhatsapp { profileRow(fieldOverrides.labelFor("whatsapp_consent", defaultLabel: "WhatsApp Consent", isB2C: true), value: (lead.whatsappConsent ?? false) ? "Yes" : "No") }
+                    }
+                }
             }
         }
     }
