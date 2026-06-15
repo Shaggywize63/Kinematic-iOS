@@ -459,6 +459,23 @@ final class CRMService {
     }
 
     // MARK: Analytics
+    /// Admin-curated activity subject presets. GET is open to every
+    /// CRM user so the picker renders on the activity compose screen.
+    /// Returns the names only (already sorted by position on the
+    /// backend, so "Meeting" lands first).
+    func listActivitySubjects() async -> [String] {
+        struct SubjectRow: Decodable { let name: String; let is_active: Bool? }
+        struct Wrap: Decodable { let success: Bool?; let data: [SubjectRow]? }
+        do {
+            let r: Wrap = try await get("/api/v1/crm/activity-subjects")
+            return (r.data ?? [])
+                .filter { ($0.is_active ?? true) }
+                .map(\.name)
+        } catch {
+            return []
+        }
+    }
+
     func dashboardSummary(from: String? = nil, to: String? = nil) async throws -> CRMAnalyticsSummary {
         var q: [String: String] = [:]
         if let from { q["from"] = from }
