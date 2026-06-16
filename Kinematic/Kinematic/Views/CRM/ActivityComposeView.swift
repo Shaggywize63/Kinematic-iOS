@@ -91,19 +91,19 @@ struct ActivityComposeView: View {
                     }
                 }
                 Section("Details") {
-                    if !subjectPresets.isEmpty {
+                    if subjectPresets.isEmpty {
+                        // No admin-curated presets for this tenant — fall
+                        // back to a free-text subject so the form stays usable.
+                        TextField("Subject", text: $subject)
+                    } else {
                         // Subject preset picker — pulled from the admin
-                        // catalogue. Picking a row replaces the free-text
-                        // input with the preset (still editable below).
-                        Picker("Subject preset", selection: Binding(
-                            get: { "" },
-                            set: { newVal in if !newVal.isEmpty { subject = newVal } }
-                        )) {
+                        // catalogue (Meeting first by position). The dropdown
+                        // is the only subject control; reps pick a preset.
+                        Picker("Subject", selection: $subject) {
                             Text("— pick a preset —").tag("")
                             ForEach(subjectPresets, id: \.self) { Text($0).tag($0) }
                         }
                     }
-                    TextField("Subject", text: $subject)
                     TextField("Description", text: $desc, axis: .vertical).lineLimit(3...6)
                     // Editable time. Default is now; tap to change. Reps
                     // who log a call after the fact want to back-date it,
