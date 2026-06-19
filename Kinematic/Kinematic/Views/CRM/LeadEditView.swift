@@ -209,24 +209,32 @@ struct LeadEditView: View {
                 }
 
                 // ── Lifecycle & Assignment ─────────────────────────
+                // Every built-in row goes through fieldOverrides.isHidden
+                // so hiding any of these on the admin Settings page
+                // actually drops them from the form.
                 Section("Lifecycle & Assignment") {
-                    Picker("Status", selection: $status) {
-                        ForEach(["new", "working", "qualified", "unqualified", "converted", "lost"], id: \.self) {
-                            Text($0.capitalized).tag($0)
+                    if !fieldOverrides.isHidden("status", isB2C: isB2C) {
+                        Picker(fieldOverrides.labelFor("status", defaultLabel: "Status", isB2C: isB2C), selection: $status) {
+                            ForEach(["new", "working", "qualified", "unqualified", "converted", "lost"], id: \.self) {
+                                Text($0.capitalized).tag($0)
+                            }
                         }
                     }
-                    Picker("Source", selection: $sourceId) {
-                        Text("—").tag("")
-                        ForEach(sources, id: \.id) { src in
-                            Text(src.name).tag(src.id)
+                    if !fieldOverrides.isHidden("source_id", isB2C: isB2C) {
+                        Picker(fieldOverrides.labelFor("source_id", defaultLabel: "Source", isB2C: isB2C), selection: $sourceId) {
+                            Text("—").tag("")
+                            ForEach(sources, id: \.id) { src in
+                                Text(src.name).tag(src.id)
+                            }
                         }
                     }
                     // Reps with data_scope='own' (e.g. Consumer Champion)
                     // would lose visibility of the lead by reassigning it.
                     // Explicitly gate Consumer Champion too in case the
                     // backend's data_scope returns looser than 'own'.
-                    if ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion {
-                        Picker("Owner", selection: $ownerId) {
+                    if ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion
+                        && !fieldOverrides.isHidden("owner_id", isB2C: isB2C) {
+                        Picker(fieldOverrides.labelFor("owner_id", defaultLabel: "Owner", isB2C: isB2C), selection: $ownerId) {
                             Text("Unassigned").tag("")
                             ForEach(owners, id: \.id) { u in
                                 Text(u.name ?? u.email ?? "User").tag(u.id)
