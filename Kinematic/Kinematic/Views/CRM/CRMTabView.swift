@@ -111,6 +111,17 @@ struct CRMMoreMenu: View {
         return r != "executive" && r != "field_executive"
     }
 
+    /// "1.0.0 (123)" — marketing version (CFBundleShortVersionString) +
+    /// build number (CFBundleVersion). Pulled at render time so every
+    /// build that bumps either value reflects automatically in the
+    /// More-tab footer.
+    private var appVersionDisplay: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let v = (info["CFBundleShortVersionString"] as? String) ?? "?"
+        let b = (info["CFBundleVersion"] as? String) ?? "?"
+        return "\(v) (\(b))"
+    }
+
     /// The user's actual display picture (or initials fallback) so the More
     /// tab surfaces the photo, not a generic glyph.
     @ViewBuilder private var profileAvatar: some View {
@@ -256,6 +267,24 @@ struct CRMMoreMenu: View {
                 }
                 .foregroundColor(.red)
             }
+
+            // App version footer — pulled from the bundle so it
+            // auto-updates whenever Xcode bumps CFBundleShortVersionString
+            // (the marketing version, e.g. "1.0.0") or CFBundleVersion
+            // (the build number, monotonically increasing per build).
+            // Section { ... } with `.listRowBackground(Color.clear)`
+            // renders as plain footer text under the last cell.
+            Section {
+                HStack {
+                    Spacer()
+                    Text("Kinematic v\(appVersionDisplay)")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
         .listStyle(.insetGrouped)
         .navigationTitle("More")
