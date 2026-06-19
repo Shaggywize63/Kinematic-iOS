@@ -179,6 +179,13 @@ struct ActivityComposeView: View {
             .sheet(isPresented: $showLeadPicker) {
                 LeadSearchPickerSheet { lead in selectedLead = lead }
             }
+            // Load admin-curated subject presets on appear. Backend
+            // returns active rows ordered by position (Meeting first);
+            // we just take the names. Falls back silently to a free-
+            // text input if the catalogue is empty.
+            .task {
+                subjectPresets = await CRMService.shared.listActivitySubjects()
+            }
             .onChange(of: pickedImage) { _, newImage in
                 guard let img = newImage else { return }
                 Task { await upload(image: img) }
@@ -235,12 +242,6 @@ struct LeadSearchPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .task { await load() }
-            // Load admin-curated subject presets in parallel with the
-            // lead list. Backend returns active rows ordered by
-            // position (Meeting first); we just take the names.
-            .task {
-                subjectPresets = await CRMService.shared.listActivitySubjects()
-            }
         }
     }
 
