@@ -172,13 +172,21 @@ struct CRMDashboardView: View {
 
     private var kpiGrid: some View {
         let s = vm.summary
+        // Suffix used on windowed tiles so the rep can see at a glance
+        // that the headline number reflects the picked range. Lifetime
+        // / "current state" tiles (Open Deals, Pipeline, Open Volume)
+        // are by nature point-in-time and don't take a window suffix —
+        // their values genuinely don't change with the date filter.
+        let rangeSuffix = vm.range.label.lowercased()
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
-            // All KPI tile accents standardised to Brand.red per the
-            // single-accent product directive. Previously each tile carried
-            // its own colour (blue/indigo/green/orange) which clashed with
-            // the brand palette.
+            // Headline leads tile now reads the *windowed* count
+            // (`new_leads_30d`, despite the legacy name) so the rep
+            // sees today's / yesterday's / this-month's new leads as
+            // they switch the preset. Previously this tile pulled
+            // `total_leads` (lifetime) and stayed at the same number
+            // for every preset — the symptom the user reported.
             NavigationLink(destination: LeadsListView()) {
-                kpiTile("Total Leads", value: "\(s?.totalLeads ?? 0)", icon: "person.2.fill", color: Brand.red)
+                kpiTile("Leads — \(rangeSuffix)", value: "\(s?.newLeadsThisWeek ?? 0)", icon: "person.2.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: DealsListView()) {
                 kpiTile("Open Deals", value: "\(s?.openDeals ?? 0)", icon: "square.stack.3d.up.fill", color: Brand.red)
@@ -190,7 +198,7 @@ struct CRMDashboardView: View {
                 kpiTile("Win Rate", value: "\(Int((s?.winRate ?? 0) * 100))%", icon: "trophy.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: DealsListView()) {
-                kpiTile("Won — 30d", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: Brand.red)
+                kpiTile("Won — \(rangeSuffix)", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: Brand.red)
             }.buttonStyle(.plain)
             NavigationLink(destination: DealKanbanView()) {
                 kpiTile("Open Volume", value: formattedVolumeMT(s?.openDealVolume), icon: "shippingbox.fill", color: Brand.red)
@@ -198,11 +206,8 @@ struct CRMDashboardView: View {
             NavigationLink(destination: DealsListView()) {
                 kpiTile("Avg Deal", value: CurrencyFormatter.formatINRCompact(s?.averageDealSize ?? 0), icon: "chart.bar.fill", color: Brand.red)
             }.buttonStyle(.plain)
-            NavigationLink(destination: LeadsListView()) {
-                kpiTile("New Leads — 30d", value: "\(s?.newLeadsThisWeek ?? 0)", icon: "sparkles", color: Brand.red)
-            }.buttonStyle(.plain)
             NavigationLink(destination: ActivitiesView()) {
-                kpiTile("Activities — 7d", value: "\(s?.activitiesToday ?? 0)", icon: "bolt.fill", color: Brand.red)
+                kpiTile("Activities — \(rangeSuffix)", value: "\(s?.activitiesToday ?? 0)", icon: "bolt.fill", color: Brand.red)
             }.buttonStyle(.plain)
         }
     }
