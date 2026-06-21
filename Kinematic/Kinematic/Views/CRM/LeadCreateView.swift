@@ -69,10 +69,22 @@ struct LeadCreateView: View {
     /// error, which is the "leads not getting saved" symptom from users.
     let onSubmit: ([String: Any]) async -> Bool
 
+    /// Server-side business_type ("b2c" / "b2b"). Loaded once when the form
+    /// opens via /crm/settings. Used as a fallback for the Tata gate so the
+    /// Products of Interest section + site-visit toggle still render when
+    /// `Session.currentUser.clientId` is stale or missing (legacy sessions
+    /// stored before the User decoder picked up `client_id` — Android reads
+    /// it from a live DataStore Flow, iOS reads it from a one-shot
+    /// UserDefaults blob, so iOS users on an old install saw the picker
+    /// disappear while Android users on the same backend kept it).
+    @State private var businessType: String?
+
     // Tata Tiscon requires the submission location to be captured automatically
     // and is non-editable + mandatory (parity with the web lead form). Other
     // clients keep the optional "Use current location" + manual entry flow.
-    private var isTata: Bool { ClientFeatures.isTataTiscon }
+    private var isTata: Bool {
+        ClientFeatures.isTataTiscon || (businessType?.lowercased() == "b2c")
+    }
     private var hasValidCoords: Bool {
         Double(latitude.trimmingCharacters(in: .whitespaces)) != nil &&
         Double(longitude.trimmingCharacters(in: .whitespaces)) != nil
@@ -408,6 +420,13 @@ struct LeadCreateView: View {
             .task { await productLines.load() }
             .task { await fieldOverrides.load() }
             .task { sources = await CRMService.shared.listLeadSources() }
+            .task {
+                // Resolve businessType so the Tata-equivalent gate works
+                // even when Session.currentUser.clientId is stale.
+                if let s = await CRMService.shared.getCRMSettings() {
+                    businessType = s.business_type
+                }
+            }
             .onAppear {
                 // Tata Tiscon only ever creates B2C (consumer) leads.
                 if isTata { isB2C = true }

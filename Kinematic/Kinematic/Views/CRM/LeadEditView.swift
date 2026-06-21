@@ -54,7 +54,14 @@ struct LeadEditView: View {
     @State private var saving = false
     @State private var errorMessage: String?
 
-    private var isTata: Bool { ClientFeatures.isTataTiscon }
+    /// See LeadCreateView for why we also OR in business_type=="b2c":
+    /// Session.currentUser.clientId can be stale on iOS so the Tata-only
+    /// affordances (Products of Interest section + site-visit toggle)
+    /// disappeared even though Android kept them.
+    @State private var businessType: String?
+    private var isTata: Bool {
+        ClientFeatures.isTataTiscon || (businessType?.lowercased() == "b2c")
+    }
 
     init(lead: Lead, onSaved: @escaping (Lead) -> Void) {
         self.lead = lead
@@ -317,18 +324,20 @@ struct LeadEditView: View {
     }
 
     private func loadPickerOptions() async {
-        // Fire all five lookups in parallel — they're independent and
+        // Fire all six lookups in parallel — they're independent and
         // the form is usable without any of them while they load.
-        async let ownersTask  = CRMService.shared.listAssignableUsers()
-        async let sourcesTask = CRMService.shared.listLeadSources()
+        async let ownersTask   = CRMService.shared.listAssignableUsers()
+        async let sourcesTask  = CRMService.shared.listLeadSources()
         async let cfTask: Void = customFields.load(entity: "lead")
         async let plTask: Void = productLines.load()
         async let foTask: Void = fieldOverrides.load()
+        async let settingsTask = CRMService.shared.getCRMSettings()
         owners  = await ownersTask
         sources = await sourcesTask
         _ = await cfTask
         _ = await plTask
         _ = await foTask
+        businessType = (await settingsTask)?.business_type
         // Hydrate the form with the lead's existing custom-field values
         // after the defs land, so each value lands in the right type
         // bucket (text / bool / multi).
