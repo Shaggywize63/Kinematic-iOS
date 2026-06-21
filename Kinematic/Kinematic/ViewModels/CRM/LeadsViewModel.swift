@@ -8,9 +8,9 @@ final class LeadsViewModel: ObservableObject {
     @Published var statusFilter: String = "all"
     @Published var dateFrom: Date? = nil
     @Published var dateTo: Date? = nil
-    // Web-parity filters.
-    @Published var gradeFilter: String = "all"      // all | A | B | C | D
-    @Published var minScore: Int = 0                // 0 = no minimum
+    // Web-parity filters. Score Grade + Minimum Score were removed at
+    // the user's request — the AI grade is no longer a primary filter
+    // affordance, and the slider+chip combo was clutter on every screen.
     @Published var lifecycleFilter: String = "all"  // all | subscriber | lead | mql | sql | opportunity | customer
     @Published var convertedFilter: String = "all"  // all | yes | no
     @Published var ownerFilter: String = "all"      // "all" or an owner user id
@@ -33,8 +33,6 @@ final class LeadsViewModel: ObservableObject {
     /// Filters button so reps can see a filter is active.
     var activeFilterCount: Int {
         var n = 0
-        if gradeFilter != "all" { n += 1 }
-        if minScore > 0 { n += 1 }
         if lifecycleFilter != "all" { n += 1 }
         if convertedFilter != "all" { n += 1 }
         if ownerFilter != "all" { n += 1 }
@@ -44,7 +42,7 @@ final class LeadsViewModel: ObservableObject {
     }
 
     func resetFilters() {
-        gradeFilter = "all"; minScore = 0; lifecycleFilter = "all"; convertedFilter = "all"
+        lifecycleFilter = "all"; convertedFilter = "all"
         ownerFilter = "all"; sourceFilter = "all"
         dateFrom = nil; dateTo = nil
     }
@@ -86,8 +84,8 @@ final class LeadsViewModel: ObservableObject {
             state: location.state,
             from: dateFrom.map { Self.isoDate.string(from: $0) },
             to: dateTo.map { Self.isoDate.string(from: $0) },
-            scoreGrade: gradeFilter == "all" ? nil : gradeFilter,
-            scoreGte: minScore > 0 ? minScore : nil,
+            scoreGrade: nil,
+            scoreGte: nil,
             lifecycle: lifecycleFilter == "all" ? nil : lifecycleFilter,
             isConverted: convertedFilter == "all" ? nil : (convertedFilter == "yes"),
             ownerId: ownerFilter == "all" ? nil : ownerFilter,

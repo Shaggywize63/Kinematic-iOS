@@ -37,8 +37,10 @@ final class CRMDashboardViewModel: ObservableObject {
         }
     }
     @Published var range: DateRangePreset = .last7
-    @Published var customFrom: Date = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-    @Published var customTo: Date = Date()
+    @Published var customFrom: Date = Calendar.current.startOfDay(
+        for: Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    )
+    @Published var customTo: Date = Calendar.current.startOfDay(for: Date())
 
     /// Resolve the picked preset → ISO (from, to) the backend honours.
     var rangeISO: (from: String?, to: String?) {
@@ -60,7 +62,13 @@ final class CRMDashboardViewModel: ObservableObject {
             let monthStart = cal.date(from: comps) ?? Date()
             return (f.string(from: monthStart), f.string(from: Date()))
         case .custom:
-            return (f.string(from: customFrom), f.string(from: customTo))
+            // Apply inclusive end-of-day on customTo so a same-day pick
+            // (today → today) matches rows created later in the day.
+            let endOfDay = cal.date(
+                bySettingHour: 23, minute: 59, second: 59,
+                of: cal.startOfDay(for: customTo)
+            ) ?? customTo
+            return (f.string(from: cal.startOfDay(for: customFrom)), f.string(from: endOfDay))
         }
     }
 
