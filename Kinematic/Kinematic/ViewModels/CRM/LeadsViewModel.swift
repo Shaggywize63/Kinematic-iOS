@@ -71,8 +71,15 @@ final class LeadsViewModel: ObservableObject {
     // rows as-fetched (kept as a computed for the existing call-sites).
     var filtered: [Lead] { leads }
 
-    private static let isoDate: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    // Full ISO8601 with timezone — yyyy-MM-dd was the bug: the backend
+    // does `lte('created_at', '2026-06-21')` which PostgREST treats as
+    // `< 2026-06-21 00:00 UTC`, silently excluding every lead created
+    // *during* today. With a full timestamp the comparison works as the
+    // rep expects regardless of locale.
+    private static let isoTimestamp: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withTimeZone]
+        return f
     }()
 
     private func fetchPage(_ p: Int) async throws -> (leads: [Lead], total: Int) {
@@ -82,8 +89,8 @@ final class LeadsViewModel: ObservableObject {
             search: search.isEmpty ? nil : search,
             city: location.city,
             state: location.state,
-            from: dateFrom.map { Self.isoDate.string(from: $0) },
-            to: dateTo.map { Self.isoDate.string(from: $0) },
+            from: dateFrom.map { Self.isoTimestamp.string(from: $0) },
+            to: dateTo.map { Self.isoTimestamp.string(from: $0) },
             scoreGrade: nil,
             scoreGte: nil,
             lifecycle: lifecycleFilter == "all" ? nil : lifecycleFilter,

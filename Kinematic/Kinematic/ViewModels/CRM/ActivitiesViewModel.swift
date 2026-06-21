@@ -34,8 +34,14 @@ final class ActivitiesViewModel: ObservableObject {
         typeFilter == "all" ? activities : activities.filter { ($0.type ?? "") == typeFilter }
     }
 
-    private static let isoDate: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    // Full ISO8601 timestamp — yyyy-MM-dd let PostgREST treat the `to`
+    // boundary as midnight-UTC, dropping every row created during the
+    // picked day. With a timezone-aware timestamp the rep's "today"
+    // covers their full local day.
+    private static let isoTimestamp: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withTimeZone]
+        return f
     }()
 
     func loadOwners() async {
@@ -51,8 +57,8 @@ final class ActivitiesViewModel: ObservableObject {
                 ownerId: ownerFilter == "all" ? nil : ownerFilter,
                 city: location.city,
                 state: location.state,
-                from: dateFrom.map { Self.isoDate.string(from: $0) },
-                to: dateTo.map { Self.isoDate.string(from: $0) }
+                from: dateFrom.map { Self.isoTimestamp.string(from: $0) },
+                to: dateTo.map { Self.isoTimestamp.string(from: $0) }
             )
         } catch {
             errorMessage = error.localizedDescription
