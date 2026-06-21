@@ -12,8 +12,12 @@ final class DealsViewModel: ObservableObject {
 
     private let api = CRMService.shared
 
-    private static let isoDate: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    // Full ISO8601 timestamp (yyyy-MM-dd was silently dropping today's
+    // rows — PostgREST treats a bare date `to` as midnight-UTC).
+    private static let isoTimestamp: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withTimeZone]
+        return f
     }()
 
     func refresh() async {
@@ -22,8 +26,8 @@ final class DealsViewModel: ObservableObject {
         do {
             deals = try await api.listDeals(
                 status: statusFilter == "all" ? nil : statusFilter,
-                from: dateFrom.map { Self.isoDate.string(from: $0) },
-                to: dateTo.map { Self.isoDate.string(from: $0) }
+                from: dateFrom.map { Self.isoTimestamp.string(from: $0) },
+                to: dateTo.map { Self.isoTimestamp.string(from: $0) }
             )
         } catch {
             errorMessage = error.localizedDescription

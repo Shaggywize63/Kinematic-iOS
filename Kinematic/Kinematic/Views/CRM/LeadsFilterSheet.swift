@@ -5,25 +5,71 @@ import SwiftUI
 // straight to LeadsViewModel and refreshes on apply.
 //
 // Score Grade + Minimum Score were dropped at the user's request — the
-// AI grade is no longer a primary filter affordance; the slider + chip
-// strip cluttered every list and was rarely used.
+// AI grade is no longer a primary filter affordance.
+//
+// Created Date uses the same Today / Yesterday / Last 7 / This month /
+// Custom preset bar as the Dashboard + Reports hub so reps don't have
+// to manually pick start-of-day timestamps every time they want
+// "today's leads". Custom mode reveals two pickers that snap to
+// start-of-day and stamp end-of-day on Apply so the wire timestamps
+// span the full picked day(s).
 struct LeadsFilterSheet: View {
     @ObservedObject var vm: LeadsViewModel
     @Environment(\.dismiss) private var dismiss
 
     private let lifecycles = ["all", "subscriber", "lead", "mql", "sql", "opportunity", "customer"]
 
-    // Local date-range state mirrors DateRangeFilterSheet's pattern:
-    // a Toggle gates rendering of the pickers AND seeds non-nil Dates
-    // snapped to start-of-day. Without the explicit toggle the inline
-    // pickers showed `Date()` by default — tapping "today" on a picker
-    // that already showed today never triggered the setter, so
-    // `vm.dateFrom` stayed nil and the filter was silently dropped.
-    @State private var dateEnabled: Bool = false
-    @State private var localFrom: Date = Calendar.current.startOfDay(
-        for: Calendar.current.date(byAdding: .month, value: -3, to: Date()) ?? Date()
+    enum DateRangePreset: String, CaseIterable, Identifiable {
+        case any, today, yesterday, last7, thisMonth, custom
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .any: return "Any"
+            case .today: return "Today"
+            case .yesterday: return "Yesterday"
+            case .last7: return "Last 7 days"
+            case .thisMonth: return "This month"
+            case .custom: return "Custom"
+            }
+        }
+    }
+
+    @State private var range: DateRangePreset = .any
+    @State private var customFrom: Date = Calendar.current.startOfDay(
+        for: Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
     )
-    @State private var localTo: Date = Calendar.current.startOfDay(for: Date())
+    @State private var customTo: Date = Calendar.current.startOfDay(for: Date())
+
+    /// Resolve the current preset → concrete start-of-day (from) +
+    /// end-of-day (to) Dates the VM forwards to the backend. Both ends
+    /// are user-timezone aware so "today" matches the rep's day, not
+    /// midnight UTC.
+    private var resolvedRange: (from: Date?, to: Date?) {
+        let cal = Calendar.current
+        let startOfToday = cal.startOfDay(for: Date())
+        let endOfDay = { (d: Date) -> Date in
+            cal.date(bySettingHour: 23, minute: 59, second: 59,
+                     of: cal.startOfDay(for: d)) ?? d
+        }
+        switch range {
+        case .any:
+            return (nil, nil)
+        case .today:
+            return (startOfToday, endOfDay(startOfToday))
+        case .yesterday:
+            let y = cal.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
+            return (y, endOfDay(y))
+        case .last7:
+            let from = cal.date(byAdding: .day, value: -7, to: startOfToday) ?? startOfToday
+            return (from, endOfDay(startOfToday))
+        case .thisMonth:
+            let comps = cal.dateComponents([.year, .month], from: Date())
+            let monthStart = cal.date(from: comps) ?? startOfToday
+            return (monthStart, endOfDay(startOfToday))
+        case .custom:
+            return (cal.startOfDay(for: customFrom), endOfDay(customTo))
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -51,18 +97,24 @@ struct LeadsFilterSheet: View {
                     }
                 }
                 Section("Created Date") {
-                    Toggle("Filter by created date", isOn: $dateEnabled)
-                    if dateEnabled {
-                        DatePicker("From", selection: $localFrom, displayedComponents: .date)
-                            .onChange(of: localFrom) { _, newValue in
+                    Picker("Range", selection: $range) {
+                        ForEach(DateRangePreset.allCases) { Text($0.label).tag($0) }
+                    }
+                    // Wheel — the segmented control wraps to 2 lines on
+                    // the standard sheet width with 6 options and is
+                    // hard to read; menu picker keeps the form compact.
+                    .pickerStyle(.menu)
+                    if range == .custom {
+                        DatePicker("From", selection: $customFrom, displayedComponents: .date)
+                            .onChange(of: customFrom) { _, newValue in
                                 let snapped = Calendar.current.startOfDay(for: newValue)
-                                if snapped != localFrom { localFrom = snapped }
-                                if localTo < snapped { localTo = snapped }
+                                if snapped != customFrom { customFrom = snapped }
+                                if customTo < snapped { customTo = snapped }
                             }
-                        DatePicker("To", selection: $localTo, in: localFrom..., displayedComponents: .date)
-                            .onChange(of: localTo) { _, newValue in
+                        DatePicker("To", selection: $customTo, in: customFrom..., displayedComponents: .date)
+                            .onChange(of: customTo) { _, newValue in
                                 let snapped = Calendar.current.startOfDay(for: newValue)
-                                if snapped != localTo { localTo = snapped }
+                                if snapped != customTo { customTo = snapped }
                             }
                     }
                 }
@@ -71,37 +123,26 @@ struct LeadsFilterSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .task { await vm.loadFilterOptions() }
             .onAppear {
-                // Seed the local state from whatever the rep had applied
-                // previously so reopening the sheet doesn't wipe their
-                // last range.
-                if let f = vm.dateFrom { localFrom = Calendar.current.startOfDay(for: f) }
-                if let t = vm.dateTo { localTo = Calendar.current.startOfDay(for: t) }
-                dateEnabled = vm.dateFrom != nil || vm.dateTo != nil
+                // Seed the local picker from whatever the rep had applied
+                // last; default to .any when no range is active.
+                if let f = vm.dateFrom { customFrom = Calendar.current.startOfDay(for: f) }
+                if let t = vm.dateTo { customTo = Calendar.current.startOfDay(for: t) }
+                if vm.dateFrom == nil && vm.dateTo == nil { range = .any }
+                else if range == .any { range = .custom }
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Reset") {
                         vm.resetFilters()
-                        dateEnabled = false
+                        range = .any
                         Task { await vm.refresh() }
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
-                        if dateEnabled {
-                            vm.dateFrom = Calendar.current.startOfDay(for: localFrom)
-                            // Inclusive end-of-day so a "today → today"
-                            // window picks up rows created later in the
-                            // same day; the wire format is yyyy-MM-dd
-                            // and the backend treats it as the full day.
-                            vm.dateTo = Calendar.current.date(
-                                bySettingHour: 23, minute: 59, second: 59,
-                                of: Calendar.current.startOfDay(for: localTo)
-                            ) ?? localTo
-                        } else {
-                            vm.dateFrom = nil
-                            vm.dateTo = nil
-                        }
+                        let r = resolvedRange
+                        vm.dateFrom = r.from
+                        vm.dateTo = r.to
                         Task { await vm.refresh() }
                         dismiss()
                     }
