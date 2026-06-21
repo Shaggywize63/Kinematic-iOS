@@ -124,8 +124,10 @@ struct CRMReportsHubView: View {
         }
     }
     @State private var range: DateRangePreset = .last7
-    @State private var customFrom: Date = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-    @State private var customTo: Date = Date()
+    @State private var customFrom: Date = Calendar.current.startOfDay(
+        for: Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    )
+    @State private var customTo: Date = Calendar.current.startOfDay(for: Date())
 
     /// Resolve the picked preset → ISO from/to dates the backend honours.
     /// Returns nils for unbounded windows so the server-side defaults
@@ -149,7 +151,13 @@ struct CRMReportsHubView: View {
             let monthStart = cal.date(from: comps) ?? Date()
             return (f.string(from: monthStart), f.string(from: Date()))
         case .custom:
-            return (f.string(from: customFrom), f.string(from: customTo))
+            // Inclusive end-of-day on customTo so a same-day pick
+            // (today → today) catches rows created later in the day.
+            let endOfDay = cal.date(
+                bySettingHour: 23, minute: 59, second: 59,
+                of: cal.startOfDay(for: customTo)
+            ) ?? customTo
+            return (f.string(from: cal.startOfDay(for: customFrom)), f.string(from: endOfDay))
         }
     }
 
@@ -167,7 +175,16 @@ struct CRMReportsHubView: View {
                     .pickerStyle(.segmented)
                     if range == .custom {
                         DatePicker("From", selection: $customFrom, displayedComponents: .date)
-                        DatePicker("To", selection: $customTo, displayedComponents: .date)
+                            .onChange(of: customFrom) { _, newValue in
+                                let snapped = Calendar.current.startOfDay(for: newValue)
+                                if snapped != customFrom { customFrom = snapped }
+                                if customTo < snapped { customTo = snapped }
+                            }
+                        DatePicker("To", selection: $customTo, in: customFrom..., displayedComponents: .date)
+                            .onChange(of: customTo) { _, newValue in
+                                let snapped = Calendar.current.startOfDay(for: newValue)
+                                if snapped != customTo { customTo = snapped }
+                            }
                     }
                     // Champion KPI trio. Same metric set as the Android
                     // ReportsScreen — kept in lock-step intentionally so

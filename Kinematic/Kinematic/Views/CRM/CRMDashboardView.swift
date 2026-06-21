@@ -28,7 +28,20 @@ struct CRMDashboardView: View {
                 .pickerStyle(.segmented)
                 if vm.range == .custom {
                     DatePicker("From", selection: $vm.customFrom, displayedComponents: .date)
-                    DatePicker("To", selection: $vm.customTo, displayedComponents: .date)
+                        .onChange(of: vm.customFrom) { _, newValue in
+                            // Snap to start-of-day so picking the same calendar
+                            // day for From + To always works (the seeded
+                            // time-of-day was making `customTo < customFrom`
+                            // on a 4am-vs-now clock).
+                            let snapped = Calendar.current.startOfDay(for: newValue)
+                            if snapped != vm.customFrom { vm.customFrom = snapped }
+                            if vm.customTo < snapped { vm.customTo = snapped }
+                        }
+                    DatePicker("To", selection: $vm.customTo, in: vm.customFrom..., displayedComponents: .date)
+                        .onChange(of: vm.customTo) { _, newValue in
+                            let snapped = Calendar.current.startOfDay(for: newValue)
+                            if snapped != vm.customTo { vm.customTo = snapped }
+                        }
                 }
 
                 if let t = vm.target, t.hasTarget { targetTicker(t) }
