@@ -117,6 +117,11 @@ final class CRMDashboardViewModel: ObservableObject {
             self.winRate = (try? await winTask) ?? []
             self.forecast = (try? await forecastTask) ?? []
             self.target  = await targetTask
+            // Push the latest widget snapshot into the App Group cache
+            // so the home-screen widget repaints with the same numbers
+            // the rep just saw on the in-app dashboard. Fire-and-forget;
+            // failures are silent (widget keeps its previous payload).
+            Task.detached { await CRMService.shared.refreshWidgetCache() }
         } catch {
             errorMessage = error.localizedDescription
         }
