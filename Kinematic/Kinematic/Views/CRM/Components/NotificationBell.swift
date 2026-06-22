@@ -87,8 +87,19 @@ private struct NotificationCenterView: View {
                     Text("You're all caught up — no notifications.").foregroundColor(.secondary).font(.caption)
                 } else {
                     ForEach(notifications) { n in
+                        // Lead notifications take precedence — most CRM
+                        // nudges (stagnant lead, lead assigned) point at
+                        // a lead. Fall through to dealId for deal-side
+                        // events (closing-soon, overdue). Notifications
+                        // without either id just mark themselves read on
+                        // tap (broadcasts, system messages).
                         if let leadId = n.leadId {
                             NavigationLink(destination: LeadDetailView(leadId: leadId)) {
+                                NotificationRow(n: n)
+                            }
+                            .simultaneousGesture(TapGesture().onEnded { onRead(n.id) })
+                        } else if let dealId = n.dealId {
+                            NavigationLink(destination: DealDetailView(dealId: dealId)) {
                                 NotificationRow(n: n)
                             }
                             .simultaneousGesture(TapGesture().onEnded { onRead(n.id) })
