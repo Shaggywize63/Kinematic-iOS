@@ -274,12 +274,10 @@ struct LeadEditView: View {
 
                 // ── Products of Interest — multi-row picker that drives
                 //     custom_fields.product_lines plus the four legacy
-                //     mirror keys (product_interested / quantity /
-                //     measuring_unit / estimated_amount). Tata-only —
-                //     no other tenant uses the inline basket capture.
-                if isTata {
-                    ProductLinesSection(model: productLines)
-                }
+                //     mirror keys. Available for every tenant; empty
+                //     baskets stay empty so non-product CRMs aren't
+                //     forced into the section.
+                ProductLinesSection(model: productLines)
 
                 // ── Tata Tiscon: site-visit affordance on edit too ──
                 if isTata {

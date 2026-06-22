@@ -31,27 +31,14 @@ struct CRMTabView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             TabView(selection: $selectedTab) {
-                // Home is the rep's daily mission control: target progress,
-                // top-3 next actions with reasoning, near-to-close leads,
-                // today's activity, productivity playbook. Slots Dashboard
-                // (the analytics widgets) into More so the bottom bar
-                // stays at 5 tabs without compromising reachability.
-                //
-                // Hidden for Tata Tiscon (a1f67468-…) while the surface is
-                // being tuned for their consumer-only workflow — those
-                // users land back on the analytics Dashboard in slot 0.
-                if Session.currentUser?.clientId == "a1f67468-526e-4734-be3a-2cb132cc2804" {
-                    Tab("Dashboard", systemImage: "chart.bar.fill", value: 0) {
-                        NavigationStack { CRMDashboardView() }
-                    }
-                } else {
-                    Tab("Home", systemImage: "house.fill", value: 0) {
-                        // CrmHomeMissionView is the CRM-specific "daily mission
-                        // control" home — renamed from HomeView to disambiguate
-                        // from the legacy field-force HomeView in
-                        // ContentView.swift, which still drives the FFM tab.
-                        NavigationStack { CrmHomeMissionView() }
-                    }
+                // First tab is the analytics Dashboard for every tenant.
+                // The "Home" mission-control surface (CrmHomeMissionView)
+                // is still reachable from More → Insights → Dashboard if
+                // anyone needs it, but the daily-mission home was removed
+                // from the bottom bar at the user's request — reps land
+                // straight on the KPI tiles + date picker.
+                Tab("Dashboard", systemImage: "chart.bar.fill", value: 0) {
+                    NavigationStack { CRMDashboardView() }
                 }
                 Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 1) {
                     NavigationStack { LeadsListView() }
