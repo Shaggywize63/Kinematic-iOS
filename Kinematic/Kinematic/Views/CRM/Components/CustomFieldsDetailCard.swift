@@ -21,6 +21,11 @@ struct CustomFieldsDetailCard: View {
 
     @State private var defs: [CRMCustomFieldDef] = []
     @State private var loading: Bool = true
+    /// Per-target `id → label` cache for lookup fields. Populated once
+    /// the defs land + we see which UUIDs the row stores. Previously the
+    /// card rendered lookup values as raw UUIDs ("Block: 8fefca98-…")
+    /// which read as garbage on the detail screen.
+    @State private var lookupLabels: [String: String] = [:]
 
     private static let productLineKeys: Set<String> = [
         "product_interested", "quantity", "measuring_unit", "estimated_amount", "product_lines",
@@ -70,6 +75,34 @@ struct CustomFieldsDetailCard: View {
         defs = all
             .filter { $0.entityType == entity }
             .sorted { ($0.position ?? 0) < ($1.position ?? 0) }
+        await loadLookupLabels()
+    }
+
+    /// One `/lookup/search` per unique target_table referenced by the
+    /// loaded defs that has at least one UUID-only value in the row.
+    /// Resolved labels populate `lookupLabels` and re-render the card.
+    @MainActor
+    private func loadLookupLabels() async {
+        guard let raw = customFields, !raw.isEmpty, !defs.isEmpty else { return }
+        var targets = Set<String>()
+        for d in defs where d.fieldType == "lookup" {
+            guard let table = d.targetTable, !table.isEmpty else { continue }
+            guard let any = raw[d.fieldKey]?.raw?.any else { continue }
+            // New shape `{ id, label }` already carries a label — skip
+            // those. Only refetch when we'd otherwise show a UUID.
+            if let obj = any as? [String: Any] {
+                if (obj["label"] as? String)?.isEmpty == false { continue }
+                if (obj["id"] as? String)?.isEmpty == false { targets.insert(table) }
+            } else if let s = any as? String, !s.isEmpty {
+                targets.insert(table)
+            }
+        }
+        var next: [String: String] = [:]
+        for target in targets {
+            let opts = await CRMService.shared.lookupSearch(target: target, q: nil, filter: nil)
+            for o in opts { next["\(target):\(o.id)"] = o.label }
+        }
+        if !next.isEmpty { lookupLabels = next }
     }
 
     private struct Row {
@@ -94,11 +127,36 @@ struct CustomFieldsDetailCard: View {
         for d in defs {
             if Self.productLineKeys.contains(d.fieldKey) { continue }
             guard let any = raw[d.fieldKey]?.raw?.any else { continue }
-            let display: String? = formatValue(any, type: d.fieldType)
+            let display: String?
+            if d.fieldType == "lookup" {
+                display = resolveLookup(any, target: d.targetTable)
+            } else {
+                display = formatValue(any, type: d.fieldType)
+            }
             guard let display, !display.isEmpty else { continue }
             out.append(Row(key: d.fieldKey, label: d.label, display: display))
         }
         return out
+    }
+
+    /// Map a lookup value (raw UUID string OR `{ id, label }` dict) to
+    /// the display label via the cached lookup map. Falls back to the
+    /// short UUID so a cache miss is still recognisable instead of a
+    /// 36-char string.
+    private func resolveLookup(_ v: Any, target: String?) -> String? {
+        if let dict = v as? [String: Any] {
+            if let label = dict["label"] as? String, !label.isEmpty { return label }
+            if let id = dict["id"] as? String, !id.isEmpty {
+                if let t = target, let resolved = lookupLabels["\(t):\(id)"] { return resolved }
+                return String(id.prefix(8))
+            }
+            return nil
+        }
+        if let id = v as? String, !id.isEmpty {
+            if let t = target, let resolved = lookupLabels["\(t):\(id)"] { return resolved }
+            return String(id.prefix(8))
+        }
+        return String(describing: v)
     }
 
     private func formatValue(_ v: Any, type: String) -> String? {
