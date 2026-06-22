@@ -35,6 +35,9 @@ public enum KinematicSharedCache {
         leadsToday: Int,
         leadsWeek: Int,
         trend7d: [Int],
+        openDeals: Int = 0,
+        wonDeals30d: Int = 0,
+        openDealValue: Double = 0,
         refreshedAt: Date = Date()
     ) {
         let payload: [String: Any] = [
@@ -44,6 +47,9 @@ public enum KinematicSharedCache {
             "leads_today": leadsToday,
             "leads_week": leadsWeek,
             "trend_7d": trend7d,
+            "open_deals": openDeals,
+            "won_deals_30d": wonDeals30d,
+            "open_deal_value": openDealValue,
             "refreshed_at": refreshedAt.timeIntervalSince1970,
         ]
         if let data = try? JSONSerialization.data(withJSONObject: payload) {
@@ -71,6 +77,9 @@ public enum KinematicSharedCache {
             leadsToday:       (raw["leads_today"]       as? Int)    ?? 0,
             leadsWeek:        (raw["leads_week"]        as? Int)    ?? 0,
             trend7d:          trend.isEmpty ? Array(repeating: 0, count: 7) : trend,
+            openDeals:        (raw["open_deals"]        as? Int)    ?? 0,
+            wonDeals30d:      (raw["won_deals_30d"]     as? Int)    ?? 0,
+            openDealValue:    (raw["open_deal_value"]   as? Double) ?? 0,
             refreshedAt:      refreshedTs.map { Date(timeIntervalSince1970: $0) }
         )
     }

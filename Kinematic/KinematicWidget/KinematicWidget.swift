@@ -23,6 +23,10 @@ struct KinematicEntry: TimelineEntry {
     let leadsToday: Int
     let leadsWeek: Int
     let trend7d: [Int]
+    // Deal-side stats — the widget now surfaces both pipeline halves.
+    let openDeals: Int
+    let wonDeals30d: Int
+    let openDealValue: Double          // rupees
     let refreshedAt: Date?
 
     static let placeholder = KinematicEntry(
@@ -33,6 +37,9 @@ struct KinematicEntry: TimelineEntry {
         leadsToday: 12,
         leadsWeek: 78,
         trend7d: [9, 14, 12, 18, 11, 16, 12],
+        openDeals: 24,
+        wonDeals30d: 9,
+        openDealValue: 1_240_000,
         refreshedAt: Date()
     )
 
@@ -44,6 +51,9 @@ struct KinematicEntry: TimelineEntry {
         leadsToday: 0,
         leadsWeek: 0,
         trend7d: Array(repeating: 0, count: 7),
+        openDeals: 0,
+        wonDeals30d: 0,
+        openDealValue: 0,
         refreshedAt: nil
     )
 }
@@ -75,7 +85,7 @@ struct KinematicWidget: Widget {
             KinematicWidgetView(entry: entry)
         }
         .configurationDisplayName("Kinematic CRM")
-        .description("Total leads, conversions, and your 7-day trend.")
+        .description("Leads, open deals, pipeline value, and the 7-day trend.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -117,11 +127,11 @@ struct KinematicWidgetSmall: View {
                 .minimumScaleFactor(0.5)
             Spacer(minLength: 4)
             HStack {
-                Text("Conv.")
+                Text("Open")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.white.opacity(0.7))
                 Spacer()
-                Text(fmtPercent(entry.conversionRate))
+                Text(fmtCount(entry.openDeals))
                     .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundColor(.white)
             }
@@ -143,9 +153,9 @@ struct KinematicWidgetMedium: View {
             }
             HStack(spacing: 16) {
                 StatColumn(label: "Total Leads", value: fmtCount(entry.totalLeads))
-                StatColumn(label: "Conversions", value: fmtCount(entry.totalConversions))
+                StatColumn(label: "Open Deals",  value: fmtCount(entry.openDeals))
             }
-            Text("Conversion rate \(fmtPercent(entry.conversionRate))")
+            Text("Pipeline \(fmtRupees(entry.openDealValue)) · \(fmtPercent(entry.conversionRate)) convert")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.white.opacity(0.85))
             Sparkline(values: entry.trend7d)
@@ -169,17 +179,17 @@ struct KinematicWidgetLarge: View {
             }
             HStack(spacing: 20) {
                 StatColumn(label: "Total Leads", value: fmtCount(entry.totalLeads), size: 36)
-                StatColumn(label: "Conversions", value: fmtCount(entry.totalConversions), size: 36)
+                StatColumn(label: "Open Deals",  value: fmtCount(entry.openDeals),  size: 36)
             }
-            Text("Conversion rate \(fmtPercent(entry.conversionRate))")
+            Text("Pipeline \(fmtRupees(entry.openDealValue)) · \(fmtPercent(entry.conversionRate)) convert")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(0.85))
             Sparkline(values: entry.trend7d)
                 .frame(height: 56)
                 .padding(.top, 4)
             HStack(spacing: 24) {
-                ChipStat(label: "Today",      value: fmtCount(entry.leadsToday))
-                ChipStat(label: "This week",  value: fmtCount(entry.leadsWeek))
+                ChipStat(label: "Today",       value: fmtCount(entry.leadsToday))
+                ChipStat(label: "Won (30d)",   value: fmtCount(entry.wonDeals30d))
             }
         }
         .padding(18)
@@ -297,6 +307,14 @@ private func fmtCount(_ n: Int) -> String {
 private func fmtPercent(_ r: Double) -> String {
     guard r.isFinite, r > 0 else { return "—" }
     return String(format: "%.1f%%", r * 100)
+}
+
+/// Compact rupee formatting for the subtitle (₹12.4L / ₹3.2Cr).
+private func fmtRupees(_ v: Double) -> String {
+    guard v.isFinite, v > 0 else { return "₹0" }
+    if v >= 1_00_00_000 { return String(format: "₹%.1fCr", v / 1_00_00_000) }
+    if v >= 1_00_000    { return String(format: "₹%.1fL",  v / 1_00_000) }
+    return "₹" + (NumberFormatter.localizedString(from: NSNumber(value: Int(v)), number: .decimal))
 }
 
 private func updatedAtLabel(_ at: Date?) -> String {

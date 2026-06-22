@@ -486,6 +486,47 @@ final class CRMService {
         }
     }
 
+    /// Wire-shape of `/api/v1/crm/analytics/widget-summary`. Kept local
+    /// to the service because only the home-screen widget refresh
+    /// consumes it; everywhere else uses CRMAnalyticsSummary.
+    struct CRMWidgetSummary: Codable {
+        let total_leads: Int?
+        let total_conversions: Int?
+        let conversion_rate: Double?
+        let leads_today: Int?
+        let leads_week: Int?
+        let trend_7d: [Int]?
+        let open_deals: Int?
+        let won_deals_30d: Int?
+        let open_deal_value: Double?
+        let refreshed_at: String?
+    }
+
+    /// Fetch the widget snapshot and push it into the App Group cache
+    /// so the WidgetKit timeline provider repaints with fresh data.
+    /// Best-effort; silent on failure (the widget falls back to its
+    /// previous cached snapshot until the next call lands).
+    func refreshWidgetCache() async {
+        guard !Session.sharedToken.isEmpty else { return }
+        do {
+            let s: CRMWidgetSummary = try await get("/api/v1/crm/analytics/widget-summary")
+            KinematicSharedCache.write(
+                totalLeads:       s.total_leads ?? 0,
+                totalConversions: s.total_conversions ?? 0,
+                conversionRate:   s.conversion_rate ?? 0,
+                leadsToday:       s.leads_today ?? 0,
+                leadsWeek:        s.leads_week ?? 0,
+                trend7d:          s.trend_7d ?? Array(repeating: 0, count: 7),
+                openDeals:        s.open_deals ?? 0,
+                wonDeals30d:      s.won_deals_30d ?? 0,
+                openDealValue:    s.open_deal_value ?? 0,
+                refreshedAt:      Date()
+            )
+        } catch {
+            // Best-effort — leave the previous cached snapshot in place.
+        }
+    }
+
     func dashboardSummary(from: String? = nil, to: String? = nil) async throws -> CRMAnalyticsSummary {
         var q: [String: String] = [:]
         if let from { q["from"] = from }
