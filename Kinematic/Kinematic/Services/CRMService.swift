@@ -9,6 +9,9 @@
 //
 
 import Foundation
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 enum CRMServiceError: LocalizedError {
     case missingAuth
@@ -506,22 +509,39 @@ final class CRMService {
     /// so the WidgetKit timeline provider repaints with fresh data.
     /// Best-effort; silent on failure (the widget falls back to its
     /// previous cached snapshot until the next call lands).
+    ///
+    /// Writes the JSON payload directly to the App Group UserDefaults
+    /// using the same key + schema the widget extension's
+    /// KinematicSharedCache.read() consumes. Inlined here (instead of
+    /// calling KinematicSharedCache.write from the widget bundle) so
+    /// the host target doesn't need shared target membership on that
+    /// type — the App Group is the only contract the two ends share.
     func refreshWidgetCache() async {
         guard !Session.sharedToken.isEmpty else { return }
         do {
             let s: CRMWidgetSummary = try await get("/api/v1/crm/analytics/widget-summary")
-            KinematicSharedCache.write(
-                totalLeads:       s.total_leads ?? 0,
-                totalConversions: s.total_conversions ?? 0,
-                conversionRate:   s.conversion_rate ?? 0,
-                leadsToday:       s.leads_today ?? 0,
-                leadsWeek:        s.leads_week ?? 0,
-                trend7d:          s.trend_7d ?? Array(repeating: 0, count: 7),
-                openDeals:        s.open_deals ?? 0,
-                wonDeals30d:      s.won_deals_30d ?? 0,
-                openDealValue:    s.open_deal_value ?? 0,
-                refreshedAt:      Date()
-            )
+            let payload: [String: Any] = [
+                "total_leads":       s.total_leads ?? 0,
+                "total_conversions": s.total_conversions ?? 0,
+                "conversion_rate":   s.conversion_rate ?? 0,
+                "leads_today":       s.leads_today ?? 0,
+                "leads_week":        s.leads_week ?? 0,
+                "trend_7d":          s.trend_7d ?? Array(repeating: 0, count: 7),
+                "open_deals":        s.open_deals ?? 0,
+                "won_deals_30d":     s.won_deals_30d ?? 0,
+                "open_deal_value":   s.open_deal_value ?? 0,
+                "refreshed_at":      Date().timeIntervalSince1970,
+            ]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                  let store = UserDefaults(suiteName: "group.com.shaggywize63.kinematic") else {
+                return
+            }
+            store.set(data, forKey: "kinematic_widget_summary_v1")
+            // Force the widget timeline to repaint immediately instead
+            // of waiting for the 30-minute refresh policy.
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
         } catch {
             // Best-effort — leave the previous cached snapshot in place.
         }
