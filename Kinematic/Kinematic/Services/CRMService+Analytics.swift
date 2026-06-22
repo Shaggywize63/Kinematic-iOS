@@ -113,10 +113,44 @@ private enum AnalyticsHelpers {
 
     static func decodeListEnvelope<T: Codable>(_ type: T.Type, from data: Data) throws -> [T] {
         let decoder = JSONDecoder()
+        // Preferred shapes — `{ success, data: [...] }` envelope or a raw
+        // top-level array. Every legacy report uses one of these.
         if let env = try? decoder.decode(APIEnvelope<[T]>.self, from: data), let p = env.data {
             return p
         }
         if let raw = try? decoder.decode([T].self, from: data) { return raw }
+
+        // Some reports (lead-tracker, team-performance, team-daily, …)
+        // return an OBJECT inside `data` — not a flat array — because
+        // the response carries several chart series side-by-side. The
+        // generic reports table can still render those, but the
+        // decoder was throwing a hard error on every object-shaped
+        // response ("Could not read server response: Expected list of
+        // Dictionary<String, AnyCodableValue>"). Try to extract the
+        // first array-valued field via a raw JSONSerialization pass;
+        // if none exists, wrap the whole object as a single row so
+        // the rep sees something instead of the red error card.
+        if T.self == [String: AnyCodableValue].self,
+           let json = try? JSONSerialization.jsonObject(with: data),
+           let inner = (json as? [String: Any])?["data"] ?? json as? [String: Any] {
+            if let dict = inner as? [String: Any] {
+                // First array of dicts wins as the visible table.
+                for key in dict.keys.sorted() {
+                    if let arr = dict[key] as? [[String: Any]], !arr.isEmpty {
+                        if let bytes = try? JSONSerialization.data(withJSONObject: arr),
+                           let rows = try? decoder.decode([[String: AnyCodableValue]].self, from: bytes) {
+                            return rows as! [T]
+                        }
+                    }
+                }
+                // No array field — fall back to a single summary row
+                // (each top-level key becomes a column).
+                if let bytes = try? JSONSerialization.data(withJSONObject: dict),
+                   let row = try? decoder.decode([String: AnyCodableValue].self, from: bytes) {
+                    return [row] as! [T]
+                }
+            }
+        }
         throw CRMServiceError.decodeFailed("Expected list of \(T.self)")
     }
 }
