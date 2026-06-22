@@ -140,25 +140,27 @@ struct CustomFieldsSection: View {
                     ForEach(d.options ?? [], id: \.self) { Text($0).tag($0) }
                 }
         case "lookup":
-            // Stored value is the picked row's UUID; the label is what the
-            // rep sees in the dropdown. Falls back to a text input when
-            // the lookup target hasn't been wired yet (no options loaded).
-            if let opts = model.lookupOptions[d.fieldKey], !opts.isEmpty {
-                Picker(d.label, selection: Binding(
-                    get: { model.text[d.fieldKey] ?? "" },
-                    set: { model.text[d.fieldKey] = $0 })) {
-                        Text("—").tag("")
-                        ForEach(opts, id: \.id) { opt in
-                            Text(opt.label).tag(opt.id)
-                        }
+            // Live-search picker — the picker sheet calls /lookup/search
+            // on every keystroke so tenants with 200+ rows in the
+            // target table (People Directory dealers / engineers, etc.)
+            // can find what they want instead of being capped by the
+            // initial 50-row fetch a plain Picker shows.
+            LookupSearchPickerRow(
+                def: d,
+                value: model.text[d.fieldKey] ?? "",
+                seedOptions: model.lookupOptions[d.fieldKey] ?? [],
+                onPick: { id, label in
+                    model.text[d.fieldKey] = id
+                    // Cache the label so the row keeps displaying it
+                    // after the sheet dismisses even if the seed list
+                    // didn't contain this row.
+                    var existing = model.lookupOptions[d.fieldKey] ?? []
+                    if !existing.contains(where: { $0.id == id }) {
+                        existing.append((id: id, label: label))
+                        model.lookupOptions[d.fieldKey] = existing
                     }
-            } else {
-                HStack {
-                    Text(d.label)
-                    Spacer()
-                    Text("—").foregroundColor(.secondary)
                 }
-            }
+            )
         case "multiselect":
             VStack(alignment: .leading, spacing: 6) {
                 Text(d.label).font(.caption).foregroundColor(.secondary)
@@ -258,5 +260,155 @@ struct CustomFieldsSection: View {
         case "url": return .URL
         default: return .default
         }
+    }
+}
+
+// MARK: - Lookup search picker
+
+/// One row of the form: shows the currently picked label (or "—") and opens
+/// a search sheet on tap. The sheet calls /lookup/search live so tenants
+/// with hundreds of dealers / engineers / blocks aren't capped by the
+/// initial 50-row fetch a plain Picker shows.
+private struct LookupSearchPickerRow: View {
+    let def: CRMCustomFieldDef
+    let value: String
+    let seedOptions: [(id: String, label: String)]
+    let onPick: (_ id: String, _ label: String) -> Void
+
+    @State private var sheetOpen = false
+
+    private var displayLabel: String {
+        if value.isEmpty { return "—" }
+        return seedOptions.first(where: { $0.id == value })?.label ?? value
+    }
+
+    var body: some View {
+        Button {
+            sheetOpen = true
+        } label: {
+            HStack {
+                Text(def.label)
+                    .foregroundColor(.primary)
+                Spacer()
+                Text(displayLabel)
+                    .foregroundColor(value.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .sheet(isPresented: $sheetOpen) {
+            LookupSearchSheet(
+                def: def,
+                onPick: { id, label in
+                    onPick(id, label)
+                    sheetOpen = false
+                },
+                onClear: {
+                    onPick("", "")
+                    sheetOpen = false
+                }
+            )
+        }
+    }
+}
+
+/// Bottom sheet that lists options for a lookup field and re-fetches on
+/// every search keystroke. Empty query returns the first 500 rows (server
+/// cap); typing narrows server-side via the curated `search` columns the
+/// backend exposes for the target table.
+private struct LookupSearchSheet: View {
+    let def: CRMCustomFieldDef
+    let onPick: (_ id: String, _ label: String) -> Void
+    let onClear: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var query: String = ""
+    @State private var results: [CRMLookupOption] = []
+    @State private var loading: Bool = false
+
+    private var filterJson: String? {
+        guard let clauses = def.lookupFilter, !clauses.isEmpty,
+              let data = try? JSONEncoder().encode(clauses),
+              let s = String(data: data, encoding: .utf8) else { return nil }
+        return s
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                searchField
+                Divider()
+                if loading && results.isEmpty {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                } else if results.isEmpty {
+                    Spacer()
+                    Text(query.isEmpty ? "No options." : "No matches for \"\(query)\".")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                } else {
+                    List {
+                        ForEach(results) { opt in
+                            Button {
+                                onPick(opt.id, opt.label)
+                            } label: {
+                                Text(opt.label)
+                                    .foregroundColor(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .navigationTitle(def.label)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Clear", role: .destructive) { onClear() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .task { await refetch() }
+            .onChange(of: query) { _, _ in
+                Task { await refetch() }
+            }
+        }
+    }
+
+    private var searchField: some View {
+        HStack {
+            Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+            TextField("Search…", text: $query)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private func refetch() async {
+        guard let target = def.targetTable, !target.isEmpty else { return }
+        loading = true
+        defer { loading = false }
+        let opts = await CRMService.shared.lookupSearch(
+            target: target,
+            q: query.isEmpty ? nil : query,
+            filter: filterJson
+        )
+        results = opts
     }
 }
