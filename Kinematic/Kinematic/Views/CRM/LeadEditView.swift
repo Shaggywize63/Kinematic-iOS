@@ -58,7 +58,16 @@ struct LeadEditView: View {
     /// Session.currentUser.clientId can be stale on iOS so the Tata-only
     /// affordances (Products of Interest section + site-visit toggle)
     /// disappeared even though Android kept them.
+    /// Server-side business_type ("b2c" / "b2b"). Nil until /crm/settings
+    /// responds. We use this to flip the form into B2C-only mode without
+    /// flashing the B2B/B2C picker first — see the gating below.
     @State private var businessType: String?
+    /// True once /crm/settings has responded so the type-toggle section
+    /// can defer rendering. Without this the picker briefly appeared
+    /// and then disappeared on Tata-equivalent tenants (businessType
+    /// loaded a beat after the form did), which the rep perceived as
+    /// "it asked me, then switched".
+    @State private var settingsLoaded: Bool = false
     private var isTata: Bool {
         ClientFeatures.isTataTiscon || (businessType?.lowercased() == "b2c")
     }
@@ -99,7 +108,10 @@ struct LeadEditView: View {
         NavigationStack {
             Form {
                 // ── Type toggle (hidden for Tata Tiscon) ───────────
-                if !isTata {
+                // Defer until /crm/settings has responded so the picker
+                // doesn't flash on Tata-equivalent tenants before the
+                // business_type override flips `isTata` true.
+                if settingsLoaded && !isTata {
                     Section {
                         Picker("Type", selection: $isB2C) {
                             Text("Business (B2B)").tag(false)
@@ -336,6 +348,10 @@ struct LeadEditView: View {
         _ = await plTask
         _ = await foTask
         businessType = (await settingsTask)?.business_type
+        // Force B2C immediately for Tata-equivalent tenants so the form
+        // body sees the correct value the moment settingsLoaded flips.
+        if (businessType?.lowercased() == "b2c") { isB2C = true }
+        settingsLoaded = true
         // Hydrate the form with the lead's existing custom-field values
         // after the defs land, so each value lands in the right type
         // bucket (text / bool / multi).

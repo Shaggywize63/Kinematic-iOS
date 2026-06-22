@@ -44,7 +44,10 @@ struct CRMDashboardView: View {
                         }
                 }
 
-                if let t = vm.target, t.hasTarget { targetTicker(t) }
+                // Target ticker is a field-executive affordance — restricted
+                // to Consumer Champions at the user's request. ASOs / CRM
+                // Admins / Business Heads now see the analytics tiles only.
+                if ClientFeatures.isConsumerChampion, let t = vm.target, t.hasTarget { targetTicker(t) }
 
                 kpiGrid
                 DashboardLeadsMapCard()

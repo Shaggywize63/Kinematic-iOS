@@ -17,7 +17,6 @@ struct LeadsFilterSheet: View {
     @ObservedObject var vm: LeadsViewModel
     @Environment(\.dismiss) private var dismiss
 
-    private let lifecycles = ["all", "subscriber", "lead", "mql", "sql", "opportunity", "customer"]
 
     enum DateRangePreset: String, CaseIterable, Identifiable {
         case any, today, yesterday, last7, thisMonth, custom
@@ -74,11 +73,11 @@ struct LeadsFilterSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Lifecycle Stage") {
-                    Picker("Lifecycle", selection: $vm.lifecycleFilter) {
-                        ForEach(lifecycles, id: \.self) { Text($0 == "all" ? "All" : $0.uppercased()).tag($0) }
-                    }
-                }
+                // Lifecycle stage (MQL / SQL / Subscriber / …) was
+                // dropped at the user's request — too marketing-y for
+                // the field-rep flow. Reps filter by Converted / Owner /
+                // Source / Date which already covers every real-world
+                // question they ask the list.
                 Section("Converted") {
                     Picker("Converted", selection: $vm.convertedFilter) {
                         Text("All").tag("all"); Text("Converted").tag("yes"); Text("Not converted").tag("no")

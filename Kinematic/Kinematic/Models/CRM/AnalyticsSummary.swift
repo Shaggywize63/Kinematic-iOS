@@ -131,8 +131,12 @@ struct FunnelStageMetric: Codable, Identifiable, Hashable {
     let count: Int
     let value: Double?
 
+    // Backend's funnel response emits each row as `{ stage, count, value }`.
+    // We were decoding `stage_name`, so iOS picked up an empty string and
+    // the chart silently rendered every bar as "" (or fell back to a
+    // generic placeholder upstream). Map to `stage` now.
     enum CodingKeys: String, CodingKey {
-        case stageName = "stage_name"
+        case stageName = "stage"
         case count, value
     }
 }
