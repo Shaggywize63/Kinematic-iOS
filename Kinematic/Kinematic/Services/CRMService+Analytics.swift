@@ -55,15 +55,19 @@ extension CRMService {
     /// Generic report fetch for the Reports hub — exposes the file-private
     /// `analyticsGetList` to other files. Returns each row as a loose JSON map
     /// so any analytics endpoint can be rendered as a table + exported.
-    func analyticsReport(_ path: String, query: [String: String] = [:]) async throws -> [[String: AnyCodableValue]] {
-        try await analyticsGetList(path, query: query)
+    /// `preferKey` lets the caller name the field they want to surface when
+    /// the backend returns an object with multiple chart series side by
+    /// side (e.g. lead-tracker → `daily`). Falls back to the first
+    /// non-empty array field when the preferred key is absent.
+    func analyticsReport(_ path: String, query: [String: String] = [:], preferKey: String? = nil) async throws -> [[String: AnyCodableValue]] {
+        try await analyticsGetList(path, query: query, preferKey: preferKey)
     }
 }
 
 // MARK: - Private helpers (file-scoped, same shape as CRMService+Phase2)
 
 private extension CRMService {
-    func analyticsGetList<T: Codable>(_ path: String, query: [String: String] = [:]) async throws -> [T] {
+    func analyticsGetList<T: Codable>(_ path: String, query: [String: String] = [:], preferKey: String? = nil) async throws -> [T] {
         let url = try AnalyticsHelpers.buildURL(path: path, query: query)
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
@@ -71,7 +75,7 @@ private extension CRMService {
         AnalyticsHelpers.applyHeaders(to: &req)
         let (data, resp) = try await CRMHTTP.send(req)
         try AnalyticsHelpers.validate(resp, data: data)
-        return try AnalyticsHelpers.decodeListEnvelope(T.self, from: data)
+        return try AnalyticsHelpers.decodeListEnvelope(T.self, from: data, preferKey: preferKey)
     }
 }
 
@@ -111,7 +115,7 @@ private enum AnalyticsHelpers {
         }
     }
 
-    static func decodeListEnvelope<T: Codable>(_ type: T.Type, from data: Data) throws -> [T] {
+    static func decodeListEnvelope<T: Codable>(_ type: T.Type, from data: Data, preferKey: String? = nil) throws -> [T] {
         let decoder = JSONDecoder()
         // Preferred shapes — `{ success, data: [...] }` envelope or a raw
         // top-level array. Every legacy report uses one of these.
@@ -134,7 +138,16 @@ private enum AnalyticsHelpers {
            let json = try? JSONSerialization.jsonObject(with: data),
            let inner = (json as? [String: Any])?["data"] ?? json as? [String: Any] {
             if let dict = inner as? [String: Any] {
-                // First array of dicts wins as the visible table.
+                // Try the caller's preferred key first so reports with
+                // multiple series side by side (lead-tracker, team-
+                // performance) surface the right table by default.
+                if let pk = preferKey, let arr = dict[pk] as? [[String: Any]], !arr.isEmpty {
+                    if let bytes = try? JSONSerialization.data(withJSONObject: arr),
+                       let rows = try? decoder.decode([[String: AnyCodableValue]].self, from: bytes) {
+                        return rows as! [T]
+                    }
+                }
+                // Fallback: first array of dicts in alphabetical order.
                 for key in dict.keys.sorted() {
                     if let arr = dict[key] as? [[String: Any]], !arr.isEmpty {
                         if let bytes = try? JSONSerialization.data(withJSONObject: arr),

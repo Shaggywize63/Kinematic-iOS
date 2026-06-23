@@ -17,6 +17,13 @@ struct CRMReportSpec: Identifiable {
     /// appended in sorted order so a report still renders fully if the backend
     /// shape changes.
     var leadingColumns: [String] = []
+    /// When the backend returns a multi-series object (e.g. lead-tracker
+    /// emits `{ monthly, weekly, daily, status_breakdown, … }`), the
+    /// generic table needs to know which field to render. Without this
+    /// the decoder picks the first array-of-dicts in alphabetical order
+    /// — which surfaced `ageing_distribution` on Lead Tracker and read
+    /// as "no data" because that bucket is sparse for most tenants.
+    var primarySeriesKey: String? = nil
 }
 
 enum CRMReportCatalog {
@@ -30,12 +37,14 @@ enum CRMReportCatalog {
                                        "conversion_rate", "avg_deal_size", "avg_sales_cycle_days",
                                        "avg_ageing_days", "oldest_open_lead_days",
                                        "activities_completed_period", "activities_total_period",
-                                       "avg_lead_score"]),
+                                       "avg_lead_score"],
+                      primarySeriesKey: "rows"),
         CRMReportSpec(id: "lead-tracker", title: "Lead Tracker",
                       desc: "Monthly + weekly + daily buckets, status mix, top sources/cities.",
                       path: "/api/v1/crm/analytics/lead-tracker",
                       query: ["months": "6"],
-                      leadingColumns: ["key", "count"]),
+                      leadingColumns: ["label", "from", "to", "new_leads", "converted", "conversion_rate"],
+                      primarySeriesKey: "monthly"),
         CRMReportSpec(id: "team-daily", title: "Team Daily Activity",
                       desc: "Per-rep snapshot — activities, leads, deals, last location.",
                       path: "/api/v1/crm/analytics/team-daily",
@@ -356,7 +365,7 @@ struct CRMReportDetailView: View {
     private func load() async {
         await MainActor.run { isLoading = true; errorMessage = nil }
         do {
-            let fetched: [ReportRow] = try await CRMService.shared.analyticsReport(spec.path, query: spec.query)
+            let fetched: [ReportRow] = try await CRMService.shared.analyticsReport(spec.path, query: spec.query, preferKey: spec.primarySeriesKey)
             let cols = computeColumns(fetched)
             await MainActor.run { rows = fetched; columns = cols; isLoading = false }
         } catch {
