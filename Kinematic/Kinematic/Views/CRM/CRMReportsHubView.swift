@@ -53,6 +53,11 @@ struct CRMReportSpec: Identifiable {
     var chartCategoryKey: String? = nil
     var chartValueKeys: [String] = []
     var defaultChart: CRMReportChartKind = .table
+    /// Curated chart-toggle list. Showing every chart kind for every
+    /// report was confusing — a pie of 20 leaderboard reps is
+    /// unreadable, a line chart of stage-funnel makes no sense.
+    /// Defaults to `[.table]`; reports with chart keys override.
+    var chartKinds: [CRMReportChartKind] = [.table]
     /// Whether this report's backend honours `from=&to=` ISO date
     /// params. When true the Hub's active date range is forwarded;
     /// when false the report ignores the picker (e.g. rolling-window
@@ -71,20 +76,25 @@ enum CRMReportCatalog {
                                        "conversion_rate", "avg_deal_size", "avg_sales_cycle_days",
                                        "avg_ageing_days", "oldest_open_lead_days",
                                        "activities_completed_period", "activities_total_period",
-                                       "avg_lead_score"],
+                                       "last_activity_at"],
                       primarySeriesKey: "rows",
                       chartCategoryKey: "name",
                       chartValueKeys: ["won_value"],
-                      defaultChart: .bar),
+                      defaultChart: .bar,
+                      chartKinds: [.table, .bar]),
+        // Lead Tracker `monthly` is just `{ key, count }` — earlier
+        // defaults pointed at `label / new_leads / converted` which
+        // don't exist on those buckets → empty chart.
         CRMReportSpec(id: "lead-tracker", title: "Lead Tracker",
-                      desc: "Monthly + weekly + daily buckets, status mix, top sources/cities.",
+                      desc: "Monthly new-lead trend.",
                       path: "/api/v1/crm/analytics/lead-tracker",
                       query: ["months": "6"],
-                      leadingColumns: ["label", "from", "to", "new_leads", "converted", "conversion_rate"],
+                      leadingColumns: ["key", "count"],
                       primarySeriesKey: "monthly",
-                      chartCategoryKey: "label",
-                      chartValueKeys: ["new_leads", "converted"],
-                      defaultChart: .line),
+                      chartCategoryKey: "key",
+                      chartValueKeys: ["count"],
+                      defaultChart: .line,
+                      chartKinds: [.table, .line, .bar]),
         CRMReportSpec(id: "team-daily", title: "Team Daily Activity",
                       desc: "Per-rep snapshot — activities, leads, deals, last location.",
                       path: "/api/v1/crm/analytics/team-daily",
@@ -94,14 +104,21 @@ enum CRMReportCatalog {
                       chartCategoryKey: "name",
                       chartValueKeys: ["leads_today"],
                       defaultChart: .bar,
+                      chartKinds: [.table, .bar],
                       honoursDateRange: false),
+        // Leaderboard — backend returns { metric, period, rows } with
+        // rows = { user_id, full_name, count, revenue, avg_deal_size,
+        // win_rate }. Earlier columns (owner_name / won / avg_cycle_days)
+        // didn't exist → empty cells.
         CRMReportSpec(id: "rep-leaderboard", title: "Rep Leaderboard",
-                      desc: "Revenue, deals won, win rate and cycle by rep.",
+                      desc: "Revenue, deals won, win rate by rep.",
                       path: "/api/v1/crm/leaderboard",
-                      leadingColumns: ["owner_name", "name", "won", "revenue", "win_rate", "avg_cycle_days"],
-                      chartCategoryKey: "owner_name",
+                      leadingColumns: ["full_name", "count", "revenue", "avg_deal_size", "win_rate"],
+                      primarySeriesKey: "rows",
+                      chartCategoryKey: "full_name",
                       chartValueKeys: ["revenue"],
-                      defaultChart: .bar),
+                      defaultChart: .bar,
+                      chartKinds: [.table, .bar]),
         CRMReportSpec(id: "forecast", title: "Forecast",
                       desc: "Pipeline vs committed vs closed by period.",
                       path: "/api/v1/crm/analytics/forecast",
@@ -109,6 +126,7 @@ enum CRMReportCatalog {
                       chartCategoryKey: "period",
                       chartValueKeys: ["pipeline", "committed", "closed"],
                       defaultChart: .bar,
+                      chartKinds: [.table, .bar, .line],
                       honoursDateRange: false),
         CRMReportSpec(id: "stage-funnel", title: "Stage Funnel",
                       desc: "Deal count and drop-off at each stage.",
@@ -117,6 +135,7 @@ enum CRMReportCatalog {
                       chartCategoryKey: "name",
                       chartValueKeys: ["count"],
                       defaultChart: .bar,
+                      chartKinds: [.table, .bar],
                       honoursDateRange: false),
         CRMReportSpec(id: "win-loss", title: "Win / Loss",
                       desc: "Win rate by bucket.",
@@ -124,7 +143,8 @@ enum CRMReportCatalog {
                       leadingColumns: ["label", "bucket", "won", "lost", "win_rate"],
                       chartCategoryKey: "label",
                       chartValueKeys: ["won", "lost"],
-                      defaultChart: .bar),
+                      defaultChart: .bar,
+                      chartKinds: [.table, .bar, .pie]),
         CRMReportSpec(id: "lead-aging", title: "Lead Aging",
                       desc: "Open leads by how long they've been stuck.",
                       path: "/api/v1/crm/analytics/lead-aging",
@@ -132,6 +152,7 @@ enum CRMReportCatalog {
                       chartCategoryKey: "label",
                       chartValueKeys: ["count"],
                       defaultChart: .bar,
+                      chartKinds: [.table, .bar, .pie],
                       honoursDateRange: false),
         CRMReportSpec(id: "stuck-leads", title: "Stuck Leads",
                       desc: "Open leads with no recent stage movement.",
@@ -144,14 +165,16 @@ enum CRMReportCatalog {
                       leadingColumns: ["dow", "day", "hour", "count"],
                       chartCategoryKey: "day",
                       chartValueKeys: ["count"],
-                      defaultChart: .bar),
+                      defaultChart: .bar,
+                      chartKinds: [.table, .bar]),
         CRMReportSpec(id: "lead-source-roi", title: "Lead Source ROI",
                       desc: "Revenue and ROI by acquisition source.",
                       path: "/api/v1/crm/analytics/lead-source-roi",
                       leadingColumns: ["source", "leads", "won", "revenue", "roi"],
                       chartCategoryKey: "source",
                       chartValueKeys: ["revenue"],
-                      defaultChart: .bar),
+                      defaultChart: .bar,
+                      chartKinds: [.table, .bar, .pie]),
         CRMReportSpec(id: "sales-cycle", title: "Sales Cycle",
                       desc: "Average days deals spend in each stage.",
                       path: "/api/v1/crm/analytics/sales-cycle",
@@ -159,6 +182,7 @@ enum CRMReportCatalog {
                       chartCategoryKey: "name",
                       chartValueKeys: ["avg_days"],
                       defaultChart: .bar,
+                      chartKinds: [.table, .bar],
                       honoursDateRange: false),
         CRMReportSpec(id: "lost-reasons", title: "Lost Reasons",
                       desc: "Why deals/leads are lost.",
@@ -166,7 +190,8 @@ enum CRMReportCatalog {
                       leadingColumns: ["reason", "count"],
                       chartCategoryKey: "reason",
                       chartValueKeys: ["count"],
-                      defaultChart: .pie),
+                      defaultChart: .pie,
+                      chartKinds: [.table, .bar, .pie]),
     ]
 }
 
@@ -410,12 +435,12 @@ struct CRMReportDetailView: View {
         _range = State(initialValue: initialRange)
     }
 
-    /// Chart kinds available for this report — `.table` is always
-    /// offered; the others only when the spec wires a category + at
-    /// least one value key.
+    /// Chart kinds available for this report. Honour the spec's
+    /// curated list — showing every chart kind for every report was
+    /// confusing (pie of 20 leaderboard reps, line of stage-funnel).
     private var availableCharts: [CRMReportChartKind] {
         guard spec.chartCategoryKey != nil, !spec.chartValueKeys.isEmpty else { return [.table] }
-        return [.table, .bar, .line, .pie]
+        return spec.chartKinds.isEmpty ? [.table] : spec.chartKinds
     }
 
     var body: some View {
