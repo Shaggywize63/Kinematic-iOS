@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import UniformTypeIdentifiers
 
 // Reports hub — parity with the web CRM reports index. Lists the same
@@ -6,6 +7,27 @@ import UniformTypeIdentifiers
 // stuck leads, activity heatmap, lead-source ROI, sales cycle) plus the
 // raw-data CSV export. Each analytical report opens a native table view backed
 // by the corresponding analytics endpoint and offers a "Download CSV" share.
+
+enum CRMReportChartKind: String, CaseIterable, Identifiable {
+    case table, bar, line, pie
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .table: return "Table"
+        case .bar:   return "Bar"
+        case .line:  return "Line"
+        case .pie:   return "Pie"
+        }
+    }
+    var systemImage: String {
+        switch self {
+        case .table: return "tablecells"
+        case .bar:   return "chart.bar.fill"
+        case .line:  return "chart.xyaxis.line"
+        case .pie:   return "chart.pie.fill"
+        }
+    }
+}
 
 struct CRMReportSpec: Identifiable {
     let id: String
@@ -24,6 +46,18 @@ struct CRMReportSpec: Identifiable {
     /// — which surfaced `ageing_distribution` on Lead Tracker and read
     /// as "no data" because that bucket is sparse for most tenants.
     var primarySeriesKey: String? = nil
+    /// X-axis (category) key for the chart toggle, and Y-axis (value)
+    /// keys. Multiple values render as stacked series. `defaultChart`
+    /// picks the initial chart kind — `.table` for reports without
+    /// useful single-axis aggregation.
+    var chartCategoryKey: String? = nil
+    var chartValueKeys: [String] = []
+    var defaultChart: CRMReportChartKind = .table
+    /// Whether this report's backend honours `from=&to=` ISO date
+    /// params. When true the Hub's active date range is forwarded;
+    /// when false the report ignores the picker (e.g. rolling-window
+    /// reports like stuck-leads that use `idle_days`).
+    var honoursDateRange: Bool = true
 }
 
 enum CRMReportCatalog {
@@ -38,60 +72,158 @@ enum CRMReportCatalog {
                                        "avg_ageing_days", "oldest_open_lead_days",
                                        "activities_completed_period", "activities_total_period",
                                        "avg_lead_score"],
-                      primarySeriesKey: "rows"),
+                      primarySeriesKey: "rows",
+                      chartCategoryKey: "name",
+                      chartValueKeys: ["won_value"],
+                      defaultChart: .bar),
         CRMReportSpec(id: "lead-tracker", title: "Lead Tracker",
                       desc: "Monthly + weekly + daily buckets, status mix, top sources/cities.",
                       path: "/api/v1/crm/analytics/lead-tracker",
                       query: ["months": "6"],
                       leadingColumns: ["label", "from", "to", "new_leads", "converted", "conversion_rate"],
-                      primarySeriesKey: "monthly"),
+                      primarySeriesKey: "monthly",
+                      chartCategoryKey: "label",
+                      chartValueKeys: ["new_leads", "converted"],
+                      defaultChart: .line),
         CRMReportSpec(id: "team-daily", title: "Team Daily Activity",
                       desc: "Per-rep snapshot — activities, leads, deals, last location.",
                       path: "/api/v1/crm/analytics/team-daily",
                       leadingColumns: ["name", "status", "last_activity_at",
                                        "leads_today", "leads_today_qualified", "leads_today_converted",
-                                       "deals_open_count", "deals_won_today_count", "deals_won_today_value", "pipeline_value"]),
+                                       "deals_open_count", "deals_won_today_count", "deals_won_today_value", "pipeline_value"],
+                      chartCategoryKey: "name",
+                      chartValueKeys: ["leads_today"],
+                      defaultChart: .bar,
+                      honoursDateRange: false),
         CRMReportSpec(id: "rep-leaderboard", title: "Rep Leaderboard",
                       desc: "Revenue, deals won, win rate and cycle by rep.",
                       path: "/api/v1/crm/leaderboard",
-                      leadingColumns: ["owner_name", "name", "won", "revenue", "win_rate", "avg_cycle_days"]),
+                      leadingColumns: ["owner_name", "name", "won", "revenue", "win_rate", "avg_cycle_days"],
+                      chartCategoryKey: "owner_name",
+                      chartValueKeys: ["revenue"],
+                      defaultChart: .bar),
         CRMReportSpec(id: "forecast", title: "Forecast",
                       desc: "Pipeline vs committed vs closed by period.",
                       path: "/api/v1/crm/analytics/forecast",
-                      leadingColumns: ["period", "pipeline", "committed", "closed"]),
+                      leadingColumns: ["period", "pipeline", "committed", "closed"],
+                      chartCategoryKey: "period",
+                      chartValueKeys: ["pipeline", "committed", "closed"],
+                      defaultChart: .bar,
+                      honoursDateRange: false),
         CRMReportSpec(id: "stage-funnel", title: "Stage Funnel",
                       desc: "Deal count and drop-off at each stage.",
                       path: "/api/v1/crm/analytics/funnel",
-                      leadingColumns: ["stage", "name", "count", "value", "drop_off"]),
+                      leadingColumns: ["stage", "name", "count", "value", "drop_off"],
+                      chartCategoryKey: "name",
+                      chartValueKeys: ["count"],
+                      defaultChart: .bar,
+                      honoursDateRange: false),
         CRMReportSpec(id: "win-loss", title: "Win / Loss",
                       desc: "Win rate by bucket.",
                       path: "/api/v1/crm/analytics/win-rate",
-                      leadingColumns: ["label", "bucket", "won", "lost", "win_rate"]),
+                      leadingColumns: ["label", "bucket", "won", "lost", "win_rate"],
+                      chartCategoryKey: "label",
+                      chartValueKeys: ["won", "lost"],
+                      defaultChart: .bar),
         CRMReportSpec(id: "lead-aging", title: "Lead Aging",
                       desc: "Open leads by how long they've been stuck.",
                       path: "/api/v1/crm/analytics/lead-aging",
-                      leadingColumns: ["bucket", "label", "count"]),
+                      leadingColumns: ["bucket", "label", "count"],
+                      chartCategoryKey: "label",
+                      chartValueKeys: ["count"],
+                      defaultChart: .bar,
+                      honoursDateRange: false),
         CRMReportSpec(id: "stuck-leads", title: "Stuck Leads",
                       desc: "Open leads with no recent stage movement.",
                       path: "/api/v1/crm/analytics/stuck-leads",
-                      leadingColumns: ["first_name", "last_name", "status", "owner_name", "days_in_stage"]),
+                      leadingColumns: ["first_name", "last_name", "status", "owner_name", "days_in_stage"],
+                      honoursDateRange: false),
         CRMReportSpec(id: "activity-heatmap", title: "Activity Heatmap",
                       desc: "When are reps most active?",
                       path: "/api/v1/crm/analytics/activity-heatmap",
-                      leadingColumns: ["dow", "day", "hour", "count"]),
+                      leadingColumns: ["dow", "day", "hour", "count"],
+                      chartCategoryKey: "day",
+                      chartValueKeys: ["count"],
+                      defaultChart: .bar),
         CRMReportSpec(id: "lead-source-roi", title: "Lead Source ROI",
                       desc: "Revenue and ROI by acquisition source.",
                       path: "/api/v1/crm/analytics/lead-source-roi",
-                      leadingColumns: ["source", "leads", "won", "revenue", "roi"]),
+                      leadingColumns: ["source", "leads", "won", "revenue", "roi"],
+                      chartCategoryKey: "source",
+                      chartValueKeys: ["revenue"],
+                      defaultChart: .bar),
         CRMReportSpec(id: "sales-cycle", title: "Sales Cycle",
                       desc: "Average days deals spend in each stage.",
                       path: "/api/v1/crm/analytics/sales-cycle",
-                      leadingColumns: ["stage", "name", "avg_days"]),
+                      leadingColumns: ["stage", "name", "avg_days"],
+                      chartCategoryKey: "name",
+                      chartValueKeys: ["avg_days"],
+                      defaultChart: .bar,
+                      honoursDateRange: false),
         CRMReportSpec(id: "lost-reasons", title: "Lost Reasons",
                       desc: "Why deals/leads are lost.",
                       path: "/api/v1/crm/analytics/lost-reasons",
-                      leadingColumns: ["reason", "count"]),
+                      leadingColumns: ["reason", "count"],
+                      chartCategoryKey: "reason",
+                      chartValueKeys: ["count"],
+                      defaultChart: .pie),
     ]
+}
+
+// MARK: - Date range model (shared between Hub picker and Detail loader)
+
+enum CRMReportDateRange: String, CaseIterable, Identifiable {
+    case today, yesterday, last7, last30, thisMonth, custom
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .today: return "Today"
+        case .yesterday: return "Yesterday"
+        case .last7: return "Last 7"
+        case .last30: return "Last 30"
+        case .thisMonth: return "Month"
+        case .custom: return "Custom"
+        }
+    }
+}
+
+struct CRMReportRangeSelection: Equatable {
+    var preset: CRMReportDateRange = .last30
+    var customFrom: Date = Calendar.current.startOfDay(
+        for: Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+    )
+    var customTo: Date = Calendar.current.startOfDay(for: Date())
+
+    /// ISO from / to the analytics endpoints honour.
+    var iso: (from: String?, to: String?) {
+        let cal = Calendar.current
+        let startOfDay = cal.startOfDay(for: Date())
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        switch preset {
+        case .today:
+            return (f.string(from: startOfDay), f.string(from: Date()))
+        case .yesterday:
+            let yStart = cal.date(byAdding: .day, value: -1, to: startOfDay) ?? startOfDay
+            return (f.string(from: yStart), f.string(from: startOfDay))
+        case .last7:
+            let weekAgo = cal.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+            return (f.string(from: weekAgo), f.string(from: Date()))
+        case .last30:
+            let monthAgo = cal.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+            return (f.string(from: monthAgo), f.string(from: Date()))
+        case .thisMonth:
+            let comps = cal.dateComponents([.year, .month], from: Date())
+            let monthStart = cal.date(from: comps) ?? Date()
+            return (f.string(from: monthStart), f.string(from: Date()))
+        case .custom:
+            let endOfDay = cal.date(
+                bySettingHour: 23, minute: 59, second: 59,
+                of: cal.startOfDay(for: customTo)
+            ) ?? customTo
+            return (f.string(from: cal.startOfDay(for: customFrom)), f.string(from: endOfDay))
+        }
+    }
 }
 
 struct CRMReportsHubView: View {
@@ -117,101 +249,33 @@ struct CRMReportsHubView: View {
     /// Champions see three KPI tiles + nothing else. Loaded on appear.
     @State private var summary: CRMAnalyticsSummary?
 
-    /// Date-range presets the Champion can pick. "custom" reveals two
-    /// DatePickers so reps can scope the KPIs to an arbitrary window.
-    enum DateRangePreset: String, CaseIterable, Identifiable {
-        case today, yesterday, last7, thisMonth, custom
-        var id: String { rawValue }
-        var label: String {
-            switch self {
-            case .today: return "Today"
-            case .yesterday: return "Yesterday"
-            case .last7: return "Last 7 days"
-            case .thisMonth: return "This month"
-            case .custom: return "Custom"
-            }
-        }
-    }
-    @State private var range: DateRangePreset = .last7
-    @State private var customFrom: Date = Calendar.current.startOfDay(
-        for: Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    /// Shared date-range — drives Champion KPIs AND every detail report.
+    @State private var rangeSel = CRMReportRangeSelection(
+        preset: ClientFeatures.isConsumerChampion ? .last7 : .last30
     )
-    @State private var customTo: Date = Calendar.current.startOfDay(for: Date())
-
-    /// Resolve the picked preset → ISO from/to dates the backend honours.
-    /// Returns nils for unbounded windows so the server-side defaults
-    /// (last 30 days) still apply if the rep clears the filter.
-    private var rangeISO: (from: String?, to: String?) {
-        let cal = Calendar.current
-        let startOfDay = cal.startOfDay(for: Date())
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        switch range {
-        case .today:
-            return (f.string(from: startOfDay), f.string(from: Date()))
-        case .yesterday:
-            let yStart = cal.date(byAdding: .day, value: -1, to: startOfDay) ?? startOfDay
-            return (f.string(from: yStart), f.string(from: startOfDay))
-        case .last7:
-            let weekAgo = cal.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-            return (f.string(from: weekAgo), f.string(from: Date()))
-        case .thisMonth:
-            let comps = cal.dateComponents([.year, .month], from: Date())
-            let monthStart = cal.date(from: comps) ?? Date()
-            return (f.string(from: monthStart), f.string(from: Date()))
-        case .custom:
-            // Inclusive end-of-day on customTo so a same-day pick
-            // (today → today) catches rows created later in the day.
-            let endOfDay = cal.date(
-                bySettingHour: 23, minute: 59, second: 59,
-                of: cal.startOfDay(for: customTo)
-            ) ?? customTo
-            return (f.string(from: cal.startOfDay(for: customFrom)), f.string(from: endOfDay))
-        }
-    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
+                // Date-range picker — visible to all roles, drives both
+                // the Champion KPI tiles and the per-report detail
+                // fetches (managers' analytical reports inherit the
+                // same window).
+                rangePicker
+
                 if ClientFeatures.isConsumerChampion {
-                    // Date-range picker — drives the KPI window. Champions
-                    // wanted to see today / yesterday / last-7 / month /
-                    // custom; the underlying dashboard-summary endpoint
-                    // already honours ?from=&to=.
-                    Picker("Range", selection: $range) {
-                        ForEach(DateRangePreset.allCases) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    if range == .custom {
-                        DatePicker("From", selection: $customFrom, displayedComponents: .date)
-                            .onChange(of: customFrom) { _, newValue in
-                                let snapped = Calendar.current.startOfDay(for: newValue)
-                                if snapped != customFrom { customFrom = snapped }
-                                if customTo < snapped { customTo = snapped }
-                            }
-                        DatePicker("To", selection: $customTo, in: customFrom..., displayedComponents: .date)
-                            .onChange(of: customTo) { _, newValue in
-                                let snapped = Calendar.current.startOfDay(for: newValue)
-                                if snapped != customTo { customTo = snapped }
-                            }
-                    }
                     // Champion KPI trio. Same metric set as the Android
                     // ReportsScreen — kept in lock-step intentionally so
                     // a Champion's view doesn't drift between platforms.
-                    // `newLeadsThisWeek` is the windowed count (new_leads_30d
-                    // on the wire — backend renames it to "in window"). Using
-                    // it instead of `totalLeads` is what makes the date-range
-                    // filter actually affect the headline number — totalLeads
-                    // is lifetime.
                     kpiCard(label: "TOTAL LEADS ADDED",
                             value: "\(summary?.newLeadsThisWeek ?? 0)",
-                            sub: "for \(range.label.lowercased())")
+                            sub: "for \(rangeSel.preset.label.lowercased())")
                     kpiCard(label: "TOTAL DEALS CONVERTED",
                             value: "\(summary?.dealsWonThisMonth ?? 0)",
-                            sub: "deals won for \(range.label.lowercased())")
+                            sub: "deals won for \(rangeSel.preset.label.lowercased())")
                     kpiCard(label: "TOTAL ESTIMATES RAISED",
                             value: formatRupees(summary?.estimatesRaised ?? 0),
-                            sub: "₹ committed for \(range.label.lowercased())")
+                            sub: "₹ committed for \(rangeSel.preset.label.lowercased())")
                 } else {
                     NavigationLink(destination: CRMReportsView()) {
                         reportCard(title: "Export Data (CSV)",
@@ -225,28 +289,59 @@ struct CRMReportsHubView: View {
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 6)
+                }
 
-                    ForEach(visibleReports) { spec in
-                        NavigationLink(destination: CRMReportDetailView(spec: spec)) {
-                            reportCard(title: spec.title, desc: spec.desc,
-                                       icon: "chart.bar.doc.horizontal.fill", highlight: false)
-                        }
-                        .buttonStyle(.plain)
+                ForEach(visibleReports) { spec in
+                    NavigationLink(destination: CRMReportDetailView(spec: spec, initialRange: rangeSel)) {
+                        reportCard(title: spec.title, desc: spec.desc,
+                                   icon: "chart.bar.doc.horizontal.fill", highlight: false)
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding()
         }
         .navigationTitle("Reports")
-        // Refetch whenever the rep changes the preset or either custom
-        // date — .task(id:) reruns on identity change, so this is the
-        // "subscribe to filter" pattern SwiftUI wants here.
-        .task(id: "\(range.rawValue)|\(customFrom.timeIntervalSince1970)|\(customTo.timeIntervalSince1970)") {
+        // Refetch Champion KPIs whenever the rep changes preset or either
+        // custom date — .task(id:) reruns on identity change, so this is
+        // the "subscribe to filter" pattern SwiftUI wants here.
+        .task(id: "\(rangeSel.iso.from ?? "")|\(rangeSel.iso.to ?? "")") {
             if ClientFeatures.isConsumerChampion {
-                let r = rangeISO
+                let r = rangeSel.iso
                 summary = try? await CRMService.shared.dashboardSummary(from: r.from, to: r.to)
             }
         }
+    }
+
+    @ViewBuilder
+    private var rangePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("DATE RANGE")
+                .font(.system(size: 11, weight: .black)).tracking(0.8)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Picker("Range", selection: $rangeSel.preset) {
+                ForEach(CRMReportDateRange.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            if rangeSel.preset == .custom {
+                DatePicker("From", selection: $rangeSel.customFrom, displayedComponents: .date)
+                    .environment(\.locale, Locale(identifier: "en_GB"))
+                    .onChange(of: rangeSel.customFrom) { _, newValue in
+                        let snapped = Calendar.current.startOfDay(for: newValue)
+                        if snapped != rangeSel.customFrom { rangeSel.customFrom = snapped }
+                        if rangeSel.customTo < snapped { rangeSel.customTo = snapped }
+                    }
+                DatePicker("To", selection: $rangeSel.customTo, in: rangeSel.customFrom..., displayedComponents: .date)
+                    .environment(\.locale, Locale(identifier: "en_GB"))
+                    .onChange(of: rangeSel.customTo) { _, newValue in
+                        let snapped = Calendar.current.startOfDay(for: newValue)
+                        if snapped != rangeSel.customTo { rangeSel.customTo = snapped }
+                    }
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
     }
 
     private func kpiCard(label: String, value: String, sub: String) -> some View {
@@ -292,33 +387,42 @@ struct CRMReportsHubView: View {
     }
 }
 
-// MARK: - Generic report detail (table + CSV download)
+// MARK: - Generic report detail (table + chart toggle + CSV download)
 
 private typealias ReportRow = [String: AnyCodableValue]
 
 struct CRMReportDetailView: View {
     let spec: CRMReportSpec
+    let initialRange: CRMReportRangeSelection
+
     @State private var rows: [ReportRow] = []
     @State private var columns: [String] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var shareURL: ReportShareItem?
+    @State private var chart: CRMReportChartKind
+    @State private var range: CRMReportRangeSelection
+
+    init(spec: CRMReportSpec, initialRange: CRMReportRangeSelection) {
+        self.spec = spec
+        self.initialRange = initialRange
+        _chart = State(initialValue: spec.defaultChart)
+        _range = State(initialValue: initialRange)
+    }
+
+    /// Chart kinds available for this report — `.table` is always
+    /// offered; the others only when the spec wires a category + at
+    /// least one value key.
+    private var availableCharts: [CRMReportChartKind] {
+        guard spec.chartCategoryKey != nil, !spec.chartValueKeys.isEmpty else { return [.table] }
+        return [.table, .bar, .line, .pie]
+    }
 
     var body: some View {
-        Group {
-            if isLoading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let err = errorMessage {
-                VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
-                    Text(err).font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
-                    Button("Retry") { Task { await load() } }
-                }.padding()
-            } else if rows.isEmpty {
-                Text("No data for this report.").foregroundColor(.secondary).padding(.top, 40)
-            } else {
-                tableView
-            }
+        VStack(spacing: 0) {
+            controls
+            Divider()
+            content
         }
         .navigationTitle(spec.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -329,8 +433,203 @@ struct CRMReportDetailView: View {
             }
         }
         .sheet(item: $shareURL) { item in ReportActivityShareSheet(items: [item.url]) }
-        .task { await load() }
+        // Refetch whenever the range or — for date-honouring reports —
+        // the picker changes. .task(id:) reruns on identity change.
+        .task(id: loadKey) { await load() }
     }
+
+    /// Identity that triggers a refetch. The chart kind is purely a
+    /// view-side toggle and is intentionally excluded so flipping
+    /// Bar → Pie doesn't re-hit the network.
+    private var loadKey: String {
+        let r = range.iso
+        return "\(spec.id)|\(spec.honoursDateRange ? (r.from ?? "") + "|" + (r.to ?? "") : "static")"
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        VStack(spacing: 8) {
+            if availableCharts.count > 1 {
+                // Segmented Pickers render either Text OR Image — not
+                // both — so icons keep the bar compact next to the
+                // date-range row underneath.
+                Picker("View", selection: $chart) {
+                    ForEach(availableCharts) { k in
+                        Image(systemName: k.systemImage).tag(k)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            if spec.honoursDateRange {
+                Picker("Range", selection: $range.preset) {
+                    ForEach(CRMReportDateRange.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                if range.preset == .custom {
+                    HStack {
+                        DatePicker("From", selection: $range.customFrom, displayedComponents: .date)
+                            .environment(\.locale, Locale(identifier: "en_GB"))
+                        DatePicker("To", selection: $range.customTo, in: range.customFrom..., displayedComponents: .date)
+                            .environment(\.locale, Locale(identifier: "en_GB"))
+                    }
+                    .font(.caption)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let err = errorMessage {
+            VStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                Text(err).font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
+                Button("Retry") { Task { await load() } }
+            }.padding()
+        } else if rows.isEmpty {
+            Text("No data for this report.").foregroundColor(.secondary).padding(.top, 40)
+        } else {
+            switch chart {
+            case .table: tableView
+            case .bar:   chartContainer { barChart() }
+            case .line:  chartContainer { lineChart() }
+            case .pie:   chartContainer { pieChart() }
+            }
+        }
+    }
+
+    private func chartContainer<C: View>(@ViewBuilder _ inner: () -> C) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                inner()
+                    .frame(height: 320)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 16)
+                // Legend (one row per series) so multi-series charts
+                // are readable in monochrome / colour-blind mode.
+                if spec.chartValueKeys.count > 1 {
+                    HStack(spacing: 12) {
+                        ForEach(Array(spec.chartValueKeys.enumerated()), id: \.offset) { idx, key in
+                            HStack(spacing: 6) {
+                                Circle().fill(seriesColor(idx)).frame(width: 10, height: 10)
+                                Text(prettyLabel(key)).font(.caption)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                Divider().padding(.top, 8)
+                Text("DETAIL")
+                    .font(.system(size: 11, weight: .black)).tracking(0.8)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 12)
+                tableView
+                    .frame(minHeight: 220)
+            }
+        }
+    }
+
+    // MARK: Bar chart
+
+    @ViewBuilder
+    private func barChart() -> some View {
+        Chart {
+            ForEach(chartPoints) { pt in
+                BarMark(
+                    x: .value("Category", pt.category),
+                    y: .value("Value", pt.value)
+                )
+                .foregroundStyle(by: .value("Series", pt.series))
+                .position(by: .value("Series", pt.series))
+            }
+        }
+        .chartLegend(.hidden)
+        .chartXAxis { AxisMarks(values: .automatic) { _ in AxisValueLabel().font(.caption2) } }
+    }
+
+    // MARK: Line chart
+
+    @ViewBuilder
+    private func lineChart() -> some View {
+        Chart {
+            ForEach(chartPoints) { pt in
+                LineMark(
+                    x: .value("Category", pt.category),
+                    y: .value("Value", pt.value)
+                )
+                .foregroundStyle(by: .value("Series", pt.series))
+                .interpolationMethod(.monotone)
+                PointMark(
+                    x: .value("Category", pt.category),
+                    y: .value("Value", pt.value)
+                )
+                .foregroundStyle(by: .value("Series", pt.series))
+            }
+        }
+        .chartLegend(.hidden)
+        .chartXAxis { AxisMarks(values: .automatic) { _ in AxisValueLabel().font(.caption2) } }
+    }
+
+    // MARK: Pie chart (first value key only — pie can't render multi-series)
+
+    @ViewBuilder
+    private func pieChart() -> some View {
+        let firstKey = spec.chartValueKeys.first ?? ""
+        let slices = chartPoints.filter { $0.series == prettyLabel(firstKey) }
+        Chart {
+            ForEach(slices) { pt in
+                SectorMark(
+                    angle: .value("Value", pt.value),
+                    innerRadius: .ratio(0.55),
+                    angularInset: 1.5
+                )
+                .cornerRadius(4)
+                .foregroundStyle(by: .value("Category", pt.category))
+                .annotation(position: .overlay) {
+                    if pt.value > 0 {
+                        Text("\(Int(pt.value))").font(.caption2).foregroundStyle(.white)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Chart data extraction
+
+    /// Flat (category, series, value) points for Charts. Multi-value
+    /// specs (e.g. forecast: pipeline/committed/closed) emit one
+    /// point per (row × value-key) so a single Chart{} can render
+    /// stacked / grouped marks via `position(by:)`.
+    private struct ChartPoint: Identifiable {
+        let id = UUID()
+        let category: String
+        let series: String
+        let value: Double
+    }
+
+    private var chartPoints: [ChartPoint] {
+        guard let catKey = spec.chartCategoryKey else { return [] }
+        var out: [ChartPoint] = []
+        for row in rows {
+            let cat = row[catKey]?.displayString ?? "—"
+            for key in spec.chartValueKeys {
+                guard let v = row[key]?.numericValue else { continue }
+                out.append(ChartPoint(category: cat, series: prettyLabel(key), value: v))
+            }
+        }
+        return out
+    }
+
+    private func seriesColor(_ idx: Int) -> Color {
+        let palette: [Color] = [.red, .blue, .green, .orange, .purple, .teal]
+        return palette[idx % palette.count]
+    }
+
+    // MARK: Table view
 
     private var tableView: some View {
         ScrollView([.horizontal, .vertical]) {
@@ -349,7 +648,7 @@ struct CRMReportDetailView: View {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     HStack(spacing: 0) {
                         ForEach(columns, id: \.self) { col in
-                            Text(row[col]?.displayString ?? "")
+                            Text(row[col]?.formattedFor(columnKey: col) ?? "")
                                 .font(.system(size: 12))
                                 .frame(width: 140, alignment: .leading)
                                 .padding(.vertical, 8).padding(.horizontal, 8)
@@ -365,7 +664,17 @@ struct CRMReportDetailView: View {
     private func load() async {
         await MainActor.run { isLoading = true; errorMessage = nil }
         do {
-            let fetched: [ReportRow] = try await CRMService.shared.analyticsReport(spec.path, query: spec.query, preferKey: spec.primarySeriesKey)
+            // Compose the query — base params from the spec, plus the
+            // active range when the report honours from/to.
+            var q = spec.query
+            if spec.honoursDateRange {
+                let r = range.iso
+                if let f = r.from { q["from"] = f }
+                if let t = r.to   { q["to"]   = t }
+            }
+            let fetched: [ReportRow] = try await CRMService.shared.analyticsReport(
+                spec.path, query: q, preferKey: spec.primarySeriesKey
+            )
             let cols = computeColumns(fetched)
             await MainActor.run { rows = fetched; columns = cols; isLoading = false }
         } catch {
@@ -379,7 +688,6 @@ struct CRMReportDetailView: View {
         var ordered = spec.leadingColumns.filter { present.contains($0) }
         let rest = first.keys.filter { !ordered.contains($0) }.sorted()
         ordered.append(contentsOf: rest)
-        // Catch keys that appear only in later rows.
         for k in present.sorted() where !ordered.contains(k) { ordered.append(k) }
         return ordered
     }
@@ -387,7 +695,7 @@ struct CRMReportDetailView: View {
     private func exportCSV() {
         var lines: [String] = [columns.map(prettyLabel).map(csvEscape).joined(separator: ",")]
         for row in rows {
-            lines.append(columns.map { csvEscape(row[$0]?.displayString ?? "") }.joined(separator: ","))
+            lines.append(columns.map { csvEscape(row[$0]?.formattedFor(columnKey: $0) ?? "") }.joined(separator: ","))
         }
         let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
         let filename = "\(spec.id)-\(fmt.string(from: Date())).csv"
@@ -421,8 +729,23 @@ private struct ReportActivityShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-// Stringify any JSON scalar/value for table cells + CSV.
-extension AnyCodableValue {
+// MARK: - Cell formatting helpers
+
+private extension AnyCodableValue {
+    /// Best-effort numeric extraction for chart marks. Strings that
+    /// happen to be numeric ("42", "1.5") are accepted.
+    var numericValue: Double? {
+        switch value {
+        case let d as Double: return d
+        case let i as Int:    return Double(i)
+        case let s as String: return Double(s)
+        case let b as Bool:   return b ? 1 : 0
+        default: return nil
+        }
+    }
+
+    /// Plain stringification used by chart axis labels and elsewhere
+    /// that doesn't have a column hint.
     var displayString: String {
         switch value {
         case let s as String: return s
@@ -434,4 +757,59 @@ extension AnyCodableValue {
         default: return ""
         }
     }
+
+    /// Column-aware formatter: date-like keys (or values that parse as
+    /// ISO 8601 / yyyy-MM-dd) render as dd/MM/yyyy. Falls back to
+    /// `displayString` otherwise.
+    func formattedFor(columnKey: String) -> String {
+        if case let s as String = value, let d = parseAnyDate(s) {
+            return CRMReportDateFmt.ddMMyyyy.string(from: d)
+        }
+        // Some endpoints emit date-shaped values as Doubles (epoch
+        // seconds) — only treat them as dates when the column name
+        // is obviously a date.
+        if isDateLikeKey(columnKey), case let d as Double = value, d > 1_000_000 {
+            return CRMReportDateFmt.ddMMyyyy.string(from: Date(timeIntervalSince1970: d))
+        }
+        return displayString
+    }
+}
+
+private func isDateLikeKey(_ key: String) -> Bool {
+    let k = key.lowercased()
+    return k.hasSuffix("_at") || k.hasSuffix("_date") || k == "date"
+        || k == "from" || k == "to" || k == "day" || k == "period"
+}
+
+private enum CRMReportDateFmt {
+    static let ddMMyyyy: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "dd/MM/yyyy"
+        f.locale = Locale(identifier: "en_GB_POSIX")
+        f.timeZone = TimeZone.current
+        return f
+    }()
+    static let iso8601Frac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    static let iso8601: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    static let yyyyMMdd: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+}
+
+private func parseAnyDate(_ s: String) -> Date? {
+    if let d = CRMReportDateFmt.iso8601Frac.date(from: s) { return d }
+    if let d = CRMReportDateFmt.iso8601.date(from: s)     { return d }
+    if let d = CRMReportDateFmt.yyyyMMdd.date(from: s)    { return d }
+    return nil
 }
