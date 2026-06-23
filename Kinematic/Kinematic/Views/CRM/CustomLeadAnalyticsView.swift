@@ -114,6 +114,10 @@ private struct AnalyticsWidgetCard: View {
     @State private var rows: [(label: String, value: Double)] = []
     @State private var loading = true
     @State private var size: TileSize = .medium
+    // Refetch the widget whenever the global CRM city picker changes —
+    // CRMService auto-attaches ?city= now, but the per-card `.task`
+    // only runs once unless we rebind it to the city as an identity.
+    @ObservedObject private var location = CRMLocationStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -161,7 +165,7 @@ private struct AnalyticsWidgetCard: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
-        .task { await load() }
+        .task(id: "\(meta.endpoint)|\(location.city ?? "")") { await load() }
     }
 
     private func format(_ v: Double) -> String {

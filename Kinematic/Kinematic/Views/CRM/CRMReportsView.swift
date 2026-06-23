@@ -152,7 +152,15 @@ struct CRMReportsView: View {
 
     private func exportLeads() async {
         await runExport(filenamePrefix: "leads") {
-            let rows = try await CRMService.shared.listLeads(from: self.isoFrom, to: self.isoTo)
+            // The header claims "the location filter (top of CRM)" is
+            // applied — actually apply it. Pulls the global picker out
+            // of CRMLocationStore so the CSV honours the chosen city /
+            // state instead of dumping every assigned region.
+            let loc = CRMLocationStore.shared
+            let rows = try await CRMService.shared.listLeads(
+                city: loc.city, state: loc.state,
+                from: self.isoFrom, to: self.isoTo
+            )
             let headers = ["id","first_name","last_name","email","phone","company","title","status","score","city","state","is_b2c","created_at"]
             var lines: [String] = [headers.joined(separator: ",")]
             for l in rows {

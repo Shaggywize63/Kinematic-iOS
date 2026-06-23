@@ -68,7 +68,16 @@ extension CRMService {
 
 private extension CRMService {
     func analyticsGetList<T: Codable>(_ path: String, query: [String: String] = [:], preferKey: String? = nil) async throws -> [T] {
-        let url = try AnalyticsHelpers.buildURL(path: path, query: query)
+        // Auto-attach the global city picker to every analytics GET so
+        // every widget on the Lead Analytics view and the generic
+        // report fetch narrow to the picked region. Mirrors the
+        // dashboard's api.ts auto-append behaviour — callers that
+        // already set `city` themselves take precedence.
+        var q = query
+        if q["city"] == nil, let c = CRMLocationStore.shared.city, !c.isEmpty {
+            q["city"] = c
+        }
+        let url = try AnalyticsHelpers.buildURL(path: path, query: q)
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.timeoutInterval = 30

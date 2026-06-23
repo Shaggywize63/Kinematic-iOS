@@ -279,6 +279,10 @@ struct CRMReportsHubView: View {
         preset: ClientFeatures.isConsumerChampion ? .last7 : .last30
     )
 
+    /// Global city picker — re-fetches the Champion KPI tiles whenever
+    /// the picker changes. Detail reports do their own subscription.
+    @ObservedObject private var location = CRMLocationStore.shared
+
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
@@ -327,10 +331,11 @@ struct CRMReportsHubView: View {
             .padding()
         }
         .navigationTitle("Reports")
-        // Refetch Champion KPIs whenever the rep changes preset or either
-        // custom date — .task(id:) reruns on identity change, so this is
-        // the "subscribe to filter" pattern SwiftUI wants here.
-        .task(id: "\(rangeSel.iso.from ?? "")|\(rangeSel.iso.to ?? "")") {
+        // Refetch Champion KPIs whenever the rep changes preset, either
+        // custom date, or the global city picker — .task(id:) reruns on
+        // identity change, so this is the "subscribe to filter" pattern
+        // SwiftUI wants here.
+        .task(id: "\(rangeSel.iso.from ?? "")|\(rangeSel.iso.to ?? "")|\(location.city ?? "")") {
             if ClientFeatures.isConsumerChampion {
                 let r = rangeSel.iso
                 summary = try? await CRMService.shared.dashboardSummary(from: r.from, to: r.to)
@@ -427,6 +432,11 @@ struct CRMReportDetailView: View {
     @State private var shareURL: ReportShareItem?
     @State private var chart: CRMReportChartKind
     @State private var range: CRMReportRangeSelection
+    // Subscribe to the global CRM city picker so changing it from
+    // anywhere else in the app refetches this report. Mirrors the web
+    // dashboard's CityScopeContext wiring — without it the report kept
+    // showing the previous city's numbers after the picker changed.
+    @ObservedObject private var location = CRMLocationStore.shared
 
     init(spec: CRMReportSpec, initialRange: CRMReportRangeSelection) {
         self.spec = spec
@@ -465,10 +475,13 @@ struct CRMReportDetailView: View {
 
     /// Identity that triggers a refetch. The chart kind is purely a
     /// view-side toggle and is intentionally excluded so flipping
-    /// Bar → Pie doesn't re-hit the network.
+    /// Bar → Pie doesn't re-hit the network. City IS included so a
+    /// picker change anywhere in the app re-runs this report.
     private var loadKey: String {
         let r = range.iso
-        return "\(spec.id)|\(spec.honoursDateRange ? (r.from ?? "") + "|" + (r.to ?? "") : "static")"
+        let cityPart = location.city ?? ""
+        let datePart = spec.honoursDateRange ? "\(r.from ?? "")|\(r.to ?? "")" : "static"
+        return "\(spec.id)|\(datePart)|\(cityPart)"
     }
 
     @ViewBuilder
@@ -690,13 +703,16 @@ struct CRMReportDetailView: View {
         await MainActor.run { isLoading = true; errorMessage = nil }
         do {
             // Compose the query — base params from the spec, plus the
-            // active range when the report honours from/to.
+            // active range when the report honours from/to, plus the
+            // global city picker so analytics narrow to the picked
+            // city (matches the dashboard's auto-attached ?city=).
             var q = spec.query
             if spec.honoursDateRange {
                 let r = range.iso
                 if let f = r.from { q["from"] = f }
                 if let t = r.to   { q["to"]   = t }
             }
+            if let c = location.city, !c.isEmpty { q["city"] = c }
             let fetched: [ReportRow] = try await CRMService.shared.analyticsReport(
                 spec.path, query: q, preferKey: spec.primarySeriesKey
             )
