@@ -26,6 +26,20 @@ final class LeadAnalyticsViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let api = CRMService.shared
+    private let location = CRMLocationStore.shared
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        // Refetch every widget when the global CRM city picker changes.
+        // Without this, switching the picker mid-session left every
+        // analytics card showing the previous city's aggregate (the
+        // initial `.task { refresh() }` only fires once on appear).
+        location.$state.combineLatest(location.$city)
+            .dropFirst()
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in Task { await self?.refresh() } }
+            .store(in: &cancellables)
+    }
 
     /// Parallel refresh of every widget. Each endpoint is wrapped in `try?`
     /// so one 500 doesn't blank the whole screen — empty arrays render the

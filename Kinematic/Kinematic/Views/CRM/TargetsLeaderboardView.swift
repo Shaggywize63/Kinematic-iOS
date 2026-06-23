@@ -10,6 +10,11 @@ struct TargetsLeaderboardView: View {
     @State private var levels: [CRMHierarchyLevel] = []
     @State private var roleId: String?
     @State private var loading = true
+    // Global CRM city picker — refetch the board when the picker
+    // changes. `/leaderboard` is in the city-aware whitelist, so the
+    // request itself already carries the city; this just rebinds the
+    // `.task` so a new fetch fires.
+    @ObservedObject private var location = CRMLocationStore.shared
 
     private let periods = ["today", "week", "month"]
     private func periodLabel(_ p: String) -> String {
@@ -69,6 +74,7 @@ struct TargetsLeaderboardView: View {
         .navigationTitle("Leaderboard")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadAll() }
+        .task(id: location.city ?? "") { await loadBoard() }
     }
 
     @ViewBuilder

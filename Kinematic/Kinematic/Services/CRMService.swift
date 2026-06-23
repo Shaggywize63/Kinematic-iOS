@@ -551,6 +551,10 @@ final class CRMService {
         var q: [String: String] = [:]
         if let from { q["from"] = from }
         if let to { q["to"] = to }
+        // Attach the global city picker so the Champion KPI tiles narrow
+        // to the picked region — backend's analyticsScope reads ?city=
+        // and intersects it with the caller's assigned set.
+        if let c = CRMLocationStore.shared.city, !c.isEmpty { q["city"] = c }
         return try await get("/api/v1/crm/analytics/dashboard-summary", query: q)
     }
     func funnel(pipelineId: String? = nil, from: String? = nil, to: String? = nil) async throws -> [FunnelStageMetric] {
@@ -611,6 +615,18 @@ final class CRMService {
     private func get<T: Codable>(_ path: String, query: [String: String] = [:]) async throws -> T {
         let req = try makeRequest(path: path, method: "GET", body: nil, query: query)
         return try await perform(req)
+    }
+
+    /// Whitelist of API surfaces that honour `?city=` on the backend.
+    /// Matches the dashboard's `CITY_AWARE_CRM_PREFIXES` in api.ts so
+    /// every report consistently narrows when the picker changes.
+    private static func isCityAwareAnalyticsPath(_ path: String) -> Bool {
+        return path.hasPrefix("/api/v1/crm/analytics")
+            || path.hasPrefix("/api/v1/crm/dashboard")
+            || path.hasPrefix("/api/v1/crm/lead-analytics")
+            || path.hasPrefix("/api/v1/crm/reports")
+            || path == "/api/v1/crm/leaderboard"
+            || path.hasPrefix("/api/v1/crm/targets")
     }
 
     // MARK: - Lead Updates (Recent Updates timeline)
@@ -702,9 +718,21 @@ final class CRMService {
 
     private func makeRequest(path: String, method: String, body: Data?, query: [String: String] = [:]) throws -> URLRequest {
         guard let token = authToken else { throw CRMServiceError.missingAuth }
+        // Auto-attach the global CRM city picker to GETs on the
+        // analytics / dashboard surfaces so every chart, summary, and
+        // report respects the picker the same way it does on web.
+        // Callers that already set `city` keep priority (e.g. the
+        // generic Reports Hub forwards the spec's explicit city).
+        var effectiveQuery = query
+        if method == "GET",
+           effectiveQuery["city"] == nil,
+           let pickedCity = CRMLocationStore.shared.city, !pickedCity.isEmpty,
+           Self.isCityAwareAnalyticsPath(path) {
+            effectiveQuery["city"] = pickedCity
+        }
         var components = URLComponents(url: baseHost.appendingPathComponent(path), resolvingAgainstBaseURL: false)
-        if !query.isEmpty {
-            components?.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        if !effectiveQuery.isEmpty {
+            components?.queryItems = effectiveQuery.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         guard let url = components?.url else { throw CRMServiceError.server("Bad URL") }
         var req = URLRequest(url: url)
