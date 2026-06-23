@@ -86,7 +86,7 @@ enum CRMReportCatalog {
         // defaults pointed at `label / new_leads / converted` which
         // don't exist on those buckets → empty chart.
         CRMReportSpec(id: "lead-tracker", title: "Lead Tracker",
-                      desc: "Monthly new-lead trend.",
+                      desc: "Monthly new-lead trend (last 6 months).",
                       path: "/api/v1/crm/analytics/lead-tracker",
                       query: ["months": "6"],
                       leadingColumns: ["key", "count"],
@@ -94,7 +94,12 @@ enum CRMReportCatalog {
                       chartCategoryKey: "key",
                       chartValueKeys: ["count"],
                       defaultChart: .line,
-                      chartKinds: [.table, .line, .bar]),
+                      chartKinds: [.table, .line, .bar],
+                      // Backend reads `months=6` only — from/to are
+                      // ignored. Hiding the date filter prevents reps
+                      // from picking "Last 7 days" and assuming the
+                      // monthly chart narrowed.
+                      honoursDateRange: false),
         CRMReportSpec(id: "team-daily", title: "Team Daily Activity",
                       desc: "Per-rep snapshot — activities, leads, deals, last location.",
                       path: "/api/v1/crm/analytics/team-daily",
