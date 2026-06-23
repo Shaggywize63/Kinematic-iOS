@@ -141,7 +141,15 @@ private enum AnalyticsHelpers {
                 // Try the caller's preferred key first so reports with
                 // multiple series side by side (lead-tracker, team-
                 // performance) surface the right table by default.
-                if let pk = preferKey, let arr = dict[pk] as? [[String: Any]], !arr.isEmpty {
+                // When the preferred key exists but is empty, treat
+                // that as a "no data" outcome and stop here — falling
+                // back to the alphabetical scan would surface a
+                // sibling series (e.g. `ageing_distribution`) the
+                // caller didn't ask for, and falling back to the
+                // single-row wrap would render the envelope as one
+                // ugly row.
+                if let pk = preferKey, let arr = dict[pk] as? [[String: Any]] {
+                    if arr.isEmpty { return [] as! [T] }
                     if let bytes = try? JSONSerialization.data(withJSONObject: arr),
                        let rows = try? decoder.decode([[String: AnyCodableValue]].self, from: bytes) {
                         return rows as! [T]
