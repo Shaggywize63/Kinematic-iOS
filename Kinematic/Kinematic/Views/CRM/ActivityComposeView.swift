@@ -82,7 +82,13 @@ struct ActivityComposeView: View {
                                         }
                                     }
                                 } else {
-                                    Text("Select a lead (optional)").foregroundColor(.secondary)
+                                    // The backend's activitySchema requires at
+                                    // least one of lead_id/contact_id/account_id/
+                                    // deal_id — when the composer was opened
+                                    // from the global Activities "+" (no parent),
+                                    // the rep MUST pick a lead or the POST 400s
+                                    // with "Activity must be linked to ...".
+                                    Text("Select a lead (required)").foregroundColor(.secondary)
                                 }
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
@@ -162,7 +168,7 @@ struct ActivityComposeView: View {
                             await onSubmit(type, subject, desc, imageUrl, when, selectedLead?.id)
                             dismiss()
                         }
-                    }.disabled(subject.isEmpty || uploading)
+                    }.disabled(subject.isEmpty || uploading || (allowLeadPicker && selectedLead == nil))
                 }
             }
             .confirmationDialog("Attach image", isPresented: $showSourceSheet, titleVisibility: .visible) {
