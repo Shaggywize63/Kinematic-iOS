@@ -16,7 +16,11 @@ struct LeadConvertOptionsView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var createAccount: Bool = true
+    // Tata Tiscon flow no longer offers the "create account" leg —
+    // the toggle was confusing reps into spawning duplicate partner
+    // records on every conversion. Held constant at false so the
+    // backend short-circuits the account creation; UI row removed.
+    private let createAccount: Bool = false
     @State private var createDeal: Bool = true
     @State private var dealName: String = ""
     @State private var dealAmountText: String = ""
@@ -34,7 +38,6 @@ struct LeadConvertOptionsView: View {
         NavigationStack {
             Form {
                 Section("Convert") {
-                    Toggle("Create account", isOn: $createAccount).tint(Brand.red)
                     Toggle("Create deal", isOn: $createDeal).tint(Brand.red)
                 }
 
