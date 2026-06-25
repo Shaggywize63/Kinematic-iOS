@@ -273,17 +273,23 @@ class AttendanceViewModel: ObservableObject {
     }
     
     // ── Security Check Helper ──────────────────────────────────
+    //
+    // Delegates to the shared SecurityCheck pre-flight, which runs
+    // BOTH the VPN sniff (CFNetworkCopySystemProxySettings) and the
+    // mock-location detection (CLLocation.sourceInformation on iOS
+    // 15+, accuracy fallback below that). On detection it POSTs the
+    // alert to /security/alert (which fires the manager push) and
+    // returns false here so the caller refuses to mark attendance.
     private func checkSecurity(action: String, lat: Double? = nil, lng: Double? = nil) async -> Bool {
-        // [iOS Parity] Mock Location check via accuracy
-        if let loc = LocationTrackingService.shared.lastLocation, loc.horizontalAccuracy < 0 {
-            let msg = "Unreliable location detected. Please disable mock apps."
-            await MainActor.run { message = msg }
-            // Log violation to backend for parity
-            await KinematicRepository.shared.logSecurityViolation(type: "MOCK_LOCATION", action: action, lat: lat, lng: lng)
+        let loc = LocationTrackingService.shared.lastLocation
+        let result = await SecurityCheck.preflight(action: action, location: loc)
+        switch result {
+        case .ok:
+            return true
+        case .blocked(let violation):
+            await MainActor.run { message = violation.blockMessage }
             return false
         }
-        
-        return true
     }
 
     func toggleAttendance(loc: CLLocation) async {

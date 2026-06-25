@@ -1967,11 +1967,26 @@ struct KinematicApp: App {
                 .environmentObject(locationService)
                 .environmentObject(appState)
                 .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
+                .task {
+                    // App-launch security check. We can't gate the
+                    // splash on it (no GPS fix yet, no action to
+                    // block), but we DO want a VPN sniff to land an
+                    // audit row + manager push the moment the rep
+                    // opens the app with a VPN already active.
+                    if Session.isAuthenticated {
+                        _ = await SecurityCheck.preflight(action: "APP_LAUNCH", location: nil)
+                    }
+                }
                 .onChange(of: scenePhase) { _, phase in
                     // Drain queued attendance + distribution writes whenever
                     // the app comes back to the foreground.
                     if phase == .active && Session.isAuthenticated {
                         Task { await AttendanceCache.shared.flush() }
+                        // Same VPN-on-resume check. A rep can leave
+                        // the app, enable a VPN, then return — the
+                        // scene-phase callback is the only place we
+                        // catch that without polling.
+                        Task { _ = await SecurityCheck.preflight(action: "APP_RESUME", location: nil) }
                         // Re-pull /auth/me so profile changes made elsewhere
                         // (e.g. a DP/avatar set on the web dashboard) and the
                         // latest entitlements show up without a re-login.
