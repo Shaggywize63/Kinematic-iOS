@@ -60,8 +60,28 @@ final class OneShotLocationProvider: NSObject, ObservableObject, CLLocationManag
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        coordinate = locations.last?.coordinate
-        isLocating = false
+        guard let last = locations.last else {
+            isLocating = false
+            return
+        }
+        // Integrity gate. If the rep has Fake GPS / a mock-location
+        // app running, refuse to publish the coordinate so the form
+        // can't save a spoofed pin. Same pre-flight the attendance
+        // flow runs, plus a VPN sniff: the user identity that maps
+        // a lead back to the rep matters as much as the lat/lng.
+        // The pre-flight POSTs the alert to /security/alert which
+        // fans out the manager push.
+        Task { @MainActor in
+            let result = await SecurityCheck.preflight(action: "LEAD_CREATE_GEO", location: last)
+            switch result {
+            case .ok:
+                self.coordinate = last.coordinate
+            case .blocked(let violation):
+                self.coordinate = nil
+                self.errorMessage = violation.blockMessage
+            }
+            self.isLocating = false
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
