@@ -220,6 +220,29 @@ struct LeadsListView: View {
             }
             .refreshable { await vm.refresh() }
         }
+        // Floating "+" CTA — always visible regardless of screen size.
+        // The toolbar's plus button stays for muscle-memory on big phones,
+        // but on a 4.7" device it shares the trailing navbar slot with the
+        // chat-bubble icon and can get cramped or partially clipped. The
+        // FAB guarantees the primary action is always one tap away and
+        // matches the Android Compose app's existing FAB pattern on the
+        // same screen.
+        .overlay(alignment: .bottomTrailing) {
+            Button {
+                showCreate = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(Brand.red))
+                    .shadow(color: Brand.red.opacity(0.4), radius: 12, x: 0, y: 6)
+                    .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 2)
+            }
+            .accessibilityLabel("New lead")
+            .padding(.trailing, 18)
+            .padding(.bottom, 22)
+        }
         .navigationTitle("Leads")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
