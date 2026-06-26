@@ -1597,6 +1597,87 @@ class KinematicRepository {
         }
     }
 
+    /// Self-service password reset — step 1. Backend always returns
+    /// 200 with {ok:true} regardless of whether the email is on file
+    /// (anti-enumeration), so we just surface "Check your inbox"
+    /// after any 2xx and let the user retry with a different address
+    /// if they got the wrong one.
+    func forgotPassword(email: String) async -> (Bool, String?) {
+        guard let url = URL(string: "\(baseURL)/auth/forgot-password") else { return (false, "Invalid URL") }
+        let cleaned = email.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !cleaned.isEmpty else { return (false, "Enter your email.") }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(["email": cleaned])
+        do {
+            let (_, response) = try await URLSession.shared.data(for: req)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if (200...299).contains(code) { return (true, nil) }
+            return (false, "Couldn't send the reset email. Try again in a minute.")
+        } catch {
+            return (false, error.localizedDescription)
+        }
+    }
+
+    /// Self-service password reset — step 2. Backend verifies the
+    /// Supabase recovery token, sets the new password, then signs the
+    /// user in with the new credentials and returns a fresh session.
+    /// We mirror the login save path so the rep lands straight on the
+    /// home tab without re-entering credentials.
+    func resetPassword(email: String, token: String, newPassword: String) async -> (Bool, String?) {
+        guard let url = URL(string: "\(baseURL)/auth/reset-password") else { return (false, "Invalid URL") }
+        let cleanedEmail = email.trimmingCharacters(in: .whitespaces).lowercased()
+        let cleanedToken = token.trimmingCharacters(in: .whitespaces)
+        guard !cleanedEmail.isEmpty, !cleanedToken.isEmpty else {
+            return (false, "Reset link is incomplete. Request a fresh one.")
+        }
+        guard newPassword.count >= 6 else { return (false, "Password must be at least 6 characters.") }
+
+        let payload: [String: String] = [
+            "email": cleanedEmail,
+            "token": cleanedToken,
+            "password": newPassword,
+        ]
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(payload)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if (200...299).contains(code) {
+                // Response mirrors /auth/login so we can reuse the same
+                // decoder + save sequence. We don't get session_id back
+                // on reset (single-device rotation only fires on login)
+                // — that's fine; the next refresh will pick up a fresh
+                // one anyway.
+                if let result = try? JSONDecoder().decode(LoginResponseModel.self, from: data),
+                   result.success, let t = result.data?.accessToken {
+                    await MainActor.run {
+                        Session.sharedToken = t
+                        Session.refreshToken = result.data?.refreshToken ?? ""
+                        Session.sessionId = result.data?.sessionId
+                        Session.currentUser = result.data?.user
+                        KiniAppState.shared.clearSessionKickedMsg()
+                        KiniAppState.shared.checkAuth()
+                    }
+                    return (true, nil)
+                }
+                return (false, "Password updated, but couldn't auto-sign in. Sign in manually.")
+            }
+            // 4xx — usually expired/used token. Surface the backend
+            // error string when we get one.
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let msg = json["error"] as? String {
+                return (false, msg)
+            }
+            return (false, "Reset link is invalid or has expired. Request a new one.")
+        } catch {
+            return (false, error.localizedDescription)
+        }
+    }
+
     func login(email: String, phone: String?, pass: String) async -> (Bool, String?) {
         guard let url = URL(string: "\(baseURL)/auth/login") else { return (false, "Invalid URL") }
         let identifier = (phone != nil && !phone!.isEmpty) ? phone! : email
@@ -1939,6 +2020,15 @@ class KinematicRepository {
     }
 }
 
+/// Identifiable wrapper for the deep-link reset payload — required by
+/// SwiftUI's `sheet(item:)` so the email + token presented to
+/// ResetPasswordView are inspectable on every set.
+private struct PendingReset: Identifiable {
+    let id = UUID()
+    let email: String
+    let token: String
+}
+
 @main
 struct KinematicApp: App {
     @StateObject private var locationService = LocationTrackingService.shared
@@ -1947,6 +2037,13 @@ struct KinematicApp: App {
     /// Brand splash shown for a brief minimum on launch (parity with Android).
     /// Dismissed purely on a timer so it can never hang on a setup task.
     @State private var showSplash = true
+    // Captures kinematic://reset-password?email=…&token=… deep links
+    // from the password-reset email. When the user taps the link from
+    // their inbox on this device, .onOpenURL fills these and the
+    // sheet attached to ContentView opens straight onto the new-
+    // password screen — works whether the app was foregrounded or
+    // cold-started.
+    @State private var pendingReset: (email: String, token: String)?
 
     init() {
         print("🚀 APP_LIFE: KinematicApp launched")
@@ -1976,6 +2073,30 @@ struct KinematicApp: App {
                     if Session.isAuthenticated {
                         _ = await SecurityCheck.preflight(action: "APP_LAUNCH", location: nil)
                     }
+                }
+                // Deep-link handler. The password-reset email embeds
+                // `kinematic://reset-password?email=…&token=…`. Tapping
+                // it from any inbox app on this device routes here
+                // (registered via CFBundleURLTypes in Info.plist). We
+                // pull the params off and flip pendingReset, which the
+                // sheet below renders.
+                .onOpenURL { url in
+                    guard url.scheme?.lowercased() == "kinematic",
+                          (url.host ?? "").lowercased() == "reset-password"
+                    else { return }
+                    let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                    let q = comps?.queryItems ?? []
+                    let email = q.first(where: { $0.name == "email" })?.value ?? ""
+                    let token = q.first(where: { $0.name == "token" })?.value ?? ""
+                    if !email.isEmpty, !token.isEmpty {
+                        pendingReset = (email: email, token: token)
+                    }
+                }
+                .sheet(item: Binding(
+                    get: { pendingReset.map { PendingReset(email: $0.email, token: $0.token) } },
+                    set: { pendingReset = $0.map { ($0.email, $0.token) } }
+                )) { item in
+                    ResetPasswordView(email: item.email, token: item.token)
                 }
                 .onChange(of: scenePhase) { _, phase in
                     // Drain queued attendance + distribution writes whenever
