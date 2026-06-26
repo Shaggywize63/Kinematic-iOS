@@ -75,6 +75,11 @@ private extension View {
 struct LoginView: View {
     let onSuccess: () -> Void
     @Environment(\.colorScheme) private var colorScheme
+    // Sheet-presented forgot-password flow. Reusing a sheet rather than
+    // a NavigationLink keeps LoginView free of NavigationStack and means
+    // any cold-start deep link (kinematic://reset-password?...) handled
+    // by KinematicApp can also flip this sheet open.
+    @State private var showForgotPassword = false
 
     var body: some View {
         let theme = LoginTheme(isDark: colorScheme == .dark)
@@ -120,11 +125,24 @@ struct LoginView: View {
 
                     CredentialsForm(theme: theme, onSuccess: onSuccess)
 
-                    Text("Forgot your password? Contact your administrator.")
-                        .font(Brand.Body.regular(12))
-                        .foregroundColor(theme.textMuted)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 20)
+                    // Forgot-password kicks off the self-service flow —
+                    // opens ForgotPasswordSheet which collects the email,
+                    // posts /auth/forgot-password, and shows the
+                    // "check your inbox" confirmation.
+                    HStack(spacing: 4) {
+                        Text("Forgot your password?")
+                            .font(Brand.Body.regular(12))
+                            .foregroundColor(theme.textMuted)
+                        Button {
+                            showForgotPassword = true
+                        } label: {
+                            Text("Reset it")
+                                .font(Brand.Body.regular(12).weight(.semibold))
+                                .foregroundColor(Brand.red)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 20)
 
                     Spacer().frame(height: 80)
 
@@ -146,6 +164,9 @@ struct LoginView: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 24)
             .ignoresSafeArea(.keyboard)
+        }
+        .sheet(isPresented: $showForgotPassword) {
+            ForgotPasswordView()
         }
     }
 }
