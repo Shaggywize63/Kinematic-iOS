@@ -352,6 +352,27 @@ struct LeadCreateView: View {
                     guard let c = coord else { return }
                     latitude = String(format: "%.6f", c.latitude)
                     longitude = String(format: "%.6f", c.longitude)
+                    // Auto-populate address / city / state / postal
+                    // from the GPS fix via CLGeocoder (built-in, free —
+                    // no Google API key needed on iOS). Only fills
+                    // fields the rep hasn't already touched so a value
+                    // they typed in wins over the geocode. Best-effort:
+                    // a geocode failure leaves the form blank for
+                    // manual entry, no toast.
+                    Task {
+                        let loc = CLLocation(latitude: c.latitude, longitude: c.longitude)
+                        if let placemark = try? await CLGeocoder().reverseGeocodeLocation(loc).first {
+                            await MainActor.run {
+                                let formattedLine = [placemark.subThoroughfare, placemark.thoroughfare]
+                                    .compactMap { $0 }
+                                    .joined(separator: " ")
+                                if addressLine1.isEmpty, !formattedLine.isEmpty { addressLine1 = formattedLine }
+                                if city.isEmpty, let v = placemark.locality { city = v }
+                                if state.isEmpty, let v = placemark.administrativeArea { state = v }
+                                if postalCode.isEmpty, let v = placemark.postalCode { postalCode = v }
+                            }
+                        }
+                    }
                 }
 
                 // Tata Tiscon site-visit affordance — most leads are added
