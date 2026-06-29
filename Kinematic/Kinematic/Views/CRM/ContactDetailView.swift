@@ -59,6 +59,14 @@ struct ContactDetailView: View {
         }
         .task { await loadRelations() }
         .refreshable { await loadRelations() }
+        // Tell KINI which record is on screen so the chat answers in context.
+        .onAppear {
+            KiniContextHolder.shared.set(
+                screen: "contact_detail",
+                recordType: "contact",
+                recordId: contact.id
+            )
+        }
     }
 
     // MARK: - Phone row with tap-to-call

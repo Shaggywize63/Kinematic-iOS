@@ -95,3 +95,55 @@ struct AIDraftReplyResponse: Codable {
     let subject: String?
     let body: String
 }
+
+/// Inline lead-update suggestion returned by
+/// `POST /api/v1/crm/ai/suggest-from-update`. A cheap, single-shot helper
+/// that reads the rep's draft Update and proposes the next CRM action — it
+/// does NOT count against the monthly KINI chat quota. Any of the three
+/// slots may be absent (the backend returns null / empty), so the UI only
+/// renders the chips it actually receives.
+struct UpdateSuggestion: Codable {
+    /// An activity to log (call / meeting / note / task / whatsapp).
+    let activity: SuggestedActivity?
+    /// A follow-up message to draft on a given channel.
+    let followup: SuggestedFollowup?
+    /// Quick next steps the rep can turn into tasks.
+    let nextActions: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case activity, followup
+        case nextActions = "next_actions"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.activity = try c.decodeIfPresent(SuggestedActivity.self, forKey: .activity)
+        self.followup = try c.decodeIfPresent(SuggestedFollowup.self, forKey: .followup)
+        // next_actions may be omitted entirely on a sparse response.
+        self.nextActions = (try? c.decodeIfPresent([String].self, forKey: .nextActions)) ?? []
+    }
+
+    struct SuggestedActivity: Codable {
+        let type: String        // call | meeting | note | task | whatsapp
+        let subject: String
+        let body: String
+        /// ISO-8601 due date for tasks; null for everything else.
+        let dueAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case type, subject, body
+            case dueAt = "due_at"
+        }
+    }
+
+    struct SuggestedFollowup: Codable {
+        let channel: String     // email | whatsapp | sms
+        let message: String
+    }
+
+    /// True when the backend returned nothing actionable, so the UI can show
+    /// a gentle "add more detail" hint instead of an empty panel.
+    var isEmpty: Bool {
+        activity == nil && followup == nil && nextActions.isEmpty
+    }
+}

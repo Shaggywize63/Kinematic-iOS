@@ -18,13 +18,18 @@ enum CRMServiceError: LocalizedError {
     case badResponse(Int)
     case decodeFailed(String)
     case server(String)
+    /// Server error that also carries the HTTP status, so callers can branch
+    /// on the code (e.g. KINI's 403 v2→v1 fallback) while still surfacing the
+    /// backend message. Behaves like `.server` for display purposes.
+    case serverStatus(Int, String)
 
     var errorDescription: String? {
         switch self {
-        case .missingAuth:        return "Please sign in again."
-        case .badResponse(let s): return "Server returned status \(s)."
-        case .decodeFailed(let m):return "Could not read server response: \(m)"
-        case .server(let msg):    return msg
+        case .missingAuth:               return "Please sign in again."
+        case .badResponse(let s):        return "Server returned status \(s)."
+        case .decodeFailed(let m):       return "Could not read server response: \(m)"
+        case .server(let msg):           return msg
+        case .serverStatus(_, let msg):  return msg
         }
     }
 }
@@ -638,6 +643,18 @@ final class CRMService {
     @discardableResult
     func addLeadUpdate(leadId: String, body: String) async throws -> LeadUpdate {
         try await postJSON("/api/v1/crm/leads/\(leadId)/updates", body: ["body": body])
+    }
+
+    /// ✨ Suggest — asks KINI to read a draft Update and propose the next CRM
+    /// action (an activity to log, a follow-up to draft, quick next steps).
+    /// Lightweight single-shot helper that does NOT touch the monthly KINI
+    /// chat quota. Returns an `UpdateSuggestion` whose three slots may each be
+    /// nil/empty when there's nothing useful to suggest.
+    func suggestFromUpdate(leadId: String, draft: String) async throws -> UpdateSuggestion {
+        try await postJSON(
+            "/api/v1/crm/ai/suggest-from-update",
+            body: ["lead_id": leadId, "draft": draft]
+        )
     }
 
     // MARK: - Lead Analytics layout (per-user, synced with web)

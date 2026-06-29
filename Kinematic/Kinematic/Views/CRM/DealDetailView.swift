@@ -159,6 +159,14 @@ struct DealDetailView: View {
                 primaryContact = try? await CRMService.shared.getContact(id: cid)
             }
         }
+        // Tell KINI which record is on screen so the chat answers in context.
+        .onAppear {
+            KiniContextHolder.shared.set(
+                screen: "deal_detail",
+                recordType: "deal",
+                recordId: dealId
+            )
+        }
     }
 
     // MARK: - Quick action row (Add Activity + future buttons)
