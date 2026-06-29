@@ -230,6 +230,33 @@ final class LeadDetailViewModel: ObservableObject {
         }
     }
 
+    /// Edit an existing update's body (author-only, enforced server-side).
+    /// On success the canonical row returned by the API replaces the local
+    /// one so the timeline reflects the change without a full reload.
+    func editUpdate(updateId: String, body: String) async {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let updated = try await api.editLeadUpdate(leadId: leadId, updateId: updateId, body: trimmed)
+            if let i = updates.firstIndex(where: { $0.id == updateId }) {
+                updates[i] = updated
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Delete an update (author or admin, enforced server-side). Removes the
+    /// row from the local timeline on success so the UI updates immediately.
+    func deleteUpdate(updateId: String) async {
+        do {
+            try await api.deleteLeadUpdate(leadId: leadId, updateId: updateId)
+            updates.removeAll { $0.id == updateId }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// Mark the lead qualified — used by the "Boost this score" card's
     /// Mark Qualified action.
     func qualify() async {
