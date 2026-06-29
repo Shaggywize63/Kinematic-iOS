@@ -16,11 +16,19 @@ final class AIChatService {
         self.session = session
     }
 
-    /// POST /api/v1/crm/ai/chat — KINI assistant.
+    /// POST /api/v1/kini/v2/chat — agentic KINI assistant (cross-module
+    /// tools, context block, planning loop).
     /// Backend expects `{messages: [{role, content}], system?, context?}` and
-    /// responds with `{text, cards, tool_calls}` (matches the dashboard's
-    /// KinematicAI client). Pass the full conversation history each turn —
-    /// the backend is stateless and replays the message log to Claude.
+    /// responds with `{text, cards, tool_calls}` (v2 adds an ignorable
+    /// `thread_id`; the response shape is otherwise identical to v1, so the
+    /// existing `AIChatResponse` decode is unchanged). Pass the full
+    /// conversation history each turn — the request stays stateless (no
+    /// thread_id sent) and Claude replays the message log.
+    ///
+    /// If the tenant's v2 flag is off the backend returns **403**
+    /// (`KINI_V2_DISABLED`); we transparently retry the identical request
+    /// against the legacy `/api/v1/crm/ai/chat`. The same `context` object
+    /// carries both v1 and v2 fields, so either endpoint reads what it needs.
     func chat(messages: [ChatTurn], system: String? = nil, context: [String: Any]? = nil) async throws -> AIChatResponse {
         var body: [String: Any] = [
             "messages": messages.map { ["role": $0.role, "content": $0.content] }
@@ -29,8 +37,14 @@ final class AIChatService {
         if let context { body["context"] = context }
 
         let data = try JSONSerialization.data(withJSONObject: body, options: [])
-        let req = try makeRequest(path: "/api/v1/crm/ai/chat", method: "POST", body: data)
-        return try await perform(req)
+        let v2Req = try makeRequest(path: "/api/v1/kini/v2/chat", method: "POST", body: data)
+        do {
+            return try await perform(v2Req)
+        } catch CRMServiceError.badResponse(403), CRMServiceError.serverStatus(403, _) {
+            // Tenant flag off — replay the identical request on the legacy path.
+            let v1Req = try makeRequest(path: "/api/v1/crm/ai/chat", method: "POST", body: data)
+            return try await perform(v1Req)
+        }
     }
 
     /// GET /api/v1/crm/ai/usage — current month's AI quota for the caller.
@@ -80,9 +94,12 @@ final class AIChatService {
             throw CRMServiceError.badResponse(0)
         }
         if !(200..<300).contains(http.statusCode) {
+            // Surface the status code alongside any server message so the
+            // chat() 403-fallback can detect KINI_V2_DISABLED regardless of
+            // whether the backend included an error envelope.
             if let env = try? decoder.decode(APIEnvelope<EmptyAck>.self, from: data),
                let msg = env.error ?? env.message {
-                throw CRMServiceError.server(msg)
+                throw CRMServiceError.serverStatus(http.statusCode, msg)
             }
             throw CRMServiceError.badResponse(http.statusCode)
         }

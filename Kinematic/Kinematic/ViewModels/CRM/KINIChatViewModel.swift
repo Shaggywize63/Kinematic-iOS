@@ -64,7 +64,13 @@ final class KINIChatViewModel: ObservableObject {
             .map { ChatTurn(role: $0.role, content: $0.content) }
 
         do {
-            let response = try await api.chat(messages: history)
+            // Stamp the agentic-v2 context block from wherever the rep is in
+            // the app (record detail screens set this in `.onAppear`). It's a
+            // hint, not a fence — KINI still answers across every module.
+            let response = try await api.chat(
+                messages: history,
+                context: KiniContextHolder.shared.contextDict()
+            )
             let assistant = ChatMessage(
                 id: UUID().uuidString,
                 role: "assistant",

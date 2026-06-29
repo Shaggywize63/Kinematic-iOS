@@ -43,6 +43,16 @@ struct LeadDetailView: View {
     @State private var loggingActivity = false
     @State private var composerInitialType: String = "call"
     @State private var composerInitialSubject: String = ""
+    /// Extra prefill carried into the composer by the ✨ Suggest chips —
+    /// the drafted body and, for tasks, a due date. Reset on the manual
+    /// "+ Log" / tap-to-call paths so those stay blank.
+    @State private var composerInitialDescription: String = ""
+    @State private var composerInitialWhen: Date? = nil
+    /// KINI's inline read of the current draft Update. Populated by the
+    /// ✨ Suggest button; cleared on dismiss or after the rep edits/sends.
+    @State private var updateSuggestion: UpdateSuggestion? = nil
+    @State private var suggesting = false
+    @State private var suggestError: String? = nil
 
     init(leadId: String) {
         _vm = StateObject(wrappedValue: LeadDetailViewModel(leadId: leadId))
@@ -168,7 +178,9 @@ struct LeadDetailView: View {
         ) {
             ActivityComposeView(
                 initialType: composerInitialType,
-                initialSubject: composerInitialSubject
+                initialSubject: composerInitialSubject,
+                initialDescription: composerInitialDescription,
+                initialWhen: composerInitialWhen
             ) { type, subject, description, imageUrl, when, _ in
                 await vm.logActivity(
                     type: type, subject: subject, description: description,
@@ -204,6 +216,14 @@ struct LeadDetailView: View {
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .task { await vm.load() }
         .task { await fieldOverrides.load() }
+        // Tell KINI which record is on screen so the chat answers in context.
+        .onAppear {
+            KiniContextHolder.shared.set(
+                screen: "lead_detail",
+                recordType: "lead",
+                recordId: vm.leadId
+            )
+        }
     }
 
     // MARK: - Header
@@ -240,6 +260,8 @@ struct LeadDetailView: View {
                             let subject = "Call with \(lead.displayName)"
                             composerInitialType = "call"
                             composerInitialSubject = subject
+                            composerInitialDescription = ""
+                            composerInitialWhen = nil
                             // POST the minimal call activity *immediately* so
                             // the rep sees the call land on the timeline the
                             // moment they hit dial. The composer that opens
@@ -823,6 +845,9 @@ struct LeadDetailView: View {
                     Button {
                         let t = updateText
                         updateText = ""
+                        // The draft is being posted — KINI's read of it no
+                        // longer applies, so drop any stale suggestion.
+                        updateSuggestion = nil
                         Task { await vm.addUpdate(t) }
                     } label: {
                         if vm.postingUpdate {
@@ -832,6 +857,38 @@ struct LeadDetailView: View {
                         }
                     }
                     .disabled(vm.postingUpdate || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                // ✨ Suggest — ask KINI to read the draft and propose the next
+                // CRM action. Uses the lightweight /ai/suggest-from-update
+                // helper so it never touches the monthly KINI chat quota.
+                HStack {
+                    Button {
+                        Task { await runSuggest() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if suggesting {
+                                ProgressView().tint(Brand.red).scaleEffect(0.8)
+                                Text("Thinking…")
+                            } else {
+                                Text("✨")
+                                Text("Suggest")
+                            }
+                        }
+                        .font(.system(size: 12, weight: .bold))
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .foregroundColor(Brand.red)
+                        .background(Brand.red.opacity(0.10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.30), lineWidth: 1))
+                        .cornerRadius(10)
+                    }
+                    .disabled(suggesting || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Spacer()
+                }
+                if let err = suggestError {
+                    Text(err).font(.caption).foregroundColor(.secondary)
+                }
+                if let s = updateSuggestion {
+                    suggestionPanel(s)
                 }
                 if vm.updates.isEmpty {
                     Text("No updates yet.").font(.caption).foregroundColor(.secondary)
@@ -855,6 +912,130 @@ struct LeadDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - ✨ Suggest (KINI inline read of the draft update)
+
+    /// Ask KINI to read the current draft Update and propose the next CRM
+    /// action. Cheap single-shot helper — does not affect the chat quota.
+    private func runSuggest() async {
+        let text = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !suggesting else { return }
+        suggesting = true
+        suggestError = nil
+        updateSuggestion = nil
+        defer { suggesting = false }
+        do {
+            let s = try await CRMService.shared.suggestFromUpdate(leadId: vm.leadId, draft: text)
+            if s.isEmpty {
+                suggestError = "No suggestion for this update — try adding a bit more detail."
+            } else {
+                updateSuggestion = s
+            }
+        } catch {
+            suggestError = "Could not get a suggestion. \(error.localizedDescription)"
+        }
+    }
+
+    /// Panel of suggestion chips. Each chip opens the activity composer
+    /// pre-filled — nothing is logged silently; the rep reviews and saves.
+    @ViewBuilder
+    private func suggestionPanel(_ s: UpdateSuggestion) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("✨ KINI SUGGESTS")
+                    .font(.system(size: 11, weight: .black))
+                    .tracking(0.6)
+                    .foregroundColor(Brand.red)
+                Spacer()
+                Button {
+                    updateSuggestion = nil
+                    suggestError = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.secondary)
+                }
+            }
+            FlexibleHStack(spacing: 8) {
+                if let a = s.activity {
+                    suggestionChip(icon: "list.bullet.rectangle", label: "Log \(a.type.capitalized): \(a.subject)") {
+                        presentComposer(
+                            type: composerType(for: a.type),
+                            subject: a.subject,
+                            description: a.body,
+                            when: parseISODate(a.dueAt)
+                        )
+                    }
+                }
+                if let f = s.followup {
+                    suggestionChip(icon: "arrowshape.turn.up.right", label: "Draft \(f.channel.capitalized) follow-up") {
+                        presentComposer(
+                            type: composerType(for: f.channel),
+                            subject: "Follow-up",
+                            description: f.message,
+                            when: nil
+                        )
+                    }
+                }
+                ForEach(Array(s.nextActions.enumerated()), id: \.offset) { _, action in
+                    suggestionChip(icon: "checkmark.circle", label: action) {
+                        presentComposer(type: "task", subject: action, description: "", when: nil)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Brand.red.opacity(0.06))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.red.opacity(0.20), lineWidth: 1))
+        )
+    }
+
+    private func suggestionChip(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 11, weight: .bold))
+                Text(label).lineLimit(2)
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .foregroundColor(Brand.red)
+            .background(Brand.red.opacity(0.10))
+            .overlay(Capsule().stroke(Brand.red.opacity(0.30), lineWidth: 1))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Open the activity composer pre-filled from a suggestion chip.
+    private func presentComposer(type: String, subject: String, description: String, when: Date?) {
+        composerInitialType = type
+        composerInitialSubject = subject
+        composerInitialDescription = description
+        composerInitialWhen = when
+        loggingActivity = true
+    }
+
+    /// Map a suggestion's type/channel onto a type the composer's segmented
+    /// picker can select. The picker offers meeting/call/email/note/task, so
+    /// whatsapp / sms fall back to "note" (the body still carries the draft).
+    private func composerType(for raw: String) -> String {
+        switch raw.lowercased() {
+        case "meeting", "call", "email", "note", "task": return raw.lowercased()
+        default: return "note"
+        }
+    }
+
+    /// Lenient ISO-8601 parse for a suggested `due_at`. Returns nil on any
+    /// failure so the composer just defaults to "now".
+    private func parseISODate(_ iso: String?) -> Date? {
+        guard let iso, !iso.isEmpty else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
     }
 
     private func recordCard(lead: Lead) -> some View {
@@ -955,6 +1136,8 @@ struct LeadDetailView: View {
                 Button(action: {
                     composerInitialType = "call"
                     composerInitialSubject = ""
+                    composerInitialDescription = ""
+                    composerInitialWhen = nil
                     loggingActivity = true
                 }) {
                     Label("Log", systemImage: "plus.circle.fill")

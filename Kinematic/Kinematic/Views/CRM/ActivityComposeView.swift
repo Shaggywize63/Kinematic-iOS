@@ -9,6 +9,12 @@ struct ActivityComposeView: View {
     /// keep their previous behavior.
     let initialType: String
     let initialSubject: String
+    /// Optional prefilled description + date. The KINI ✨ Suggest chips on the
+    /// lead detail pass a drafted body (and a due date for tasks) so the rep
+    /// lands on a ready-to-save composer. Defaults keep every existing caller
+    /// unchanged (empty body, "now").
+    let initialDescription: String
+    let initialWhen: Date?
     /// When true, the composer offers a lead picker (used by the global
     /// Activities "+", where there's no parent record). Detail screens pass
     /// false — they already supply the linked entity themselves.
@@ -20,14 +26,14 @@ struct ActivityComposeView: View {
 
     @State private var type: String
     @State private var subject: String
-    @State private var desc: String = ""
+    @State private var desc: String
     /// Picked lead (only when allowLeadPicker). Its phone shows in the row.
     @State private var selectedLead: Lead? = nil
     @State private var showLeadPicker = false
     /// Editable timestamp for the activity. Defaults to now so the common
     /// case (logging right after the action) is one tap. The picker is
     /// surfaced for every non-task type; tasks reuse this as `due_at`.
-    @State private var when: Date = Date()
+    @State private var when: Date
 
     // Image attachment state — mirrors the web activity composer.
     @State private var pickedImage: UIImage? = nil
@@ -45,15 +51,21 @@ struct ActivityComposeView: View {
     init(
         initialType: String = "meeting",
         initialSubject: String = "",
+        initialDescription: String = "",
+        initialWhen: Date? = nil,
         allowLeadPicker: Bool = false,
         onSubmit: @escaping (String, String, String, String?, Date, String?) async -> Void
     ) {
         self.initialType = initialType
         self.initialSubject = initialSubject
+        self.initialDescription = initialDescription
+        self.initialWhen = initialWhen
         self.allowLeadPicker = allowLeadPicker
         self.onSubmit = onSubmit
         _type = State(initialValue: initialType)
         _subject = State(initialValue: initialSubject)
+        _desc = State(initialValue: initialDescription)
+        _when = State(initialValue: initialWhen ?? Date())
     }
 
     var body: some View {
