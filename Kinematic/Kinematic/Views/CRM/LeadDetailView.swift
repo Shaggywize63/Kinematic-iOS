@@ -53,6 +53,13 @@ struct LeadDetailView: View {
     @State private var updateSuggestion: UpdateSuggestion? = nil
     @State private var suggesting = false
     @State private var suggestError: String? = nil
+    /// Inline edit state for a Recent Updates row. `editingUpdateId` is the
+    /// id of the row currently in edit mode (nil = none); `editingUpdateText`
+    /// holds the in-flight draft. Author-only — gated on `update.authorId`.
+    @State private var editingUpdateId: String? = nil
+    @State private var editingUpdateText = ""
+    /// Id of the update pending delete confirmation (nil = no dialog).
+    @State private var pendingDeleteUpdateId: String? = nil
 
     init(leadId: String) {
         _vm = StateObject(wrappedValue: LeadDetailViewModel(leadId: leadId))
@@ -66,6 +73,31 @@ struct LeadDetailView: View {
         if ["super_admin", "admin", "sub_admin"].contains(sysRole) { return true }
         guard let me = Session.currentUser?.id, let creator = lead.createdBy else { return false }
         return creator == me
+    }
+
+    /// True for system-tier CRM admins — they may delete any rep's update
+    /// (the backend DELETE allows author-or-admin). Same role set the lead
+    /// edit gate uses.
+    private var isCRMAdmin: Bool {
+        let sysRole = (Session.currentUser?.role ?? "").lowercased()
+        return ["super_admin", "admin", "sub_admin"].contains(sysRole)
+    }
+
+    /// Only the rep who wrote the note may edit it (mirrors the author-only
+    /// backend PATCH). Pending offline rows (`pending-…` ids) and rows with
+    /// no author are never editable.
+    private func canEditUpdate(_ u: LeadUpdate) -> Bool {
+        guard let me = Session.currentUser?.id, let author = u.authorId else { return false }
+        return author == me && !u.id.hasPrefix("pending-")
+    }
+
+    /// Author or admin may delete (mirrors the backend). Pending offline
+    /// rows are never deletable through this path.
+    private func canDeleteUpdate(_ u: LeadUpdate) -> Bool {
+        guard !u.id.hasPrefix("pending-") else { return false }
+        if isCRMAdmin { return true }
+        guard let me = Session.currentUser?.id, let author = u.authorId else { return false }
+        return author == me
     }
 
     var body: some View {
@@ -203,6 +235,22 @@ struct LeadDetailView: View {
         ) {
             Button("Delete", role: .destructive) { Task { await vm.delete() } }
             Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Delete this update? This cannot be undone.",
+            isPresented: Binding(
+                get: { pendingDeleteUpdateId != nil },
+                set: { if !$0 { pendingDeleteUpdateId = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let id = pendingDeleteUpdateId {
+                    pendingDeleteUpdateId = nil
+                    Task { await vm.deleteUpdate(updateId: id) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingDeleteUpdateId = nil }
         }
         .alert("Error", isPresented: Binding(
             get: { vm.errorMessage != nil },
@@ -894,24 +942,90 @@ struct LeadDetailView: View {
                     Text("No updates yet.").font(.caption).foregroundColor(.secondary)
                 } else {
                     ForEach(vm.updates) { u in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(u.body).font(.system(size: 13)).foregroundColor(.primary)
-                            HStack(spacing: 6) {
-                                if let who = u.authorName, !who.isEmpty {
-                                    Text(who).font(.caption2).foregroundColor(.secondary)
-                                }
-                                if let when = u.createdAt {
-                                    Text(formatDate(when)).font(.caption2).foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 4)
+                        updateRow(u)
                         Divider()
                     }
                 }
             }
         }
+    }
+
+    /// A single Recent Updates row. Renders inline-editable when the rep
+    /// tapped Edit on it (author-only); otherwise shows the note with a
+    /// context menu carrying Edit / Delete for rows the rep may modify.
+    @ViewBuilder
+    private func updateRow(_ u: LeadUpdate) -> some View {
+        if editingUpdateId == u.id {
+            updateEditor(u)
+        } else {
+            let editable = canEditUpdate(u)
+            let deletable = canDeleteUpdate(u)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(u.body).font(.system(size: 13)).foregroundColor(.primary)
+                HStack(spacing: 6) {
+                    if let who = u.authorName, !who.isEmpty {
+                        Text(who).font(.caption2).foregroundColor(.secondary)
+                    }
+                    if let when = u.createdAt {
+                        Text(formatDate(when)).font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .contextMenu {
+                if editable {
+                    Button {
+                        editingUpdateText = u.body
+                        editingUpdateId = u.id
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                }
+                if deletable {
+                    Button(role: .destructive) {
+                        pendingDeleteUpdateId = u.id
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Inline editor swapped in for the row being edited. Seeded with the
+    /// current body; Save calls the VM (author-only PATCH), Cancel restores
+    /// the read-only row.
+    @ViewBuilder
+    private func updateEditor(_ u: LeadUpdate) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Update…", text: $editingUpdateText, axis: .vertical)
+                .lineLimit(1...6)
+                .font(.system(size: 13))
+                .textFieldStyle(.roundedBorder)
+            HStack(spacing: 10) {
+                Spacer()
+                Button("Cancel") {
+                    editingUpdateId = nil
+                    editingUpdateText = ""
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+                Button("Save") {
+                    let text = editingUpdateText
+                    let id = u.id
+                    editingUpdateId = nil
+                    editingUpdateText = ""
+                    Task { await vm.editUpdate(updateId: id, body: text) }
+                }
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(Brand.red)
+                .disabled(editingUpdateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
     }
 
     // MARK: - ✨ Suggest (KINI inline read of the draft update)

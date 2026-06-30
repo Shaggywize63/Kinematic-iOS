@@ -645,6 +645,21 @@ final class CRMService {
         try await postJSON("/api/v1/crm/leads/\(leadId)/updates", body: ["body": body])
     }
 
+    /// Edit an existing update's body. Backend is author-only (non-author
+    /// gets 403). Returns the refreshed row so the caller can swap it into
+    /// the in-memory timeline.
+    @discardableResult
+    func editLeadUpdate(leadId: String, updateId: String, body: String) async throws -> LeadUpdate {
+        try await sendJSON("/api/v1/crm/leads/\(leadId)/updates/\(updateId)", method: "PATCH", body: ["body": body])
+    }
+
+    /// Delete an update. Backend allows the author or an admin (else 403).
+    /// The `{ deleted: true }` payload is discarded — callers just remove
+    /// the row from the local timeline on success.
+    func deleteLeadUpdate(leadId: String, updateId: String) async throws {
+        let _: EmptyAck = try await delete("/api/v1/crm/leads/\(leadId)/updates/\(updateId)")
+    }
+
     /// ✨ Suggest — asks KINI to read a draft Update and propose the next CRM
     /// action (an activity to log, a follow-up to draft, quick next steps).
     /// Lightweight single-shot helper that does NOT touch the monthly KINI
