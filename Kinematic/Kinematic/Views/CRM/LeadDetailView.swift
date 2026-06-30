@@ -906,31 +906,35 @@ struct LeadDetailView: View {
                     }
                     .disabled(vm.postingUpdate || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                // ✨ Suggest — ask KINI to read the draft and propose the next
-                // CRM action. Uses the lightweight /ai/suggest-from-update
-                // helper so it never touches the monthly KINI chat quota.
-                HStack {
-                    Button {
-                        Task { await runSuggest() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if suggesting {
-                                ProgressView().tint(Brand.red).scaleEffect(0.8)
-                                Text("Thinking…")
-                            } else {
-                                Text("✨")
-                                Text("Suggest")
+                // ✨ Suggest — ask KINI to read the latest *submitted* update and
+                // propose the next CRM action. Only shown once at least one
+                // update has been logged (never on the live draft). Uses the
+                // lightweight /ai/suggest-from-update helper so it never touches
+                // the monthly KINI chat quota.
+                if !vm.updates.isEmpty {
+                    HStack {
+                        Button {
+                            Task { await runSuggest() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if suggesting {
+                                    ProgressView().tint(Brand.red).scaleEffect(0.8)
+                                    Text("Thinking…")
+                                } else {
+                                    Text("✨")
+                                    Text("Suggest")
+                                }
                             }
+                            .font(.system(size: 12, weight: .bold))
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .foregroundColor(Brand.red)
+                            .background(Brand.red.opacity(0.10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.30), lineWidth: 1))
+                            .cornerRadius(10)
                         }
-                        .font(.system(size: 12, weight: .bold))
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .foregroundColor(Brand.red)
-                        .background(Brand.red.opacity(0.10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.30), lineWidth: 1))
-                        .cornerRadius(10)
+                        .disabled(suggesting)
+                        Spacer()
                     }
-                    .disabled(suggesting || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Spacer()
                 }
                 if let err = suggestError {
                     Text(err).font(.caption).foregroundColor(.secondary)
@@ -1030,10 +1034,11 @@ struct LeadDetailView: View {
 
     // MARK: - ✨ Suggest (KINI inline read of the draft update)
 
-    /// Ask KINI to read the current draft Update and propose the next CRM
-    /// action. Cheap single-shot helper — does not affect the chat quota.
+    /// Ask KINI to read the latest *submitted* Update (newest-first, so
+    /// `vm.updates.first`) and propose the next CRM action. Cheap single-shot
+    /// helper — does not affect the chat quota.
     private func runSuggest() async {
-        let text = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (vm.updates.first?.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !suggesting else { return }
         suggesting = true
         suggestError = nil
