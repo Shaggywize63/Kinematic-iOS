@@ -13,10 +13,18 @@ struct MyDayView: View {
     @State private var isLoading = true
     @State private var didLoad = false
 
+    // KINI daily briefing — loaded alongside the agenda. While the request is
+    // in flight we show a shimmer placeholder; if it resolves to nil/empty the
+    // card hides entirely (no error surface).
+    @State private var briefing: String?
+    @State private var briefingLoading = true
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+
+                briefingCard
 
                 if let counts = payload?.counts {
                     summaryPills(counts)
@@ -110,6 +118,51 @@ struct MyDayView: View {
         }
     }
 
+    // MARK: - Daily AI briefing card
+
+    @ViewBuilder
+    private var briefingCard: some View {
+        if briefingLoading && briefing == nil {
+            briefingShell {
+                Text("KINI is reading your day…")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .shimmer()
+            }
+        } else if let text = briefing, !text.isEmpty {
+            briefingShell {
+                Text(text)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        // nil / empty after load → render nothing.
+    }
+
+    @ViewBuilder
+    private func briefingShell<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Brand.info)
+            content()
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Brand.info.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Brand.info.opacity(0.16), lineWidth: 1)
+        )
+    }
+
     // MARK: - Section scaffold
 
     @ViewBuilder
@@ -175,17 +228,30 @@ struct MyDayView: View {
 
     private func load() async {
         isLoading = true
+        briefingLoading = true
         // Pass device coordinates when available so the backend can stamp
         // per-lead distance; the endpoint treats them as optional.
         let loc = LocationTrackingService.shared.lastLocation
-        let result = await KinematicRepository.shared.fetchMyDay(
+
+        // The briefing can take ~1-2s; fetch it concurrently so the agenda
+        // renders as soon as my-day returns and the card fills in after.
+        async let myDay = KinematicRepository.shared.fetchMyDay(
             lat: loc?.coordinate.latitude,
             lng: loc?.coordinate.longitude
         )
+        async let dailyBriefing = KinematicRepository.shared.fetchDailyBriefing()
+
+        let result = await myDay
         await MainActor.run {
             self.payload = result
             self.isLoading = false
             self.didLoad = true
+        }
+
+        let briefingText = await dailyBriefing
+        await MainActor.run {
+            self.briefing = briefingText
+            self.briefingLoading = false
         }
     }
 }
@@ -372,6 +438,45 @@ private struct Chip: View {
             .background(Capsule().fill(tint.opacity(0.14)))
             .foregroundColor(tint)
     }
+}
+
+// MARK: - Shimmer (briefing placeholder)
+
+/// Subtle left-to-right highlight sweep used on the KINI briefing placeholder
+/// while the request is in flight. Self-contained — no external dependency.
+private struct ShimmerModifier: ViewModifier {
+    @State private var phase: CGFloat = -1
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                GeometryReader { geo in
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            .clear,
+                            Color.white.opacity(0.55),
+                            .clear
+                        ]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: geo.size.width * 1.4)
+                    .offset(x: phase * geo.size.width * 1.4)
+                    .blendMode(.plusLighter)
+                }
+                .mask(content)
+                .allowsHitTesting(false)
+            )
+            .onAppear {
+                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                    phase = 1
+                }
+            }
+    }
+}
+
+private extension View {
+    func shimmer() -> some View { modifier(ShimmerModifier()) }
 }
 
 private struct SummaryPill: View {

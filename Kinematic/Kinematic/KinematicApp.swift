@@ -330,6 +330,14 @@ struct ApiResponse<T: Codable>: Codable {
     let message: String?
 }
 
+// MARK: - Daily AI briefing — GET /crm/ai/daily-briefing
+//
+// One-shot KINI summary of the rep's day. The `data` wrapper carries a
+// single `briefing` string; everything else in `context` is ignored here.
+struct DailyBriefingResponse: Codable {
+    let briefing: String?
+}
+
 // MARK: - My Day (rep agenda) — GET /crm/my-day
 //
 // Backend returns the rep's agenda for today: activities due today,
@@ -1388,6 +1396,23 @@ class KinematicRepository {
             return res?.data
         } catch {
             print("❌ FETCH_MY_DAY_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// Fetch the KINI daily AI briefing — a one-shot natural-language summary
+    /// of the rep's day (counts, who to start with). Single-shot helper, no
+    /// quota cost; may take ~1-2s. Returns nil on error or when the briefing
+    /// is empty so the caller can hide the card entirely.
+    func fetchDailyBriefing() async -> String? {
+        do {
+            let res: ApiResponse<DailyBriefingResponse>? = try await performRequest(
+                "/crm/ai/daily-briefing"
+            )
+            let text = res?.data?.briefing?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (text?.isEmpty == false) ? text : nil
+        } catch {
+            print("❌ FETCH_DAILY_BRIEFING_FAILED: \(error)")
             return nil
         }
     }
