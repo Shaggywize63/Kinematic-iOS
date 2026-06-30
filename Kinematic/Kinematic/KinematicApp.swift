@@ -330,6 +330,74 @@ struct ApiResponse<T: Codable>: Codable {
     let message: String?
 }
 
+// MARK: - My Day (rep agenda) — GET /crm/my-day
+//
+// Backend returns the rep's agenda for today: activities due today,
+// overdue + upcoming activities, headline counts and open leads near
+// the device (distance_km present only when lat/lng were sent).
+struct MyDayResponse: Codable {
+    let date: String?
+    let counts: MyDayCounts?
+    let activitiesToday: [MyDayActivity]?
+    let overdue: [MyDayActivity]?
+    let upcoming: [MyDayActivity]?
+    let leads: [MyDayLead]?
+
+    enum CodingKeys: String, CodingKey {
+        case date, counts, overdue, upcoming, leads
+        case activitiesToday = "activities_today"
+    }
+}
+
+struct MyDayCounts: Codable {
+    let today: Int?
+    let overdue: Int?
+    let upcoming: Int?
+    let openLeads: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case today, overdue, upcoming
+        case openLeads = "open_leads"
+    }
+}
+
+struct MyDayActivity: Codable, Identifiable, Hashable {
+    let id: String
+    let type: String?
+    let subject: String?
+    let status: String?
+    let dueAt: String?
+    let priority: String?
+    let leadId: String?
+    let dealId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, subject, status, priority
+        case dueAt = "due_at"
+        case leadId = "lead_id"
+        case dealId = "deal_id"
+    }
+}
+
+struct MyDayLead: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String?
+    let status: String?
+    // `city` is intentionally NOT decoded/exposed here — it's a built-in
+    // lead field gated by the field-override contract (see CLAUDE.md), so
+    // the My Day screen never renders it.
+    let latitude: Double?
+    let longitude: Double?
+    let createdAt: String?
+    let distanceKm: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, status, latitude, longitude
+        case createdAt = "created_at"
+        case distanceKm = "distance_km"
+    }
+}
+
 struct AttendanceRecord: Codable {
     let id: String?
     let date: String?
@@ -1296,6 +1364,31 @@ class KinematicRepository {
         } catch {
             print("❌ [Push] token register failed: \(error)")
             return false
+        }
+    }
+
+    /// Fetch the rep's "My Day" agenda — activities due today / overdue /
+    /// upcoming plus open leads near the device. `lat`/`lng` are optional;
+    /// when supplied the backend stamps `distance_km` on each lead so the
+    /// UI can sort/show proximity. Returns nil on failure (caller renders
+    /// an empty / retry state).
+    func fetchMyDay(lat: Double? = nil, lng: Double? = nil) async -> MyDayResponse? {
+        do {
+            var query: [URLQueryItem]? = nil
+            if let lat = lat, let lng = lng {
+                query = [
+                    URLQueryItem(name: "lat", value: String(lat)),
+                    URLQueryItem(name: "lng", value: String(lng))
+                ]
+            }
+            let res: ApiResponse<MyDayResponse>? = try await performRequest(
+                "/crm/my-day",
+                queryItems: query
+            )
+            return res?.data
+        } catch {
+            print("❌ FETCH_MY_DAY_FAILED: \(error)")
+            return nil
         }
     }
 

@@ -42,6 +42,16 @@ struct CRMHomeView: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 4)
 
+                    // "My Day" — the rep's agenda landing point. Rendered as a
+                    // prominent full-width card above the module grid so it's
+                    // the first thing a field rep reaches on Home.
+                    NavigationLink(value: CRMDestination.myDay) {
+                        MyDayHomeCard()
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+
                     LazyVGrid(
                         columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
                         spacing: 12
@@ -104,11 +114,12 @@ private struct CRMTile: Identifiable {
 }
 
 private enum CRMDestination: Hashable {
-    case dashboard, leads, contacts, accounts, deals, pipeline, products, activities, tasks, reports, kini, messages
+    case myDay, dashboard, leads, contacts, accounts, deals, pipeline, products, activities, tasks, reports, kini, messages
 
     @ViewBuilder
     var view: some View {
         switch self {
+        case .myDay:      MyDayView()
         case .dashboard:  CRMDashboardView()
         case .leads:      LeadsListView()
         case .contacts:   ContactsListView()
@@ -123,6 +134,38 @@ private enum CRMDestination: Hashable {
         // Inbox: DMs + team chats with scope-filtered user search.
         case .messages:   ChatListView()
         }
+    }
+}
+
+/// Prominent full-width entry to the rep's "My Day" agenda screen. Sits
+/// above the module grid on CRM Home.
+private struct MyDayHomeCard: View {
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(Color.white.opacity(0.22)).frame(width: 46, height: 46)
+                Image(systemName: "sun.max.fill")
+                    .foregroundColor(.white)
+                    .font(.system(size: 22, weight: .semibold))
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("My Day")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                Text("Today's activities & nearby leads")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .foregroundColor(.white.opacity(0.85))
+                .font(.system(size: 15, weight: .semibold))
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 20).fill(Brand.red)
+        )
     }
 }
 
