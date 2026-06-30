@@ -26,6 +26,11 @@ struct LeadDetailView: View {
 
     @State private var editing = false
     @State private var updateText = ""
+    /// Voice dictation for the Recent Updates composer. Reuses the same
+    /// on-device SFSpeechRecognizer wrapper KINI chat uses — partial
+    /// transcripts stream straight into `updateText`, so a rep can log a
+    /// field note hands-free (works offline; the post itself queues).
+    @StateObject private var voiceRecognizer = KiniVoiceRecognizer()
     @State private var showNbaHow = false
     @State private var converting = false
     @State private var showAssignSheet = false
@@ -890,7 +895,23 @@ struct LeadDetailView: View {
                     TextField("Add an update…", text: $updateText, axis: .vertical)
                         .lineLimit(1...4)
                         .textFieldStyle(.roundedBorder)
+                    // 🎤 Dictate — tap to talk, tap again to stop. Partial
+                    // transcripts stream straight into the draft so the rep
+                    // can log a field note without typing.
                     Button {
+                        if voiceRecognizer.isListening {
+                            voiceRecognizer.stop()
+                        } else {
+                            voiceRecognizer.start { transcript in updateText = transcript }
+                        }
+                    } label: {
+                        Image(systemName: voiceRecognizer.isListening ? "mic.fill" : "mic")
+                            .imageScale(.large)
+                            .foregroundColor(voiceRecognizer.isListening ? Brand.red : .secondary)
+                    }
+                    .disabled(vm.postingUpdate)
+                    Button {
+                        voiceRecognizer.stop()
                         let t = updateText
                         updateText = ""
                         // The draft is being posted — KINI's read of it no
@@ -906,31 +927,38 @@ struct LeadDetailView: View {
                     }
                     .disabled(vm.postingUpdate || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                // ✨ Suggest — ask KINI to read the draft and propose the next
-                // CRM action. Uses the lightweight /ai/suggest-from-update
-                // helper so it never touches the monthly KINI chat quota.
-                HStack {
-                    Button {
-                        Task { await runSuggest() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if suggesting {
-                                ProgressView().tint(Brand.red).scaleEffect(0.8)
-                                Text("Thinking…")
-                            } else {
-                                Text("✨")
-                                Text("Suggest")
+                if let voiceErr = voiceRecognizer.permissionError {
+                    Text(voiceErr).font(.caption2).foregroundColor(.secondary)
+                }
+                // ✨ Suggest — ask KINI to read the latest *submitted* update and
+                // propose the next CRM action. Only shown once at least one
+                // update has been logged (never on the live draft). Uses the
+                // lightweight /ai/suggest-from-update helper so it never touches
+                // the monthly KINI chat quota.
+                if !vm.updates.isEmpty {
+                    HStack {
+                        Button {
+                            Task { await runSuggest() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if suggesting {
+                                    ProgressView().tint(Brand.red).scaleEffect(0.8)
+                                    Text("Thinking…")
+                                } else {
+                                    Text("✨")
+                                    Text("Suggest")
+                                }
                             }
+                            .font(.system(size: 12, weight: .bold))
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .foregroundColor(Brand.red)
+                            .background(Brand.red.opacity(0.10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.30), lineWidth: 1))
+                            .cornerRadius(10)
                         }
-                        .font(.system(size: 12, weight: .bold))
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .foregroundColor(Brand.red)
-                        .background(Brand.red.opacity(0.10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.30), lineWidth: 1))
-                        .cornerRadius(10)
+                        .disabled(suggesting)
+                        Spacer()
                     }
-                    .disabled(suggesting || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Spacer()
                 }
                 if let err = suggestError {
                     Text(err).font(.caption).foregroundColor(.secondary)
@@ -1030,10 +1058,11 @@ struct LeadDetailView: View {
 
     // MARK: - ✨ Suggest (KINI inline read of the draft update)
 
-    /// Ask KINI to read the current draft Update and propose the next CRM
-    /// action. Cheap single-shot helper — does not affect the chat quota.
+    /// Ask KINI to read the latest *submitted* Update (newest-first, so
+    /// `vm.updates.first`) and propose the next CRM action. Cheap single-shot
+    /// helper — does not affect the chat quota.
     private func runSuggest() async {
-        let text = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (vm.updates.first?.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !suggesting else { return }
         suggesting = true
         suggestError = nil
