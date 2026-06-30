@@ -144,6 +144,9 @@ class KiniAppState: ObservableObject {
     // --- Navigation & UI ---
     @Published var showSideMenu = false
     @Published var activeSecondaryRoute: ModalRoute? = nil
+    /// Last tapped push notification's data dict (type / lead_id / deal_id /
+    /// task_id). Set by PushAppDelegate on tap; kept for deeper deep-linking.
+    @Published var pendingPushData: [String: String]? = nil
     /// Set true when the API starts returning 401s. UI can read this to
     /// surface a non-destructive "session expired, please sign in" prompt
     /// without wiping the user's local check-in state.
@@ -325,6 +328,110 @@ struct ApiResponse<T: Codable>: Codable {
     let data: T?
     let error: String?
     let message: String?
+}
+
+// MARK: - Daily AI briefing — GET /crm/ai/daily-briefing
+//
+// One-shot KINI summary of the rep's day. The `data` wrapper carries a
+// single `briefing` string; everything else in `context` is ignored here.
+struct DailyBriefingResponse: Codable {
+    let briefing: String?
+}
+
+// MARK: - Business-card scan — POST /crm/ai/scan-card
+//
+// Vision endpoint reads a photo of a business card and returns the
+// parsed contact fields. Every field may be null, so all are optional.
+// Used to pre-fill the lead-create form (values only — the form's
+// existing field-override gating still decides what renders).
+struct CardScanResponse: Codable {
+    let firstName: String?
+    let lastName: String?
+    let company: String?
+    let title: String?
+    let email: String?
+    let phone: String?
+    let website: String?
+    let address: String?
+
+    enum CodingKeys: String, CodingKey {
+        case firstName = "first_name"
+        case lastName = "last_name"
+        case company
+        case title
+        case email
+        case phone
+        case website
+        case address
+    }
+}
+
+// MARK: - My Day (rep agenda) — GET /crm/my-day
+//
+// Backend returns the rep's agenda for today: activities due today,
+// overdue + upcoming activities, headline counts and open leads near
+// the device (distance_km present only when lat/lng were sent).
+struct MyDayResponse: Codable {
+    let date: String?
+    let counts: MyDayCounts?
+    let activitiesToday: [MyDayActivity]?
+    let overdue: [MyDayActivity]?
+    let upcoming: [MyDayActivity]?
+    let leads: [MyDayLead]?
+
+    enum CodingKeys: String, CodingKey {
+        case date, counts, overdue, upcoming, leads
+        case activitiesToday = "activities_today"
+    }
+}
+
+struct MyDayCounts: Codable {
+    let today: Int?
+    let overdue: Int?
+    let upcoming: Int?
+    let openLeads: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case today, overdue, upcoming
+        case openLeads = "open_leads"
+    }
+}
+
+struct MyDayActivity: Codable, Identifiable, Hashable {
+    let id: String
+    let type: String?
+    let subject: String?
+    let status: String?
+    let dueAt: String?
+    let priority: String?
+    let leadId: String?
+    let dealId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, subject, status, priority
+        case dueAt = "due_at"
+        case leadId = "lead_id"
+        case dealId = "deal_id"
+    }
+}
+
+struct MyDayLead: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String?
+    let status: String?
+    // `city` is intentionally NOT decoded/exposed here — it's a built-in
+    // lead field gated by the field-override contract (see CLAUDE.md), so
+    // the My Day screen never renders it.
+    let latitude: Double?
+    let longitude: Double?
+    let createdAt: String?
+    let distanceKm: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, status, latitude, longitude
+        case createdAt = "created_at"
+        case distanceKm = "distance_km"
+    }
 }
 
 struct AttendanceRecord: Codable {
@@ -1275,6 +1382,96 @@ class KinematicRepository {
         }
     }
     
+    /// Upload this device's APNs token so the backend can send iOS push.
+    /// PATCH /notifications/fcm-token with platform:"ios". Best-effort — the
+    /// caller ignores failures (the dispatcher simply has no iOS token to
+    /// target until the next successful registration).
+    func registerPushToken(token: String, platform: String) async -> Bool {
+        do {
+            let body = try? JSONSerialization.data(withJSONObject: ["token": token, "platform": platform])
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/notifications/fcm-token",
+                method: "PATCH",
+                body: body
+            )
+            let success = res?.success ?? false
+            print(success ? "📲 [Push] token registered with backend" : "⚠️ [Push] token registration rejected")
+            return success
+        } catch {
+            print("❌ [Push] token register failed: \(error)")
+            return false
+        }
+    }
+
+    /// Fetch the rep's "My Day" agenda — activities due today / overdue /
+    /// upcoming plus open leads near the device. `lat`/`lng` are optional;
+    /// when supplied the backend stamps `distance_km` on each lead so the
+    /// UI can sort/show proximity. Returns nil on failure (caller renders
+    /// an empty / retry state).
+    func fetchMyDay(lat: Double? = nil, lng: Double? = nil) async -> MyDayResponse? {
+        do {
+            var query: [URLQueryItem]? = nil
+            if let lat = lat, let lng = lng {
+                query = [
+                    URLQueryItem(name: "lat", value: String(lat)),
+                    URLQueryItem(name: "lng", value: String(lng))
+                ]
+            }
+            let res: ApiResponse<MyDayResponse>? = try await performRequest(
+                "/crm/my-day",
+                queryItems: query
+            )
+            return res?.data
+        } catch {
+            print("❌ FETCH_MY_DAY_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// Fetch the KINI daily AI briefing — a one-shot natural-language summary
+    /// of the rep's day (counts, who to start with). Single-shot helper, no
+    /// quota cost; may take ~1-2s. Returns nil on error or when the briefing
+    /// is empty so the caller can hide the card entirely.
+    func fetchDailyBriefing() async -> String? {
+        do {
+            let res: ApiResponse<DailyBriefingResponse>? = try await performRequest(
+                "/crm/ai/daily-briefing"
+            )
+            let text = res?.data?.briefing?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (text?.isEmpty == false) ? text : nil
+        } catch {
+            print("❌ FETCH_DAILY_BRIEFING_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// Scan a business-card photo via the backend's vision endpoint and
+    /// return the parsed contact fields so the rep can land on the
+    /// lead-create form pre-filled. POST /crm/ai/scan-card with the JPEG
+    /// downscaled + base64-encoded (NO `data:` prefix) — the backend body
+    /// limit is 2 MB, so callers must compress first. Returns nil on any
+    /// failure (network / non-200 / unparseable card) so the caller can
+    /// fall back to a blank form.
+    func scanCard(imageBase64: String) async -> CardScanResponse? {
+        do {
+            let payload: [String: Any] = [
+                "image_base64": imageBase64,
+                "media_type": "image/jpeg"
+            ]
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<CardScanResponse>? = try await performRequest(
+                "/crm/ai/scan-card",
+                method: "POST",
+                body: body
+            )
+            guard res?.success == true else { return nil }
+            return res?.data
+        } catch {
+            print("❌ SCAN_CARD_FAILED: \(error)")
+            return nil
+        }
+    }
+
     /// Silently swap the stored access token for a fresh one using the
     /// long-lived refresh token. Returns true on success. Serialised via
     /// `refreshLock` so a burst of concurrent 401s only triggers one POST
@@ -2031,6 +2228,10 @@ private struct PendingReset: Identifiable {
 
 @main
 struct KinematicApp: App {
+    // Bridges UIKit APNs callbacks (device-token registration, notification
+    // taps) into SwiftUI. Inert on free-Apple-ID dev builds — see
+    // PushNotificationManager for the activation steps.
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @StateObject private var locationService = LocationTrackingService.shared
     @StateObject private var appState = KiniAppState.shared
     @Environment(\.scenePhase) private var scenePhase
