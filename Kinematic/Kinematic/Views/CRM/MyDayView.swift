@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 /// "My Day" — the rep's agenda for today. Surfaces activities due today,
 /// overdue (tinted as attention) and upcoming work, plus open leads near
@@ -41,7 +42,7 @@ struct MyDayView: View {
                             icon: "sun.max.fill",
                             tint: Brand.info
                         ) {
-                            ForEach(today) { ActivityRow(activity: $0, tint: Brand.info) }
+                            ForEach(today) { MyDayActivityRow(activity: $0, tint: Brand.info) }
                         }
                     }
 
@@ -51,7 +52,7 @@ struct MyDayView: View {
                             icon: "exclamationmark.triangle.fill",
                             tint: Brand.red
                         ) {
-                            ForEach(overdue) { ActivityRow(activity: $0, tint: Brand.red) }
+                            ForEach(overdue) { MyDayActivityRow(activity: $0, tint: Brand.red) }
                         }
                     }
 
@@ -65,7 +66,7 @@ struct MyDayView: View {
                             icon: "mappin.and.ellipse",
                             tint: Brand.success
                         ) {
-                            ForEach(leads) { LeadRow(lead: $0) }
+                            ForEach(leads) { MyDayLeadRow(lead: $0) }
                         }
                     }
                 }
@@ -287,7 +288,7 @@ private struct UpcomingSection: View {
 
             if expanded {
                 VStack(spacing: 8) {
-                    ForEach(activities) { ActivityRow(activity: $0, tint: Brand.caution) }
+                    ForEach(activities) { MyDayActivityRow(activity: $0, tint: Brand.caution) }
                 }
             }
         }
@@ -296,7 +297,7 @@ private struct UpcomingSection: View {
 
 // MARK: - Activity row
 
-private struct ActivityRow: View {
+private struct MyDayActivityRow: View {
     let activity: MyDayActivity
     let tint: Color
 
@@ -373,7 +374,7 @@ private struct ActivityRow: View {
 
 // MARK: - Lead row (title + status + distance only — never city)
 
-private struct LeadRow: View {
+private struct MyDayLeadRow: View {
     let lead: MyDayLead
 
     var body: some View {
