@@ -338,6 +338,34 @@ struct DailyBriefingResponse: Codable {
     let briefing: String?
 }
 
+// MARK: - Business-card scan — POST /crm/ai/scan-card
+//
+// Vision endpoint reads a photo of a business card and returns the
+// parsed contact fields. Every field may be null, so all are optional.
+// Used to pre-fill the lead-create form (values only — the form's
+// existing field-override gating still decides what renders).
+struct CardScanResponse: Codable {
+    let firstName: String?
+    let lastName: String?
+    let company: String?
+    let title: String?
+    let email: String?
+    let phone: String?
+    let website: String?
+    let address: String?
+
+    enum CodingKeys: String, CodingKey {
+        case firstName = "first_name"
+        case lastName = "last_name"
+        case company
+        case title
+        case email
+        case phone
+        case website
+        case address
+    }
+}
+
 // MARK: - My Day (rep agenda) — GET /crm/my-day
 //
 // Backend returns the rep's agenda for today: activities due today,
@@ -1413,6 +1441,33 @@ class KinematicRepository {
             return (text?.isEmpty == false) ? text : nil
         } catch {
             print("❌ FETCH_DAILY_BRIEFING_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// Scan a business-card photo via the backend's vision endpoint and
+    /// return the parsed contact fields so the rep can land on the
+    /// lead-create form pre-filled. POST /crm/ai/scan-card with the JPEG
+    /// downscaled + base64-encoded (NO `data:` prefix) — the backend body
+    /// limit is 2 MB, so callers must compress first. Returns nil on any
+    /// failure (network / non-200 / unparseable card) so the caller can
+    /// fall back to a blank form.
+    func scanCard(imageBase64: String) async -> CardScanResponse? {
+        do {
+            let payload: [String: Any] = [
+                "image_base64": imageBase64,
+                "media_type": "image/jpeg"
+            ]
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<CardScanResponse>? = try await performRequest(
+                "/crm/ai/scan-card",
+                method: "POST",
+                body: body
+            )
+            guard res?.success == true else { return nil }
+            return res?.data
+        } catch {
+            print("❌ SCAN_CARD_FAILED: \(error)")
             return nil
         }
     }

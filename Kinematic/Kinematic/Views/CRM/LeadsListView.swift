@@ -11,6 +11,7 @@ struct LeadsListView: View {
     @StateObject var vm = LeadsViewModel()
     @StateObject private var queue = OfflineLeadQueue.shared
     @State private var showCreate = false
+    @State private var showScanCard = false
     @State private var showImport = false
     @State private var showDateFilter = false
     @State private var showFilters = false
@@ -46,6 +47,28 @@ struct LeadsListView: View {
         } label: {
             Image(systemName: "arrow.up.arrow.down.circle")
                 .foregroundColor(vm.sortKey == "recent" ? .secondary : Brand.red)
+        }
+    }
+
+    /// Shared lead-submission handler used by both the manual create sheet
+    /// and the "Scan business card" flow, so a scanned lead saves through
+    /// the identical online / offline-queue path.
+    private func submitLead(_ body: [String: Any]) async -> Bool {
+        let outcome = await vm.create(body: body)
+        switch outcome {
+        case .online:
+            return true
+        case .offline:
+            // Defer to the toast — UI presents this via the viewmodel's
+            // errorMessage / OfflineLeadQueue.pendingCount observer below.
+            // Dismiss the form so the rep can move on; the queued lead
+            // syncs in the bg.
+            NotificationCenter.default.post(name: .kmLeadSavedOffline, object: nil)
+            return true
+        case .error:
+            // Keep the form open so the rep can fix + retry — the alert
+            // inside LeadCreateView surfaces the failure.
+            return false
         }
     }
 
@@ -251,6 +274,12 @@ struct LeadsListView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button { showScanCard = true } label: {
+                    Image(systemName: "doc.viewfinder")
+                }
+                .accessibilityLabel("Scan business card")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { showCreate = true } label: {
                     Image(systemName: "plus")
                 }
@@ -258,24 +287,10 @@ struct LeadsListView: View {
             }
         }
         .sheet(isPresented: $showCreate) {
-            LeadCreateView { body in
-                let outcome = await vm.create(body: body)
-                switch outcome {
-                case .online:
-                    return true
-                case .offline:
-                    // Defer to the toast — UI presents this via the
-                    // viewmodel's errorMessage / OfflineLeadQueue.pendingCount
-                    // observer in LeadsListView. Dismiss the form so the
-                    // rep can move on; the queued lead syncs in the bg.
-                    NotificationCenter.default.post(name: .kmLeadSavedOffline, object: nil)
-                    return true
-                case .error:
-                    // Keep the form open so the rep can fix + retry —
-                    // the alert inside LeadCreateView surfaces the failure.
-                    return false
-                }
-            }
+            LeadCreateView { body in await submitLead(body) }
+        }
+        .sheet(isPresented: $showScanCard) {
+            LeadScanCardView { body in await submitLead(body) }
         }
         .sheet(isPresented: $showImport) {
             LeadImportView()

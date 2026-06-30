@@ -2,6 +2,21 @@ import SwiftUI
 import Combine
 import CoreLocation
 
+/// Seed values for the lead-create form. Used by the "Scan business card"
+/// flow to land the rep on the normal create form pre-filled. Only the
+/// plain text identity / contact / company fields are seeded — every row
+/// still renders through the form's existing `fieldOverrides` gating, so
+/// a value seeded here for an admin-hidden field simply never shows (and
+/// `buildBody` won't persist it). All fields optional.
+struct LeadCreatePrefill {
+    var firstName: String? = nil
+    var lastName: String? = nil
+    var company: String? = nil
+    var title: String? = nil
+    var email: String? = nil
+    var phone: String? = nil
+}
+
 struct LeadCreateView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var locator = OneShotLocationProvider()
@@ -68,6 +83,38 @@ struct LeadCreateView: View {
     /// signature dismissed unconditionally and swallowed every backend
     /// error, which is the "leads not getting saved" symptom from users.
     let onSubmit: ([String: Any]) async -> Bool
+
+    /// Default + prefill initializer. The `prefill` path seeds the @State
+    /// fields for the "Scan business card" flow; it only sets plain text
+    /// values and changes no other behavior. Seeding @State requires
+    /// assigning the underlying State wrappers in init (a later .onAppear
+    /// would clobber what the rep starts editing).
+    init(prefill: LeadCreatePrefill? = nil, onSubmit: @escaping ([String: Any]) async -> Bool) {
+        self.onSubmit = onSubmit
+        if let p = prefill {
+            if let v = p.firstName?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+                _firstName = State(initialValue: v)
+            }
+            if let v = p.lastName?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+                _lastName = State(initialValue: v)
+            }
+            if let v = p.company?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+                _company = State(initialValue: v)
+            }
+            if let v = p.title?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+                _title = State(initialValue: v)
+            }
+            if let v = p.email?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+                _email = State(initialValue: v)
+            }
+            // Match the phone field's input rule (digits only, max 10) so a
+            // seeded number lines up with what the rep would have typed.
+            if let raw = p.phone {
+                let digits = String(raw.filter { $0.isNumber }.prefix(10))
+                if !digits.isEmpty { _phone = State(initialValue: digits) }
+            }
+        }
+    }
 
     /// Server-side business_type ("b2c" / "b2b"). Loaded once when the form
     /// opens via /crm/settings. Used as a fallback for the Tata gate so the
