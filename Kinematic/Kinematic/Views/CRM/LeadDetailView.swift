@@ -26,6 +26,11 @@ struct LeadDetailView: View {
 
     @State private var editing = false
     @State private var updateText = ""
+    /// Voice dictation for the Recent Updates composer. Reuses the same
+    /// on-device SFSpeechRecognizer wrapper KINI chat uses — partial
+    /// transcripts stream straight into `updateText`, so a rep can log a
+    /// field note hands-free (works offline; the post itself queues).
+    @StateObject private var voiceRecognizer = KiniVoiceRecognizer()
     @State private var showNbaHow = false
     @State private var converting = false
     @State private var showAssignSheet = false
@@ -890,7 +895,23 @@ struct LeadDetailView: View {
                     TextField("Add an update…", text: $updateText, axis: .vertical)
                         .lineLimit(1...4)
                         .textFieldStyle(.roundedBorder)
+                    // 🎤 Dictate — tap to talk, tap again to stop. Partial
+                    // transcripts stream straight into the draft so the rep
+                    // can log a field note without typing.
                     Button {
+                        if voiceRecognizer.isListening {
+                            voiceRecognizer.stop()
+                        } else {
+                            voiceRecognizer.start { transcript in updateText = transcript }
+                        }
+                    } label: {
+                        Image(systemName: voiceRecognizer.isListening ? "mic.fill" : "mic")
+                            .imageScale(.large)
+                            .foregroundColor(voiceRecognizer.isListening ? Brand.red : .secondary)
+                    }
+                    .disabled(vm.postingUpdate)
+                    Button {
+                        voiceRecognizer.stop()
                         let t = updateText
                         updateText = ""
                         // The draft is being posted — KINI's read of it no
@@ -905,6 +926,9 @@ struct LeadDetailView: View {
                         }
                     }
                     .disabled(vm.postingUpdate || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                if let voiceErr = voiceRecognizer.permissionError {
+                    Text(voiceErr).font(.caption2).foregroundColor(.secondary)
                 }
                 // ✨ Suggest — ask KINI to read the latest *submitted* update and
                 // propose the next CRM action. Only shown once at least one
