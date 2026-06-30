@@ -66,6 +66,10 @@ struct ContentView: View {
             // Force tabs.
             guard appState.isAuthenticated else { return }
             await KinematicRepository.shared.refreshMe()
+            // Ask for push permission + register this device's APNs token now
+            // that we have an auth token to attach to the upload. Idempotent,
+            // and inert on free-Apple-ID dev builds (see PushNotificationManager).
+            PushNotificationManager.requestAuthorizationAndRegister()
         }
     }
 }

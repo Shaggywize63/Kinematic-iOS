@@ -144,6 +144,9 @@ class KiniAppState: ObservableObject {
     // --- Navigation & UI ---
     @Published var showSideMenu = false
     @Published var activeSecondaryRoute: ModalRoute? = nil
+    /// Last tapped push notification's data dict (type / lead_id / deal_id /
+    /// task_id). Set by PushAppDelegate on tap; kept for deeper deep-linking.
+    @Published var pendingPushData: [String: String]? = nil
     /// Set true when the API starts returning 401s. UI can read this to
     /// surface a non-destructive "session expired, please sign in" prompt
     /// without wiping the user's local check-in state.
@@ -1275,6 +1278,27 @@ class KinematicRepository {
         }
     }
     
+    /// Upload this device's APNs token so the backend can send iOS push.
+    /// PATCH /notifications/fcm-token with platform:"ios". Best-effort — the
+    /// caller ignores failures (the dispatcher simply has no iOS token to
+    /// target until the next successful registration).
+    func registerPushToken(token: String, platform: String) async -> Bool {
+        do {
+            let body = try? JSONSerialization.data(withJSONObject: ["token": token, "platform": platform])
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/notifications/fcm-token",
+                method: "PATCH",
+                body: body
+            )
+            let success = res?.success ?? false
+            print(success ? "📲 [Push] token registered with backend" : "⚠️ [Push] token registration rejected")
+            return success
+        } catch {
+            print("❌ [Push] token register failed: \(error)")
+            return false
+        }
+    }
+
     /// Silently swap the stored access token for a fresh one using the
     /// long-lived refresh token. Returns true on success. Serialised via
     /// `refreshLock` so a burst of concurrent 401s only triggers one POST
@@ -2031,6 +2055,10 @@ private struct PendingReset: Identifiable {
 
 @main
 struct KinematicApp: App {
+    // Bridges UIKit APNs callbacks (device-token registration, notification
+    // taps) into SwiftUI. Inert on free-Apple-ID dev builds — see
+    // PushNotificationManager for the activation steps.
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @StateObject private var locationService = LocationTrackingService.shared
     @StateObject private var appState = KiniAppState.shared
     @Environment(\.scenePhase) private var scenePhase
