@@ -81,6 +81,13 @@ struct SideMenuView: View {
                         appState.activeSecondaryRoute = ModalRoute(route: .profile)
                     }
 
+                    // Leave management + attendance regularization. Universal —
+                    // shown to every client; the API/role decides what's actionable.
+                    MenuButton(icon: "calendar.badge.clock", title: "Leave", isSelected: false, color: .teal) {
+                        withAnimation { isOpen = false }
+                        appState.activeSecondaryRoute = ModalRoute(route: .leave)
+                    }
+
                 if hasModule("broadcast") {
                     MenuButton(icon: "megaphone.fill", title: "Broadcasts", isSelected: false, color: .red) {
                         withAnimation { isOpen = false }

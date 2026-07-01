@@ -82,6 +82,9 @@ extension User {
 enum SecondaryRoute: String, Identifiable {
     case profile, broadcast, learning, settings, camera
     case leaderboard, notifications, grievance, visitlog, stock, sos, activity
+    // Leave management + attendance regularization (universal — available to
+    // every client, gated only by the API/role, not by a package SKU).
+    case leave
     // Distribution module
     case orderHistory, orderCart, orderReview, orderDetail
     case paymentCollect, returns, distributorStock, secondarySales
@@ -93,7 +96,7 @@ enum SecondaryRoute: String, Identifiable {
     var requiredPackage: String? {
         switch self {
         // Universal — every client gets these
-        case .profile, .settings, .learning, .notifications, .sos:
+        case .profile, .settings, .learning, .notifications, .sos, .leave:
             return nil
         // Field Force
         case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:
@@ -431,6 +434,126 @@ struct MyDayLead: Codable, Identifiable, Hashable {
         case id, title, status, latitude, longitude
         case createdAt = "created_at"
         case distanceKm = "distance_km"
+    }
+}
+
+// MARK: - Leave Management + Attendance Regularization
+//
+// Backend base: /api/v1/leave (bearer auth). All responses use the shared
+// `ApiResponse<T>` wrapper. Models mirror the columns the backend returns;
+// snake_case is mapped via CodingKeys so the SwiftUI layer stays camelCase.
+
+/// A leave category configured by the org (Casual, Sick, …). `GET /leave/types`.
+struct LeaveType: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let code: String?
+    let isPaid: Bool?
+    let annualQuota: Double?
+    let allowHalfDay: Bool?
+    let requiresAttachment: Bool?
+    let color: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, code, color
+        case isPaid = "is_paid"
+        case annualQuota = "annual_quota"
+        case allowHalfDay = "allow_half_day"
+        case requiresAttachment = "requires_attachment"
+    }
+}
+
+/// The rep's balance for a single leave type in a given year.
+/// `GET /leave/balances?year=`. Keyed by `leaveTypeId` (there is one row per
+/// type, so that doubles as the `Identifiable` id).
+struct LeaveBalance: Codable, Identifiable, Hashable {
+    let leaveTypeId: String
+    let name: String?
+    let code: String?
+    let color: String?
+    let isPaid: Bool?
+    let unlimited: Bool?
+    let entitled: Double?
+    let used: Double?
+    let pending: Double?
+    let available: Double?
+
+    var id: String { leaveTypeId }
+
+    enum CodingKeys: String, CodingKey {
+        case name, code, color, unlimited, entitled, used, pending, available
+        case leaveTypeId = "leave_type_id"
+        case isPaid = "is_paid"
+    }
+}
+
+/// A leave request row. `GET /leave/requests`, `POST /leave/requests`,
+/// `GET /leave/requests/pending`. `status` is one of
+/// pending | approved | rejected | cancelled.
+struct LeaveRequest: Codable, Identifiable, Hashable {
+    let id: String
+    let userId: String?
+    let leaveTypeId: String?
+    let fromDate: String?
+    let toDate: String?
+    let halfDayStart: Bool?
+    let halfDayEnd: Bool?
+    let days: Double?
+    let reason: String?
+    let status: String?
+    let approverId: String?
+    let decidedAt: String?
+    let decisionNote: String?
+    let createdAt: String?
+    // Convenience joins the backend may include for manager views.
+    let userName: String?
+    let leaveTypeName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, days, reason, status
+        case userId = "user_id"
+        case leaveTypeId = "leave_type_id"
+        case fromDate = "from_date"
+        case toDate = "to_date"
+        case halfDayStart = "half_day_start"
+        case halfDayEnd = "half_day_end"
+        case approverId = "approver_id"
+        case decidedAt = "decided_at"
+        case decisionNote = "decision_note"
+        case createdAt = "created_at"
+        case userName = "user_name"
+        case leaveTypeName = "leave_type_name"
+    }
+}
+
+/// An attendance-regularization request. `POST /leave/regularizations`,
+/// `GET /leave/regularizations`, `GET /leave/regularizations/pending`.
+struct Regularization: Codable, Identifiable, Hashable {
+    let id: String
+    let userId: String?
+    let attDate: String?
+    let type: String?
+    let requestedCheckinAt: String?
+    let requestedCheckoutAt: String?
+    let reason: String?
+    let status: String?
+    let approverId: String?
+    let decidedAt: String?
+    let decisionNote: String?
+    let createdAt: String?
+    let userName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, reason, status
+        case userId = "user_id"
+        case attDate = "att_date"
+        case requestedCheckinAt = "requested_checkin_at"
+        case requestedCheckoutAt = "requested_checkout_at"
+        case approverId = "approver_id"
+        case decidedAt = "decided_at"
+        case decisionNote = "decision_note"
+        case createdAt = "created_at"
+        case userName = "user_name"
     }
 }
 
@@ -1469,6 +1592,206 @@ class KinematicRepository {
         } catch {
             print("❌ SCAN_CARD_FAILED: \(error)")
             return nil
+        }
+    }
+
+    // MARK: - Leave Management + Attendance Regularization
+    //
+    // All endpoints live under /leave (bearer auth) and use the shared
+    // ApiResponse<T> envelope. Read helpers return [] on failure so the UI
+    // renders an empty state; write helpers return a (Bool, String?) tuple so
+    // the caller can surface the backend's error message (e.g. quota exceeded,
+    // 403 for a non-manager hitting a manager route).
+
+    /// GET /leave/types — the org's configured leave categories.
+    func fetchLeaveTypes() async -> [LeaveType] {
+        do {
+            let res: ApiResponse<[LeaveType]>? = try await performRequest("/leave/types")
+            return res?.data ?? []
+        } catch {
+            print("❌ FETCH_LEAVE_TYPES_FAILED: \(error)")
+            return []
+        }
+    }
+
+    /// GET /leave/balances?year= — the rep's per-type balances. `year` defaults
+    /// to the current calendar year when nil.
+    func fetchLeaveBalances(year: Int? = nil) async -> [LeaveBalance] {
+        do {
+            let y = year ?? Calendar.current.component(.year, from: Date())
+            let res: ApiResponse<[LeaveBalance]>? = try await performRequest(
+                "/leave/balances",
+                queryItems: [URLQueryItem(name: "year", value: String(y))]
+            )
+            return res?.data ?? []
+        } catch {
+            print("❌ FETCH_LEAVE_BALANCES_FAILED: \(error)")
+            return []
+        }
+    }
+
+    /// GET /leave/requests — the signed-in rep's own leave requests.
+    func fetchMyLeaveRequests() async -> [LeaveRequest] {
+        do {
+            let res: ApiResponse<[LeaveRequest]>? = try await performRequest("/leave/requests")
+            return res?.data ?? []
+        } catch {
+            print("❌ FETCH_MY_LEAVE_REQUESTS_FAILED: \(error)")
+            return []
+        }
+    }
+
+    /// POST /leave/requests — apply for leave. Dates are "YYYY-MM-DD". Returns
+    /// (success, message) so the form can show the backend's error verbatim.
+    func applyLeave(
+        leaveTypeId: String,
+        fromDate: String,
+        toDate: String,
+        halfDayStart: Bool? = nil,
+        halfDayEnd: Bool? = nil,
+        reason: String? = nil,
+        contactNumber: String? = nil,
+        attachmentUrl: String? = nil
+    ) async -> (Bool, String?) {
+        do {
+            var payload: [String: Any] = [
+                "leave_type_id": leaveTypeId,
+                "from_date": fromDate,
+                "to_date": toDate
+            ]
+            if let halfDayStart = halfDayStart { payload["half_day_start"] = halfDayStart }
+            if let halfDayEnd = halfDayEnd { payload["half_day_end"] = halfDayEnd }
+            if let reason = reason, !reason.isEmpty { payload["reason"] = reason }
+            if let contactNumber = contactNumber, !contactNumber.isEmpty { payload["contact_number"] = contactNumber }
+            if let attachmentUrl = attachmentUrl, !attachmentUrl.isEmpty { payload["attachment_url"] = attachmentUrl }
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<LeaveRequest>? = try await performRequest(
+                "/leave/requests",
+                method: "POST",
+                body: body
+            )
+            let ok = res?.success ?? false
+            return (ok, ok ? nil : (res?.error ?? res?.message))
+        } catch {
+            print("❌ APPLY_LEAVE_FAILED: \(error)")
+            return (false, error.localizedDescription)
+        }
+    }
+
+    /// PATCH /leave/requests/{id}/cancel — withdraw a pending request.
+    func cancelLeaveRequest(id: String) async -> Bool {
+        do {
+            let res: ApiResponse<LeaveRequest>? = try await performRequest(
+                "/leave/requests/\(id)/cancel",
+                method: "PATCH"
+            )
+            return res?.success ?? false
+        } catch {
+            print("❌ CANCEL_LEAVE_FAILED: \(error)")
+            return false
+        }
+    }
+
+    /// GET /leave/requests/pending — leave requests awaiting the manager's
+    /// decision. Returns [] (and logs) if the backend 403s a non-manager.
+    func fetchPendingLeaveRequests() async -> [LeaveRequest] {
+        do {
+            let res: ApiResponse<[LeaveRequest]>? = try await performRequest("/leave/requests/pending")
+            return res?.data ?? []
+        } catch {
+            print("❌ FETCH_PENDING_LEAVE_FAILED: \(error)")
+            return []
+        }
+    }
+
+    /// PATCH /leave/requests/{id}/decision — approve or reject a request.
+    func decideLeaveRequest(id: String, decision: String, note: String? = nil) async -> Bool {
+        do {
+            var payload: [String: Any] = ["decision": decision]
+            if let note = note, !note.isEmpty { payload["note"] = note }
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<LeaveRequest>? = try await performRequest(
+                "/leave/requests/\(id)/decision",
+                method: "PATCH",
+                body: body
+            )
+            return res?.success ?? false
+        } catch {
+            print("❌ DECIDE_LEAVE_FAILED: \(error)")
+            return false
+        }
+    }
+
+    /// POST /leave/regularizations — raise an attendance regularization.
+    /// `attDate` is "YYYY-MM-DD"; requested times are ISO-8601. Returns
+    /// (success, message).
+    func createRegularization(
+        attDate: String,
+        type: String,
+        requestedCheckinAt: String? = nil,
+        requestedCheckoutAt: String? = nil,
+        reason: String? = nil
+    ) async -> (Bool, String?) {
+        do {
+            var payload: [String: Any] = [
+                "att_date": attDate,
+                "type": type
+            ]
+            if let requestedCheckinAt = requestedCheckinAt { payload["requested_checkin_at"] = requestedCheckinAt }
+            if let requestedCheckoutAt = requestedCheckoutAt { payload["requested_checkout_at"] = requestedCheckoutAt }
+            if let reason = reason, !reason.isEmpty { payload["reason"] = reason }
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<Regularization>? = try await performRequest(
+                "/leave/regularizations",
+                method: "POST",
+                body: body
+            )
+            let ok = res?.success ?? false
+            return (ok, ok ? nil : (res?.error ?? res?.message))
+        } catch {
+            print("❌ CREATE_REGULARIZATION_FAILED: \(error)")
+            return (false, error.localizedDescription)
+        }
+    }
+
+    /// GET /leave/regularizations — the rep's own regularization requests.
+    func fetchMyRegularizations() async -> [Regularization] {
+        do {
+            let res: ApiResponse<[Regularization]>? = try await performRequest("/leave/regularizations")
+            return res?.data ?? []
+        } catch {
+            print("❌ FETCH_MY_REGULARIZATIONS_FAILED: \(error)")
+            return []
+        }
+    }
+
+    /// GET /leave/regularizations/pending — regularizations awaiting the
+    /// manager's decision.
+    func fetchPendingRegularizations() async -> [Regularization] {
+        do {
+            let res: ApiResponse<[Regularization]>? = try await performRequest("/leave/regularizations/pending")
+            return res?.data ?? []
+        } catch {
+            print("❌ FETCH_PENDING_REGULARIZATIONS_FAILED: \(error)")
+            return []
+        }
+    }
+
+    /// PATCH /leave/regularizations/{id}/decision — approve or reject.
+    func decideRegularization(id: String, decision: String, note: String? = nil) async -> Bool {
+        do {
+            var payload: [String: Any] = ["decision": decision]
+            if let note = note, !note.isEmpty { payload["note"] = note }
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<Regularization>? = try await performRequest(
+                "/leave/regularizations/\(id)/decision",
+                method: "PATCH",
+                body: body
+            )
+            return res?.success ?? false
+        } catch {
+            print("❌ DECIDE_REGULARIZATION_FAILED: \(error)")
+            return false
         }
     }
 
