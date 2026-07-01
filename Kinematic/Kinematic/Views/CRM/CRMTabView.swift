@@ -190,6 +190,14 @@ struct CRMMoreMenu: View {
                     NearbyLeadsView()
                 } label: { MoreRow(icon: "location.north.line.fill", title: "Nearest Leads", tint: Brand.red) }
             }
+            // Workplace — leave balances / requests + attendance regularization.
+            // CRM-only deployments (Tata Tiscon-style) never show the side menu,
+            // so this is their only entry into the Leave module.
+            Section("Workplace") {
+                NavigationLink {
+                    LeaveHomeView()
+                } label: { MoreRow(icon: "calendar.badge.clock", title: "Leave", tint: Brand.red) }
+            }
             // Insights section is split for Consumer Champion reps —
             // they still get a slimmed-down Reports view (3 KPI tiles)
             // but Dashboard + Lead Analytics are manager-tier surfaces
