@@ -1636,10 +1636,27 @@ class Session: ObservableObject {
         }
     }
 
+    /// Multi-project routing key resolved from the user's email at login
+    /// (backend GET /auth/project-for-email), persisted so every request can
+    /// echo it back as `X-Kinematic-Project`. Only a non-"default" project is
+    /// stored / sent, so Tata (the default project) traffic is byte-for-byte
+    /// unchanged — no header at all, exactly as before.
+    static var project: String? {
+        get { UserDefaults.standard.string(forKey: "kinematic_project") }
+        set {
+            if let v = newValue, !v.isEmpty, v != "default" {
+                UserDefaults.standard.set(v, forKey: "kinematic_project")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "kinematic_project")
+            }
+        }
+    }
+
     static func logout() {
         sharedToken = ""
         refreshToken = ""
         sessionId = nil
+        project = nil
         currentUser = nil
         isDemoMode = false
     }
@@ -2202,6 +2219,11 @@ class KinematicRepository {
             req.httpMethod = "POST"
             req.timeoutInterval = 15
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            // Refresh tokens are minted per-project; target the same project
+            // this session logged into so the token verifies.
+            if let proj = Session.project, !proj.isEmpty {
+                req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project")
+            }
             req.httpBody = try? JSONEncoder().encode(["refresh_token": saved])
             do {
                 let (data, response) = try await URLSession.shared.data(for: req)
@@ -2276,6 +2298,13 @@ class KinematicRepository {
         req.setValue(UIDevice.current.systemVersion, forHTTPHeaderField: "X-OS-Version")
         if let sid = Session.sessionId, !sid.isEmpty {
             req.setValue(sid, forHTTPHeaderField: "X-Session-Id")
+        }
+        // Multi-project routing — echo the project resolved from the user's
+        // email at login so the backend authenticates + queries the right
+        // Supabase project. Absent for Tata (default), so default traffic is
+        // byte-for-byte unchanged.
+        if let proj = Session.project, !proj.isEmpty {
+            req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project")
         }
 
         // --- PROD SYNC: Inject X-Org-Id if available ---
@@ -2576,11 +2605,42 @@ class KinematicRepository {
         }
     }
 
+    /// Resolve which Supabase project an account belongs to, from its email,
+    /// via the backend's pre-login config lookup (`GET /auth/project-for-email`).
+    /// Returns "default" for mobile-number logins, network errors, or unmatched
+    /// emails — so Tata (default) behaviour is never altered and a lookup blip
+    /// can never block login.
+    func resolveProject(for identifier: String) async -> String {
+        guard identifier.contains("@"),
+              let enc = identifier.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(baseURL)/auth/project-for-email?email=\(enc)")
+        else { return "default" }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 10
+        req.setValue("ios", forHTTPHeaderField: "X-Kinematic-Platform")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return "default" }
+            struct Resp: Codable { let data: Inner?; struct Inner: Codable { let project: String? } }
+            let proj = (try? JSONDecoder().decode(Resp.self, from: data))?.data?.project ?? "default"
+            return proj.isEmpty ? "default" : proj
+        } catch {
+            return "default"
+        }
+    }
+
     func login(email: String, phone: String?, pass: String) async -> (Bool, String?) {
         guard let url = URL(string: "\(baseURL)/auth/login") else { return (false, "Invalid URL") }
         let identifier = (phone != nil && !phone!.isEmpty) ? phone! : email
         let payload: [String: String] = ["email": identifier, "password": pass]
-        
+
+        // Multi-project routing: resolve which Supabase project this account
+        // lives in (from its email) BEFORE authenticating, and persist it so
+        // the login request — and every request after it — targets the right
+        // project. Mobile-number logins / unmatched emails resolve to "default"
+        // (Tata) → no header → unchanged behaviour.
+        Session.project = await resolveProject(for: identifier)
+
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -2592,6 +2652,9 @@ class KinematicRepository {
         req.setValue(UIDevice.current.modelName, forHTTPHeaderField: "X-Device-Model")
         req.setValue("Apple", forHTTPHeaderField: "X-Device-Brand")
         req.setValue(UIDevice.current.systemVersion, forHTTPHeaderField: "X-OS-Version")
+        if let proj = Session.project, !proj.isEmpty {
+            req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project")
+        }
         req.httpBody = try? JSONEncoder().encode(payload)
         
         print("🚀 API_LOGIN_START: \(url.absoluteString) for \(identifier)")
@@ -2642,7 +2705,8 @@ class KinematicRepository {
         request.httpMethod = "POST"
         request.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
         if let orgId = Session.currentUser?.orgId { request.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
-        
+        if let proj = Session.project, !proj.isEmpty { request.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
+
         let boundary = "Boundary-\(UUID().uuidString)"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         
