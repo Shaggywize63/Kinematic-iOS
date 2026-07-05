@@ -185,7 +185,7 @@ struct RecordCallView: View {
         VStack(spacing: 20) {
             header(icon: "sparkles",
                    title: "Analyzing conversation",
-                   subtitle: "This usually takes under a minute — you can keep this open.")
+                   subtitle: "This usually takes under a minute. Wait here, or continue in the background — you'll get a notification when it's ready.")
             VStack(spacing: 14) {
                 ProgressView().tint(Brand.red).scaleEffect(1.3)
                 Text(status)
@@ -194,6 +194,30 @@ struct RecordCallView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 30)
+
+            // Dismiss the sheet without cancelling the pipeline — the Task
+            // in `runPipeline` keeps polling and the backend will push-notify
+            // on completion. Fire `onFinished` now so the parent's list
+            // refreshes and shows the in-flight row immediately.
+            Button {
+                onFinished?()
+                dismiss()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.down.circle")
+                    Text("Continue in background")
+                }
+                .font(.system(size: 16, weight: .bold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .foregroundColor(Brand.red)
+                .cornerRadius(14)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Brand.red.opacity(0.35), lineWidth: 1)
+                )
+            }
         }
     }
 
@@ -334,9 +358,9 @@ struct RecordCallView: View {
             return
         }
 
-        // Poll every 5s until complete/failed (cap ~24 tries ≈ 2 min).
-        for _ in 0..<24 {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+        // Poll every 3s until complete/failed (cap ~40 tries ≈ 2 min).
+        for _ in 0..<40 {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard let detail = await repo.getConversation(id: created.id) else { continue }
 
             // Nudge the status line to "Analyzing…" once a transcript lands.

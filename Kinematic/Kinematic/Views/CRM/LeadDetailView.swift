@@ -1498,21 +1498,28 @@ struct LeadDetailView: View {
         .disabled(!complete)
     }
 
-    private func conversationStatusChip(_ status: String) -> some View {
-        let (label, tint): (String, Color) = {
-            switch status {
-            case "complete":   return ("Complete", Brand.success)
-            case "failed":     return ("Failed", Brand.red)
-            case "processing": return ("Processing", Brand.caution)
-            default:           return (status.isEmpty ? "Pending" : status.capitalized, Brand.info)
-            }
-        }()
-        return Text(label)
-            .font(.caption2).fontWeight(.semibold)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(tint.opacity(0.15))
-            .foregroundColor(tint)
-            .cornerRadius(6)
+    @ViewBuilder private func conversationStatusChip(_ status: String) -> some View {
+        switch status {
+        case "complete":
+            Text("Complete")
+                .font(.caption2).fontWeight(.semibold)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Brand.success.opacity(0.15))
+                .foregroundColor(Brand.success)
+                .cornerRadius(6)
+        case "failed":
+            Text("Failed")
+                .font(.caption2).fontWeight(.semibold)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Brand.red.opacity(0.15))
+                .foregroundColor(Brand.red)
+                .cornerRadius(6)
+        default:
+            // Any non-terminal status (uploaded / transcribing / analyzing /
+            // processing / empty). Show a subtle pulsing chip so the rep
+            // sees the row is still live after they backgrounded the sheet.
+            ProcessingChip()
+        }
     }
 
     private func durationLabel(_ secs: Int) -> String {
@@ -1607,5 +1614,29 @@ private struct FlexibleHStack: Layout {
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+}
+
+// MARK: - Processing chip (pulsing "in-flight" indicator for conversations)
+
+/// Small pulsing "Processing…" tag shown on conversation rows whose backend
+/// status is not yet complete/failed. Kept intentionally minimal — a single
+/// opacity ease so it reads as live without pulling attention.
+private struct ProcessingChip: View {
+    @State private var pulse = false
+
+    var body: some View {
+        Text("Processing…")
+            .font(.caption2).fontWeight(.semibold)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Brand.info.opacity(0.15))
+            .foregroundColor(Brand.info)
+            .cornerRadius(6)
+            .opacity(pulse ? 0.45 : 1.0)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
     }
 }
