@@ -557,6 +557,271 @@ struct Regularization: Codable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Conversation Intelligence (Record call)
+//
+// Consent-gated call recording + AI analysis. A rep records a customer
+// conversation from the lead-detail screen; the audio is PUT to Supabase
+// storage, transcribed + analysed server-side, then the insights surface
+// back on the lead. Gated behind the `crm_conversation_intel` module (see
+// ClientFeatures.hasConversationIntel) — Tata-only today, replicable.
+//
+// Endpoints live under /crm (bearer auth) and use the shared ApiResponse<T>
+// envelope. The `insights` payload is AI-generated and NOT type-stable
+// (a budget may arrive as a number or a string), so the nested structs decode
+// leniently and every field is optional — one oddly-typed field must never
+// nuke the whole record.
+
+// Lenient decoding of the AI `insights` payload reuses the shared
+// `decodeLossyString` / `decodeLossyInt` / `decodeLossyStringArray` helpers on
+// KeyedDecodingContainer (defined below), so a number-typed budget or a
+// string-typed score never fails the whole record.
+
+/// POST /crm/leads/{id}/conversations — reserves a row and a Supabase signed
+/// upload URL for the audio. The client then PUTs the .m4a to `uploadUrl`.
+struct CreateConversationResponse: Codable {
+    let id: String
+    let uploadUrl: String
+    let token: String?
+    let bucket: String?
+    let path: String?
+    let expiresIn: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id, token, bucket, path
+        case uploadUrl = "upload_url"
+        case expiresIn = "expires_in"
+    }
+}
+
+/// POST /crm/conversations/{id}/process — kicks off transcription + analysis.
+struct ConversationProcessResponse: Codable {
+    let ok: Bool?
+    let status: String?
+}
+
+/// Lead-detail Conversations list row. GET /crm/leads/{id}/conversations.
+/// `intent` / `sentiment` here are flat strings (the full record nests them
+/// under `insights`).
+struct ConversationSummary: Codable, Identifiable, Hashable {
+    let id: String
+    let status: String?
+    let durationSeconds: Int?
+    let language: String?
+    let createdAt: String?
+    let intent: String?
+    let sentiment: String?
+    let summary: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, language, intent, sentiment, summary
+        case durationSeconds = "duration_seconds"
+        case createdAt = "created_at"
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        status = try? c.decodeIfPresent(String.self, forKey: .status)
+        durationSeconds = c.decodeLossyInt(forKey: .durationSeconds)
+        language = try? c.decodeIfPresent(String.self, forKey: .language)
+        createdAt = try? c.decodeIfPresent(String.self, forKey: .createdAt)
+        intent = c.decodeLossyString(forKey: .intent)
+        sentiment = c.decodeLossyString(forKey: .sentiment)
+        summary = try? c.decodeIfPresent(String.self, forKey: .summary)
+    }
+}
+
+/// insights.intent — buying-stage read with a confidence score + signals.
+struct ConversationIntent: Codable, Hashable {
+    let stage: String?
+    let score: Int?
+    let signals: [String]?
+
+    enum CodingKeys: String, CodingKey { case stage, score, signals }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        stage = c.decodeLossyString(forKey: .stage)
+        score = c.decodeLossyInt(forKey: .score)
+        signals = c.decodeLossyStringArray(forKey: .signals)
+    }
+}
+
+/// insights.sentiment — overall tone + how it moved across the call.
+struct ConversationSentiment: Codable, Hashable {
+    let overall: String?
+    let trajectory: String?
+
+    enum CodingKeys: String, CodingKey { case overall, trajectory }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        overall = c.decodeLossyString(forKey: .overall)
+        trajectory = c.decodeLossyString(forKey: .trajectory)
+    }
+}
+
+/// insights.objections[] — a customer objection and whether the rep handled it.
+struct ConversationObjection: Codable, Hashable, Identifiable {
+    let type: String?
+    let handled: Bool?
+    let note: String?
+    var id: String { (type ?? "") + "|" + (note ?? "") }
+
+    enum CodingKeys: String, CodingKey { case type, handled, note }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = c.decodeLossyString(forKey: .type)
+        handled = try? c.decodeIfPresent(Bool.self, forKey: .handled)
+        note = c.decodeLossyString(forKey: .note)
+    }
+}
+
+/// insights.competitors[] — a competitor mentioned + the context it came up in.
+struct ConversationCompetitor: Codable, Hashable, Identifiable {
+    let name: String?
+    let context: String?
+    var id: String { (name ?? "") + "|" + (context ?? "") }
+
+    enum CodingKeys: String, CodingKey { case name, context }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = c.decodeLossyString(forKey: .name)
+        context = c.decodeLossyString(forKey: .context)
+    }
+}
+
+/// insights.extracted — structured deal facts pulled from the conversation.
+struct ConversationExtracted: Codable, Hashable {
+    let grade: String?
+    let quantityTonnes: String?
+    let budget: String?
+    let timeline: String?
+    let projectStage: String?
+    let decisionMaker: String?
+
+    enum CodingKeys: String, CodingKey {
+        case grade, budget, timeline
+        case quantityTonnes = "quantity_tonnes"
+        case projectStage = "project_stage"
+        case decisionMaker = "decision_maker"
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        grade = c.decodeLossyString(forKey: .grade)
+        quantityTonnes = c.decodeLossyString(forKey: .quantityTonnes)
+        budget = c.decodeLossyString(forKey: .budget)
+        timeline = c.decodeLossyString(forKey: .timeline)
+        projectStage = c.decodeLossyString(forKey: .projectStage)
+        decisionMaker = c.decodeLossyString(forKey: .decisionMaker)
+    }
+    var isEmpty: Bool {
+        [grade, quantityTonnes, budget, timeline, projectStage, decisionMaker]
+            .allSatisfy { ($0 ?? "").isEmpty }
+    }
+}
+
+/// insights.coaching — talk/listen balance + what the rep missed / should do.
+struct ConversationCoaching: Codable, Hashable {
+    let talkListenRatio: String?
+    let missedQuestions: [String]?
+    let tips: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case tips
+        case talkListenRatio = "talk_listen_ratio"
+        case missedQuestions = "missed_questions"
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        talkListenRatio = c.decodeLossyString(forKey: .talkListenRatio)
+        missedQuestions = c.decodeLossyStringArray(forKey: .missedQuestions)
+        tips = c.decodeLossyStringArray(forKey: .tips)
+    }
+    var isEmpty: Bool {
+        (talkListenRatio ?? "").isEmpty && (missedQuestions ?? []).isEmpty && (tips ?? []).isEmpty
+    }
+}
+
+/// The full `insights` object attached once status == "complete". Every field
+/// is optional; a custom decoder isolates each so a malformed nested object
+/// degrades to nil rather than failing the whole payload.
+struct ConversationInsights: Codable, Hashable {
+    let summary: String?
+    let intent: ConversationIntent?
+    let sentiment: ConversationSentiment?
+    let positives: [String]?
+    let improvements: [String]?
+    let objections: [ConversationObjection]?
+    let competitors: [ConversationCompetitor]?
+    let commitments: [String]?
+    let extracted: ConversationExtracted?
+    let coaching: ConversationCoaching?
+    let nextAction: String?
+    let draftFollowup: String?
+    let riskFlags: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case summary, intent, sentiment, positives, improvements
+        case objections, competitors, commitments, extracted, coaching
+        case nextAction = "next_action"
+        case draftFollowup = "draft_followup"
+        case riskFlags = "risk_flags"
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        summary = c.decodeLossyString(forKey: .summary)
+        intent = try? c.decodeIfPresent(ConversationIntent.self, forKey: .intent)
+        sentiment = try? c.decodeIfPresent(ConversationSentiment.self, forKey: .sentiment)
+        positives = c.decodeLossyStringArray(forKey: .positives)
+        improvements = c.decodeLossyStringArray(forKey: .improvements)
+        objections = try? c.decodeIfPresent([ConversationObjection].self, forKey: .objections)
+        competitors = try? c.decodeIfPresent([ConversationCompetitor].self, forKey: .competitors)
+        commitments = c.decodeLossyStringArray(forKey: .commitments)
+        extracted = try? c.decodeIfPresent(ConversationExtracted.self, forKey: .extracted)
+        coaching = try? c.decodeIfPresent(ConversationCoaching.self, forKey: .coaching)
+        nextAction = c.decodeLossyString(forKey: .nextAction)
+        draftFollowup = c.decodeLossyString(forKey: .draftFollowup)
+        riskFlags = c.decodeLossyStringArray(forKey: .riskFlags)
+    }
+}
+
+/// Full conversation record. GET /crm/conversations/{id}. Poll this until
+/// `status` is "complete" or "failed".
+struct ConversationDetail: Codable, Identifiable, Hashable {
+    let id: String
+    let leadId: String?
+    let status: String?
+    let transcript: String?
+    let insights: ConversationInsights?
+    let audioUrl: String?
+    let durationSeconds: Int?
+    let language: String?
+    let consentCaptured: Bool?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, transcript, insights, language
+        case leadId = "lead_id"
+        case audioUrl = "audio_url"
+        case durationSeconds = "duration_seconds"
+        case consentCaptured = "consent_captured"
+        case createdAt = "created_at"
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        leadId = try? c.decodeIfPresent(String.self, forKey: .leadId)
+        status = try? c.decodeIfPresent(String.self, forKey: .status)
+        transcript = try? c.decodeIfPresent(String.self, forKey: .transcript)
+        insights = try? c.decodeIfPresent(ConversationInsights.self, forKey: .insights)
+        audioUrl = try? c.decodeIfPresent(String.self, forKey: .audioUrl)
+        durationSeconds = c.decodeLossyInt(forKey: .durationSeconds)
+        language = try? c.decodeIfPresent(String.self, forKey: .language)
+        consentCaptured = try? c.decodeIfPresent(Bool.self, forKey: .consentCaptured)
+        createdAt = try? c.decodeIfPresent(String.self, forKey: .createdAt)
+    }
+    var isComplete: Bool { (status ?? "").lowercased() == "complete" }
+    var isFailed: Bool { (status ?? "").lowercased() == "failed" }
+}
+
 struct AttendanceRecord: Codable {
     let id: String?
     let date: String?
@@ -772,6 +1037,12 @@ private extension KeyedDecodingContainer {
             if ["false", "0", "no", "n"].contains(normalized) { return false }
         }
         return nil
+    }
+
+    /// Tolerant `[String]` read for the AI `insights` payload — returns nil
+    /// (instead of throwing) when the key is absent or not a string array.
+    func decodeLossyStringArray(forKey key: Key) -> [String]? {
+        try? decodeIfPresent([String].self, forKey: key)
     }
 }
 
@@ -1592,6 +1863,113 @@ class KinematicRepository {
         } catch {
             print("❌ SCAN_CARD_FAILED: \(error)")
             return nil
+        }
+    }
+
+    // MARK: - Conversation Intelligence (Record call)
+    //
+    // Consent-gated call recording + AI analysis. The RecordCallView drives:
+    //   1. createConversation     -> reserves a row + Supabase signed upload URL
+    //   2. uploadAudio            -> raw PUT of the .m4a bytes to that signed URL
+    //                                (NO app Authorization header — the URL is
+    //                                pre-signed and carries its own token)
+    //   3. processConversation    -> start transcription + insight generation
+    //   4. getConversation        -> poll until status == complete | failed
+    //   5. listLeadConversations  -> the lead-detail Conversations list
+    // Gated behind the `crm_conversation_intel` module (ClientFeatures).
+
+    /// POST /crm/leads/{id}/conversations — records consent and reserves the
+    /// signed upload URL. Consent is mandatory, so it is always sent `true`
+    /// (the UI blocks recording until the rep confirms it). Returns nil on any
+    /// failure so the flow surfaces a retry.
+    func createConversation(leadId: String, consentMethod: String = "in_app", durationSeconds: Int) async -> CreateConversationResponse? {
+        do {
+            let payload: [String: Any] = [
+                "consent": true,
+                "consent_method": consentMethod,
+                "duration_seconds": durationSeconds,
+                "ext": "m4a",
+                "language": "unknown"
+            ]
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<CreateConversationResponse>? = try await performRequest(
+                "/crm/leads/\(leadId)/conversations",
+                method: "POST",
+                body: body
+            )
+            guard res?.success == true else { return nil }
+            return res?.data
+        } catch {
+            print("❌ CREATE_CONVERSATION_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// Raw PUT of the recorded audio to the Supabase signed upload URL. This
+    /// deliberately does NOT go through `performRequest`: the URL is pre-signed
+    /// and attaching the app's Bearer token would break the signature. Returns
+    /// true on any 2xx.
+    func uploadAudio(to uploadUrl: String, fileURL: URL) async -> Bool {
+        guard let url = URL(string: uploadUrl) else {
+            print("❌ UPLOAD_AUDIO_FAILED: invalid upload URL")
+            return false
+        }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            var req = URLRequest(url: url)
+            req.httpMethod = "PUT"
+            req.timeoutInterval = 60
+            req.setValue("audio/m4a", forHTTPHeaderField: "Content-Type")
+            let (_, response) = try await URLSession.shared.upload(for: req, from: data)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let ok = (200..<300).contains(code)
+            print(ok ? "✅ [Conversation] audio uploaded (HTTP \(code))"
+                     : "⚠️ [Conversation] upload rejected (HTTP \(code))")
+            return ok
+        } catch {
+            print("❌ UPLOAD_AUDIO_FAILED: \(error)")
+            return false
+        }
+    }
+
+    /// POST /crm/conversations/{id}/process — start transcription + analysis.
+    func processConversation(id: String) async -> Bool {
+        do {
+            let res: ApiResponse<ConversationProcessResponse>? = try await performRequest(
+                "/crm/conversations/\(id)/process",
+                method: "POST"
+            )
+            return res?.success ?? false
+        } catch {
+            print("❌ PROCESS_CONVERSATION_FAILED: \(error)")
+            return false
+        }
+    }
+
+    /// GET /crm/conversations/{id} — the full record. Poll this every ~5s until
+    /// `isComplete` / `isFailed`.
+    func getConversation(id: String) async -> ConversationDetail? {
+        do {
+            let res: ApiResponse<ConversationDetail>? = try await performRequest(
+                "/crm/conversations/\(id)"
+            )
+            return res?.data
+        } catch {
+            print("❌ GET_CONVERSATION_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// GET /crm/leads/{id}/conversations — summary rows for the lead-detail list.
+    func listLeadConversations(leadId: String) async -> [ConversationSummary] {
+        do {
+            let res: ApiResponse<[ConversationSummary]>? = try await performRequest(
+                "/crm/leads/\(leadId)/conversations"
+            )
+            return res?.data ?? []
+        } catch {
+            print("❌ LIST_LEAD_CONVERSATIONS_FAILED: \(error)")
+            return []
         }
     }
 

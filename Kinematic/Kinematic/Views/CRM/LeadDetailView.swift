@@ -66,6 +66,19 @@ struct LeadDetailView: View {
     /// Id of the update pending delete confirmation (nil = no dialog).
     @State private var pendingDeleteUpdateId: String? = nil
 
+    // MARK: Conversation Intelligence (Record call)
+    // Whole feature is gated on `ClientFeatures.hasConversationIntel`
+    // (the `crm_conversation_intel` module) — Tata-only today, replicable.
+    /// Presents the consent → record → analyse sheet.
+    @State private var recording = false
+    /// Cached summary rows for the collapsible Conversations section.
+    @State private var conversations: [ConversationSummary] = []
+    @State private var conversationsExpanded = true
+    /// True while a completed card is being expanded into its full record.
+    @State private var openingConversation = false
+    /// Non-nil drives the insight drill-in sheet (`.sheet(item:)`).
+    @State private var conversationDetail: ConversationDetail? = nil
+
     init(leadId: String) {
         _vm = StateObject(wrappedValue: LeadDetailViewModel(leadId: leadId))
     }
@@ -138,6 +151,7 @@ struct LeadDetailView: View {
                     recentUpdatesSection
                     recordCard(lead: lead)
                     activitiesSection
+                    conversationsSection
                 } else if vm.isLoading {
                     ProgressView().tint(Brand.red).padding(.top, 40).frame(maxWidth: .infinity)
                 } else {
@@ -200,6 +214,17 @@ struct LeadDetailView: View {
         }
         .sheet(isPresented: $showAssignSheet) {
             assignSheet
+        }
+        // Record-call flow (consent → record → analyse). Refreshes the
+        // Conversations list once a recording finishes processing.
+        .sheet(isPresented: $recording) {
+            RecordCallView(leadId: vm.leadId) {
+                Task { await loadConversations() }
+            }
+        }
+        // Drill-in from a completed conversation card → full insights.
+        .sheet(item: $conversationDetail) { detail in
+            ConversationDetailSheet(detail: detail)
         }
         .sheet(
             isPresented: $loggingActivity,
@@ -267,8 +292,20 @@ struct LeadDetailView: View {
             if shouldDismiss { dismiss() }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        // Dim + spinner while a completed conversation card is being opened.
+        .overlay {
+            if openingConversation {
+                ZStack {
+                    Color.black.opacity(0.15).ignoresSafeArea()
+                    ProgressView().tint(Brand.red).scaleEffect(1.2)
+                        .padding(20)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground)))
+                }
+            }
+        }
         .task { await vm.load() }
         .task { await fieldOverrides.load() }
+        .task { await loadConversations() }
         // Tell KINI which record is on screen so the chat answers in context.
         .onAppear {
             KiniContextHolder.shared.set(
@@ -553,6 +590,13 @@ struct LeadDetailView: View {
             if !ClientFeatures.isConsumerChampion {
                 secondaryAction("AI Score", icon: "sparkles", busy: vm.aiBusy) {
                     Task { await vm.runAIScore() }
+                }
+            }
+            // Record call — only when the Conversation Intelligence module is
+            // enabled for this org (opt-in; hidden for everyone else).
+            if ClientFeatures.hasConversationIntel {
+                secondaryAction("Record call", icon: "mic.fill", busy: false) {
+                    recording = true
                 }
             }
             // Reps with data_scope='own' (e.g. Consumer Champion) can only
@@ -1362,6 +1406,136 @@ struct LeadDetailView: View {
         case "converted": return .white
         case "unqualified", "lost": return .secondary
         default: return Brand.red
+        }
+    }
+
+    // MARK: - Conversations (Record call — module-gated)
+
+    /// Collapsible list of this lead's recorded conversations. Rendered only
+    /// when the Conversation Intelligence module is on AND at least one
+    /// conversation exists (keeps the screen uncluttered — the Record-call
+    /// button in the action bar is the entry point until the first recording).
+    @ViewBuilder private var conversationsSection: some View {
+        if ClientFeatures.hasConversationIntel && !conversations.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { conversationsExpanded.toggle() }
+                } label: {
+                    HStack {
+                        Text("CONVERSATIONS (\(conversations.count))")
+                            .font(.system(size: 11, weight: .black))
+                            .tracking(0.8)
+                            .foregroundColor(Brand.red)
+                        Spacer()
+                        Image(systemName: conversationsExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Brand.red)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if conversationsExpanded {
+                    VStack(spacing: 10) {
+                        ForEach(conversations) { conv in
+                            conversationCard(conv)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
+        }
+    }
+
+    @ViewBuilder private func conversationCard(_ conv: ConversationSummary) -> some View {
+        let status = (conv.status ?? "").lowercased()
+        let complete = status == "complete"
+        Button {
+            openConversation(conv)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: "waveform").foregroundColor(Brand.red)
+                    Text(conv.createdAt.map(formatDate) ?? "Recording")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Spacer()
+                    conversationStatusChip(status)
+                }
+                HStack(spacing: 8) {
+                    if let d = conv.durationSeconds, d > 0 {
+                        Label(durationLabel(d), systemImage: "clock")
+                            .font(.caption2).foregroundColor(.secondary)
+                    }
+                    if let intent = conv.intent, !intent.isEmpty {
+                        Text(intent.capitalized).font(.caption2).foregroundColor(.secondary)
+                    }
+                    if let sentiment = conv.sentiment, !sentiment.isEmpty {
+                        Text("· \(sentiment.capitalized)").font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+                if let summary = conv.summary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if complete {
+                    HStack(spacing: 4) {
+                        Text("View insights").font(.caption2).fontWeight(.bold).foregroundColor(Brand.red)
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundColor(Brand.red)
+                    }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .tertiarySystemBackground)))
+        }
+        .buttonStyle(.plain)
+        .disabled(!complete)
+    }
+
+    private func conversationStatusChip(_ status: String) -> some View {
+        let (label, tint): (String, Color) = {
+            switch status {
+            case "complete":   return ("Complete", Brand.success)
+            case "failed":     return ("Failed", Brand.red)
+            case "processing": return ("Processing", Brand.caution)
+            default:           return (status.isEmpty ? "Pending" : status.capitalized, Brand.info)
+            }
+        }()
+        return Text(label)
+            .font(.caption2).fontWeight(.semibold)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(tint.opacity(0.15))
+            .foregroundColor(tint)
+            .cornerRadius(6)
+    }
+
+    private func durationLabel(_ secs: Int) -> String {
+        String(format: "%d:%02d", secs / 60, secs % 60)
+    }
+
+    /// Load the lead's conversation summaries (no-op when the module is off).
+    private func loadConversations() async {
+        guard ClientFeatures.hasConversationIntel else { return }
+        let list = await KinematicRepository.shared.listLeadConversations(leadId: vm.leadId)
+        await MainActor.run { self.conversations = list }
+    }
+
+    /// Fetch the full record for a completed card and present the insight sheet.
+    private func openConversation(_ conv: ConversationSummary) {
+        guard (conv.status ?? "").lowercased() == "complete" else { return }
+        openingConversation = true
+        Task {
+            let detail = await KinematicRepository.shared.getConversation(id: conv.id)
+            await MainActor.run {
+                openingConversation = false
+                conversationDetail = detail
+            }
         }
     }
 }

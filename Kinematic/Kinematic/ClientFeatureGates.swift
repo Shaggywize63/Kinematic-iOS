@@ -37,4 +37,16 @@ enum ClientFeatures {
     static var canReassignLeads: Bool {
         (Session.currentUser?.orgRoleDataScope ?? "all") != "own"
     }
+
+    /// True when the signed-in user's org has the Conversation Intelligence
+    /// module ("Record call") switched on. This is an opt-in premium module
+    /// (Tata Tiscon today, replicable to any tenant), so the gate is STRICT:
+    /// we check `enabled_modules` directly instead of routing through
+    /// `User.hasModule`, whose legacy-session fallback treats an empty module
+    /// list as full access — that would leak this unreleased surface to every
+    /// pre-entitlement session. No `crm_conversation_intel` module ⇒ the
+    /// Record-call button and the Conversations section never render.
+    static var hasConversationIntel: Bool {
+        Session.currentUser?.enabledModules.contains("crm_conversation_intel") == true
+    }
 }
