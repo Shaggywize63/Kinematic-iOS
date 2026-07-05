@@ -33,6 +33,7 @@ struct DistributionAPI {
         req.httpMethod = method
         req.timeoutInterval = 20
         req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+        if let proj = Session.project, !proj.isEmpty { req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
         if let orgId = Session.currentUser?.orgId {
             req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
         }

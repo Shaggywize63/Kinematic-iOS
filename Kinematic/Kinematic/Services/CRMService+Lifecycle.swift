@@ -44,6 +44,7 @@ extension CRMService {
             : Session.sharedToken
         if !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let proj = Session.project, !proj.isEmpty { req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
         } else {
             throw CRMServiceError.missingAuth
         }

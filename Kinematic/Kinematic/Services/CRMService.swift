@@ -778,6 +778,11 @@ final class CRMService {
         if let cid = CRMClientScope.selectedClientId(), !cid.isEmpty {
             req.setValue(cid, forHTTPHeaderField: "X-Client-Id")
         }
+        // Multi-project routing — target the Supabase project resolved from the
+        // user's email at login. Absent for Tata (default) → unchanged.
+        if let proj = Session.project, !proj.isEmpty {
+            req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project")
+        }
         req.httpBody = body
         req.timeoutInterval = 30
         return req

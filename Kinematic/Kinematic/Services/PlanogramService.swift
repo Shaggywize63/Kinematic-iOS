@@ -144,6 +144,7 @@ final class PlanogramService {
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let proj = Session.project, !proj.isEmpty { req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
         if let orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
         req.httpBody = body
         // Capture upload can be large — give it a generous timeout.

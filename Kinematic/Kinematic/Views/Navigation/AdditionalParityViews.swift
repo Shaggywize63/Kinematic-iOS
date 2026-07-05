@@ -46,6 +46,7 @@ private enum ParityAPI {
         req.httpMethod = method
         req.timeoutInterval = 15
         req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+        if let proj = Session.project, !proj.isEmpty { req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
         if let orgId = Session.currentUser?.orgId {
             req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
         }
@@ -188,6 +189,7 @@ class NotificationsViewModel: ObservableObject {
         var req = URLRequest(url: url)
         req.timeoutInterval = 15
         req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+        if let proj = Session.project, !proj.isEmpty { req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
         if let orgId = Session.currentUser?.orgId {
             req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
         }

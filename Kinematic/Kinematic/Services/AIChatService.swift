@@ -76,6 +76,7 @@ final class AIChatService {
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let proj = Session.project, !proj.isEmpty { req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
         if let orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
         // Scope KINI tool calls to the active client so the assistant only
         // searches leads/deals belonging to the rep's tenant. Mirrors the
