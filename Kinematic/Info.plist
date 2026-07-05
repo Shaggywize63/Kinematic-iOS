@@ -44,7 +44,7 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We need gallery access if you choose to upload an existing photo.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Microphone access lets you ask KINI by voice on the AI chat.</string>
+	<string>Microphone access lets you ask KINI by voice and record customer conversations you have consent to capture, so we can transcribe them and share coaching insights.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Speech recognition transcribes what you say to KINI so the AI can respond to spoken questions.</string>
 	<key>NSSupportsLiveActivities</key>
