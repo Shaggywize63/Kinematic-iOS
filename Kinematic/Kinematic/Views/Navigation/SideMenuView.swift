@@ -81,11 +81,14 @@ struct SideMenuView: View {
                         appState.activeSecondaryRoute = ModalRoute(route: .profile)
                     }
 
-                    // Leave management + attendance regularization. Universal —
-                    // shown to every client; the API/role decides what's actionable.
-                    MenuButton(icon: "calendar.badge.clock", title: "Leave", isSelected: false, color: .teal) {
-                        withAnimation { isOpen = false }
-                        appState.activeSecondaryRoute = ModalRoute(route: .leave)
+                    // Leave management + attendance regularization. Shown to
+                    // every client except SRS TATA Steel (slimmed build); the
+                    // API/role decides what's actionable for the rest.
+                    if ClientFeatures.showsLeave {
+                        MenuButton(icon: "calendar.badge.clock", title: "Leave", isSelected: false, color: .teal) {
+                            withAnimation { isOpen = false }
+                            appState.activeSecondaryRoute = ModalRoute(route: .leave)
+                        }
                     }
 
                 if hasModule("broadcast") {

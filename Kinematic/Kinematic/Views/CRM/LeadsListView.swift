@@ -273,11 +273,15 @@ struct LeadsListView: View {
                     Image(systemName: "bubble.left.and.bubble.right")
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showScanCard = true } label: {
-                    Image(systemName: "doc.viewfinder")
+            // Business-card scan → prefilled lead. Hidden for SRS TATA Steel,
+            // whose slimmed CRM build doesn't include the scan flow.
+            if ClientFeatures.showsCardScan {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showScanCard = true } label: {
+                        Image(systemName: "doc.viewfinder")
+                    }
+                    .accessibilityLabel("Scan business card")
                 }
-                .accessibilityLabel("Scan business card")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showCreate = true } label: {
