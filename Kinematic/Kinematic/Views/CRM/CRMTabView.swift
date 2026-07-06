@@ -164,7 +164,7 @@ struct CRMMoreMenu: View {
             // workflow is lead/deal-centric — account management lives with
             // admins). Contacts is hidden for Consumer Champions only.
             Section("Records") {
-                if !ClientFeatures.isConsumerChampion && !ClientFeatures.isTataTiscon {
+                if !ClientFeatures.isConsumerChampion && ClientFeatures.showsAccounts {
                     NavigationLink {
                         AccountsListView()
                     } label: { MoreRow(icon: "building.2.fill", title: "Accounts", tint: Brand.red) }
@@ -192,11 +192,14 @@ struct CRMMoreMenu: View {
             }
             // Workplace — leave balances / requests + attendance regularization.
             // CRM-only deployments (Tata Tiscon-style) never show the side menu,
-            // so this is their only entry into the Leave module.
-            Section("Workplace") {
-                NavigationLink {
-                    LeaveHomeView()
-                } label: { MoreRow(icon: "calendar.badge.clock", title: "Leave", tint: Brand.red) }
+            // so this is their only entry into the Leave module. Hidden for SRS
+            // TATA Steel, whose slimmed build excludes Leave.
+            if ClientFeatures.showsLeave {
+                Section("Workplace") {
+                    NavigationLink {
+                        LeaveHomeView()
+                    } label: { MoreRow(icon: "calendar.badge.clock", title: "Leave", tint: Brand.red) }
+                }
             }
             // Insights section is split for Consumer Champion reps —
             // they still get a slimmed-down Reports view (3 KPI tiles)

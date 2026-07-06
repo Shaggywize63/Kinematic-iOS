@@ -49,4 +49,29 @@ enum ClientFeatures {
     static var hasConversationIntel: Bool {
         Session.currentUser?.enabledModules.contains("crm_conversation_intel") == true
     }
+
+    // MARK: - SRS TATA Steel slimmed build
+
+    /// True when the signed-in user belongs to SRS TATA Steel. This is the
+    /// same tenant the app has historically labelled "Tata Tiscon" (client id
+    /// a1f67468) — the client-management directory renamed it, but the data
+    /// project + client id are unchanged, so it keys off the same id as
+    /// `isTataTiscon`. Kept as its own named flag so the "hide these modules
+    /// for SRS TATA Steel" policy lives in one place and is trivial to
+    /// retarget if the client is ever moved to its own tenant.
+    static var isSrsTataSteel: Bool { isTataTiscon }
+
+    /// SRS TATA Steel runs a deliberately slimmed CRM: business-card scan,
+    /// Conversation Intelligence, Accounts, and Leave are hidden for them.
+    /// Every other tenant keeps the full surface. Render sites gate on these
+    /// intent-named switches rather than checking the client id inline.
+    static var showsCardScan: Bool { !isSrsTataSteel }
+    static var showsAccounts: Bool { !isSrsTataSteel }
+    static var showsLeave:    Bool { !isSrsTataSteel }
+
+    /// Conversation Intelligence surfaces require BOTH the module SKU to be on
+    /// AND the tenant to not be SRS TATA Steel (who have it switched off). The
+    /// extra client gate also closes Android-parity edge cases where a legacy
+    /// session's empty module list would otherwise read as full access.
+    static var showsConversationIntel: Bool { hasConversationIntel && !isSrsTataSteel }
 }

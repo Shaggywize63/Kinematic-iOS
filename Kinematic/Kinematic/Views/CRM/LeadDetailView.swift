@@ -593,8 +593,9 @@ struct LeadDetailView: View {
                 }
             }
             // Record call — only when the Conversation Intelligence module is
-            // enabled for this org (opt-in; hidden for everyone else).
-            if ClientFeatures.hasConversationIntel {
+            // enabled for this org (opt-in; hidden for everyone else) AND the
+            // tenant isn't SRS TATA Steel, whose slimmed build excludes it.
+            if ClientFeatures.showsConversationIntel {
                 secondaryAction("Record call", icon: "mic.fill", busy: false) {
                     recording = true
                 }
@@ -1416,7 +1417,7 @@ struct LeadDetailView: View {
     /// conversation exists (keeps the screen uncluttered — the Record-call
     /// button in the action bar is the entry point until the first recording).
     @ViewBuilder private var conversationsSection: some View {
-        if ClientFeatures.hasConversationIntel && !conversations.isEmpty {
+        if ClientFeatures.showsConversationIntel && !conversations.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { conversationsExpanded.toggle() }
@@ -1528,7 +1529,7 @@ struct LeadDetailView: View {
 
     /// Load the lead's conversation summaries (no-op when the module is off).
     private func loadConversations() async {
-        guard ClientFeatures.hasConversationIntel else { return }
+        guard ClientFeatures.showsConversationIntel else { return }
         let list = await KinematicRepository.shared.listLeadConversations(leadId: vm.leadId)
         await MainActor.run { self.conversations = list }
     }

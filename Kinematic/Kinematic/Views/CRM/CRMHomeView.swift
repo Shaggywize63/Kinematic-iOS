@@ -56,7 +56,11 @@ struct CRMHomeView: View {
                         columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
                         spacing: 12
                     ) {
-                        ForEach(tiles) { tile in
+                        // Drop the Accounts tile for SRS TATA Steel (slimmed
+                        // build). This grid is currently only reachable via the
+                        // unused CRMParityTab, but keep it gated so a future
+                        // revival can't leak Accounts to them.
+                        ForEach(tiles.filter { ClientFeatures.showsAccounts || $0.destination != .accounts }) { tile in
                             NavigationLink(value: tile.destination) {
                                 CRMTileCard(tile: tile)
                             }
