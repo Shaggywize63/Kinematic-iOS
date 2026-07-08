@@ -132,9 +132,14 @@ struct LeadProductsCard: View {
             let estimated: Double = {
                 if cached > 0 { return cached }
                 let price = p?.unitPrice ?? 0
-                let weight = p?.weightKg ?? 0
-                if price <= 0 || weight <= 0 || qty <= 0 { return 0 }
-                return (price / weight) * (qty * unitFactor)
+                if price <= 0 || qty <= 0 { return 0 }
+                // Weight-based pricing is Tata-only; everyone else is price × qty.
+                if ClientFeatures.isTataTiscon {
+                    let weight = p?.weightKg ?? 0
+                    if weight <= 0 { return 0 }
+                    return (price / weight) * (qty * unitFactor)
+                }
+                return price * qty
             }()
             return Row(
                 id: pid,
