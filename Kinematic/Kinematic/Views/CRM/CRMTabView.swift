@@ -191,9 +191,10 @@ struct CRMMoreMenu: View {
                 } label: { MoreRow(icon: "location.north.line.fill", title: "Nearest Leads", tint: Brand.red) }
             }
             // Workplace — leave balances / requests + attendance regularization.
-            // CRM-only deployments (Tata Tiscon-style) never show the side menu,
-            // so this is their only entry into the Leave module. Hidden for SRS
-            // TATA Steel, whose slimmed build excludes Leave.
+            // Hidden for SRS TATA Steel AND for every CRM-only tenant (BMW, new
+            // lean-CRM clients, the parent Kinematic tenant): the "People &
+            // Support" surface was dropped from the CRM-only build. Only full
+            // field-force tenants still see it here.
             if ClientFeatures.showsLeave {
                 Section("Workplace") {
                     NavigationLink {

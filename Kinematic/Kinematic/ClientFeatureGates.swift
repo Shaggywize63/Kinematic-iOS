@@ -67,7 +67,20 @@ enum ClientFeatures {
     /// intent-named switches rather than checking the client id inline.
     static var showsCardScan: Bool { !isSrsTataSteel }
     static var showsAccounts: Bool { !isSrsTataSteel }
-    static var showsLeave:    Bool { !isSrsTataSteel }
+
+    /// True when the signed-in client purchased ONLY the CRM package (no field
+    /// force, no distribution). Delegates to the single source of truth
+    /// (`User.isCrmOnly`), which already treats a legacy/empty-entitlement
+    /// session as NOT CRM-only so nothing over-hides during the brief
+    /// pre-/auth/me window. Mirrors the dashboard's `isCrmOnlyClient` and
+    /// Android's `Entitlements.isCrmOnly`.
+    static var isCrmOnly: Bool { Session.currentUser?.isCrmOnly ?? false }
+
+    /// Leave / the "Workplace" section is hidden for SRS TATA Steel AND for
+    /// every CRM-only tenant (BMW, new lean-CRM clients, the parent Kinematic
+    /// tenant) — "People & Support" was dropped from the CRM-only build. Full
+    /// field-force tenants keep it.
+    static var showsLeave:    Bool { !isSrsTataSteel && !isCrmOnly }
 
     /// Conversation Intelligence surfaces require BOTH the module SKU to be on
     /// AND the tenant to not be SRS TATA Steel (who have it switched off). The
