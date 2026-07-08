@@ -85,11 +85,19 @@ final class ProductLinesModel: ObservableObject {
         guard let id = line.productId, !id.isEmpty,
               let p = products.first(where: { $0.id == id }) else { return 0 }
         let price = p.unitPrice ?? 0
-        let weight = p.weightKg ?? 0
         let qty = Double(line.quantityText) ?? 0
-        guard price > 0, weight > 0, qty > 0 else { return 0 }
-        let factor = (line.measuringUnit?.lowercased() == "tonne") ? 1000.0 : 1.0
-        let raw = (price / weight) * (qty * factor)
+        guard price > 0, qty > 0 else { return 0 }
+        // Weight-based pricing (amount = price ÷ weight × tonne/kg factor) is
+        // bespoke to Tata Tiscon, whose TMT is sold by the tonne. Every other
+        // tenant prices simply as price × quantity.
+        if ClientFeatures.isTataTiscon {
+            let weight = p.weightKg ?? 0
+            guard weight > 0 else { return 0 }
+            let factor = (line.measuringUnit?.lowercased() == "tonne") ? 1000.0 : 1.0
+            let raw = (price / weight) * (qty * factor)
+            return (raw * 100).rounded() / 100
+        }
+        let raw = price * qty
         return (raw * 100).rounded() / 100
     }
 
@@ -153,7 +161,7 @@ struct ProductLinesSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Products of Interest")
                     .font(.headline)
-                Text("Pick a product and quantity; the estimated amount fills in automatically from price ÷ weight × quantity.")
+                Text("Pick a product and quantity; the estimated amount fills in automatically from \(ClientFeatures.isTataTiscon ? "price ÷ weight × quantity" : "price × quantity").")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 if model.basketTotal > 0 {
@@ -237,17 +245,21 @@ private struct LineRowView: View {
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
 
-                Picker("Unit", selection: Binding(
-                    get: { line.measuringUnit ?? "" },
-                    set: { newUnit in
-                        model.updateLine(at: index) { $0.measuringUnit = newUnit.isEmpty ? nil : newUnit }
+                // Tonne/Kg selector only for Tata Tiscon (weight-based pricing);
+                // other tenants price by piece so the unit is meaningless.
+                if ClientFeatures.isTataTiscon {
+                    Picker("Unit", selection: Binding(
+                        get: { line.measuringUnit ?? "" },
+                        set: { newUnit in
+                            model.updateLine(at: index) { $0.measuringUnit = newUnit.isEmpty ? nil : newUnit }
+                        }
+                    )) {
+                        Text("Unit").tag("")
+                        Text("Kg").tag("Kg")
+                        Text("Tonne").tag("Tonne")
                     }
-                )) {
-                    Text("Unit").tag("")
-                    Text("Kg").tag("Kg")
-                    Text("Tonne").tag("Tonne")
+                    .pickerStyle(.menu)
                 }
-                .pickerStyle(.menu)
             }
 
             // Estimated Amount — readonly.

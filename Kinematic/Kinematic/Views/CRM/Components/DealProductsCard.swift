@@ -250,8 +250,13 @@ struct DealProductsCard: View {
     // MARK: – Math + formatters
 
     private func amountFor(row: ProductRow, qty: Double) -> Double {
-        if row.price <= 0 || row.weightKg <= 0 || qty <= 0 { return 0 }
-        return (row.price / row.weightKg) * (qty * row.unitFactor)
+        if row.price <= 0 || qty <= 0 { return 0 }
+        // Weight-based pricing is Tata-only; everyone else is price × qty.
+        if ClientFeatures.isTataTiscon {
+            if row.weightKg <= 0 { return 0 }
+            return (row.price / row.weightKg) * (qty * row.unitFactor)
+        }
+        return row.price * qty
     }
 
     private func pretty(_ v: Double) -> String {
