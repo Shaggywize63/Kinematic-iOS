@@ -6,6 +6,10 @@ import Foundation
 /// to every other client until those features are either generalised
 /// or moved behind a tenant setting.
 private let TATA_TISCON_CLIENT_ID = "a1f67468-526e-4734-be3a-2cb132cc2804"
+/// The parent Kinematic tenant runs an inside-sales CRM, not a field-force
+/// one — GPS lead-tagging is irrelevant, so location capture is hidden for
+/// it on the lead form.
+private let KINEMATIC_CLIENT_ID = "7ecd47d7-9268-4ea2-a8ce-384978c13667"
 
 enum ClientFeatures {
     /// True when the signed-in user belongs to Tata Tiscon. Used to gate
@@ -14,6 +18,13 @@ enum ClientFeatures {
     /// the simpler default UI.
     static var isTataTiscon: Bool {
         Session.currentUser?.clientId == TATA_TISCON_CLIENT_ID
+    }
+
+    /// True when the signed-in user belongs to the parent Kinematic tenant.
+    /// Gates off the GPS location capture on the lead form (inside sales
+    /// doesn't geo-tag leads).
+    static var isKinematic: Bool {
+        Session.currentUser?.clientId == KINEMATIC_CLIENT_ID
     }
 
     /// True when the signed-in user is a Consumer Champion (Tata Tiscon's
