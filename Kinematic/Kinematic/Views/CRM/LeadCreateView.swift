@@ -369,6 +369,8 @@ struct LeadCreateView: View {
                 // Geo-location is captured automatically — no button, no manual
                 // entry. We start a one-shot GPS fix when the form opens so the
                 // coordinates are ready by the time the rep taps Save.
+                // Hidden for the Kinematic tenant (inside sales doesn't geo-tag).
+                if !ClientFeatures.isKinematic {
                 Section {
                     HStack(spacing: 10) {
                         Image(systemName: "location.fill").foregroundColor(.accentColor)
@@ -423,6 +425,7 @@ struct LeadCreateView: View {
                         }
                     }
                 }
+                }
 
                 // Tata Tiscon site-visit affordance — most leads are added
                 // while the rep is physically at the consumer / dealer
@@ -445,7 +448,7 @@ struct LeadCreateView: View {
                 VStack(spacing: 0) {
                     Divider()
                     Button {
-                        if !hasValidCoords { locator.requestLocation() }
+                        if !ClientFeatures.isKinematic && !hasValidCoords { locator.requestLocation() }
                         Task {
                             saving = true
                             let body = buildBody()
@@ -500,7 +503,8 @@ struct LeadCreateView: View {
                 if isTata { isB2C = true }
                 // Auto-capture the submission location as soon as the form
                 // opens so it's attached by the time the rep taps Save.
-                if !hasValidCoords && !locator.isLocating {
+                // Kinematic doesn't geo-tag leads, so never request GPS there.
+                if !ClientFeatures.isKinematic && !hasValidCoords && !locator.isLocating {
                     locator.requestLocation()
                 }
             }
@@ -512,7 +516,7 @@ struct LeadCreateView: View {
                     Button {
                         // Fetch the location on Save if we still don't have a
                         // fix (e.g. permission was just granted) — best effort.
-                        if !hasValidCoords { locator.requestLocation() }
+                        if !ClientFeatures.isKinematic && !hasValidCoords { locator.requestLocation() }
                         Task {
                             saving = true
                             let body = buildBody()
