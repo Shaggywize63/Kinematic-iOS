@@ -148,7 +148,8 @@ final class LeadDetailViewModel: ObservableObject {
         dealName: String?,
         dealAmount: Double?,
         dealVolumeKg: Double?,
-        dealProductId: String?
+        dealProductId: String?,
+        dealProductLines: [[String: Any]]? = nil
     ) async {
         convertBusy = true
         defer { convertBusy = false }
@@ -160,6 +161,9 @@ final class LeadDetailViewModel: ObservableObject {
         if let dealAmount { body["deal_amount"] = dealAmount }
         if let dealVolumeKg { body["deal_volume_kg"] = dealVolumeKg }
         if let dealProductId, !dealProductId.isEmpty { body["deal_product_id"] = dealProductId }
+        // Full Products-of-Interest basket captured in the Convert dialog (Kaiyo
+        // moves this off the lead form). Backend stores it on the deal + lead.
+        if let dealProductLines, !dealProductLines.isEmpty { body["deal_product_lines"] = dealProductLines }
 
         do {
             let updated = try await api.convertLead(id: leadId, body: body)

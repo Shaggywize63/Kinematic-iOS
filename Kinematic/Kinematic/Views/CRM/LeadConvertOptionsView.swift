@@ -25,6 +25,9 @@ struct LeadConvertOptionsView: View {
     @State private var dealName: String = ""
     @State private var dealAmountText: String = ""
     @State private var dealProductId: String = ""
+    // Tata captures the full Products of Interest basket here at conversion
+    // (moved off the lead form). Non-Tata tenants keep the simple picker above.
+    @StateObject private var productLines = ProductLinesModel()
 
     struct ConvertOptions {
         let createAccount: Bool
@@ -32,6 +35,7 @@ struct LeadConvertOptionsView: View {
         let dealName: String?
         let dealAmount: Double?
         let dealProductId: String?
+        let dealProductLines: [[String: Any]]?
     }
 
     var body: some View {
@@ -45,18 +49,26 @@ struct LeadConvertOptionsView: View {
                     Section("Deal") {
                         TextField("Deal name", text: $dealName)
                             .submitLabel(.next)
-                        TextField("Amount (₹)", text: $dealAmountText)
-                            .keyboardType(.decimalPad)
-                        if !products.isEmpty {
-                            Picker("Product", selection: $dealProductId) {
-                                Text("None").tag("")
-                                ForEach(products) { p in
-                                    Text(productLabel(p)).tag(p.id)
+                        // Tata sizes the deal via the Products of Interest basket
+                        // below; every other tenant keeps the simple amount +
+                        // single-product picker.
+                        if !ClientFeatures.isTataTiscon {
+                            TextField("Amount (₹)", text: $dealAmountText)
+                                .keyboardType(.decimalPad)
+                            if !products.isEmpty {
+                                Picker("Product", selection: $dealProductId) {
+                                    Text("None").tag("")
+                                    ForEach(products) { p in
+                                        Text(productLabel(p)).tag(p.id)
+                                    }
                                 }
+                                .pickerStyle(.menu)
+                                .tint(Brand.red)
                             }
-                            .pickerStyle(.menu)
-                            .tint(Brand.red)
                         }
+                    }
+                    if ClientFeatures.isTataTiscon {
+                        ProductLinesSection(model: productLines)
                     }
                 }
             }
@@ -74,7 +86,10 @@ struct LeadConvertOptionsView: View {
                             createDeal: createDeal,
                             dealName: dealName.isEmpty ? nil : dealName,
                             dealAmount: Double(dealAmountText),
-                            dealProductId: dealProductId.isEmpty ? nil : dealProductId
+                            dealProductId: dealProductId.isEmpty ? nil : dealProductId,
+                            dealProductLines: ClientFeatures.isTataTiscon
+                                ? (productLines.jsonValues["product_lines"] as? [[String: Any]])
+                                : nil
                         ))
                     } label: {
                         HStack(spacing: 6) {
@@ -101,6 +116,9 @@ struct LeadConvertOptionsView: View {
                     }
                 }
                 onLoadProducts()
+                // Load the product catalogue into the basket model (Tata only
+                // renders it, but loading is harmless otherwise).
+                await productLines.load()
             }
         }
     }

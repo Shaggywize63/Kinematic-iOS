@@ -286,10 +286,12 @@ struct LeadEditView: View {
 
                 // ── Products of Interest — multi-row picker that drives
                 //     custom_fields.product_lines plus the four legacy
-                //     mirror keys. Available for every tenant; empty
-                //     baskets stay empty so non-product CRMs aren't
-                //     forced into the section.
-                ProductLinesSection(model: productLines)
+                //     mirror keys. Hidden for Kaiyo/Tata, who capture the
+                //     basket in the Convert dialog now; every other tenant
+                //     keeps it (empty baskets stay empty).
+                if !ClientFeatures.isTataTiscon {
+                    ProductLinesSection(model: productLines)
+                }
 
                 // ── Tata Tiscon: site-visit affordance on edit too ──
                 if isTata {
