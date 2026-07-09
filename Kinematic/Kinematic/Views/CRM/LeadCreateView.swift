@@ -359,10 +359,12 @@ struct LeadCreateView: View {
                 // Multi-row product picker — drives custom_fields.product_lines
                 // and mirrors row 0 onto the legacy product_interested /
                 // quantity / measuring_unit / estimated_amount keys.
-                // Available for every tenant; the section is empty by
-                // default and only persists rows the rep actually picks,
-                // so non-product CRMs aren't forced into the basket UX.
-                ProductLinesSection(model: productLines)
+                // Hidden for Kaiyo/Tata, who now capture the basket in the
+                // Convert dialog instead of on the lead form; every other tenant
+                // keeps it (empty by default, only persists picked rows).
+                if !ClientFeatures.isTataTiscon {
+                    ProductLinesSection(model: productLines)
+                }
 
                 // Geo-location is captured automatically — no button, no manual
                 // entry. We start a one-shot GPS fix when the form opens so the

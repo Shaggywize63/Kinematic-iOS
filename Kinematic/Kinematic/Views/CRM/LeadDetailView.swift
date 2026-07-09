@@ -195,7 +195,8 @@ struct LeadDetailView: View {
                                 dealName: opts.dealName,
                                 dealAmount: opts.dealAmount,
                                 dealVolumeKg: nil,
-                                dealProductId: opts.dealProductId
+                                dealProductId: opts.dealProductId,
+                                dealProductLines: opts.dealProductLines
                             )
                             if vm.errorMessage == nil { converting = false }
                         }
@@ -560,28 +561,10 @@ struct LeadDetailView: View {
         FlexibleHStack(spacing: 10) {
             if !vm.isConverted && !vm.isDisqualified {
                 primaryAction("Convert", icon: "arrow.triangle.branch", busy: vm.convertBusy) {
-                    // Tata Tiscon: skip the create-account / create-deal
-                    // options sheet entirely. Their flow is deal-only and
-                    // line items live on the Deal screen, so we convert
-                    // straight to a deal with sensible defaults.
-                    if ClientFeatures.isTataTiscon, let lead = vm.lead {
-                        Task {
-                            let defaultName: String = {
-                                if let c = lead.company, !c.isEmpty { return "\(c) Opportunity" }
-                                let nm = ([lead.firstName, lead.lastName].compactMap { $0 }.joined(separator: " ")).trimmingCharacters(in: .whitespaces)
-                                return nm.isEmpty ? "New Opportunity" : "\(nm) Opportunity"
-                            }()
-                            await vm.convert(
-                                createAccount: false,
-                                createDeal: true,
-                                dealName: defaultName,
-                                dealAmount: nil,
-                                dealVolumeKg: nil,
-                                dealProductId: nil
-                            )
-                        }
-                        return
-                    }
+                    // Every tenant goes through the Convert options sheet. Tata
+                    // captures the Products of Interest basket there now (moved
+                    // off the lead form); the sheet holds create-account at
+                    // false so their flow stays deal-only.
                     converting = true
                 }
             }
