@@ -49,6 +49,10 @@ struct ContentView: View {
         ZStack {
             if !appState.isAuthenticated {
                 LoginView(onSuccess: { appState.checkAuth() })
+            } else if appState.mustChangePassword {
+                // Forced "set a new password" gate — the app is unreachable
+                // until the user rotates off their initial/temp password.
+                SetPasswordView(onSuccess: { appState.checkAuth() })
             } else {
                 MainTabView()
             }
@@ -66,6 +70,10 @@ struct ContentView: View {
             // Force tabs.
             guard appState.isAuthenticated else { return }
             await KinematicRepository.shared.refreshMe()
+            // Re-sync the forced-password-change gate from the fresh /auth/me —
+            // catches existing users flagged by the backfill whose cached
+            // session pre-dates the flag.
+            await MainActor.run { appState.checkAuth() }
             // Ask for push permission + register this device's APNs token now
             // that we have an auth token to attach to the upload. Idempotent,
             // and inert on free-Apple-ID dev builds (see PushNotificationManager).
