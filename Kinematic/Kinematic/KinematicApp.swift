@@ -31,6 +31,10 @@ struct User: Codable, Identifiable {
     /// they own, so reassignment must NOT be offered (it would hide the
     /// record from them entirely).
     let orgRoleDataScope: String?
+    /// True until the user sets a fresh password. New accounts (and everyone
+    /// still on their initial/shared password after the backfill) must change
+    /// it before the app is usable — see SetPasswordView.
+    let mustChangePassword: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, name, email, role, mobile, permissions
@@ -41,6 +45,7 @@ struct User: Codable, Identifiable {
         case enabledPackages = "enabled_packages"
         case orgRoleName = "org_role_name"
         case orgRoleDataScope = "org_role_data_scope"
+        case mustChangePassword = "must_change_password"
     }
 
     init(from decoder: Decoder) throws {
@@ -58,6 +63,7 @@ struct User: Codable, Identifiable {
         permissions     = (try? c.decode([String].self, forKey: .permissions)) ?? []
         orgRoleName     = try c.decodeIfPresent(String.self, forKey: .orgRoleName)
         orgRoleDataScope = try c.decodeIfPresent(String.self, forKey: .orgRoleDataScope)
+        mustChangePassword = (try? c.decode(Bool.self, forKey: .mustChangePassword)) ?? false
     }
 }
 
@@ -135,6 +141,10 @@ class KiniAppState: ObservableObject {
     func clearSessionKickedMsg() { sessionKickedMsg = nil }
 
     @Published var isAuthenticated = Session.isAuthenticated
+    /// True while the signed-in user still owes a password change (first login
+    /// / initial password). ContentView shows SetPasswordView instead of the
+    /// app until they set a fresh one.
+    @Published var mustChangePassword = Session.currentUser?.mustChangePassword ?? false
     @Published var selectedTab: Int = 0
     @Published var selectedOutlet: RouteOutlet? = nil
     @Published var attendanceVM = AttendanceViewModel()
@@ -210,6 +220,7 @@ class KiniAppState: ObservableObject {
     
     func checkAuth() {
         self.isAuthenticated = Session.isAuthenticated
+        self.mustChangePassword = Session.currentUser?.mustChangePassword ?? false
     }
     
     func logout() {
@@ -2521,6 +2532,28 @@ class KinematicRepository {
         } catch {
             print("🚩 patchMyProfile failed: \(error.localizedDescription)")
             return false
+        }
+    }
+
+    /// Authenticated password change — powers the forced "set a new password
+    /// on first login" screen. On success the backend clears
+    /// must_change_password; the caller should refreshMe() to pick that up.
+    func changePassword(newPassword: String) async -> (Bool, String?) {
+        guard !Session.sharedToken.isEmpty else { return (false, "You're not signed in.") }
+        guard newPassword.count >= 6 else { return (false, "Password must be at least 6 characters.") }
+        struct Body: Encodable { let new_password: String }
+        struct OK: Decodable { let ok: Bool? }
+        let body = try? JSONEncoder().encode(Body(new_password: newPassword))
+        do {
+            let res: ApiResponse<OK>? = try await performRequest(
+                "/auth/change-password",
+                method: "POST",
+                body: body
+            )
+            if res?.success == true { return (true, nil) }
+            return (false, "Couldn't update your password. Try again.")
+        } catch {
+            return (false, error.localizedDescription)
         }
     }
 
