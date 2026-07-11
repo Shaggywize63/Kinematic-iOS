@@ -2542,7 +2542,9 @@ class KinematicRepository {
         guard !Session.sharedToken.isEmpty else { return (false, "You're not signed in.") }
         guard newPassword.count >= 6 else { return (false, "Password must be at least 6 characters.") }
         struct Body: Encodable { let new_password: String }
-        struct OK: Decodable { let ok: Bool? }
+        // Codable (not just Decodable): performRequest/ApiResponse are generic
+        // over `T: Codable`, so the envelope's payload type must encode too.
+        struct OK: Codable { let ok: Bool? }
         let body = try? JSONEncoder().encode(Body(new_password: newPassword))
         do {
             let res: ApiResponse<OK>? = try await performRequest(
