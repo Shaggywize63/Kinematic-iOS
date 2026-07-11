@@ -1,15 +1,9 @@
 import SwiftUI
 
 private let brandRed = Color(red: 0xE0/255, green: 0x1E/255, blue: 0x2C/255)
-private let brandRedLight = Color(red: 0xFF/255, green: 0x4D/255, blue: 0x4D/255)
-private let fabGradient = LinearGradient(
-    colors: [brandRed, brandRedLight],
-    startPoint: .topLeading,
-    endPoint: .bottomTrailing
-)
 
-/// The persistent KINI launcher — a red gradient circular button that
-/// **the user can drag anywhere on screen**. Position is persisted in
+/// The persistent KINI launcher — a white circular button showing the KINI
+/// mascot that **the user can drag anywhere on screen**. Position is persisted in
 /// UserDefaults so dragging stays put across screen / tab changes.
 ///
 /// Tapping opens KiniChatView as a fullScreenCover. The `used/cap` credits
@@ -34,12 +28,15 @@ struct KiniFAB: View {
         ZStack(alignment: .topTrailing) {
             ZStack {
                 Circle()
-                    .fill(fabGradient)
+                    .fill(Color.white)
                     .frame(width: 56, height: 56)
                     .shadow(color: brandRed.opacity(0.45), radius: 14, x: 0, y: 8)
-                Text("✦")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(.white)
+                // KINI mascot on a white disc so the red robot reads on any
+                // background. Replaces the old generic ✦ glyph.
+                Image("KiniMascot")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 46, height: 46)
             }
             .accessibilityLabel("Ask KINI")
             .onTapGesture(perform: onTap)

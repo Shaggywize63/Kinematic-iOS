@@ -10,6 +10,11 @@ private let TATA_TISCON_CLIENT_ID = "a1f67468-526e-4734-be3a-2cb132cc2804"
 /// one — GPS lead-tagging is irrelevant, so location capture is hidden for
 /// it on the lead form.
 private let KINEMATIC_CLIENT_ID = "7ecd47d7-9268-4ea2-a8ce-384978c13667"
+/// BMW runs an even leaner CRM than the other Kinematic-tenant clients:
+/// Accounts and the business-card scan shortcut are hidden for them. Keyed
+/// off the client id like the other tenant gates so the policy lives in one
+/// place and is trivial to retarget.
+private let BMW_CLIENT_ID = "2ee5e03a-3a56-41c9-aaa0-16468920f871"
 
 enum ClientFeatures {
     /// True when the signed-in user belongs to Tata Tiscon. Used to gate
@@ -25,6 +30,12 @@ enum ClientFeatures {
     /// doesn't geo-tag leads).
     static var isKinematic: Bool {
         Session.currentUser?.clientId == KINEMATIC_CLIENT_ID
+    }
+
+    /// True when the signed-in user belongs to BMW. Gates off Accounts and
+    /// the business-card scan shortcut, which BMW's leaner CRM doesn't use.
+    static var isBmw: Bool {
+        Session.currentUser?.clientId == BMW_CLIENT_ID
     }
 
     /// True when the signed-in user is a Consumer Champion (Tata Tiscon's
@@ -74,10 +85,11 @@ enum ClientFeatures {
 
     /// SRS TATA Steel runs a deliberately slimmed CRM: business-card scan,
     /// Conversation Intelligence, Accounts, and Leave are hidden for them.
+    /// BMW is likewise slimmed — business-card scan and Accounts are hidden.
     /// Every other tenant keeps the full surface. Render sites gate on these
     /// intent-named switches rather than checking the client id inline.
-    static var showsCardScan: Bool { !isSrsTataSteel }
-    static var showsAccounts: Bool { !isSrsTataSteel }
+    static var showsCardScan: Bool { !isSrsTataSteel && !isBmw }
+    static var showsAccounts: Bool { !isSrsTataSteel && !isBmw }
 
     /// True when the signed-in client purchased ONLY the CRM package (no field
     /// force, no distribution). Delegates to the single source of truth
