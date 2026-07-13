@@ -269,7 +269,10 @@ class KiniAppState: ObservableObject {
         // Gate 3: Fetch Battery
         let battery = Int(UIDevice.current.batteryLevel * 100)
         
+        // SECURITY_AUDIT M-4: precise GPS is PII; don't log location on every ping in release.
+        #if DEBUG
         print("📍 [Tracking] Sending Ping: \(location.coordinate.latitude), \(location.coordinate.longitude) | Battery: \(battery)%")
+        #endif
         _ = await KinematicRepository.shared.sendLiveTrackingPing(
             lat: location.coordinate.latitude,
             lng: location.coordinate.longitude,
@@ -2692,7 +2695,10 @@ class KinematicRepository {
         }
         req.httpBody = try? JSONEncoder().encode(payload)
         
+        // SECURITY_AUDIT M-4: the login identifier is PII (email/phone); don't log in release.
+        #if DEBUG
         print("🚀 API_LOGIN_START: \(url.absoluteString) for \(identifier)")
+        #endif
         
         do {
             let (data, response) = try await URLSession.shared.data(for: req)
@@ -2723,10 +2729,14 @@ class KinematicRepository {
                 }
                 return (false, result.error ?? "Login rejected")
             } catch {
+                // SECURITY_AUDIT M-4: the raw login response body can contain
+                // access/refresh tokens; never log it in release builds.
+                #if DEBUG
                 if let rawJson = String(data: data, encoding: .utf8) {
                     print("❌ LOGIN_DECODE_ERROR: \(error)")
                     print("📦 RAW_JSON: \(rawJson)")
                 }
+                #endif
                 return (false, error.localizedDescription)
             }
         } catch {
