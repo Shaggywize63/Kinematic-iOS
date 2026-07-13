@@ -116,8 +116,8 @@ private struct AttendanceHistoryCard: View {
                 }
             }
             Spacer()
-            if let url = record.checkinSelfieUrl, let u = URL(string: url) {
-                AsyncImage(url: u) { img in
+            if let url = record.checkinSelfieUrl, !url.isEmpty {
+                SignedAsyncImage(urlString: url) { img in
                     img.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: { Color(uiColor: .tertiarySystemBackground) }
                 .frame(width: 44, height: 44)

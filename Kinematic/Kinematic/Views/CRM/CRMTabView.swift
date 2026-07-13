@@ -115,8 +115,8 @@ struct CRMMoreMenu: View {
         let initials = String((Session.currentUser?.name ?? "U").prefix(1)).uppercased()
         ZStack {
             Circle().fill(Brand.red.opacity(0.15))
-            if let s = Session.currentUser?.avatarUrl, let url = URL(string: s), !s.isEmpty {
-                AsyncImage(url: url) { phase in
+            if let s = Session.currentUser?.avatarUrl, !s.isEmpty {
+                SignedAsyncImage(urlString: s) { phase in
                     switch phase {
                     case .success(let img): img.resizable().scaledToFill()
                     default: Text(initials).font(.system(size: 18, weight: .black)).foregroundColor(Brand.red)

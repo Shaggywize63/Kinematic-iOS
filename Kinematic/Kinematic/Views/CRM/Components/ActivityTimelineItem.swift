@@ -6,6 +6,7 @@ import SwiftUI
 /// shape (status, type, when, owner) on every row.
 struct ActivityTimelineItem: View {
     let activity: Activity
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -48,9 +49,18 @@ struct ActivityTimelineItem: View {
             }
 
             if let urlString = activity.imageUrl,
-               let url = URL(string: urlString) {
-                Link(destination: url) {
-                    AsyncImage(url: url) { phase in
+               !urlString.isEmpty {
+                // Private-bucket photo: sign the URL for BOTH the thumbnail and
+                // the tap-to-open action (PR-1). Resolve on tap so the opened
+                // link is a fresh signed URL, not the now-403 raw object URL.
+                Button {
+                    Task {
+                        if let signed = await MediaSigning.shared.resolvedURL(for: urlString) {
+                            openURL(signed)
+                        }
+                    }
+                } label: {
+                    SignedAsyncImage(urlString: urlString) { phase in
                         switch phase {
                         case .empty:
                             ZStack {
