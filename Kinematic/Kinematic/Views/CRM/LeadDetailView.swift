@@ -245,10 +245,11 @@ struct LeadDetailView: View {
                 initialSubject: composerInitialSubject,
                 initialDescription: composerInitialDescription,
                 initialWhen: composerInitialWhen
-            ) { type, subject, description, imageUrl, when, _ in
+            ) { type, subject, description, imageUrl, when, _, customFields in
                 await vm.logActivity(
                     type: type, subject: subject, description: description,
-                    imageUrl: imageUrl, completedAtOverride: when
+                    imageUrl: imageUrl, completedAtOverride: when,
+                    customFields: customFields
                 )
             }
         }

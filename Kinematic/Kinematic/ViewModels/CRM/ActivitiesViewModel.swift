@@ -72,7 +72,8 @@ final class ActivitiesViewModel: ObservableObject {
         dealId: String?,
         leadId: String?,
         imageUrl: String? = nil,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        customFields: [String: Any] = [:]
     ) async {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return }
@@ -90,6 +91,10 @@ final class ActivitiesViewModel: ObservableObject {
             } else if let due = completedAt {
                 body["due_at"] = ISO8601DateFormatter().string(from: due)
             }
+            // Admin-defined activity custom fields (Dealer lookup, Visit
+            // kind, …). Omit the key entirely when empty so a tenant with
+            // none configured never posts `custom_fields: {}`.
+            if !customFields.isEmpty { body["custom_fields"] = customFields }
             let a = try await api.createActivity(body)
             activities.insert(a, at: 0)
         } catch {
@@ -106,7 +111,8 @@ final class ActivitiesViewModel: ObservableObject {
         subject: String,
         description: String,
         imageUrl: String? = nil,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        customFields: [String: Any] = [:]
     ) async {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return }
@@ -122,6 +128,10 @@ final class ActivitiesViewModel: ObservableObject {
             } else if let due = completedAt {
                 body["due_at"] = ISO8601DateFormatter().string(from: due)
             }
+            // Only send touched custom fields — the backend PATCH merges
+            // them over the existing blob, so an empty map (nothing typed)
+            // is omitted and never wipes stored values.
+            if !customFields.isEmpty { body["custom_fields"] = customFields }
             let updated = try await api.updateActivity(id: id, body: body)
             if let idx = activities.firstIndex(where: { $0.id == id }) {
                 activities[idx] = updated

@@ -354,7 +354,8 @@ final class LeadDetailViewModel: ObservableObject {
         subject: String,
         description: String,
         imageUrl: String? = nil,
-        completedAtOverride: Date? = nil
+        completedAtOverride: Date? = nil,
+        customFields: [String: Any] = [:]
     ) async {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return }
@@ -362,7 +363,7 @@ final class LeadDetailViewModel: ObservableObject {
         // If this composer dismissal is a save-after-tap-to-call, PATCH the
         // pre-created activity rather than POSTing a new one.
         if type == "call", let id = pendingCallActivityId {
-            await patchPendingCall(id: id, subject: trimmedSubject, description: description, imageUrl: imageUrl, completedAtOverride: completedAtOverride)
+            await patchPendingCall(id: id, subject: trimmedSubject, description: description, imageUrl: imageUrl, completedAtOverride: completedAtOverride, customFields: customFields)
             return
         }
 
@@ -382,6 +383,11 @@ final class LeadDetailViewModel: ObservableObject {
         if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
             body["duration_seconds"] = duration
         }
+        // Admin-defined activity custom fields (e.g. a Dealer lookup).
+        // Omitted when empty so a tenant with none never posts `{}`. Also
+        // carried into the offline-queued body below, so field reps keep
+        // their custom-field entries when saving without a connection.
+        if !customFields.isEmpty { body["custom_fields"] = customFields }
         do {
             let created = try await api.createActivity(body)
             activities.insert(created, at: 0)
@@ -443,7 +449,8 @@ final class LeadDetailViewModel: ObservableObject {
         subject: String,
         description: String,
         imageUrl: String?,
-        completedAtOverride: Date?
+        completedAtOverride: Date?,
+        customFields: [String: Any] = [:]
     ) async {
         var body: [String: Any] = ["subject": subject]
         let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -455,6 +462,9 @@ final class LeadDetailViewModel: ObservableObject {
         if let duration = CallObserver.shared.consumeDuration(), duration > 0 {
             body["duration_seconds"] = duration
         }
+        // Backend PATCH merges custom_fields over the existing blob, so
+        // sending only the touched keys is safe.
+        if !customFields.isEmpty { body["custom_fields"] = customFields }
         do {
             let updated = try await api.updateActivity(id: id, body: body)
             if let i = activities.firstIndex(where: { $0.id == id }) {
