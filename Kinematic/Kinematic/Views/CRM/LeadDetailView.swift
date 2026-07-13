@@ -144,6 +144,7 @@ struct LeadDetailView: View {
                             onQualify: { Task { await vm.qualify() } }
                         )
                     }
+                    alternateNumbersCard(lead: lead)
                     if lead.isB2c == true { b2cProfileCard(lead: lead) }
                     if lead.latitude != nil || lead.longitude != nil { locationCard(lead: lead) }
                     if !ClientFeatures.isConsumerChampion, let score = vm.score { scoreCard(score: score) }
@@ -244,10 +245,11 @@ struct LeadDetailView: View {
                 initialSubject: composerInitialSubject,
                 initialDescription: composerInitialDescription,
                 initialWhen: composerInitialWhen
-            ) { type, subject, description, imageUrl, when, _ in
+            ) { type, subject, description, imageUrl, when, _, customFields in
                 await vm.logActivity(
                     type: type, subject: subject, description: description,
-                    imageUrl: imageUrl, completedAtOverride: when
+                    imageUrl: imageUrl, completedAtOverride: when,
+                    customFields: customFields
                 )
             }
         }
@@ -837,6 +839,34 @@ struct LeadDetailView: View {
                 .fill(Brand.red.opacity(0.08))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.red.opacity(0.25), lineWidth: 1))
         )
+    }
+
+    // MARK: - Alternate numbers (read-only)
+
+    /// Read-only list of the lead's `alternate_mobiles`. Shown for both
+    /// B2B and B2C leads whenever the list is non-empty AND the admin
+    /// hasn't hidden the field on the web console — same override gate the
+    /// create / edit forms honour.
+    @ViewBuilder
+    private func alternateNumbersCard(lead: Lead) -> some View {
+        let alts = (lead.alternateMobiles ?? []).filter {
+            !$0.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+        let isB2C = lead.isB2c == true
+        if !alts.isEmpty && !fieldOverrides.isHidden("alternate_mobiles", isB2C: isB2C) {
+            Card(title: fieldOverrides.labelFor("alternate_mobiles", defaultLabel: "Alternate Number", isB2C: isB2C).uppercased()) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(alts.enumerated()), id: \.offset) { _, num in
+                        HStack(spacing: 8) {
+                            Image(systemName: "phone.fill")
+                                .font(.caption).foregroundColor(Brand.red)
+                            Text(num).font(.system(size: 13)).foregroundColor(.primary)
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - B2C profile

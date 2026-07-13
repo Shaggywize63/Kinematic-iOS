@@ -26,6 +26,10 @@ struct LeadCreateView: View {
     @State private var lastName = ""
     @State private var email = ""
     @State private var phone = ""
+    /// Extra reach numbers beyond the primary mobile. Multi-value
+    /// add/remove editor (mirrors the web AlternateMobiles chip list).
+    /// Persisted to the `alternate_mobiles` text[] column.
+    @State private var alternateMobiles: [String] = []
     @State private var source = "web"
     // Source picker — backed by /api/v1/crm/lead-sources (now scoped
     // by client_id so Tata reps only see Tata sources like Site Visit).
@@ -125,6 +129,12 @@ struct LeadCreateView: View {
     /// UserDefaults blob, so iOS users on an old install saw the picker
     /// disappear while Android users on the same backend kept it).
     @State private var businessType: String?
+    /// True once the /crm/settings fetch has resolved (success or failure).
+    /// The B2B/B2C picker is deferred behind this so a b2c-locked tenant
+    /// (e.g. BMW — not Tata, so `ClientFeatures.isTataTiscon` is false) never
+    /// flashes the B2B option before business_type arrives. Mirrors the
+    /// already-correct deferral in LeadEditView.
+    @State private var settingsLoaded = false
 
     // Tata Tiscon requires the submission location to be captured automatically
     // and is non-editable + mandatory (parity with the web lead form). Other
@@ -165,8 +175,10 @@ struct LeadCreateView: View {
                 }
 
                 // Tata Tiscon is consumer-only — never offer the B2B option.
-                // isB2C is forced true on appear (below).
-                if !isTata {
+                // isB2C is forced true once settings resolve (below). Deferred
+                // behind `settingsLoaded` so a b2c-locked tenant never flashes
+                // the B2B option before business_type arrives.
+                if settingsLoaded && !isTata {
                     Section {
                         Picker("Lead type", selection: $isB2C) {
                             Text("B2B (Business)").tag(false)
@@ -211,6 +223,16 @@ struct LeadCreateView: View {
                             required: fieldOverrides.requiredFor("phone", defaultRequired: true, isB2C: isB2C),
                             text: $phone,
                             keyboard: .phonePad,
+                        )
+                    }
+                    // Alternate numbers — parallel multi-value list to the
+                    // primary mobile (mirrors the web AlternateMobiles chip
+                    // editor). Gated on the same override contract as every
+                    // other built-in field.
+                    if !fieldOverrides.isHidden("alternate_mobiles", isB2C: isB2C) {
+                        alternateNumbersEditor(
+                            label: fieldOverrides.labelFor("alternate_mobiles", defaultLabel: "Alternate Number", isB2C: isB2C),
+                            required: fieldOverrides.requiredFor("alternate_mobiles", defaultRequired: false, isB2C: isB2C),
                         )
                     }
                     // Source picker — bound to crm_lead_sources so reps see
@@ -494,9 +516,15 @@ struct LeadCreateView: View {
             .task {
                 // Resolve businessType so the Tata-equivalent gate works
                 // even when Session.currentUser.clientId is stale.
-                if let s = await CRMService.shared.getCRMSettings() {
-                    businessType = s.business_type
-                }
+                businessType = await CRMService.shared.getCRMSettings()?.business_type
+                // Lock the form to B2C when the tenant is consumer-only, so a
+                // b2c-locked tenant (e.g. BMW) renders the consumer fields
+                // rather than defaulting to the B2B layout. Mirrors LeadEditView.
+                if businessType?.lowercased() == "b2c" { isB2C = true }
+                // Flip regardless of success/failure so the picker (deferred
+                // above) still appears for a genuine b2b/both tenant even if
+                // /crm/settings fails to load.
+                settingsLoaded = true
             }
             .onAppear {
                 // Tata Tiscon only ever creates B2C (consumer) leads.
@@ -598,6 +626,46 @@ struct LeadCreateView: View {
         .autocapitalization(autocapitalize ? .sentences : .none)
     }
 
+    /// Multi-value editor for `alternate_mobiles`: a header row carrying the
+    /// (override-aware) label + an "Add number" button, then one text field
+    /// per number with a remove button. Digits/phone keyboard; whitespace is
+    /// stripped at input time to match the web's `normalise`.
+    @ViewBuilder
+    private func alternateNumbersEditor(label: String, required: Bool) -> some View {
+        HStack {
+            Text(label + (required ? " *" : ""))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+            Spacer()
+            Button {
+                alternateMobiles.append("")
+            } label: {
+                Label("Add number", systemImage: "plus.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .buttonStyle(.borderless)
+        }
+        ForEach(alternateMobiles.indices, id: \.self) { idx in
+            HStack(spacing: 8) {
+                TextField("Alternate number", text: Binding(
+                    get: { idx < alternateMobiles.count ? alternateMobiles[idx] : "" },
+                    set: { raw in
+                        guard idx < alternateMobiles.count else { return }
+                        alternateMobiles[idx] = String(raw.filter { !$0.isWhitespace }.prefix(15))
+                    },
+                ))
+                .keyboardType(.phonePad)
+                Button(role: .destructive) {
+                    guard idx < alternateMobiles.count else { return }
+                    alternateMobiles.remove(at: idx)
+                } label: {
+                    Image(systemName: "minus.circle.fill").foregroundColor(Brand.red)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+    }
+
     private func buildBody() -> [String: Any] {
         // Helper — only include non-empty trimmed strings. Empty values
         // were tripping the backend's Zod validator (e.g. `email` with
@@ -621,6 +689,16 @@ struct LeadCreateView: View {
         put("first_name", firstName, into: &body)
         put("email",      email,     into: &body)
         put("phone",      phone,     into: &body)
+        // alternate_mobiles — trimmed, non-empty numbers only. Omit the
+        // key entirely when the list is empty (matches the web's
+        // `form.alternate_mobiles.length ? … : undefined`). Honour the
+        // admin's hide flag so a hidden field never silently persists.
+        if !fieldOverrides.isHidden("alternate_mobiles", isB2C: isB2C) {
+            let alts = alternateMobiles
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            if !alts.isEmpty { body["alternate_mobiles"] = alts }
+        }
         // source_id — UUID from /api/v1/crm/lead-sources, picked by the
         // rep above. Old string-source path silently dropped on the
         // server; this is the canonical column.

@@ -171,10 +171,11 @@ struct ActivitiesView: View {
             }
         }
         .sheet(isPresented: $showCompose) {
-            ActivityComposeView(allowLeadPicker: true) { type, subject, desc, imageUrl, when, leadId in
+            ActivityComposeView(allowLeadPicker: true) { type, subject, desc, imageUrl, when, leadId, customFields in
                 await vm.log(
                     type: type, subject: subject, description: desc,
-                    dealId: nil, leadId: leadId, imageUrl: imageUrl, completedAt: when
+                    dealId: nil, leadId: leadId, imageUrl: imageUrl, completedAt: when,
+                    customFields: customFields
                 )
             }
         }
@@ -186,11 +187,11 @@ struct ActivitiesView: View {
                 initialType: act.type ?? "meeting",
                 initialSubject: act.subject ?? "",
                 allowLeadPicker: false,
-            ) { type, subject, desc, imageUrl, when, _ in
+            ) { type, subject, desc, imageUrl, when, _, customFields in
                 // Activity.id is non-optional in the model — pass it
                 // straight through without a guard. (Earlier draft
                 // used `if let` which the iOS 26 toolchain refused.)
-                await vm.update(id: act.id, type: type, subject: subject, description: desc, imageUrl: imageUrl, completedAt: when)
+                await vm.update(id: act.id, type: type, subject: subject, description: desc, imageUrl: imageUrl, completedAt: when, customFields: customFields)
             }
         }
         // Delete confirmation — guards against an accidental long-press.

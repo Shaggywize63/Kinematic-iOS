@@ -6,8 +6,6 @@ import SwiftUI
 // SwiftUI Form + Section is the most native categorized form on iOS; the
 // section headers handle the grouping the user asked for without inventing
 // custom card chrome.
-//
-// Deferred to a follow-up: alternate_mobiles chip list editor.
 struct LeadEditView: View {
     let lead: Lead
     let onSaved: (Lead) -> Void
@@ -17,6 +15,10 @@ struct LeadEditView: View {
     @State private var lastName: String
     @State private var email: String
     @State private var phone: String
+    /// Extra reach numbers beyond the primary mobile — seeded from
+    /// `lead.alternateMobiles`. Multi-value add/remove editor, gated on
+    /// the same override contract as every other built-in field.
+    @State private var alternateMobiles: [String]
     @State private var status: String
     @State private var sourceId: String
     @State private var ownerId: String
@@ -79,6 +81,7 @@ struct LeadEditView: View {
         _lastName = State(initialValue: lead.lastName ?? "")
         _email = State(initialValue: lead.email ?? "")
         _phone = State(initialValue: lead.phone ?? "")
+        _alternateMobiles = State(initialValue: lead.alternateMobiles ?? [])
         _status = State(initialValue: lead.status ?? "new")
         _sourceId = State(initialValue: lead.source ?? "")
         _ownerId = State(initialValue: lead.ownerId ?? "")
@@ -149,6 +152,15 @@ struct LeadEditView: View {
                         ))
                         .keyboardType(.phonePad)
                         .textContentType(.telephoneNumber)
+                    }
+                    // Alternate numbers — parallel multi-value list to the
+                    // primary mobile (mirrors the web AlternateMobiles chip
+                    // editor). Gated on the same override contract.
+                    if !fieldOverrides.isHidden("alternate_mobiles", isB2C: isB2C) {
+                        alternateNumbersEditor(
+                            label: fieldOverrides.labelFor("alternate_mobiles", defaultLabel: "Alternate Number", isB2C: isB2C),
+                            required: fieldOverrides.requiredFor("alternate_mobiles", defaultRequired: false, isB2C: isB2C)
+                        )
                     }
                     if isB2C && fieldOverrides.didLoad && !fieldOverrides.isHidden("preferred_contact_method", isB2C: isB2C) {
                         Picker(fieldOverrides.labelFor("preferred_contact_method", defaultLabel: "Preferred channel", isB2C: isB2C), selection: $preferredContactMethod) {
@@ -335,6 +347,46 @@ struct LeadEditView: View {
         }
     }
 
+    /// Multi-value editor for `alternate_mobiles`: a header row carrying the
+    /// (override-aware) label + an "Add number" button, then one text field
+    /// per number with a remove button. Whitespace is stripped at input time
+    /// to match the web's `normalise`.
+    @ViewBuilder
+    private func alternateNumbersEditor(label: String, required: Bool) -> some View {
+        HStack {
+            Text(label + (required ? " *" : ""))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+            Spacer()
+            Button {
+                alternateMobiles.append("")
+            } label: {
+                Label("Add number", systemImage: "plus.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .buttonStyle(.borderless)
+        }
+        ForEach(alternateMobiles.indices, id: \.self) { idx in
+            HStack(spacing: 8) {
+                TextField("Alternate number", text: Binding(
+                    get: { idx < alternateMobiles.count ? alternateMobiles[idx] : "" },
+                    set: { raw in
+                        guard idx < alternateMobiles.count else { return }
+                        alternateMobiles[idx] = String(raw.filter { !$0.isWhitespace }.prefix(15))
+                    }
+                ))
+                .keyboardType(.phonePad)
+                Button(role: .destructive) {
+                    guard idx < alternateMobiles.count else { return }
+                    alternateMobiles.remove(at: idx)
+                } label: {
+                    Image(systemName: "minus.circle.fill").foregroundColor(Brand.red)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+    }
+
     private func loadPickerOptions() async {
         // Fire all six lookups in parallel — they're independent and
         // the form is usable without any of them while they load.
@@ -364,11 +416,18 @@ struct LeadEditView: View {
     private func save() async {
         saving = true
         defer { saving = false }
+        // alternate_mobiles is a text[]; we always send the (trimmed,
+        // non-empty) array so an empty list persists as "the rep cleared
+        // all extras" — matching the web LeadEditModal semantics.
+        let altMobiles = alternateMobiles
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         var body: [String: Any] = [
             "first_name": firstName.isEmpty ? NSNull() : firstName,
             "last_name":  lastName.isEmpty  ? NSNull() : lastName,
             "email":      email.isEmpty     ? NSNull() : email,
             "phone":      phone.isEmpty     ? NSNull() : phone,
+            "alternate_mobiles": altMobiles,
             "status":     status,
             "is_b2c":     isB2C,
             "owner_id":   ownerId.isEmpty   ? NSNull() : ownerId,

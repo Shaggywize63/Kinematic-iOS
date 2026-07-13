@@ -20,9 +20,11 @@ struct ActivityComposeView: View {
     /// false — they already supply the linked entity themselves.
     let allowLeadPicker: Bool
     /// Callback receives type, subject, description, optional imageUrl, the
-    /// chosen "when" date, and an optional picked lead id (nil unless a lead
-    /// was chosen via the picker).
-    let onSubmit: (String, String, String, String?, Date, String?) async -> Void
+    /// chosen "when" date, an optional picked lead id (nil unless a lead was
+    /// chosen via the picker), and the entered admin-defined activity
+    /// custom-field values keyed by `field_key` (empty when the tenant has
+    /// none configured). Mirrors how the lead form threads `custom_fields`.
+    let onSubmit: (String, String, String, String?, Date, String?, [String: Any]) async -> Void
 
     @State private var type: String
     @State private var subject: String
@@ -47,6 +49,13 @@ struct ActivityComposeView: View {
     /// Meeting first (position=0). Tapping a row replaces the subject
     /// text; free-typing still works.
     @State private var subjectPresets: [String] = []
+
+    /// Admin-defined custom fields for activities (e.g. a Dealer lookup,
+    /// Visit kind select, First visit toggle), scoped to the user's org
+    /// role. Loaded on appear; `jsonValues` is threaded into the save
+    /// payload under `custom_fields`. Same model + section the lead
+    /// create form uses.
+    @StateObject private var customFields = CustomFieldsModel()
 
     init(
         initialType: String = "meeting",
@@ -132,6 +141,12 @@ struct ActivityComposeView: View {
                         displayedComponents: [.date, .hourAndMinute]
                     )
                 }
+                // Admin-defined activity custom fields (Dealer lookup, Visit
+                // kind, First visit, …). Renders through the same section the
+                // lead form uses; it self-gates on loaded defs (renders
+                // nothing until /crm/custom-fields resolves), so there's no
+                // flash of fields the admin never configured.
+                CustomFieldsSection(model: customFields)
                 Section("Attachment") {
                     if let img = pickedImage {
                         Image(uiImage: img)
@@ -177,7 +192,7 @@ struct ActivityComposeView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Log") {
                         Task {
-                            await onSubmit(type, subject, desc, imageUrl, when, selectedLead?.id)
+                            await onSubmit(type, subject, desc, imageUrl, when, selectedLead?.id, customFields.jsonValues)
                             dismiss()
                         }
                     }.disabled(subject.isEmpty || uploading || (allowLeadPicker && selectedLead == nil))
@@ -204,6 +219,7 @@ struct ActivityComposeView: View {
             .task {
                 subjectPresets = await CRMService.shared.listActivitySubjects()
             }
+            .task { await customFields.load(entity: "activity") }
             .onChange(of: pickedImage) { _, newImage in
                 guard let img = newImage else { return }
                 Task { await upload(image: img) }

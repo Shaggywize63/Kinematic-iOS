@@ -14,6 +14,10 @@ struct Lead: Codable, Identifiable, Hashable {
     let lastName: String?
     let email: String?
     let phone: String?
+    /// Extra reach numbers beyond the primary `phone`. Persisted as a
+    /// `text[]` column (`alternate_mobiles`) on crm_leads — mirrors the
+    /// web chip-list editor. Optional so legacy rows decode cleanly.
+    let alternateMobiles: [String]?
     let company: String?
     let title: String?
     let source: String?
@@ -84,6 +88,7 @@ struct Lead: Codable, Identifiable, Hashable {
         case lastName = "last_name"
         case email
         case phone
+        case alternateMobiles = "alternate_mobiles"
         case company
         case title
         case source

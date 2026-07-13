@@ -17,12 +17,16 @@ private let KINEMATIC_CLIENT_ID = "7ecd47d7-9268-4ea2-a8ce-384978c13667"
 private let BMW_CLIENT_ID = "2ee5e03a-3a56-41c9-aaa0-16468920f871"
 
 enum ClientFeatures {
-    /// True when the signed-in user belongs to Tata Tiscon. Used to gate
-    /// the legacy "cost toggle" / weighted-view affordances that were
-    /// custom-built for their tonnage-driven pipeline. Other clients see
-    /// the simpler default UI.
+    /// True when the signed-in user belongs to a steel-dealer tenant — Tata
+    /// Tiscon (a1f67468) or BMW (2ee5e03a). Both sell TMT by tonnage and share
+    /// the same deal workflow, so BMW gets the affordances that were originally
+    /// custom-built for Tata: weighted-by-tonne pipeline view, per-kg line-item
+    /// pricing, the product-basket at lead→deal convert, the Products-of-Interest
+    /// section moved to convert, the site-visit auto-log, and the B2C lock.
+    /// Other clients see the simpler default UI.
     static var isTataTiscon: Bool {
-        Session.currentUser?.clientId == TATA_TISCON_CLIENT_ID
+        guard let cid = Session.currentUser?.clientId else { return false }
+        return cid == TATA_TISCON_CLIENT_ID || cid == BMW_CLIENT_ID
     }
 
     /// True when the signed-in user belongs to the parent Kinematic tenant.

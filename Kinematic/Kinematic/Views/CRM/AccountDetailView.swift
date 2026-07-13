@@ -47,10 +47,11 @@ struct AccountDetailView: View {
             ActivityComposeView(
                 initialType: composerInitialType,
                 initialSubject: composerInitialSubject
-            ) { type, subject, description, imageUrl, when, _ in
+            ) { type, subject, description, imageUrl, when, _, customFields in
                 await logActivity(
                     type: type, subject: subject, description: description,
-                    imageUrl: imageUrl, completedAt: when
+                    imageUrl: imageUrl, completedAt: when,
+                    customFields: customFields
                 )
             }
         }
@@ -214,7 +215,7 @@ struct AccountDetailView: View {
         }
     }
 
-    private func logActivity(type: String, subject: String, description: String, imageUrl: String?, completedAt: Date) async {
+    private func logActivity(type: String, subject: String, description: String, imageUrl: String?, completedAt: Date, customFields: [String: Any] = [:]) async {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if type == "call", let id = pendingCallActivityId {
@@ -226,6 +227,8 @@ struct AccountDetailView: View {
             if let duration = CallObserver.shared.consumeDuration(), duration > 0 {
                 patch["duration_seconds"] = duration
             }
+            // Backend PATCH merges custom_fields over the stored blob.
+            if !customFields.isEmpty { patch["custom_fields"] = customFields }
             if let updated = try? await api.updateActivity(id: id, body: patch),
                let i = activities.firstIndex(where: { $0.id == id }) {
                 activities[i] = updated
@@ -250,6 +253,8 @@ struct AccountDetailView: View {
         if type == "call", let duration = CallObserver.shared.consumeDuration(), duration > 0 {
             body["duration_seconds"] = duration
         }
+        // Admin-defined activity custom fields; omitted when empty.
+        if !customFields.isEmpty { body["custom_fields"] = customFields }
         if let created = try? await api.createActivity(body) {
             activities.insert(created, at: 0)
         }
