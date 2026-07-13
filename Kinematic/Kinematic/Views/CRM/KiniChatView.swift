@@ -221,11 +221,9 @@ struct KiniChatView: View {
             }
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white.opacity(0.18))
+                    .fill(Color.white)
                     .frame(width: 36, height: 36)
-                Text("✦")
-                    .font(.system(size: 18))
-                    .foregroundColor(.white)
+                KiniMascotView(size: 30)
             }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {

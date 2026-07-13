@@ -8,11 +8,7 @@ struct ChatBubble: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             if !isUser {
-                ZStack {
-                    Circle().fill(LinearGradient(colors: [Brand.red, Brand.red], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: "sparkles").foregroundColor(.white).font(.system(size: 12))
-                }
+                KiniMascotView(size: 32)
             } else { Spacer(minLength: 40) }
 
             VStack(alignment: .leading, spacing: 8) {
