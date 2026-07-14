@@ -606,6 +606,25 @@ final class CRMService {
         return try await postJSON("/api/v1/crm/ai/draft-reply", body: body)
     }
 
+    // MARK: - Media signing (private-bucket images → short-lived signed URLs)
+
+    /// Response of `GET /api/v1/media/sign`. Backend ships `{ url, expiresIn }`.
+    struct SignedMediaResponse: Codable {
+        let url: String
+        let expiresIn: Int?
+    }
+
+    /// Exchange a stored private-bucket object URL (attendance selfie, form
+    /// photo, avatar, …) for a short-lived signed URL so the buckets can stay
+    /// PRIVATE — SECURITY_AUDIT_2026-07.md PR-1. Reuses the authenticated
+    /// request path, so it inherits the Bearer token, tenant headers and the
+    /// 401-refresh-and-replay behaviour for free.
+    func signMediaURL(_ storedURL: String) async throws -> String {
+        let resp: SignedMediaResponse = try await get("/api/v1/media/sign",
+                                                       query: ["url": storedURL])
+        return resp.url
+    }
+
     // MARK: Internals
 
     private var authToken: String? {

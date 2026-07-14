@@ -438,8 +438,8 @@ struct ProfileView: View {
                 .shadow(color: .red.opacity(0.3), radius: 10, x: 0, y: 5)
 
             if let urlString = avatarUrlString,
-               let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
+               !urlString.isEmpty {
+                SignedAsyncImage(urlString: urlString) { phase in
                     switch phase {
                     case .empty:
                         Text(user?.name.prefix(1).uppercased() ?? "U")

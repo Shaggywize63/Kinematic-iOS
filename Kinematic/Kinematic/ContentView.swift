@@ -960,8 +960,8 @@ struct AttendanceView: View {
                                             Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
                                                 .frame(width: 120, height: 120).clipShape(Circle())
                                         } else if let selfieUrl = appState.today?.checkinSelfieUrl,
-                                                  let url = URL(string: selfieUrl) {
-                                            AsyncImage(url: url) { image in
+                                                  !selfieUrl.isEmpty {
+                                            SignedAsyncImage(urlString: selfieUrl) { image in
                                                 image.resizable().aspectRatio(contentMode: .fill)
                                                     .frame(width: 120, height: 120).clipShape(Circle())
                                             } placeholder: {
@@ -1100,7 +1100,7 @@ struct AttendanceHistoryRow: View {
         let displayCheckout = record.lastCheckoutAt ?? record.checkoutAt
         
         return HStack(spacing: 15) {
-            if let selfieUrl = record.checkinSelfieUrl, let url = URL(string: selfieUrl) { AsyncImage(url: url) { image in image.resizable().aspectRatio(contentMode: .fill).frame(width: 50, height: 50).clipShape(RoundedRectangle(cornerRadius: 12)) } placeholder: { dateBadge } }
+            if let selfieUrl = record.checkinSelfieUrl, !selfieUrl.isEmpty { SignedAsyncImage(urlString: selfieUrl) { image in image.resizable().aspectRatio(contentMode: .fill).frame(width: 50, height: 50).clipShape(RoundedRectangle(cornerRadius: 12)) } placeholder: { dateBadge } }
             else { dateBadge }
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayCheckout != nil ? "Daily Shift Completed" : (displayCheckin != nil ? "Shift In Progress" : "Present")).font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label))

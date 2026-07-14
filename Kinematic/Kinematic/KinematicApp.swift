@@ -1599,17 +1599,21 @@ struct RouteActivity: Codable, Identifiable {
 class Session: ObservableObject {
     static let shared = Session()
     
+    // Auth credentials are stored in the Keychain (encrypted at rest), NOT
+    // plaintext UserDefaults — SECURITY_AUDIT_2026-07.md M-1. The API is
+    // unchanged; `KeychainTokenStore` lazily migrates any legacy UserDefaults
+    // value on first read so signed-in users are not logged out.
     static var sharedToken: String {
-        get { UserDefaults.standard.string(forKey: "auth_token") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "auth_token") }
+        get { KeychainTokenStore.get("auth_token") }
+        set { KeychainTokenStore.set(newValue, for: "auth_token") }
     }
 
     /// Supabase refresh token. Long-lived. Used by `KinematicRepository.refreshAccessToken`
     /// to silently swap a stale access token for a fresh one, so the user
     /// never gets kicked out unless they explicitly log out.
     static var refreshToken: String {
-        get { UserDefaults.standard.string(forKey: "refresh_token") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "refresh_token") }
+        get { KeychainTokenStore.get("refresh_token") }
+        set { KeychainTokenStore.set(newValue, for: "refresh_token") }
     }
 
     static var isDemoMode: Bool {
@@ -1640,14 +1644,9 @@ class Session: ObservableObject {
     /// UserDefaults (matches sharedToken / refreshToken so cold-start
     /// restores all three together). Cleared on logout.
     static var sessionId: String? {
-        get { UserDefaults.standard.string(forKey: "active_session_id") }
-        set {
-            if let v = newValue, !v.isEmpty {
-                UserDefaults.standard.set(v, forKey: "active_session_id")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "active_session_id")
-            }
-        }
+        // Session credential — Keychain-backed alongside the tokens (M-1).
+        get { let v = KeychainTokenStore.get("active_session_id"); return v.isEmpty ? nil : v }
+        set { KeychainTokenStore.set(newValue ?? "", for: "active_session_id") }
     }
 
     /// Multi-project routing key resolved from the user's email at login
