@@ -1617,8 +1617,24 @@ class Session: ObservableObject {
     }
 
     static var isDemoMode: Bool {
-        get { UserDefaults.standard.bool(forKey: "is_demo_mode") }
-        set { UserDefaults.standard.set(newValue, forKey: "is_demo_mode") }
+        // Demo mode is a DEBUG-only affordance (M-7). No shipping code path
+        // ever sets it, so in a release build the only way `is_demo_mode`
+        // could become true is an external UserDefaults write (device backup
+        // edit / jailbreak / debugger) — which would then satisfy
+        // `isAuthenticated` with no token, an auth bypass into the app UI.
+        // Compile it out of release so the predicate can't be flipped.
+        get {
+            #if DEBUG
+            return UserDefaults.standard.bool(forKey: "is_demo_mode")
+            #else
+            return false
+            #endif
+        }
+        set {
+            #if DEBUG
+            UserDefaults.standard.set(newValue, forKey: "is_demo_mode")
+            #endif
+        }
     }
 
     /// Number of consecutive 401s where refresh ALSO failed. Stays 0 in
