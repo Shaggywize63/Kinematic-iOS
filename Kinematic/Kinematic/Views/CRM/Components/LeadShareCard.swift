@@ -122,10 +122,18 @@ enum LeadShareCardBuilder {
         let photoUrlString = lead.photoUrl
             ?? (cf["photo_url"]?.raw?.any as? String)
             ?? (cf["photo"]?.raw?.any as? String)
-        if let s = photoUrlString, !s.isEmpty, let url = URL(string: s),
-           let (data, _) = try? await URLSession.shared.data(from: url),
-           let img = UIImage(data: data) {
-            photo = img
+        // Lead photos live in a PRIVATE Supabase bucket, so fetching the
+        // stored URL raw 403s and the card silently drops to initials.
+        // Exchange it for a short-lived signed URL first (the same resolver
+        // SignedAsyncImage uses); only fall back to the raw URL if signing
+        // returns nil.
+        if let s = photoUrlString, !s.isEmpty {
+            let signedURL = await MediaSigning.shared.resolvedURL(for: s) ?? URL(string: s)
+            if let url = signedURL,
+               let (data, _) = try? await URLSession.shared.data(from: url),
+               let img = UIImage(data: data) {
+                photo = img
+            }
         }
 
         let initials: String = {
@@ -171,10 +179,10 @@ struct LeadShareCard: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            VStack(spacing: 16) {
-                photoView.padding(.top, 26)
+            heroView
+            VStack(spacing: 8) {
                 Text(data.name)
-                    .font(.system(size: 34, weight: .heavy))
+                    .font(.system(size: 26, weight: .heavy))
                     .foregroundColor(Brand.ink)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -183,15 +191,16 @@ struct LeadShareCard: View {
                 if let phone = data.phone, !phone.isEmpty {
                     HStack(spacing: 8) {
                         Image(systemName: "phone.fill")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(Brand.red)
                         Text(phone)
-                            .font(.system(size: 19, weight: .semibold))
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(Brand.ink)
                     }
                 }
                 detailPanel
             }
+            .padding(.top, 12)
             Spacer(minLength: 0)
             footer
         }
@@ -202,7 +211,7 @@ struct LeadShareCard: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Image("KinematicMarkReverse")
+            Image("KinematicMarkMonoWhite")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 34, height: 34)
@@ -226,23 +235,30 @@ struct LeadShareCard: View {
         .background(Brand.red)
     }
 
+    /// Full-width hero banner sitting directly under the header — the lead's
+    /// photo is the centrepiece. Roughly 37% of the card height. When there's
+    /// no photo, a same-sized subtle block carries the large initials.
+    private static let heroHeight: CGFloat = 250
+
     @ViewBuilder
-    private var photoView: some View {
+    private var heroView: some View {
         if let photo = data.photo {
             Image(uiImage: photo)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 148, height: 148)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Brand.red.opacity(0.3), lineWidth: 4))
+                .frame(width: LeadShareCardBuilder.cardSize.width,
+                       height: Self.heroHeight)
+                .clipped()
         } else {
             ZStack {
-                Circle().fill(Brand.red.opacity(0.12))
+                Rectangle().fill(Brand.red.opacity(0.10))
                 Text(data.initials)
-                    .font(.system(size: 54, weight: .black))
-                    .foregroundColor(Brand.red)
+                    .font(.system(size: 96, weight: .black))
+                    .foregroundColor(Brand.red.opacity(0.85))
             }
-            .frame(width: 148, height: 148)
+            .frame(width: LeadShareCardBuilder.cardSize.width,
+                   height: Self.heroHeight)
+            .clipped()
         }
     }
 
@@ -264,13 +280,13 @@ struct LeadShareCard: View {
                             .foregroundColor(secondaryText)
                             .frame(width: 104, alignment: .leading)
                         Text(row.1)
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(Brand.ink)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .lineLimit(2)
                             .minimumScaleFactor(0.8)
                     }
-                    .padding(.vertical, 11)
+                    .padding(.vertical, 8)
                 }
             }
             .padding(.horizontal, 20)
