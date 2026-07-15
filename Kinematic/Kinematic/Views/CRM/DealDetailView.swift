@@ -11,6 +11,9 @@ struct DealDetailView: View {
     /// Primary contact loaded lazily from `Deal.contactId` so the deal
     /// detail can offer tap-to-call without a separate navigation hop.
     @State private var primaryContact: Contact?
+    /// Linked account loaded lazily from `Deal.accountId` — the deal row
+    /// only carries the id, so we hydrate the name for the Linked section.
+    @State private var linkedAccount: CRMAccount?
     @State private var loggingActivity = false
     @State private var composerInitialType: String = "call"
     @State private var composerInitialSubject: String = ""
@@ -27,10 +30,10 @@ struct DealDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 if let d = initialDeal {
-                    // Stage stepper sits above everything — reps land on
-                    // this screen looking for "what's the status, what
+                    // Compact stage strip sits above everything — reps land
+                    // on this screen looking for "what's the status, what
                     // changes next?" so it deserves first paint priority.
                     if !stages.isEmpty {
                         DealStageProgress(
@@ -42,12 +45,9 @@ struct DealDetailView: View {
                             onStageChanged: { historyRefreshTick &+= 1 }
                         )
                     }
-                    headerCard(d)
-                    closeActions(d)
-                    quickActionsRow(d)
-                    if let contact = primaryContact, let phone = contact.phone ?? contact.mobile, !phone.isEmpty {
-                        primaryContactCard(contact: contact, phone: phone, dealName: d.name)
-                    }
+                    summarySection(d)
+                    actionsRow(d)
+                    linkedSection(d)
                     // Win Probability + Next Best Action are manager-tier
                     // surfaces. Champion FEs work the floor and don't act on
                     // these AI signals — matches the web gate on the deal
@@ -159,6 +159,9 @@ struct DealDetailView: View {
             if let cid = initialDeal?.contactId, primaryContact == nil {
                 primaryContact = try? await CRMService.shared.getContact(id: cid)
             }
+            if let aid = initialDeal?.accountId, linkedAccount == nil {
+                linkedAccount = try? await CRMService.shared.getAccount(id: aid)
+            }
         }
         // Tell KINI which record is on screen so the chat answers in context.
         .onAppear {
@@ -170,63 +173,319 @@ struct DealDetailView: View {
         }
     }
 
-    // MARK: - Quick action row (Add Activity + future buttons)
+    // MARK: - Section scaffolding (shared card + row helpers)
 
-    /// Compact action bar that sits between the close controls and the
-    /// AI/insight stack. The "+ Add Activity" button mirrors the web
-    /// dashboard's quick-log composer on the deal detail page.
-    @ViewBuilder
-    private func quickActionsRow(_ d: Deal) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                composerInitialType = "note"
-                composerInitialSubject = ""
-                pendingCallActivityId = nil
-                loggingActivity = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Add Activity")
-                        .font(.system(size: 13, weight: .black))
-                        .tracking(0.3)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .foregroundColor(.white)
-                .background(Capsule().fill(Brand.red))
-                .shadow(color: Brand.red.opacity(0.30), radius: 6, x: 0, y: 2)
+    /// Card wrapper for every re-segmented section — eyebrow header
+    /// (icon + tracked caps in Brand.red) over the content, matching
+    /// DealHistorySection so the whole page reads as one system.
+    private func sectionCard<Content: View>(
+        _ title: String,
+        icon: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                    .foregroundColor(Brand.red)
+                Text(title)
+                    .font(.system(size: 10, weight: .black))
+                    .tracking(1)
+                    .foregroundColor(Brand.red)
+                Spacer()
             }
-            .sensoryFeedback(.impact(weight: .light), trigger: loggingActivity)
-            Spacer()
+            content()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    /// Shared label/value row — fixed-width eyebrow label column so every
+    /// section's values align down one vertical edge.
+    private func detailRow(_ label: String, _ value: String, valueColor: Color = .primary) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundColor(.secondary)
+                .frame(width: 110, alignment: .leading)
+            Text(value)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(valueColor)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
     }
 
-    private func primaryContactCard(contact: Contact, phone: String, dealName: String) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle().fill(Brand.red.opacity(0.15)).frame(width: 40, height: 40)
-                Image(systemName: "person.fill").foregroundColor(Brand.red)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(contact.displayName).font(.system(size: 14, weight: .bold))
-                Text(phone).font(.caption).foregroundColor(.secondary)
-            }
-            Spacer()
-            CallButton(
-                phone: phone,
-                prefillSubject: "Call about \(dealName)",
-                onCallInitiated: {
-                    let subject = "Call about \(dealName)"
-                    composerInitialType = "call"
-                    composerInitialSubject = subject
-                    Task { await startCallActivity(subject: subject) }
-                    loggingActivity = true
-                }
-            )
+    /// detailRow variant for navigable rows — value renders in Brand.red
+    /// with a trailing chevron; wrap it in a NavigationLink.
+    private func linkRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundColor(.secondary)
+                .frame(width: 110, alignment: .leading)
+            Text(value)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Brand.red)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Summary section
+
+    /// Amount + weight hero numbers, the won-of/partial-close line, then
+    /// aligned rows for status / probability / close dates.
+    private func summarySection(_ d: Deal) -> some View {
+        let kg = derivedWeightKg(d)
+        let cf = customFieldsMap(d)
+        let original = doubleValue(cf["original_amount"])
+        let status = (d.status ?? "open").lowercased()
+        return sectionCard("SUMMARY", icon: "doc.plaintext") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(d.name).font(.system(size: 18, weight: .black))
+                HStack(alignment: .firstTextBaseline, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("AMOUNT")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .tracking(0.8)
+                        Text(formattedAmount(d))
+                            .font(.system(size: 26, weight: .heavy))
+                            .foregroundColor(.primary)
+                    }
+                    if kg > 0 {
+                        Divider().frame(height: 36)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("WEIGHT")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.secondary)
+                                .tracking(0.8)
+                            Text(formatKg(kg))
+                                .font(.system(size: 26, weight: .heavy))
+                                .foregroundColor(.primary)
+                        }
+                    }
+                    Spacer()
+                }
+                // Partial close — backend stamps original_amount on the won
+                // deal when it closed for less than the full value.
+                if let original {
+                    Text("Won \(CurrencyFormatter.formatINR(d.amount)) of \(CurrencyFormatter.formatINR(original))")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.green)
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    detailRow("Status", statusDisplay(status), valueColor: statusColor(status))
+                    if status == "lost", let reason = d.lostReason, !reason.isEmpty {
+                        detailRow("Lost reason", reason)
+                    }
+                    if let stage = d.stageName, !stage.isEmpty {
+                        detailRow("Stage", stage)
+                    }
+                    if let prob = probabilityDisplay(d) {
+                        detailRow("Probability", prob)
+                    }
+                    if let close = d.expectedCloseDate?.prefix(10) {
+                        detailRow("Expected close", String(close))
+                    }
+                    if let closed = d.actualCloseDate?.prefix(10) {
+                        detailRow("Closed on", String(closed))
+                    }
+                }
+            }
+        }
+    }
+
+    private func statusDisplay(_ status: String) -> String {
+        switch status {
+        case "won": return "Won"
+        case "lost": return "Lost"
+        default: return "Open"
+        }
+    }
+
+    private func statusColor(_ status: String) -> Color {
+        switch status {
+        case "won": return .green
+        case "lost": return .red
+        default: return .primary
+        }
+    }
+
+    /// Stage probability formatted as a percentage. Tolerates both 0–1
+    /// fractions and 0–100 values since the column has carried both.
+    private func probabilityDisplay(_ d: Deal) -> String? {
+        guard let p = d.probability, p >= 0 else { return nil }
+        let pct = p <= 1 ? p * 100 : p
+        return "\(Int(pct.rounded()))%"
+    }
+
+    // MARK: - Actions row (Close / Re-open + Add Activity)
+
+    /// One compact bar under the summary: lifecycle action (Close deal for
+    /// open deals, Re-open for closed ones) beside the Add Activity
+    /// quick-log capsule.
+    @ViewBuilder
+    private func actionsRow(_ d: Deal) -> some View {
+        let status = (d.status ?? "open").lowercased()
+        HStack(spacing: 10) {
+            if status == "won" || status == "lost" {
+                reopenButton
+            } else {
+                closeDealButton
+            }
+            addActivityButton
+        }
+    }
+
+    private var closeDealButton: some View {
+        Button { closingDeal = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "flag.checkered")
+                Text("Close deal").font(.system(size: 14, weight: .bold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.green))
+            .foregroundColor(.white)
+        }
+    }
+
+    private var addActivityButton: some View {
+        Button {
+            composerInitialType = "note"
+            composerInitialSubject = ""
+            pendingCallActivityId = nil
+            loggingActivity = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 14, weight: .bold))
+                Text("Add Activity")
+                    .font(.system(size: 13, weight: .black))
+                    .tracking(0.3)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .foregroundColor(.white)
+            .background(Capsule().fill(Brand.red))
+            .shadow(color: Brand.red.opacity(0.30), radius: 6, x: 0, y: 2)
+        }
+        .sensoryFeedback(.impact(weight: .light), trigger: loggingActivity)
+    }
+
+    // MARK: - Linked section
+
+    /// Everything this deal points at — source lead, dealer, primary
+    /// contact (with tap-to-call), account, and partial-close siblings
+    /// (parent deal / balance deal).
+    @ViewBuilder
+    private func linkedSection(_ d: Deal) -> some View {
+        let cf = customFieldsMap(d)
+        let balanceOf = stringValue(cf["balance_of"])
+        let balanceDealId = stringValue(cf["balance_deal_id"])
+        let hasLead = d.leadName?.isEmpty == false
+        let hasDealer = d.dealerName?.isEmpty == false
+        if hasLead || hasDealer || primaryContact != nil || linkedAccount != nil
+            || balanceOf != nil || balanceDealId != nil {
+            sectionCard("LINKED", icon: "link") {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let leadName = d.leadName, !leadName.isEmpty {
+                        let phone = (d.leadPhone?.isEmpty == false) ? d.leadPhone : nil
+                        detailRow("Source lead", phone.map { "\(leadName) · \($0)" } ?? leadName)
+                    }
+                    if let dealer = d.dealerName, !dealer.isEmpty {
+                        detailRow("Dealer", dealer)
+                    }
+                    if let contact = primaryContact {
+                        contactRow(contact, dealName: d.name)
+                    }
+                    if let account = linkedAccount {
+                        NavigationLink(destination: AccountDetailView(account: account)) {
+                            linkRow("Account", account.name)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    // This deal is the remainder of a partial close.
+                    if let parentId = balanceOf {
+                        NavigationLink(destination: DealDetailView(dealId: parentId)) {
+                            linkRow("Balance of", "Balance of an earlier deal")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    // This deal was partially closed and spawned a balance deal.
+                    if let balanceId = balanceDealId {
+                        NavigationLink(destination: DealDetailView(dealId: balanceId)) {
+                            linkRow("Balance deal", "Open deal for the remainder")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Contact row with the tap-to-call affordance the old standalone
+    /// contact card provided — CallButton POSTs the minimal call row and
+    /// opens the composer prefilled, exactly as before.
+    private func contactRow(_ contact: Contact, dealName: String) -> some View {
+        let phone = (contact.phone ?? contact.mobile).flatMap { $0.isEmpty ? nil : $0 }
+        return HStack(alignment: .center, spacing: 10) {
+            Text("CONTACT")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundColor(.secondary)
+                .frame(width: 110, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(contact.displayName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+                if let phone {
+                    Text(phone).font(.caption).foregroundColor(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+            if let phone {
+                CallButton(
+                    phone: phone,
+                    prefillSubject: "Call about \(dealName)",
+                    onCallInitiated: {
+                        let subject = "Call about \(dealName)"
+                        composerInitialType = "call"
+                        composerInitialSubject = subject
+                        Task { await startCallActivity(subject: subject) }
+                        loggingActivity = true
+                    }
+                )
+            }
+        }
+    }
+
+    // MARK: - Custom-field value helpers
+
+    private func customFieldsMap(_ d: Deal) -> [String: Any] {
+        (d.customFields ?? [:]).compactMapValues { $0.raw?.any }
+    }
+
+    private func doubleValue(_ v: Any?) -> Double? {
+        if let n = v as? Double { return n }
+        if let n = v as? Int { return Double(n) }
+        if let s = v as? String { return Double(s) }
+        return nil
+    }
+
+    private func stringValue(_ v: Any?) -> String? {
+        if let s = v as? String, !s.isEmpty { return s }
+        return nil
     }
 
     // MARK: - Activity logging
@@ -293,55 +552,9 @@ struct DealDetailView: View {
 
     // MARK: - Close / re-open
 
-    /// Status banner + close/re-open controls. Closing routes through the
-    /// dedicated /win and /lose endpoints (see DealCloseView) so the
-    /// backend writes a crm_deal_history row; re-opening is a plain PATCH
-    /// status:"open" because we don't need a separate audit endpoint for it.
-    @ViewBuilder
-    private func closeActions(_ d: Deal) -> some View {
-        let status = (d.status ?? "open").lowercased()
-        switch status {
-        case "won":
-            statusBanner(text: "Closed as WON", system: "checkmark.seal.fill", color: .green)
-            reopenButton
-        case "lost":
-            VStack(alignment: .leading, spacing: 6) {
-                statusBanner(text: "Closed as LOST", system: "xmark.seal.fill", color: .red)
-                if let reason = d.lostReason, !reason.isEmpty {
-                    Text("Reason: \(reason)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                }
-            }
-            reopenButton
-        default:
-            Button { closingDeal = true } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "flag.checkered")
-                    Text("Close deal").font(.system(size: 14, weight: .bold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.green))
-                .foregroundColor(.white)
-            }
-        }
-    }
-
-    private func statusBanner(text: String, system: String, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: system)
-            Text(text).font(.system(size: 13, weight: .black)).tracking(0.5)
-            Spacer()
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .foregroundColor(color)
-        .background(RoundedRectangle(cornerRadius: 12).fill(color.opacity(0.12)))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.4), lineWidth: 1))
-    }
-
+    /// Re-opening is a plain PATCH status:"open"; closing routes through
+    /// the dedicated /win and /lose endpoints (see DealCloseView) so the
+    /// backend writes a crm_deal_history row.
     private var reopenButton: some View {
         Button { Task { await reopenDeal() } } label: {
             HStack(spacing: 8) {
@@ -351,8 +564,8 @@ struct DealDetailView: View {
                     .font(.system(size: 13, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary, lineWidth: 1))
+            .padding(.vertical, 11)
+            .background(RoundedRectangle(cornerRadius: 12).stroke(Color.secondary, lineWidth: 1))
         }
         .foregroundColor(.primary)
         .disabled(reopening)
@@ -371,92 +584,11 @@ struct DealDetailView: View {
         }
     }
 
-    private func headerCard(_ d: Deal) -> some View {
-        // Hero card — Amount + Weight as the two dominant numbers, then
-        // stage / close date below. Mirrors the web deal-detail hero so
-        // reps see the ₹ and the tonnage at a glance.
-        let kg = derivedWeightKg(d)
-        return VStack(alignment: .leading, spacing: 12) {
-            Text(d.name).font(.system(size: 20, weight: .black))
-            HStack(alignment: .firstTextBaseline, spacing: 20) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("AMOUNT")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .tracking(0.8)
-                    Text(formattedAmount(d))
-                        .font(.system(size: 26, weight: .heavy))
-                        .foregroundColor(.primary)
-                }
-                if kg > 0 {
-                    Divider().frame(height: 36)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("WEIGHT")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.secondary)
-                            .tracking(0.8)
-                        Text(formatKg(kg))
-                            .font(.system(size: 26, weight: .heavy))
-                            .foregroundColor(.primary)
-                    }
-                }
-                Spacer()
-            }
-            HStack {
-                if let stage = d.stageName {
-                    Text(stage.uppercased()).font(.system(size: 10, weight: .black))
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Brand.red.opacity(0.15)).foregroundColor(Brand.red).cornerRadius(4)
-                }
-                if let close = d.expectedCloseDate?.prefix(10) {
-                    Label("Closes \(close)", systemImage: "calendar").font(.caption).foregroundColor(.secondary)
-                }
-            }
-            // Server-stamped context — dealer label + the lead this deal
-            // was converted from. Both are display-only enrichments on
-            // GET /deals/:id; absent for deals without them.
-            if hasSummaryRows(d) {
-                VStack(alignment: .leading, spacing: 6) {
-                    if let dealer = d.dealerName, !dealer.isEmpty {
-                        summaryRow("DEALER", dealer)
-                    }
-                    if let leadName = d.leadName, !leadName.isEmpty {
-                        let phone = (d.leadPhone?.isEmpty == false) ? d.leadPhone : nil
-                        summaryRow("SOURCE LEAD", phone.map { "\(leadName) · \($0)" } ?? leadName)
-                    }
-                }
-                .padding(.top, 2)
-            }
-        }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
-    }
-
-    private func hasSummaryRows(_ d: Deal) -> Bool {
-        (d.dealerName?.isEmpty == false) || (d.leadName?.isEmpty == false)
-    }
-
-    /// Compact labelled row inside the hero card (label column matches the
-    /// AMOUNT / WEIGHT eyebrow style above).
-    private func summaryRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(label)
-                .font(.system(size: 10, weight: .bold))
-                .tracking(0.8)
-                .foregroundColor(.secondary)
-                .frame(width: 92, alignment: .leading)
-            Text(value)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     /// Total weight (kg) for the deal — prefers custom_fields.volume_kg,
     /// falls back to recomputing from product_lines so deals saved before
     /// the volume mirror landed still surface a number.
     private func derivedWeightKg(_ d: Deal) -> Double {
-        let cf: [String: Any] = (d.customFields ?? [:]).compactMapValues { $0.raw?.any }
+        let cf = customFieldsMap(d)
         if let v = cf["volume_kg"] as? Double, v > 0 { return v }
         if let v = cf["volume_kg"] as? Int, v > 0 { return Double(v) }
         guard let lines = cf["product_lines"] as? [[String: Any]] else { return 0 }

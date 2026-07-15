@@ -38,9 +38,19 @@ struct CustomFieldsDetailCard: View {
         if !loading && rows.isEmpty {
             EmptyView()
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Additional details")
-                    .font(.headline)
+            VStack(alignment: .leading, spacing: 10) {
+                // Eyebrow header — matches the sectioned card headers on
+                // the lead / deal detail screens.
+                HStack(spacing: 8) {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 11))
+                        .foregroundColor(Brand.red)
+                    Text("ADDITIONAL DETAILS")
+                        .font(.system(size: 10, weight: .black))
+                        .tracking(1)
+                        .foregroundColor(Brand.red)
+                    Spacer()
+                }
                 if loading {
                     HStack {
                         ProgressView().scaleEffect(0.7)
@@ -60,7 +70,7 @@ struct CustomFieldsDetailCard: View {
                     }
                 }
             }
-            .padding(14)
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
             .task { await load() }

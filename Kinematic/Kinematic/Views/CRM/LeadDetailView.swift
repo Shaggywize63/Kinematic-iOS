@@ -1354,7 +1354,8 @@ struct LeadDetailView: View {
 
     private var relatedDealsCard: some View {
         Card(title: "DEALS (\(vm.relatedDeals.count))") {
-            VStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                dealsRollupLine
                 ForEach(vm.relatedDeals) { d in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -1373,6 +1374,22 @@ struct LeadDetailView: View {
                 }
             }
         }
+    }
+
+    /// One-line ₹ rollup across the lead's deals — Total (everything),
+    /// Won (closed-won) and Balance (still-open pipeline).
+    private var dealsRollupLine: some View {
+        let deals = vm.relatedDeals
+        let total = deals.reduce(0.0) { $0 + ($1.amount ?? 0) }
+        let won = deals
+            .filter { ($0.status ?? "").lowercased() == "won" }
+            .reduce(0.0) { $0 + ($1.amount ?? 0) }
+        let balance = deals
+            .filter { ($0.status ?? "open").lowercased() == "open" }
+            .reduce(0.0) { $0 + ($1.amount ?? 0) }
+        return Text("Total \(CurrencyFormatter.formatINRCompact(total)) · Won \(CurrencyFormatter.formatINRCompact(won)) · Balance \(CurrencyFormatter.formatINRCompact(balance))")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(.secondary)
     }
 
     // MARK: - Activities
