@@ -25,6 +25,11 @@ struct DealEditView: View {
     @State private var saving = false
     @State private var errorMessage: String?
 
+    // Admin-defined deal custom fields (e.g. the SRS Dealer lookup). Seeded
+    // from the deal's stored custom_fields once defs load; edited values ride
+    // the PATCH, which the backend merges into the stored blob.
+    @StateObject private var customFields = CustomFieldsModel()
+
     // Products of Interest editor — Tata/Kaiyo only, and only when the deal
     // has a linked lead (the basket lives on that lead's custom_fields).
     @StateObject private var productLines = ProductLinesModel()
@@ -75,6 +80,10 @@ struct DealEditView: View {
                     ProductLinesSection(model: productLines)
                 }
 
+                // Admin-defined deal custom fields (Dealer lookup, …).
+                // Self-gates on loaded defs; renders nothing when none exist.
+                CustomFieldsSection(model: customFields)
+
                 Section("Next Action") {
                     Picker("Action", selection: $nextActionType) {
                         Text("None").tag("")
@@ -99,6 +108,10 @@ struct DealEditView: View {
                     Button { Task { await save() } } label: { if saving { ProgressView() } else { Text("Save") } }
                         .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            }
+            .task {
+                await customFields.load(entity: "deal")
+                customFields.hydrate(from: deal.customFields)
             }
             .task {
                 guard showProducts, let lid = deal.leadId else { return }
@@ -131,7 +144,11 @@ struct DealEditView: View {
             followUp["next_action_type"] = NSNull()
             followUp["next_action_at"] = NSNull()
         }
-        body["custom_fields"] = followUp
+        // Admin-defined custom-field edits + the follow-up pair. The backend
+        // PATCH merges into the stored blob, so unrelated keys survive.
+        var mergedCf = customFields.jsonValues
+        for (k, v) in followUp { mergedCf[k] = v }
+        body["custom_fields"] = mergedCf
         do {
             let updated = try await CRMService.shared.patchDeal(id: deal.id, body: body)
             // Write the corrected basket back onto the linked lead (only when

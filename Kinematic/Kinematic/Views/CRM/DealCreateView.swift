@@ -12,6 +12,11 @@ struct DealCreateView: View {
     @State private var pipelineId: String = ""
     @State private var stageId: String = ""
 
+    /// Admin-defined deal custom fields (e.g. the SRS Dealer lookup).
+    /// Same model + section the lead / activity forms use; renders
+    /// nothing when the tenant has no entity_type='deal' defs.
+    @StateObject private var customFields = CustomFieldsModel()
+
     let onSubmit: ([String: Any]) async -> Void
 
     private var currentPipeline: Pipeline? {
@@ -75,6 +80,10 @@ struct DealCreateView: View {
                         DatePicker("Expected close", selection: $expectedCloseDate, displayedComponents: .date)
                     }
                 }
+
+                // Admin-defined deal custom fields (Dealer lookup, …).
+                // Self-gates on loaded defs; renders nothing when none exist.
+                CustomFieldsSection(model: customFields)
             }
             .navigationTitle("New Deal")
             .toolbar {
@@ -89,6 +98,7 @@ struct DealCreateView: View {
                 }
             }
             .task { await loadPipelines() }
+            .task { await customFields.load(entity: "deal") }
         }
     }
 
@@ -118,6 +128,8 @@ struct DealCreateView: View {
             let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
             body["expected_close_date"] = f.string(from: expectedCloseDate)
         }
+        let cf = customFields.jsonValues
+        if !cf.isEmpty { body["custom_fields"] = cf }
         return body
     }
 }
