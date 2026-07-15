@@ -55,8 +55,19 @@ struct DealCloseView: View {
     @State private var wonOther: String = ""
     @State private var lostReason: String = ""
     @State private var lostOther: String = ""
+    /// Closed (realised) amount, prefilled with the deal amount. Entering
+    /// a lower value marks a partial close — the win posts that amount and
+    /// (optionally) asks the backend to create a balance deal for the rest.
+    @State private var closedAmountText: String
+    @State private var createBalance = true
     @State private var saving = false
     @State private var errorMessage: String?
+
+    init(deal: Deal, onClosed: @escaping (Deal) -> Void) {
+        self.deal = deal
+        self.onClosed = onClosed
+        _closedAmountText = State(initialValue: Self.plainAmount(deal.amount))
+    }
 
     enum Outcome: String, CaseIterable, Identifiable {
         case won, lost
@@ -111,6 +122,30 @@ struct DealCloseView: View {
                                 .lineLimit(2...4)
                         }
                     }
+
+                    // Closed amount — deals are price-locked after creation,
+                    // so the win call is the one place the realised amount is
+                    // captured. Entering less than the deal amount is a
+                    // partial close; the backend can spin up an open
+                    // "(Balance)" deal for whatever remains.
+                    Section {
+                        TextField("Closed amount (₹)", text: $closedAmountText)
+                            .keyboardType(.decimalPad)
+                        if let balance = balanceRemaining {
+                            Label(
+                                "Balance \(CurrencyFormatter.formatINR(balance)) will remain",
+                                systemImage: "info.circle"
+                            )
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            Toggle("Create balance deal for the remainder", isOn: $createBalance)
+                        }
+                    } header: {
+                        Text("Closed amount (₹)")
+                    } footer: {
+                        Text("Prefilled with the deal amount. Enter a lower value for a partial close.")
+                            .font(.caption2)
+                    }
                 }
 
                 Section {
@@ -148,8 +183,16 @@ struct DealCloseView: View {
         switch outcome {
         case .won:
             guard !winReason.isEmpty else { return false }
-            if winReason == "Other" {
-                return !wonOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if winReason == "Other",
+               wonOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return false
+            }
+            // A non-empty amount must parse to a positive number. Empty is
+            // fine — the backend computes from closed quantities / falls
+            // back to the deal amount.
+            let raw = closedAmountText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !raw.isEmpty {
+                guard let n = enteredAmount, n > 0 else { return false }
             }
             return true
         case .lost:
@@ -159,6 +202,32 @@ struct DealCloseView: View {
             }
             return true
         }
+    }
+
+    /// Parsed closed-amount input. Tolerates grouping commas ("1,25,000").
+    private var enteredAmount: Double? {
+        let raw = closedAmountText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: "")
+        guard !raw.isEmpty else { return nil }
+        return Double(raw)
+    }
+
+    /// Remainder when the entered amount is a valid partial close
+    /// (0 < entered < deal amount); nil otherwise.
+    private var balanceRemaining: Double? {
+        guard let entered = enteredAmount, entered > 0,
+              let full = deal.amount, entered < full else { return nil }
+        return full - entered
+    }
+
+    /// Plain editable representation of the deal amount ("125000" /
+    /// "125000.50") — no currency symbol or grouping so the decimal pad
+    /// can round-trip it.
+    private static func plainAmount(_ v: Double?) -> String {
+        guard let v, v > 0 else { return "" }
+        if v == v.rounded() { return String(Int(v)) }
+        return String(format: "%.2f", v)
     }
 
     private var formattedAmount: String {
@@ -195,10 +264,14 @@ struct DealCloseView: View {
                 let reason = winReason == "Other"
                     ? wonOther.trimmingCharacters(in: .whitespacesAndNewlines)
                     : winReason
+                // Only send create_balance_deal on a genuine partial close —
+                // it's meaningless (and ignored) for a full-amount win.
+                let isPartial = balanceRemaining != nil
                 updated = try await CRMService.shared.winDeal(
                     id: deal.id,
-                    amount: nil,
-                    reason: reason.isEmpty ? nil : reason
+                    amount: enteredAmount,
+                    reason: reason.isEmpty ? nil : reason,
+                    createBalanceDeal: isPartial ? createBalance : nil
                 )
             case .lost:
                 let reason = lostReason == "Other"

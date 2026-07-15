@@ -46,11 +46,21 @@ struct DealProductsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Products")
-                .font(.title3.bold())
+            // Eyebrow header — matches the SUMMARY / LINKED / HISTORY
+            // section headers on DealDetailView.
+            HStack(spacing: 8) {
+                Image(systemName: "shippingbox")
+                    .font(.system(size: 11))
+                    .foregroundColor(Brand.red)
+                Text("PRODUCTS")
+                    .font(.system(size: 10, weight: .black))
+                    .tracking(1)
+                    .foregroundColor(Brand.red)
+                Spacer()
+            }
             content
         }
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
         .task { await load() }

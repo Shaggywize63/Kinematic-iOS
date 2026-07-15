@@ -264,10 +264,16 @@ final class CRMService {
     func moveDealStage(id: String, stageId: String) async throws -> Deal {
         try await postJSON("/api/v1/crm/deals/\(id)/move-stage", body: ["stage_id": stageId])
     }
-    func winDeal(id: String, amount: Double? = nil, reason: String? = nil) async throws -> Deal {
+    /// Close a deal as won. `amount` is the closed (realised) amount — when
+    /// omitted the backend computes it from closed quantities / falls back
+    /// to the deal amount. On a partial close (won < deal amount) pass
+    /// `createBalanceDeal: true` to have the backend spin up an open
+    /// "<name> (Balance)" deal for the remainder.
+    func winDeal(id: String, amount: Double? = nil, reason: String? = nil, createBalanceDeal: Bool? = nil) async throws -> Deal {
         var body: [String: Any] = [:]
         if let amount { body["amount"] = amount }
         if let reason, !reason.isEmpty { body["reason"] = reason }
+        if let createBalanceDeal { body["create_balance_deal"] = createBalanceDeal }
         return try await postJSON("/api/v1/crm/deals/\(id)/win", body: body)
     }
     func loseDeal(id: String, reason: String) async throws -> Deal {

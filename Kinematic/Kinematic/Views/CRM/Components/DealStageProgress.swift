@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// Inline stage stepper rendered at the top of DealDetailView. Each
-/// stage is a tappable pill; tapping moves the deal there (with a
+/// Compact stage strip rendered at the top of DealDetailView: one
+/// horizontally scrollable row of small stage chips with the current
+/// stage highlighted. Tapping a chip moves the deal there (with a
 /// confirmation sheet when the target is a Won/Lost stage so we also
-/// capture the close reason).
+/// capture the close reason). Timing signals (days in stage, days to
+/// close / overdue) collapse into a single tinted line in the header.
 ///
 /// Web parity: see `src/components/crm/DealStageProgress.tsx` in the
 /// kinematic-dashboard repo.
@@ -21,19 +23,19 @@ struct DealStageProgress: View {
     @State private var moveSuccessTick = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             heading
-            pillsRow
-            metricsRow
+            chipsRow
         }
-        .padding(14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 14)
                 .fill(.ultraThinMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
         )
         .sensoryFeedback(.success, trigger: moveSuccessTick)
@@ -60,61 +62,65 @@ struct DealStageProgress: View {
 
     private var heading: some View {
         HStack(spacing: 8) {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .foregroundColor(Brand.red)
-                .font(.system(size: 11))
-            Text("STAGE PROGRESS")
+            Text("STAGE")
                 .font(.system(size: 10, weight: .black))
-                .tracking(0.8)
+                .tracking(1)
                 .foregroundColor(Brand.red)
             Spacer()
             if moving {
                 ProgressView().controlSize(.small)
-            } else if let current = currentStage {
-                Text(current.name)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+            } else if let m = metricsSummary {
+                HStack(spacing: 4) {
+                    Image(systemName: m.icon).font(.system(size: 9))
+                    Text(m.text).font(.system(size: 10, weight: .bold))
+                }
+                .foregroundColor(m.tint)
+                .lineLimit(1)
             }
         }
     }
 
-    // MARK: - Pills row
+    // MARK: - Chips row
 
-    private var pillsRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .center, spacing: 6) {
-                ForEach(Array(sortedStages.enumerated()), id: \.element.id) { idx, stage in
-                    pill(for: stage, idx: idx)
-                    if idx < sortedStages.count - 1 {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.secondary.opacity(0.5))
+    private var chipsRow: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .center, spacing: 6) {
+                    ForEach(Array(sortedStages.enumerated()), id: \.element.id) { idx, stage in
+                        chip(for: stage, idx: idx)
+                            .id(stage.id)
                     }
                 }
+                .padding(.vertical, 1)
             }
-            .padding(.vertical, 2)
+            .onAppear {
+                // Land with the current stage in view — long pipelines
+                // otherwise hide the highlight off-screen to the right.
+                if let sid = deal.stageId {
+                    proxy.scrollTo(sid, anchor: .center)
+                }
+            }
         }
     }
 
     @ViewBuilder
-    private func pill(for stage: Stage, idx: Int) -> some View {
+    private func chip(for stage: Stage, idx: Int) -> some View {
         let role = stageRole(stage, idx: idx)
         Button {
             handleTap(stage)
         } label: {
-            HStack(spacing: 5) {
-                if role.iconName != nil {
-                    Image(systemName: role.iconName!)
-                        .font(.system(size: 9, weight: .black))
+            HStack(spacing: 4) {
+                if let icon = role.iconName {
+                    Image(systemName: icon)
+                        .font(.system(size: 8, weight: .black))
                 }
                 Text(stage.name.uppercased())
-                    .font(.system(size: 11, weight: .black))
-                    .tracking(0.4)
+                    .font(.system(size: 10, weight: .black))
+                    .tracking(0.3)
                     .lineLimit(1)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
             .background(
                 Capsule().fill(role.bg)
             )
@@ -122,50 +128,41 @@ struct DealStageProgress: View {
                 Capsule().stroke(role.border, lineWidth: 1)
             )
             .foregroundColor(role.fg)
-            .shadow(color: role.shadow, radius: role.shadowRadius, x: 0, y: 2)
+            .shadow(color: role.shadow, radius: role.shadowRadius, x: 0, y: 1)
         }
         .buttonStyle(.plain)
         .disabled(role.isCurrent || moving)
     }
 
-    // MARK: - Metrics row
+    // MARK: - Metrics summary
 
-    @ViewBuilder
-    private var metricsRow: some View {
-        let inStage = daysInStage
-        let toClose = daysToClose
-        if inStage != nil || toClose != nil {
-            HStack(spacing: 6) {
-                if let d = inStage {
-                    metricPill(
-                        text: d == 0 ? "today" : "\(d)d in stage",
-                        icon: "clock",
-                        tint: .secondary
-                    )
-                }
-                if let d = toClose {
-                    metricPill(
-                        text: d < 0
-                            ? "\(abs(d))d overdue"
-                            : d == 0 ? "closes today" : "\(d)d to close",
-                        icon: d < 0 ? "exclamationmark.triangle.fill" : "calendar",
-                        tint: d < 0 ? .red : (d < 7 ? .orange : .secondary)
-                    )
-                }
-                Spacer()
+    /// Single-line collapse of the old metric pills. Tint escalates with
+    /// the most urgent signal: red when overdue, orange when the close
+    /// date is today / under a week out, neutral otherwise.
+    private var metricsSummary: (text: String, icon: String, tint: Color)? {
+        var parts: [String] = []
+        var icon = "clock"
+        var tint: Color = .secondary
+        if let d = daysInStage {
+            parts.append(d == 0 ? "in stage today" : "\(d)d in stage")
+        }
+        if let d = daysToClose {
+            if d < 0 {
+                parts.append("\(abs(d))d overdue")
+                icon = "exclamationmark.triangle.fill"
+                tint = .red
+            } else if d == 0 {
+                parts.append("closes today")
+                icon = "calendar"
+                tint = .orange
+            } else {
+                parts.append("\(d)d to close")
+                icon = "calendar"
+                if d < 7 { tint = .orange }
             }
         }
-    }
-
-    private func metricPill(text: String, icon: String, tint: Color) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 9))
-            Text(text).font(.system(size: 10, weight: .bold))
-        }
-        .padding(.horizontal, 9).padding(.vertical, 4)
-        .foregroundColor(tint)
-        .background(Capsule().fill(tint.opacity(0.14)))
-        .overlay(Capsule().stroke(tint.opacity(0.3), lineWidth: 0.5))
+        guard !parts.isEmpty else { return nil }
+        return (parts.joined(separator: " · "), icon, tint)
     }
 
     // MARK: - Tap handling
@@ -202,11 +199,6 @@ struct DealStageProgress: View {
 
     private var sortedStages: [Stage] {
         stages.sorted { ($0.order ?? 0) < ($1.order ?? 0) }
-    }
-
-    private var currentStage: Stage? {
-        guard let sid = deal.stageId else { return nil }
-        return sortedStages.first(where: { $0.id == sid })
     }
 
     private var currentIndex: Int {
