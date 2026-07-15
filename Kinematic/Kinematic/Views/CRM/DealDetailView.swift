@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct DealDetailView: View {
     let dealId: String
@@ -23,6 +24,14 @@ struct DealDetailView: View {
     @State private var closingDeal = false
     @State private var reopening = false
     @State private var reopenError: String?
+    /// Lead-share card state. The deal page shares the LINKED lead's
+    /// branded card (name / number / photo / owner / dealer / brand /
+    /// block) — the same image the lead detail screen produces — so a rep
+    /// can send it on WhatsApp without hopping back to the lead.
+    @State private var shareBusy = false
+    @State private var shareImage: UIImage?
+    @State private var showShareSheet = false
+    @State private var shareError: String?
     /// Bumped after a successful stage move or a freshly-logged activity
     /// so DealHistorySection re-fetches without needing the whole detail
     /// screen to reload.
@@ -112,6 +121,22 @@ struct DealDetailView: View {
         .navigationTitle(initialDeal?.name ?? "Deal")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                // Share the linked lead's card (WhatsApp-ready image). Only
+                // shown when the deal has a lead to share.
+                if let lid = initialDeal?.leadId, !lid.isEmpty {
+                    Button { shareLinkedLead(lid) } label: {
+                        if shareBusy {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                    .tint(Brand.red)
+                    .disabled(shareBusy)
+                    .accessibilityLabel("Share lead")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 if initialDeal != nil { Button("Edit") { editing = true } }
             }
         }
@@ -133,6 +158,17 @@ struct DealDetailView: View {
                                   set: { if !$0 { reopenError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(reopenError ?? "") }
+        // System share sheet for the rendered lead card image.
+        .sheet(isPresented: $showShareSheet) {
+            if let img = shareImage {
+                LeadShareActivitySheet(items: [img])
+            }
+        }
+        .alert("Share failed",
+               isPresented: .init(get: { shareError != nil },
+                                  set: { if !$0 { shareError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(shareError ?? "") }
         .sheet(
             isPresented: $loggingActivity,
             onDismiss: { Task { await autoLogCallIfNeeded() } }
@@ -239,6 +275,26 @@ struct DealDetailView: View {
         .contentShape(Rectangle())
     }
 
+    // MARK: - Share
+
+    /// Fetch the linked lead and render its branded share card, then open
+    /// the system share sheet. Mirrors the lead detail screen's share so
+    /// the same image is reachable from the deal a rep is working.
+    private func shareLinkedLead(_ leadId: String) {
+        guard !shareBusy else { return }
+        shareBusy = true
+        Task { @MainActor in
+            defer { shareBusy = false }
+            guard let lead = try? await CRMService.shared.getLead(id: leadId),
+                  let image = await LeadShareCardBuilder.makeImage(for: lead) else {
+                shareError = "Could not build the share image. Please try again."
+                return
+            }
+            shareImage = image
+            showShareSheet = true
+        }
+    }
+
     // MARK: - Summary section
 
     /// Amount + weight hero numbers, the won-of/partial-close line, then
@@ -260,6 +316,10 @@ struct DealDetailView: View {
                         Text(formattedAmount(d))
                             .font(.system(size: 26, weight: .heavy))
                             .foregroundColor(.primary)
+                            // Keep the ₹ figure on a single line — shrink to
+                            // fit rather than wrapping "₹1,06,976" onto two.
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
                     }
                     if kg > 0 {
                         Divider().frame(height: 36)
@@ -271,6 +331,8 @@ struct DealDetailView: View {
                             Text(formatKg(kg))
                                 .font(.system(size: 26, weight: .heavy))
                                 .foregroundColor(.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
                         }
                     }
                     Spacer()
