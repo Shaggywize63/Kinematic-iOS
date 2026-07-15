@@ -39,6 +39,10 @@ struct Lead: Codable, Identifiable, Hashable {
     let tags: [String]?
     let customFields: [String: AnyCodable]?
     let notes: String?
+    /// Lead photo (uploaded on capture where the tenant supports it).
+    /// Optional — absent from most rows; the share card falls back to an
+    /// initials circle when nil.
+    let photoUrl: String?
     let createdAt: String?
     let updatedAt: String?
 
@@ -107,6 +111,7 @@ struct Lead: Codable, Identifiable, Hashable {
         case tags
         case customFields = "custom_fields"
         case notes
+        case photoUrl = "photo_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case isB2c = "is_b2c"

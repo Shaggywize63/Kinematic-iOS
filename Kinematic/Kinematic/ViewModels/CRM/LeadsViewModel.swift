@@ -57,6 +57,9 @@ final class LeadsViewModel: ObservableObject {
     private let api = CRMService.shared
     private let location = CRMLocationStore.shared
     private var cancellables = Set<AnyCancellable>()
+    /// In-flight debounce for search keystrokes — cancelled and replaced on
+    /// every change so only the settled query (~300ms idle) hits the server.
+    private var searchDebounceTask: Task<Void, Never>?
 
     init() {
         // Re-fetch when location filter changes
@@ -113,6 +116,20 @@ final class LeadsViewModel: ObservableObject {
             total = t
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Server-side search with a ~300ms keystroke debounce. Each call
+    /// cancels the previous pending refresh so fast typing produces one
+    /// request for the settled query instead of one per character. The
+    /// query itself rides `?q=` via fetchPage — the server matches across
+    /// the whole book, not just the locally-loaded pages.
+    func searchChanged() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.refresh()
         }
     }
 

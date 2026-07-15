@@ -30,15 +30,17 @@ struct DealEditView: View {
     // the PATCH, which the backend merges into the stored blob.
     @StateObject private var customFields = CustomFieldsModel()
 
-    // Products of Interest editor — Tata/Kaiyo only, and only when the deal
-    // has a linked lead (the basket lives on that lead's custom_fields).
+    // Products of Interest editor — steel-dealer tenants only. The basket
+    // is the DEAL's own custom_fields.product_lines (with volume_kg kept
+    // in sync); when the deal has a linked lead the rows are also
+    // mirrored back onto that lead so lead-level reports stay consistent.
     @StateObject private var productLines = ProductLinesModel()
-    // Only write the basket back if we actually loaded it — otherwise a
-    // transient lead-fetch failure would clobber a real basket with the
+    // Only persist the basket if it was actually hydrated — guards
+    // against a half-initialised model clobbering real rows with the
     // empty default row.
     @State private var productsLoaded = false
 
-    private var showProducts: Bool { ClientFeatures.isTataTiscon && deal.leadId != nil }
+    private var showProducts: Bool { ClientFeatures.isTataTiscon }
 
     init(deal: Deal, stages: [Stage], onSaved: @escaping (Deal) -> Void) {
         self.deal = deal
@@ -75,7 +77,8 @@ struct DealEditView: View {
                 }
 
                 // Products of Interest — fix a mis-entered product after the
-                // deal was created. Edits the linked lead's basket.
+                // deal was created. Edits the deal's own basket (and mirrors
+                // to the linked lead when one exists).
                 if showProducts {
                     ProductLinesSection(model: productLines)
                 }
@@ -114,12 +117,22 @@ struct DealEditView: View {
                 customFields.hydrate(from: deal.customFields)
             }
             .task {
-                guard showProducts, let lid = deal.leadId else { return }
+                guard showProducts else { return }
                 await productLines.load()
-                if let lead = try? await CRMService.shared.getLead(id: lid) {
+                // Hydrate from the DEAL's own custom_fields — the deal
+                // carries its own product_lines basket now, so the edit
+                // form no longer round-trips through the linked lead.
+                productLines.hydrate(from: deal.customFields)
+                // Legacy fallback: deals converted before the deal carried
+                // its own basket have product_lines only on the linked
+                // lead — seed from there so the editor isn't empty, and
+                // the next save migrates the rows onto the deal.
+                let dealHasLines = (deal.customFields?["product_lines"]?.raw?.any as? [Any])?.isEmpty == false
+                if !dealHasLines, let lid = deal.leadId,
+                   let lead = try? await CRMService.shared.getLead(id: lid) {
                     productLines.hydrate(from: lead.customFields)
-                    productsLoaded = true
                 }
+                productsLoaded = true
             }
             .alert("Update failed", isPresented: .init(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -148,12 +161,33 @@ struct DealEditView: View {
         // PATCH merges into the stored blob, so unrelated keys survive.
         var mergedCf = customFields.jsonValues
         for (k, v) in followUp { mergedCf[k] = v }
+        // Basket → the DEAL's OWN custom_fields: product_lines rows plus the
+        // volume_kg mirror (qty × 1000 for tonnes). Never touches `amount` —
+        // the ₹ figure stays whatever the rep typed above. Skipped entirely
+        // when the deal never had a basket AND the editor still holds the
+        // single empty default row, so plain field edits don't stamp an
+        // empty `product_lines: [{}]` onto every deal (or, via the lead
+        // mirror below, wipe a legacy lead-side basket).
+        let basketRows = (productLines.jsonValues["product_lines"] as? [[String: Any]]) ?? []
+        let hadDealLines = (deal.customFields?["product_lines"]?.raw?.any as? [[String: Any]])?.isEmpty == false
+        let writeBasket = showProducts && productsLoaded
+            && (basketRows.contains(where: { !$0.isEmpty }) || hadDealLines)
+        if writeBasket {
+            mergedCf["product_lines"] = basketRows
+            let volumeKg = productLines.lines.reduce(0.0) { acc, l in
+                guard let qty = Double(l.quantityText), qty > 0 else { return acc }
+                let factor = (l.measuringUnit?.lowercased() == "tonne") ? 1000.0 : 1.0
+                return acc + qty * factor
+            }
+            mergedCf["volume_kg"] = (volumeKg * 100).rounded() / 100
+        }
         body["custom_fields"] = mergedCf
         do {
             let updated = try await CRMService.shared.patchDeal(id: deal.id, body: body)
-            // Write the corrected basket back onto the linked lead (only when
-            // it was actually loaded) so the deal Products card + report reflect it.
-            if showProducts, productsLoaded, let lid = deal.leadId {
+            // Keep mirroring the corrected basket onto the linked lead so
+            // lead-level reports reflect it. Deals with no linked lead
+            // simply skip the mirror.
+            if writeBasket, let lid = deal.leadId {
                 _ = try? await CRMService.shared.updateLead(id: lid, body: ["custom_fields": productLines.jsonValues])
             }
             onSaved(updated)

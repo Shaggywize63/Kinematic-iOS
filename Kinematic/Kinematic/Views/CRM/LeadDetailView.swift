@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Lead detail screen. Mirrors the web `crm/leads/[id]/page.tsx` surface:
 ///   - Header actions: Edit · Convert (full options sheet) · Assign · Deactivate · Delete
@@ -65,6 +66,12 @@ struct LeadDetailView: View {
     @State private var editingUpdateText = ""
     /// Id of the update pending delete confirmation (nil = no dialog).
     @State private var pendingDeleteUpdateId: String? = nil
+    /// Lead share card — rendered on demand when the rep taps the Share
+    /// toolbar button, then handed to a UIActivityViewController so
+    /// WhatsApp / Messages appear in the sheet.
+    @State private var shareBusy = false
+    @State private var shareImage: UIImage? = nil
+    @State private var showShareSheet = false
 
     // MARK: Conversation Intelligence (Record call)
     // Whole feature is gated on `ClientFeatures.hasConversationIntel`
@@ -164,6 +171,23 @@ struct LeadDetailView: View {
         .navigationTitle("Lead")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                // Share — renders the branded lead card image and opens
+                // the system share sheet (WhatsApp included). Read-only,
+                // so no edit RBAC gate.
+                if let l = vm.lead {
+                    Button { shareLead(l) } label: {
+                        if shareBusy {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                    .tint(Brand.red)
+                    .disabled(shareBusy)
+                    .accessibilityLabel("Share lead")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 // Edit RBAC — only the rep who CREATED this lead may
                 // edit it (plus system-tier CRM admins). Mirrors the
                 // backend PATCH /leads/:id gate so reps aren't promised
@@ -216,6 +240,12 @@ struct LeadDetailView: View {
         }
         .sheet(isPresented: $showAssignSheet) {
             assignSheet
+        }
+        // System share sheet for the rendered lead card image.
+        .sheet(isPresented: $showShareSheet) {
+            if let img = shareImage {
+                LeadShareActivitySheet(items: [img])
+            }
         }
         // Record-call flow (consent → record → analyse). Refreshes the
         // Conversations list once a recording finishes processing.
@@ -554,6 +584,27 @@ struct LeadDetailView: View {
         out.dateStyle = .medium
         out.timeStyle = .short
         return out.string(from: date)
+    }
+
+    // MARK: - Share card
+
+    /// Render the branded lead card (LeadShareCard, 1080×1350) and present
+    /// the system share sheet with the image. Resolution + render happen
+    /// off the button tap so the toolbar shows a spinner while lookups /
+    /// the photo fetch are in flight.
+    private func shareLead(_ lead: Lead) {
+        guard !shareBusy else { return }
+        shareBusy = true
+        Task { @MainActor in
+            let image = await LeadShareCardBuilder.makeImage(for: lead)
+            shareBusy = false
+            if let image {
+                shareImage = image
+                showShareSheet = true
+            } else {
+                vm.errorMessage = "Could not build the share image. Please try again."
+            }
+        }
     }
 
     // MARK: - Action bar (Convert / Assign / Deactivate / Delete)

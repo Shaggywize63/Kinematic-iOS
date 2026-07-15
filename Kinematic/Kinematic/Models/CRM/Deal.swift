@@ -23,12 +23,19 @@ struct Deal: Codable, Identifiable, Hashable {
     let tags: [String]?
     let createdAt: String?
     let updatedAt: String?
-    // Linked lead — set on conversion-style deal creation. The Products
-    // section reads its product_lines from this lead.
+    // Linked lead — set on conversion-style deal creation. Product edits
+    // on the deal are mirrored back onto this lead's custom_fields.
     let leadId: String?
-    // Free-form jsonb. The Products section persists closed_quantities
-    // here under `closed_quantities = { [product_id]: number }`.
+    // Free-form jsonb. Carries the deal's own basket (`product_lines`,
+    // `volume_kg`) plus `closed_quantities = { [product_id]: number }`
+    // persisted by the Products section.
     let customFields: [String: AnyCodable]?
+    // Server-stamped display fields — GET /deals and /deals/:id enrich
+    // each row with the resolved dealer label plus the linked lead's
+    // name/phone. Read-only: never included in create/PATCH bodies.
+    let dealerName: String?
+    let leadName: String?
+    let leadPhone: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -53,5 +60,8 @@ struct Deal: Codable, Identifiable, Hashable {
         case updatedAt = "updated_at"
         case leadId = "lead_id"
         case customFields = "custom_fields"
+        case dealerName = "dealer_name"
+        case leadName = "lead_name"
+        case leadPhone = "lead_phone"
     }
 }

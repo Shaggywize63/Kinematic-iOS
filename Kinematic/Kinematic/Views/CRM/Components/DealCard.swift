@@ -11,6 +11,16 @@ struct DealCard: View {
                 .foregroundColor(Color(uiColor: .label))
                 .lineLimit(2)
 
+            // Compact context line — server-stamped dealer label plus the
+            // basket tonnage mirrored on custom_fields.volume_kg. Only
+            // renders when at least one part is present.
+            if let context = contextLine {
+                Text(context)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
             HStack(spacing: 6) {
                 Image(systemName: "indianrupeesign.circle.fill")
                     .font(.system(size: 11))
@@ -53,6 +63,38 @@ struct DealCard: View {
         let value = showWeighted ? raw * (deal.winProbability ?? deal.probability ?? 0) : raw
         return CurrencyFormatter.formatINRCompact(value)
     }
+
+    /// "Sharma Steels · 1,200 kg" — dealer name and/or volume, joined
+    /// with a middot. nil when neither is available so the row doesn't
+    /// reserve blank space.
+    private var contextLine: String? {
+        var parts: [String] = []
+        if let dealer = deal.dealerName?.trimmingCharacters(in: .whitespaces), !dealer.isEmpty {
+            parts.append(dealer)
+        }
+        if let kg = volumeKg, kg > 0 {
+            let formatted = Self.kgFormatter.string(from: NSNumber(value: kg)) ?? String(Int(kg))
+            parts.append("\(formatted) kg")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// custom_fields.volume_kg — tolerant of number-or-string storage.
+    private var volumeKg: Double? {
+        guard let any = deal.customFields?["volume_kg"]?.raw?.any else { return nil }
+        if let d = any as? Double { return d }
+        if let i = any as? Int { return Double(i) }
+        if let s = any as? String { return Double(s) }
+        return nil
+    }
+
+    private static let kgFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        f.groupingSeparator = ","
+        return f
+    }()
 
     /// Three-state right-aligned chip:
     ///   - past close date    → red "OVERDUE"
