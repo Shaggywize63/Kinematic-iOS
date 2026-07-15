@@ -63,7 +63,7 @@ struct ActivityComposeView: View {
         initialDescription: String = "",
         initialWhen: Date? = nil,
         allowLeadPicker: Bool = false,
-        onSubmit: @escaping (String, String, String, String?, Date, String?) async -> Void
+        onSubmit: @escaping (String, String, String, String?, Date, String?, [String: Any]) async -> Void
     ) {
         self.initialType = initialType
         self.initialSubject = initialSubject
