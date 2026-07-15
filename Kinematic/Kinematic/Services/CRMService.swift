@@ -430,10 +430,13 @@ final class CRMService {
     /// crm_products — populates a real dropdown. `filter` should be a
     /// JSON-encoded list of clauses (`[{ field, op, value }]`) the admin
     /// attached to the field def.
-    func lookupSearch(target: String, q: String? = nil, filter: String? = nil) async -> [CRMLookupOption] {
+    /// `ids` resolves specific rows (comma-joined UUIDs) in one call —
+    /// used by the lead share card to turn stored lookup UUIDs into labels.
+    func lookupSearch(target: String, q: String? = nil, filter: String? = nil, ids: [String]? = nil) async -> [CRMLookupOption] {
         var qs: [String: String] = ["target": target]
         if let q, !q.isEmpty { qs["q"] = q }
         if let filter, !filter.isEmpty { qs["filter"] = filter }
+        if let ids, !ids.isEmpty { qs["ids"] = ids.joined(separator: ",") }
         return (try? await get("/api/v1/crm/lookup/search", query: qs)) ?? []
     }
     /// Google Places address autocomplete via the backend proxy. Empty on

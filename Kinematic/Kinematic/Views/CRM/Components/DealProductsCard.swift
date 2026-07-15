@@ -2,8 +2,9 @@ import SwiftUI
 import Combine
 
 /// Products section for the deal detail screen. Replaces the legacy
-/// LineItemsCard. Reads the linked lead's `custom_fields.product_lines`
-/// and renders one row per product with these columns:
+/// LineItemsCard. Reads the deal's own `custom_fields.product_lines`
+/// (falling back to the linked lead's rows for legacy deals) and
+/// renders one row per product with these columns:
 ///
 ///   Product · Quantity · Closed Qty · Balance · Est. Amt · Closed Amt · Bal. Amt
 ///
@@ -62,12 +63,12 @@ struct DealProductsCard: View {
                 ProgressView()
                 Text("Loading…").font(.caption).foregroundColor(.secondary)
             }
-        } else if leadId == nil {
-            Text("Link this deal to a lead to track product quantities here.")
+        } else if rows.isEmpty && leadId == nil {
+            Text("No product lines on this deal yet. Add them from Edit Deal to track quantities here.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         } else if rows.isEmpty {
-            Text("The linked lead doesn't have any product lines yet. Capture them on the lead form to see them here.")
+            Text("No product lines yet. Add them from Edit Deal (or capture them on the lead form) to see them here.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         } else {
@@ -188,21 +189,24 @@ struct DealProductsCard: View {
                 closed = [:]
             }
             savedClosed = closed
-            guard let lid = deal.leadId else { rows = []; return }
-            async let leadFetch = CRMService.shared.getLead(id: lid)
-            async let productsFetch = (try? CRMService.shared.listProducts()) ?? []
-            let lead = try await leadFetch
-            let products = await productsFetch
+            let products = (try? await CRMService.shared.listProducts()) ?? []
             let productMap = Dictionary(uniqueKeysWithValues: products.map { ($0.id, $0) })
-            let leadCf: [String: Any] = (lead.customFields ?? [:]).compactMapValues { $0.raw?.any }
-            let lines: [[String: Any]] = {
-                if let arr = leadCf["product_lines"] as? [[String: Any]], !arr.isEmpty { return arr }
-                let pid = leadCf["product_interested"] as? String
-                let qty = leadCf["quantity"]
-                let unit = leadCf["measuring_unit"] as? String
-                if pid != nil || qty != nil { return [["product_id": pid as Any, "quantity": qty as Any, "measuring_unit": unit as Any]] }
-                return []
-            }()
+            // Prefer the DEAL's own basket — the deal-edit form persists
+            // product_lines on the deal itself now. Fall back to the linked
+            // lead's rows for legacy deals that only mirrored onto the lead.
+            var lines: [[String: Any]] = (cf["product_lines"] as? [[String: Any]]) ?? []
+            if lines.isEmpty, let lid = deal.leadId {
+                let lead = try await CRMService.shared.getLead(id: lid)
+                let leadCf: [String: Any] = (lead.customFields ?? [:]).compactMapValues { $0.raw?.any }
+                lines = {
+                    if let arr = leadCf["product_lines"] as? [[String: Any]], !arr.isEmpty { return arr }
+                    let pid = leadCf["product_interested"] as? String
+                    let qty = leadCf["quantity"]
+                    let unit = leadCf["measuring_unit"] as? String
+                    if pid != nil || qty != nil { return [["product_id": pid as Any, "quantity": qty as Any, "measuring_unit": unit as Any]] }
+                    return []
+                }()
+            }
             rows = lines.compactMap { l -> ProductRow? in
                 guard let pid = l["product_id"] as? String, !pid.isEmpty else { return nil }
                 let p = productMap[pid]

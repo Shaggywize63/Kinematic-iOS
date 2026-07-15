@@ -71,8 +71,13 @@ struct ActivityComposeView: View {
         self.initialWhen = initialWhen
         self.allowLeadPicker = allowLeadPicker
         self.onSubmit = onSubmit
-        _type = State(initialValue: initialType)
-        _subject = State(initialValue: initialSubject)
+        // Steel-dealer tenants (Tata Tiscon / BMW) run a fixed site-visit
+        // flow: the type is locked to "site_visit" and the subject defaults
+        // to "First Visit". Every other tenant keeps the caller-provided
+        // type + subject unchanged.
+        let steelDealer = ClientFeatures.isTataTiscon
+        _type = State(initialValue: steelDealer ? "site_visit" : initialType)
+        _subject = State(initialValue: (initialSubject.isEmpty && steelDealer) ? "First Visit" : initialSubject)
         _desc = State(initialValue: initialDescription)
         _when = State(initialValue: initialWhen ?? Date())
     }
@@ -81,13 +86,23 @@ struct ActivityComposeView: View {
         NavigationStack {
             Form {
                 Section("Type") {
-                    Picker("Type", selection: $type) {
-                        // "Meeting" leads — matches field-force usage. Order
-                        // mirrors the web dashboard's activity type picker.
-                        ForEach(["meeting", "call", "email", "note", "task"], id: \.self) {
-                            Text($0.capitalized).tag($0)
+                    if ClientFeatures.isTataTiscon {
+                        // Type is fixed to Site Visit for steel-dealer tenants —
+                        // show a single locked row instead of the type picker.
+                        HStack {
+                            Text("Site Visit")
+                            Spacer()
+                            Image(systemName: "checkmark").foregroundColor(.secondary)
                         }
-                    }.pickerStyle(.segmented)
+                    } else {
+                        Picker("Type", selection: $type) {
+                            // "Meeting" leads — matches field-force usage. Order
+                            // mirrors the web dashboard's activity type picker.
+                            ForEach(["meeting", "call", "email", "note", "task"], id: \.self) {
+                                Text($0.capitalized).tag($0)
+                            }
+                        }.pickerStyle(.segmented)
+                    }
                 }
                 if allowLeadPicker {
                     Section("Linked lead") {

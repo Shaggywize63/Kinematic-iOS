@@ -16,6 +16,9 @@ struct LeadsListView: View {
     @State private var showDateFilter = false
     @State private var showFilters = false
     @State private var offlineToast = false
+    /// Tracks whether the view has appeared before, so the re-appear
+    /// refresh doesn't double up with the initial `.task` fetch.
+    @State private var hasAppearedOnce = false
 
     let statusOptions = ["all", "new", "contacted", "qualified", "unqualified", "converted"]
 
@@ -328,7 +331,21 @@ struct LeadsListView: View {
             }
         }
         .onChange(of: vm.search) { _, _ in
-            Task { await vm.refresh() }
+            // Debounced server-side search (~300ms) — the VM cancels the
+            // pending refresh on every keystroke so only the settled query
+            // hits the API.
+            vm.searchChanged()
+        }
+        .onAppear {
+            // Refresh when the list re-appears (e.g. popping back from a
+            // detail screen) so leads created elsewhere show up without a
+            // manual pull-to-refresh. First appearance is covered by the
+            // .task above — skip it to avoid a doubled initial fetch.
+            if hasAppearedOnce {
+                Task { await vm.refresh() }
+            } else {
+                hasAppearedOnce = true
+            }
         }
     }
 }

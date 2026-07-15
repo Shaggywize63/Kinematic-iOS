@@ -412,9 +412,44 @@ struct DealDetailView: View {
                     Label("Closes \(close)", systemImage: "calendar").font(.caption).foregroundColor(.secondary)
                 }
             }
+            // Server-stamped context — dealer label + the lead this deal
+            // was converted from. Both are display-only enrichments on
+            // GET /deals/:id; absent for deals without them.
+            if hasSummaryRows(d) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let dealer = d.dealerName, !dealer.isEmpty {
+                        summaryRow("DEALER", dealer)
+                    }
+                    if let leadName = d.leadName, !leadName.isEmpty {
+                        let phone = (d.leadPhone?.isEmpty == false) ? d.leadPhone : nil
+                        summaryRow("SOURCE LEAD", phone.map { "\(leadName) · \($0)" } ?? leadName)
+                    }
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    private func hasSummaryRows(_ d: Deal) -> Bool {
+        (d.dealerName?.isEmpty == false) || (d.leadName?.isEmpty == false)
+    }
+
+    /// Compact labelled row inside the hero card (label column matches the
+    /// AMOUNT / WEIGHT eyebrow style above).
+    private func summaryRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundColor(.secondary)
+                .frame(width: 92, alignment: .leading)
+            Text(value)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     /// Total weight (kg) for the deal — prefers custom_fields.volume_kg,
