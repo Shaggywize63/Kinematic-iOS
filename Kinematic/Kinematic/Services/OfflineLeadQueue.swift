@@ -81,7 +81,11 @@ final class OfflineLeadQueue: ObservableObject {
         let file = dir.appendingPathComponent("\(id).json")
         do {
             let data = try JSONEncoder().encode(row)
-            try data.write(to: file, options: [.atomic])
+            // Encrypt at rest (M-2). `untilFirstUserAuthentication` keeps the
+            // file readable for background drain after the first post-boot
+            // unlock, while still protecting it in device backups and against
+            // at-rest extraction from a locked/powered-off device.
+            try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
             self.lastError = "Failed to queue: \(error.localizedDescription)"
         }
@@ -150,7 +154,7 @@ final class OfflineLeadQueue: ObservableObject {
             } catch let e as URLError where [.notConnectedToInternet, .timedOut, .cannotConnectToHost, .networkConnectionLost, .dataNotAllowed].contains(e.code) {
                 row.attempt += 1
                 row.lastError = e.localizedDescription
-                if let d = try? JSONEncoder().encode(row) { try? d.write(to: file, options: [.atomic]) }
+                if let d = try? JSONEncoder().encode(row) { try? d.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
                 success = false
             } catch {
                 row.attempt += 1
@@ -159,7 +163,7 @@ final class OfflineLeadQueue: ObservableObject {
                     try? FileManager.default.removeItem(at: file)
                     success = true
                 } else {
-                    if let d = try? JSONEncoder().encode(row) { try? d.write(to: file, options: [.atomic]) }
+                    if let d = try? JSONEncoder().encode(row) { try? d.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
                     success = false
                 }
             }
