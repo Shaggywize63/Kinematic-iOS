@@ -4,6 +4,11 @@ struct DealsListView: View {
     @StateObject var vm = DealsViewModel()
     @State private var showCreate = false
     @State private var showDateFilter = false
+    /// Inline edit — long-press a row → Edit opens the edit sheet in place.
+    /// Stages are loaded for the tapped deal's pipeline before presenting so
+    /// the stage picker is populated (mirrors the detail screen).
+    @State private var editingDeal: Deal? = nil
+    @State private var editingStages: [Stage] = []
     @AppStorage("crm.deals.showWeighted") private var showWeightedStored: Bool = false
     // Tata-only weighted view (see ClientFeatureGates). Every other
     // client keeps the simpler raw-amount display.
@@ -69,6 +74,14 @@ struct DealsListView: View {
                                 DealCard(deal: d)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Button {
+                                    Task {
+                                        editingStages = (try? await CRMService.shared.listStages(pipelineId: d.pipelineId ?? "")) ?? []
+                                        editingDeal = d
+                                    }
+                                } label: { Label("Edit", systemImage: "pencil") }
+                            }
                         }
                     }
                 }
@@ -91,6 +104,11 @@ struct DealsListView: View {
             DealCreateView { body in
                 await vm.create(body: body)
             }
+        }
+        .sheet(item: $editingDeal) { d in
+            // Inline edit — same override-aware DealEditView the detail screen
+            // uses. Refresh the list on save so the row reflects the change.
+            DealEditView(deal: d, stages: editingStages) { _ in Task { await vm.refresh() } }
         }
         .sheet(isPresented: $showDateFilter) {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Close date") {

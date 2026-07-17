@@ -16,6 +16,9 @@ struct LeadsListView: View {
     @State private var showDateFilter = false
     @State private var showFilters = false
     @State private var offlineToast = false
+    /// Inline edit — long-press a row → Edit opens the edit sheet in place,
+    /// so a rep can fix one lead without drilling into its detail screen.
+    @State private var editingLead: Lead? = nil
     /// Tracks whether the view has appeared before, so the re-appear
     /// refresh doesn't double up with the initial `.task` fetch.
     @State private var hasAppearedOnce = false
@@ -227,6 +230,9 @@ struct LeadsListView: View {
                                 LeadRow(lead: lead)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Button { editingLead = lead } label: { Label("Edit", systemImage: "pencil") }
+                            }
                             .onAppear {
                                 // Infinite scroll — load the next page as the
                                 // last row appears so the whole book is reachable.
@@ -295,6 +301,11 @@ struct LeadsListView: View {
         }
         .sheet(isPresented: $showCreate) {
             LeadCreateView { body in await submitLead(body) }
+        }
+        .sheet(item: $editingLead) { lead in
+            // Inline edit — same override-aware LeadEditView the detail screen
+            // uses. Refresh the list on save so the row reflects the change.
+            LeadEditView(lead: lead) { _ in Task { await vm.refresh() } }
         }
         .sheet(isPresented: $showScanCard) {
             LeadScanCardView { body in await submitLead(body) }
