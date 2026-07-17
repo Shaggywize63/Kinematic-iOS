@@ -27,6 +27,9 @@ struct ContactEditView: View {
     @State private var whatsappConsent: Bool
     @State private var saving = false
     @State private var errorMessage: String?
+    /// Built-in field overrides (hide / relabel / require) for contact
+    /// columns, scoped by the contact's B2B/B2C mode.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     init(contact: Contact, onSaved: @escaping (Contact) -> Void) {
         self.contact = contact
@@ -63,16 +66,30 @@ struct ContactEditView: View {
                     }.pickerStyle(.segmented)
                 }
                 Section("Personal") {
-                    TextField("First name", text: $firstName)
-                    TextField("Last name", text: $lastName)
-                    TextField("Email", text: $email).keyboardType(.emailAddress).autocapitalization(.none)
-                    TextField("Phone", text: $phone).keyboardType(.phonePad)
+                    if !fieldOverrides.isHidden(entity: "contact", "first_name", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor(entity: "contact", "first_name", "First name", isB2C: isB2C), text: $firstName)
+                    }
+                    if !fieldOverrides.isHidden(entity: "contact", "last_name", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor(entity: "contact", "last_name", "Last name", isB2C: isB2C), text: $lastName)
+                    }
+                    if !fieldOverrides.isHidden(entity: "contact", "email", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor(entity: "contact", "email", "Email", isB2C: isB2C), text: $email).keyboardType(.emailAddress).autocapitalization(.none)
+                    }
+                    if !fieldOverrides.isHidden(entity: "contact", "phone", isB2C: isB2C) {
+                        TextField(fieldOverrides.labelFor(entity: "contact", "phone", "Phone", isB2C: isB2C), text: $phone).keyboardType(.phonePad)
+                    }
                     TextField("Mobile", text: $mobile).keyboardType(.phonePad)
                 }
                 if !isB2C {
-                    Section("Work") {
-                        TextField("Job title", text: $title)
-                        TextField("Department", text: $department)
+                    if !fieldOverrides.isHidden(entity: "contact", "title", isB2C: isB2C) || !fieldOverrides.isHidden(entity: "contact", "department", isB2C: isB2C) {
+                        Section("Work") {
+                            if !fieldOverrides.isHidden(entity: "contact", "title", isB2C: isB2C) {
+                                TextField(fieldOverrides.labelFor(entity: "contact", "title", "Job title", isB2C: isB2C), text: $title)
+                            }
+                            if !fieldOverrides.isHidden(entity: "contact", "department", isB2C: isB2C) {
+                                TextField(fieldOverrides.labelFor(entity: "contact", "department", "Department", isB2C: isB2C), text: $department)
+                            }
+                        }
                     }
                 } else {
                     Section("Customer") {
@@ -96,16 +113,27 @@ struct ContactEditView: View {
                     }
                     Section("Address") {
                         TextField("Address line 1", text: $addressLine1)
-                        LocationPicker(state: $state, city: $city)
+                        if !fieldOverrides.isHidden(entity: "contact", "city", isB2C: isB2C) {
+                            LocationPicker(state: $state, city: $city)
+                        }
                         TextField("Postal code", text: $postalCode)
-                        TextField("Country", text: $country)
+                        if !fieldOverrides.isHidden(entity: "contact", "country", isB2C: isB2C) {
+                            TextField(fieldOverrides.labelFor(entity: "contact", "country", "Country", isB2C: isB2C), text: $country)
+                        }
                     }
-                    Section("Consent") {
-                        Toggle("Marketing consent", isOn: $marketingConsent)
-                        Toggle("WhatsApp consent", isOn: $whatsappConsent)
+                    if !fieldOverrides.isHidden(entity: "contact", "marketing_consent", isB2C: isB2C) || !fieldOverrides.isHidden(entity: "contact", "whatsapp_consent", isB2C: isB2C) {
+                        Section("Consent") {
+                            if !fieldOverrides.isHidden(entity: "contact", "marketing_consent", isB2C: isB2C) {
+                                Toggle(fieldOverrides.labelFor(entity: "contact", "marketing_consent", "Marketing consent", isB2C: isB2C), isOn: $marketingConsent)
+                            }
+                            if !fieldOverrides.isHidden(entity: "contact", "whatsapp_consent", isB2C: isB2C) {
+                                Toggle(fieldOverrides.labelFor(entity: "contact", "whatsapp_consent", "WhatsApp consent", isB2C: isB2C), isOn: $whatsappConsent)
+                            }
+                        }
                     }
                 }
             }
+            .task { await fieldOverrides.load() }
             .navigationTitle("Edit Contact")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

@@ -16,6 +16,10 @@ struct DealCreateView: View {
     /// Same model + section the lead / activity forms use; renders
     /// nothing when the tenant has no entity_type='deal' defs.
     @StateObject private var customFields = CustomFieldsModel()
+    /// Built-in field overrides (hide / relabel / require) for deal columns,
+    /// configured on the web Settings → Custom Fields page. Deals aren't
+    /// B2B/B2C-scoped so no isB2C is passed.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     let onSubmit: ([String: Any]) async -> Void
 
@@ -27,57 +31,67 @@ struct DealCreateView: View {
         NavigationStack {
             Form {
                 Section("Deal") {
-                    TextField("Deal name", text: $name)
-                    HStack {
-                        Text("Amount (₹)")
-                        Spacer()
-                        TextField("0", value: $amount, format: .number)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                    if !fieldOverrides.isHidden(entity: "deal", "name") {
+                        TextField(fieldOverrides.labelFor(entity: "deal", "name", "Deal name"), text: $name)
                     }
-                    TextField("Account ID (optional)", text: $accountId)
+                    if !fieldOverrides.isHidden(entity: "deal", "amount") {
+                        HStack {
+                            Text(fieldOverrides.labelFor(entity: "deal", "amount", "Amount (₹)"))
+                            Spacer()
+                            TextField("0", value: $amount, format: .number)
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    if !fieldOverrides.isHidden(entity: "deal", "account_id") {
+                        TextField(fieldOverrides.labelFor(entity: "deal", "account_id", "Account ID (optional)"), text: $accountId)
+                    }
                 }
 
-                if !pipelines.isEmpty {
+                if !pipelines.isEmpty && (!fieldOverrides.isHidden(entity: "deal", "pipeline_id") || !fieldOverrides.isHidden(entity: "deal", "stage_id")) {
                     Section("Pipeline") {
-                        if pipelines.count == 1 {
-                            // Single pipeline: show a read-only label instead of a
-                            // useless picker. Matches the web dashboard's behaviour
-                            // where the dropdown collapses to a static "Default
-                            // pipeline" affordance when there's nothing to choose.
-                            HStack {
-                                Text(currentPipeline?.name ?? "Default pipeline")
-                                Spacer()
-                                Text("· default")
-                                    .foregroundStyle(.secondary)
-                                    .font(.caption)
-                            }
-                        } else {
-                            Picker("Pipeline", selection: $pipelineId) {
-                                ForEach(pipelines) { p in
-                                    if p.isDefault == true {
-                                        Text("\(p.name) (default)").tag(p.id)
-                                    } else {
-                                        Text(p.name).tag(p.id)
+                        if !fieldOverrides.isHidden(entity: "deal", "pipeline_id") {
+                            if pipelines.count == 1 {
+                                // Single pipeline: show a read-only label instead of a
+                                // useless picker. Matches the web dashboard's behaviour
+                                // where the dropdown collapses to a static "Default
+                                // pipeline" affordance when there's nothing to choose.
+                                HStack {
+                                    Text(currentPipeline?.name ?? "Default pipeline")
+                                    Spacer()
+                                    Text("· default")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                }
+                            } else {
+                                Picker(fieldOverrides.labelFor(entity: "deal", "pipeline_id", "Pipeline"), selection: $pipelineId) {
+                                    ForEach(pipelines) { p in
+                                        if p.isDefault == true {
+                                            Text("\(p.name) (default)").tag(p.id)
+                                        } else {
+                                            Text(p.name).tag(p.id)
+                                        }
                                     }
                                 }
-                            }
-                            .onChange(of: pipelineId) { _, newId in
-                                Task { await loadStages(pipelineId: newId) }
+                                .onChange(of: pipelineId) { _, newId in
+                                    Task { await loadStages(pipelineId: newId) }
+                                }
                             }
                         }
-                        if !stages.isEmpty {
-                            Picker("Stage", selection: $stageId) {
+                        if !fieldOverrides.isHidden(entity: "deal", "stage_id") && !stages.isEmpty {
+                            Picker(fieldOverrides.labelFor(entity: "deal", "stage_id", "Stage"), selection: $stageId) {
                                 ForEach(stages) { s in Text(s.name).tag(s.id) }
                             }
                         }
                     }
                 }
 
-                Section("Close date") {
-                    Toggle("Set expected close date", isOn: $hasCloseDate)
-                    if hasCloseDate {
-                        DatePicker("Expected close", selection: $expectedCloseDate, displayedComponents: .date)
+                if !fieldOverrides.isHidden(entity: "deal", "expected_close_date") {
+                    Section(fieldOverrides.labelFor(entity: "deal", "expected_close_date", "Close date")) {
+                        Toggle("Set expected close date", isOn: $hasCloseDate)
+                        if hasCloseDate {
+                            DatePicker("Expected close", selection: $expectedCloseDate, displayedComponents: .date)
+                        }
                     }
                 }
 
@@ -94,11 +108,12 @@ struct DealCreateView: View {
                             await onSubmit(buildBody())
                             dismiss()
                         }
-                    }.disabled(name.isEmpty)
+                    }.disabled(!fieldOverrides.isHidden(entity: "deal", "name") && name.isEmpty)
                 }
             }
             .task { await loadPipelines() }
             .task { await customFields.load(entity: "deal") }
+            .task { await fieldOverrides.load() }
         }
     }
 

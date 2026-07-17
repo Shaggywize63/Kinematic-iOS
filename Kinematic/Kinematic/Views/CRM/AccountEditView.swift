@@ -14,6 +14,8 @@ struct AccountEditView: View {
     @State private var description: String
     @State private var saving = false
     @State private var errorMessage: String?
+    /// Built-in field overrides (hide / relabel / require) for account columns.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     init(account: CRMAccount, onSaved: @escaping (CRMAccount) -> Void) {
         self.account = account
@@ -31,40 +33,55 @@ struct AccountEditView: View {
         NavigationStack {
             Form {
                 Section("Identity") {
-                    TextField("Name", text: $name)
+                    if !fieldOverrides.isHidden(entity: "account", "name") {
+                        TextField(fieldOverrides.labelFor(entity: "account", "name", "Name"), text: $name)
+                    }
                     // Picker pre-selects whatever was already stored, even
                     // if it's a legacy free-text value not in the curated
                     // list — the picker keeps the existing tag visible so
                     // the rep sees what's there without it silently
                     // clearing on first edit.
-                    Picker("Industry", selection: $industry) {
-                        Text("— Select industry —").tag("")
-                        if !industry.isEmpty && !CRM_INDUSTRIES.contains(industry) {
-                            Text(industry).tag(industry)
-                        }
-                        ForEach(CRM_INDUSTRIES, id: \.self) { i in
-                            Text(i).tag(i)
+                    if !fieldOverrides.isHidden(entity: "account", "industry") {
+                        Picker(fieldOverrides.labelFor(entity: "account", "industry", "Industry"), selection: $industry) {
+                            Text("— Select industry —").tag("")
+                            if !industry.isEmpty && !CRM_INDUSTRIES.contains(industry) {
+                                Text(industry).tag(industry)
+                            }
+                            ForEach(CRM_INDUSTRIES, id: \.self) { i in
+                                Text(i).tag(i)
+                            }
                         }
                     }
-                    TextField("Website", text: $website).keyboardType(.URL).autocapitalization(.none)
+                    if !fieldOverrides.isHidden(entity: "account", "website") {
+                        TextField(fieldOverrides.labelFor(entity: "account", "website", "Website"), text: $website).keyboardType(.URL).autocapitalization(.none)
+                    }
                 }
-                Section("Contact") {
-                    TextField("Phone", text: $phone).keyboardType(.phonePad)
+                if !fieldOverrides.isHidden(entity: "account", "phone") {
+                    Section("Contact") {
+                        TextField(fieldOverrides.labelFor(entity: "account", "phone", "Phone"), text: $phone).keyboardType(.phonePad)
+                    }
                 }
-                Section("Size") {
-                    TextField("Annual revenue (₹)", text: $revenue).keyboardType(.numberPad)
-                    TextField("Employees", text: $employees).keyboardType(.numberPad)
+                if !fieldOverrides.isHidden(entity: "account", "annual_revenue") || !fieldOverrides.isHidden(entity: "account", "employees") {
+                    Section("Size") {
+                        if !fieldOverrides.isHidden(entity: "account", "annual_revenue") {
+                            TextField(fieldOverrides.labelFor(entity: "account", "annual_revenue", "Annual revenue (₹)"), text: $revenue).keyboardType(.numberPad)
+                        }
+                        if !fieldOverrides.isHidden(entity: "account", "employees") {
+                            TextField(fieldOverrides.labelFor(entity: "account", "employees", "Employees"), text: $employees).keyboardType(.numberPad)
+                        }
+                    }
                 }
                 Section("About") {
                     TextEditor(text: $description).frame(minHeight: 100)
                 }
             }
+            .task { await fieldOverrides.load() }
             .navigationTitle("Edit Account")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { Task { await save() } } label: { if saving { ProgressView() } else { Text("Save") } }
-                        .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(saving || (!fieldOverrides.isHidden(entity: "account", "name") && name.trimmingCharacters(in: .whitespaces).isEmpty))
                 }
             }
             .alert("Update failed", isPresented: .init(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {

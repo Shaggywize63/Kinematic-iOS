@@ -121,4 +121,35 @@ final class LeadFieldOverridesModel: ObservableObject {
     func requiredFor(_ key: String, defaultRequired: Bool, isB2C: Bool) -> Bool {
         lookup(key, isB2C: isB2C)?.required ?? defaultRequired
     }
+
+    // ── Generic (any-entity) helpers ───────────────────────────────
+    // The lead helpers above pre-merge into per-scope snapshots for
+    // render-loop perf. Deal / contact / account forms render far fewer
+    // rows and don't need that, so they use these on-demand lookups
+    // straight off the full `overrides` map (which already holds every
+    // entity's keys — only the lead snapshots are lead-filtered).
+    //
+    // `isB2C` is optional: pass it for B2B/B2C-scoped entities (contact),
+    // omit (nil) for unscoped entities (deal, account). Mirrors the web's
+    // buildFieldHelpers(map, entity, scope).
+    private func lookupEntity(_ entity: String, _ key: String, isB2C: Bool?) -> FieldOverride? {
+        let uni = overrides["\(entity).\(key)"]
+        guard let scope = isB2C else { return uni }
+        let scoped = overrides["\(entity).\(key)@\(scope ? "b2c" : "b2b")"]
+        if uni == nil && scoped == nil { return nil }
+        return FieldOverride(
+            label: scoped?.label ?? uni?.label,
+            required: scoped?.required ?? uni?.required,
+            hidden: scoped?.hidden ?? uni?.hidden,
+        )
+    }
+    func isHidden(entity: String, _ key: String, isB2C: Bool? = nil) -> Bool {
+        lookupEntity(entity, key, isB2C: isB2C)?.hidden == true
+    }
+    func labelFor(entity: String, _ key: String, _ defaultLabel: String, isB2C: Bool? = nil) -> String {
+        lookupEntity(entity, key, isB2C: isB2C)?.label ?? defaultLabel
+    }
+    func requiredFor(entity: String, _ key: String, _ defaultRequired: Bool, isB2C: Bool? = nil) -> Bool {
+        lookupEntity(entity, key, isB2C: isB2C)?.required ?? defaultRequired
+    }
 }
