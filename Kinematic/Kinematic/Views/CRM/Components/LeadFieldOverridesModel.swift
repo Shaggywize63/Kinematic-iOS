@@ -105,6 +105,16 @@ final class LeadFieldOverridesModel: ObservableObject {
     func isHidden(_ key: String, isB2C: Bool) -> Bool {
         lookup(key, isB2C: isB2C)?.hidden == true
     }
+    /// True only when an admin EXPLICITLY un-hid the field (persisted
+    /// `hidden: false`), as opposed to it merely defaulting to visible.
+    /// Business fields (company/title/industry) live on the B2B branch by
+    /// default; the forms use this to decide whether to also surface them
+    /// on a B2C lead, so tenants that never touched these keys keep the
+    /// B2B-only behaviour untouched. Mirrors the web's
+    /// `explicitlyShownOnB2C` in the lead create/edit forms.
+    func explicitlyShownOnB2C(_ key: String) -> Bool {
+        b2cMerged[key]?.hidden == false
+    }
     func labelFor(_ key: String, defaultLabel: String, isB2C: Bool) -> String {
         lookup(key, isB2C: isB2C)?.label ?? defaultLabel
     }

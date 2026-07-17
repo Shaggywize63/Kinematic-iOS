@@ -188,6 +188,30 @@ struct LeadEditView: View {
                     }
                 }
 
+                // ── Business on a B2C lead (opt-in) ────────────────
+                // Only when an admin explicitly un-hid company/title/
+                // industry (persisted hidden:false). Keeps the B2B-only
+                // default for tenants that never touched these keys.
+                if isB2C && fieldOverrides.didLoad && (
+                    fieldOverrides.explicitlyShownOnB2C("company")
+                    || fieldOverrides.explicitlyShownOnB2C("title")
+                    || fieldOverrides.explicitlyShownOnB2C("industry")
+                ) {
+                    Section("Business Details") {
+                        if fieldOverrides.explicitlyShownOnB2C("company") {
+                            TextField(fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: true), text: $company)
+                                .textContentType(.organizationName)
+                        }
+                        if fieldOverrides.explicitlyShownOnB2C("title") {
+                            TextField(fieldOverrides.labelFor("title", defaultLabel: "Job title", isB2C: true), text: $title)
+                                .textContentType(.jobTitle)
+                        }
+                        if fieldOverrides.explicitlyShownOnB2C("industry") {
+                            TextField(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: true), text: $industry)
+                        }
+                    }
+                }
+
                 // ── Personal (B2C only) ────────────────────────────
                 // Defer rendering admin-gated rows until the override
                 // map has loaded so the form doesn't briefly show fields
@@ -459,6 +483,11 @@ struct LeadEditView: View {
             body["title"]   = title.isEmpty   ? NSNull() : title
             if !industry.isEmpty { body["industry"] = industry }
         } else {
+            // Business fields persist on B2C only when an admin has
+            // explicitly un-hidden them (so the value the rep typed saves).
+            if fieldOverrides.explicitlyShownOnB2C("company") { body["company"] = company.isEmpty ? NSNull() : company }
+            if fieldOverrides.explicitlyShownOnB2C("title")   { body["title"]   = title.isEmpty   ? NSNull() : title }
+            if fieldOverrides.explicitlyShownOnB2C("industry"), !industry.isEmpty { body["industry"] = industry }
             body["date_of_birth"] = dateOfBirth.isEmpty ? NSNull() : dateOfBirth
             body["gender"]        = gender.isEmpty ? NSNull() : gender
             body["preferred_contact_method"] = preferredContactMethod.isEmpty ? NSNull() : preferredContactMethod

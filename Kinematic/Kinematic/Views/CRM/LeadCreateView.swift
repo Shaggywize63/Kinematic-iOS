@@ -276,6 +276,39 @@ struct LeadCreateView: View {
                         }
                     }
                 } else {
+                    // Business Details on a B2C lead — only when an admin
+                    // explicitly un-hid company/title/industry (persisted
+                    // hidden:false). Keeps the B2B-only default for tenants
+                    // that never touched these keys. Mirrors the web forms.
+                    if fieldOverrides.didLoad && (
+                        fieldOverrides.explicitlyShownOnB2C("company")
+                        || fieldOverrides.explicitlyShownOnB2C("title")
+                        || fieldOverrides.explicitlyShownOnB2C("industry")
+                    ) {
+                        Section("Business Details") {
+                            if fieldOverrides.explicitlyShownOnB2C("company") {
+                                labelledField(
+                                    label: fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: true),
+                                    required: fieldOverrides.requiredFor("company", defaultRequired: false, isB2C: true),
+                                    text: $company,
+                                )
+                            }
+                            if fieldOverrides.explicitlyShownOnB2C("title") {
+                                labelledField(
+                                    label: fieldOverrides.labelFor("title", defaultLabel: "Job Title", isB2C: true),
+                                    required: fieldOverrides.requiredFor("title", defaultRequired: false, isB2C: true),
+                                    text: $title,
+                                )
+                            }
+                            if fieldOverrides.explicitlyShownOnB2C("industry") {
+                                labelledField(
+                                    label: fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: true),
+                                    required: fieldOverrides.requiredFor("industry", defaultRequired: false, isB2C: true),
+                                    text: $industry,
+                                )
+                            }
+                        }
+                    }
                     // Customer Details section — each field individually
                     // gated against the admin's hide flag so the form
                     // matches what the rep sees on the web. The Section
@@ -708,6 +741,11 @@ struct LeadCreateView: View {
             if !fieldOverrides.isHidden("title",    isB2C: false) { put("title",    title,    into: &body) }
             if !fieldOverrides.isHidden("industry", isB2C: false) { put("industry", industry, into: &body) }
         } else {
+            // Business fields persist on B2C only when an admin has
+            // explicitly un-hidden them (so the value the rep typed saves).
+            if fieldOverrides.explicitlyShownOnB2C("company")  { put("company",  company,  into: &body) }
+            if fieldOverrides.explicitlyShownOnB2C("title")    { put("title",    title,    into: &body) }
+            if fieldOverrides.explicitlyShownOnB2C("industry") { put("industry", industry, into: &body) }
             // Honour the admin's "hidden" flag — fields the rep can't
             // see shouldn't quietly persist a value.
             if hasDOB, !fieldOverrides.isHidden("date_of_birth", isB2C: true) {
