@@ -29,6 +29,8 @@ struct DealEditView: View {
     // from the deal's stored custom_fields once defs load; edited values ride
     // the PATCH, which the backend merges into the stored blob.
     @StateObject private var customFields = CustomFieldsModel()
+    /// Built-in field overrides (hide / relabel / require) for deal columns.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     init(deal: Deal, stages: [Stage], onSaved: @escaping (Deal) -> Void) {
         self.deal = deal
@@ -48,31 +50,43 @@ struct DealEditView: View {
         NavigationStack {
             Form {
                 Section("Identity") {
-                    TextField("Name", text: $name)
+                    if !fieldOverrides.isHidden(entity: "deal", "name") {
+                        TextField(fieldOverrides.labelFor(entity: "deal", "name", "Name"), text: $name)
+                    }
                     // Amount is fixed once the deal exists — market prices
                     // change but a created deal's value must not. Shown for
                     // reference only; the backend also rejects amount edits.
-                    HStack {
-                        Text("Amount (₹)")
-                        Spacer()
-                        Text(amount.isEmpty ? "—" : amount)
-                            .foregroundColor(.secondary)
-                        Image(systemName: "lock.fill")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                Section("Stage") {
-                    Picker("Stage", selection: $stageId) {
-                        Text("—").tag("")
-                        ForEach(stages) { s in
-                            Text(s.name).tag(s.id)
+                    if !fieldOverrides.isHidden(entity: "deal", "amount") {
+                        HStack {
+                            Text(fieldOverrides.labelFor(entity: "deal", "amount", "Amount (₹)"))
+                            Spacer()
+                            Text(amount.isEmpty ? "—" : amount)
+                                .foregroundColor(.secondary)
+                            Image(systemName: "lock.fill")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }
-                    TextField("Probability (%)", text: $probability).keyboardType(.numberPad)
                 }
-                Section("Timing") {
-                    TextField("Expected close (YYYY-MM-DD)", text: $closeDate)
+                if !fieldOverrides.isHidden(entity: "deal", "stage_id") || !fieldOverrides.isHidden(entity: "deal", "probability") {
+                    Section("Stage") {
+                        if !fieldOverrides.isHidden(entity: "deal", "stage_id") {
+                            Picker(fieldOverrides.labelFor(entity: "deal", "stage_id", "Stage"), selection: $stageId) {
+                                Text("—").tag("")
+                                ForEach(stages) { s in
+                                    Text(s.name).tag(s.id)
+                                }
+                            }
+                        }
+                        if !fieldOverrides.isHidden(entity: "deal", "probability") {
+                            TextField(fieldOverrides.labelFor(entity: "deal", "probability", "Probability (%)"), text: $probability).keyboardType(.numberPad)
+                        }
+                    }
+                }
+                if !fieldOverrides.isHidden(entity: "deal", "expected_close_date") {
+                    Section("Timing") {
+                        TextField(fieldOverrides.labelFor(entity: "deal", "expected_close_date", "Expected close (YYYY-MM-DD)"), text: $closeDate)
+                    }
                 }
 
                 // Admin-defined deal custom fields (Dealer lookup, …).
@@ -101,13 +115,14 @@ struct DealEditView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { Task { await save() } } label: { if saving { ProgressView() } else { Text("Save") } }
-                        .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(saving || (!fieldOverrides.isHidden(entity: "deal", "name") && name.trimmingCharacters(in: .whitespaces).isEmpty))
                 }
             }
             .task {
                 await customFields.load(entity: "deal")
                 customFields.hydrate(from: deal.customFields)
             }
+            .task { await fieldOverrides.load() }
             .alert("Update failed", isPresented: .init(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorMessage ?? "") }

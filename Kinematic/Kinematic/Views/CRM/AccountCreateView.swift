@@ -9,6 +9,8 @@ struct AccountCreateView: View {
     @State private var annualRevenue: Double = 0
     @State private var employees: Int = 0
     @State private var description = ""
+    /// Built-in field overrides (hide / relabel / require) for account columns.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     let onSubmit: ([String: Any]) async -> Void
 
@@ -16,32 +18,44 @@ struct AccountCreateView: View {
         NavigationStack {
             Form {
                 Section("Account") {
-                    TextField("Company name", text: $name)
+                    if !fieldOverrides.isHidden(entity: "account", "name") {
+                        TextField(fieldOverrides.labelFor(entity: "account", "name", "Company name"), text: $name)
+                    }
                     // Curated industry list — mirrors the web dashboard so
                     // a contact's industry on iOS bucket-matches the same
                     // analytics groupings on the desktop reports.
-                    Picker("Industry", selection: $industry) {
-                        Text("— Select industry —").tag("")
-                        ForEach(CRM_INDUSTRIES, id: \.self) { i in
-                            Text(i).tag(i)
+                    if !fieldOverrides.isHidden(entity: "account", "industry") {
+                        Picker(fieldOverrides.labelFor(entity: "account", "industry", "Industry"), selection: $industry) {
+                            Text("— Select industry —").tag("")
+                            ForEach(CRM_INDUSTRIES, id: \.self) { i in
+                                Text(i).tag(i)
+                            }
                         }
                     }
-                    TextField("Website", text: $website).autocapitalization(.none).keyboardType(.URL)
-                    TextField("Phone", text: $phone).keyboardType(.phonePad)
+                    if !fieldOverrides.isHidden(entity: "account", "website") {
+                        TextField(fieldOverrides.labelFor(entity: "account", "website", "Website"), text: $website).autocapitalization(.none).keyboardType(.URL)
+                    }
+                    if !fieldOverrides.isHidden(entity: "account", "phone") {
+                        TextField(fieldOverrides.labelFor(entity: "account", "phone", "Phone"), text: $phone).keyboardType(.phonePad)
+                    }
                 }
                 Section("Profile") {
-                    HStack {
-                        Text("Annual revenue (₹)")
-                        Spacer()
-                        TextField("0", value: $annualRevenue, format: .number)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    Stepper(value: $employees, in: 0...1_000_000) {
+                    if !fieldOverrides.isHidden(entity: "account", "annual_revenue") {
                         HStack {
-                            Text("Employees")
+                            Text(fieldOverrides.labelFor(entity: "account", "annual_revenue", "Annual revenue (₹)"))
                             Spacer()
-                            Text("\(employees)").foregroundColor(.secondary)
+                            TextField("0", value: $annualRevenue, format: .number)
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    if !fieldOverrides.isHidden(entity: "account", "employees") {
+                        Stepper(value: $employees, in: 0...1_000_000) {
+                            HStack {
+                                Text(fieldOverrides.labelFor(entity: "account", "employees", "Employees"))
+                                Spacer()
+                                Text("\(employees)").foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
@@ -50,6 +64,7 @@ struct AccountCreateView: View {
                         .lineLimit(3...6)
                 }
             }
+            .task { await fieldOverrides.load() }
             .navigationTitle("New Account")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -59,7 +74,7 @@ struct AccountCreateView: View {
                             await onSubmit(buildBody())
                             dismiss()
                         }
-                    }.disabled(name.isEmpty)
+                    }.disabled(!fieldOverrides.isHidden(entity: "account", "name") && name.isEmpty)
                 }
             }
         }
