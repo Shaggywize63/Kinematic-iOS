@@ -91,9 +91,16 @@ final class ProductLinesModel: ObservableObject {
         // bespoke to Tata Tiscon, whose TMT is sold by the tonne. Every other
         // tenant prices simply as price × quantity.
         if ClientFeatures.isTataTiscon {
+            let unit = line.measuringUnit?.lowercased() ?? ""
+            // Per-piece pricing: product.price is the price of one piece/bar,
+            // so the weight math doesn't apply.
+            if unit == "piece" || unit == "pieces" {
+                let raw = price * qty
+                return (raw * 100).rounded() / 100
+            }
             let weight = p.weightKg ?? 0
             guard weight > 0 else { return 0 }
-            let factor = (line.measuringUnit?.lowercased() == "tonne") ? 1000.0 : 1.0
+            let factor = (unit == "tonne") ? 1000.0 : 1.0
             let raw = (price / weight) * (qty * factor)
             return (raw * 100).rounded() / 100
         }
@@ -257,6 +264,7 @@ private struct LineRowView: View {
                         Text("Unit").tag("")
                         Text("Kg").tag("Kg")
                         Text("Tonne").tag("Tonne")
+                        Text("Piece").tag("Piece")
                     }
                     .pickerStyle(.menu)
                 }
