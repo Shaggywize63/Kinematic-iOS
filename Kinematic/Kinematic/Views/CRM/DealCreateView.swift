@@ -20,6 +20,10 @@ struct DealCreateView: View {
     /// configured on the web Settings → Custom Fields page. Deals aren't
     /// B2B/B2C-scoped so no isB2C is passed.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
+    /// Multi-row product basket (product interest) for steel dealers —
+    /// writes custom_fields.product_lines + the legacy single-product
+    /// mirrors, and its estimated_amount total seeds the deal amount.
+    @StateObject private var productLines = ProductLinesModel()
 
     let onSubmit: ([String: Any]) async -> Void
 
@@ -98,6 +102,14 @@ struct DealCreateView: View {
                 // Admin-defined deal custom fields (Dealer lookup, …).
                 // Self-gates on loaded defs; renders nothing when none exist.
                 CustomFieldsSection(model: customFields)
+
+                // Steel dealers (Tata Tiscon + BMW) capture the product
+                // basket on the deal itself — multiple products with
+                // per-line qty/unit and weight- or piece-based pricing.
+                // Mirrors the web dashboard's deal-create form.
+                if ClientFeatures.isTataTiscon {
+                    ProductLinesSection(model: productLines)
+                }
             }
             .navigationTitle("New Deal")
             .toolbar {
@@ -114,6 +126,7 @@ struct DealCreateView: View {
             .task { await loadPipelines() }
             .task { await customFields.load(entity: "deal") }
             .task { await fieldOverrides.load() }
+            .task { await productLines.load() }
         }
     }
 
@@ -143,8 +156,16 @@ struct DealCreateView: View {
             let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
             body["expected_close_date"] = f.string(from: expectedCloseDate)
         }
-        let cf = customFields.jsonValues
+        // Merge the product basket into custom_fields last so its
+        // product_lines + legacy mirrors win over any stale generic values.
+        var cf = customFields.jsonValues
+        for (k, v) in productLines.jsonValues { cf[k] = v }
         if !cf.isEmpty { body["custom_fields"] = cf }
+        // When the rep didn't type an amount, default it to the basket
+        // total so the deal value matches the picked products.
+        if amount == 0, let total = productLines.jsonValues["estimated_amount"] as? Double, total > 0 {
+            body["amount"] = total
+        }
         return body
     }
 }
