@@ -185,6 +185,11 @@ struct CustomFieldsSection: View {
                 Text(stored.isEmpty ? "—" : stored)
                     .foregroundColor(.secondary)
             }
+        case "image":
+            // Photo/Camera field — capture or pick per the admin's config
+            // tokens in def.options; stores the uploaded URL in model.text.
+            ImageCustomFieldRow(def: d, model: model)
+
         case "date":
             // Render a native DatePicker so reps don't have to type
             // YYYY-MM-DD by hand. Stored value stays a plain string in
