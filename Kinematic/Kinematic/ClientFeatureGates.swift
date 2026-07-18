@@ -95,13 +95,33 @@ enum ClientFeatures {
     static var showsCardScan: Bool { !isSrsTataSteel && !isBmw }
     static var showsAccounts: Bool { !isSrsTataSteel && !isBmw }
 
+    /// Tenants that are ALWAYS CRM-only, pinned by client id. These clients
+    /// bought only the CRM product, so they must never fall into the
+    /// field-force shell — not even during the brief pre-/auth/me window, or
+    /// when a legacy/stale session has an empty entitlement list (which the
+    /// SKU-derived `User.isCrmOnly` reads as full access). Tata Tiscon has
+    /// always been guaranteed this way; BMW and the parent Kinematic tenant
+    /// are folded in so all three behave identically. New CRM-only tenants
+    /// still work off entitlements (`User.isCrmOnly`) — this list is only the
+    /// belt-and-suspenders for the ones we ship to today.
+    private static let PINNED_CRM_ONLY_CLIENT_IDS: Set<String> = [
+        TATA_TISCON_CLIENT_ID, BMW_CLIENT_ID, KINEMATIC_CLIENT_ID,
+    ]
+
+    /// True when the signed-in client is one of the pinned CRM-only tenants.
+    static var isPinnedCrmOnlyClient: Bool {
+        guard let cid = Session.currentUser?.clientId else { return false }
+        return PINNED_CRM_ONLY_CLIENT_IDS.contains(cid)
+    }
+
     /// True when the signed-in client purchased ONLY the CRM package (no field
-    /// force, no distribution). Delegates to the single source of truth
-    /// (`User.isCrmOnly`), which already treats a legacy/empty-entitlement
-    /// session as NOT CRM-only so nothing over-hides during the brief
-    /// pre-/auth/me window. Mirrors the dashboard's `isCrmOnlyClient` and
-    /// Android's `Entitlements.isCrmOnly`.
-    static var isCrmOnly: Bool { Session.currentUser?.isCrmOnly ?? false }
+    /// force, no distribution). A pinned CRM-only tenant (Tata / BMW /
+    /// Kinematic) is always true regardless of entitlement-load timing;
+    /// everyone else delegates to the SKU-derived `User.isCrmOnly`, which
+    /// treats a legacy/empty-entitlement session as NOT CRM-only so nothing
+    /// over-hides during the brief pre-/auth/me window. Mirrors the
+    /// dashboard's `isCrmOnlyClient` and Android's `Entitlements.isCrmOnly`.
+    static var isCrmOnly: Bool { isPinnedCrmOnlyClient || (Session.currentUser?.isCrmOnly ?? false) }
 
     /// Leave / the "Workplace" section is hidden for SRS TATA Steel AND for
     /// every CRM-only tenant (BMW, new lean-CRM clients, the parent Kinematic

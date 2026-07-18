@@ -91,15 +91,22 @@ struct MainTabView: View {
     @AppStorage("crm_only_mode") private var crmOnlyModeOverride: Bool = false
 
     /// True when the app should run in CRM-only mode — either because the
-    /// client only purchased the CRM SKU, or the manual override is on.
+    /// client only purchased the CRM SKU, or the manual override is on, or the
+    /// client is a pinned CRM-only tenant (Tata / BMW / Kinematic). The pin
+    /// makes these tenants immune to the legacy/stale-session fallback that
+    /// otherwise dropped them into the field-force shell before /auth/me
+    /// re-hydrated entitlements — the exact bug BMW hit.
     private var crmOnlyMode: Bool {
         if crmOnlyModeOverride { return true }
+        if ClientFeatures.isCrmOnly { return true }   // pinned-client OR SKU-derived
         return Session.currentUser?.isCrmOnly ?? false
     }
 
     /// Whether the Field Force tabs (Attendance, Route) should be visible.
+    /// A pinned CRM-only tenant never shows them, even on a legacy session.
     private var hasFieldForce: Bool {
-        Session.currentUser?.hasFieldForce ?? true
+        if ClientFeatures.isPinnedCrmOnlyClient { return false }
+        return Session.currentUser?.hasFieldForce ?? true
     }
 
     var body: some View {
