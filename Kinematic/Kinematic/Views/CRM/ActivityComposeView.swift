@@ -82,6 +82,16 @@ struct ActivityComposeView: View {
         _when = State(initialValue: initialWhen ?? Date())
     }
 
+    /// A filled lookup-typed custom field (the Dealer / People Directory
+    /// picker) anchors the activity just like a lead — steel-dealer reps
+    /// log directory-only visits with no lead attached, and the backend
+    /// accepts a lookup custom field as the link.
+    private var hasDirectoryLink: Bool {
+        customFields.defs.contains { d in
+            d.fieldType == "lookup" && !(customFields.text[d.fieldKey] ?? "").isEmpty
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -118,13 +128,15 @@ struct ActivityComposeView: View {
                                         }
                                     }
                                 } else {
-                                    // The backend's activitySchema requires at
-                                    // least one of lead_id/contact_id/account_id/
-                                    // deal_id — when the composer was opened
-                                    // from the global Activities "+" (no parent),
-                                    // the rep MUST pick a lead or the POST 400s
-                                    // with "Activity must be linked to ...".
-                                    Text("Select a lead (required)").foregroundColor(.secondary)
+                                    // The backend needs an anchor: a lead /
+                                    // contact / account / deal, OR a filled
+                                    // Dealer / People Directory lookup custom
+                                    // field (steel-dealer flow). Reflect which
+                                    // options this tenant actually has.
+                                    Text(customFields.defs.contains { $0.fieldType == "lookup" }
+                                        ? "Select a lead (or pick from Directory below)"
+                                        : "Select a lead (required)")
+                                        .foregroundColor(.secondary)
                                 }
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
@@ -210,7 +222,7 @@ struct ActivityComposeView: View {
                             await onSubmit(type, subject, desc, imageUrl, when, selectedLead?.id, customFields.jsonValues)
                             dismiss()
                         }
-                    }.disabled(subject.isEmpty || uploading || (allowLeadPicker && selectedLead == nil))
+                    }.disabled(subject.isEmpty || uploading || (allowLeadPicker && selectedLead == nil && !hasDirectoryLink))
                 }
             }
             .confirmationDialog("Attach image", isPresented: $showSourceSheet, titleVisibility: .visible) {
