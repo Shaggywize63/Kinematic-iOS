@@ -182,7 +182,13 @@ final class CRMService {
     /// empty list so the assign button hides quietly instead of erroring.
     func listAssignableUsers() async -> [AssignableUser] {
         do {
-            let list: [AssignableUser] = try await get("/api/v1/users")
+            // scope=assignable restricts the picker to the caller's org-role
+            // subtree on hierarchy-RBAC tenants (self + descendants for a team
+            // manager, self for a frontline rep, everyone for an admin) so a
+            // manager never sees peers/managers outside their team. No-op for
+            // tenants without hierarchy RBAC — the backend returns the full
+            // scoped list unchanged.
+            let list: [AssignableUser] = try await get("/api/v1/users", query: ["scope": "assignable"])
             return list
         } catch {
             return []
