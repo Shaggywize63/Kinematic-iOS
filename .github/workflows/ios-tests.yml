@@ -60,11 +60,33 @@ jobs:
           echo "device=$device" >> "$GITHUB_OUTPUT"
           echo "Chosen simulator: $device"
 
+      - name: Diagnose targets & schemes xcodebuild sees
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "== xcodebuild -list =="
+          xcodebuild -list -project "$PROJECT" || true
+          echo "== shared schemes on disk =="
+          ls -la "$PROJECT/xcshareddata/xcschemes" || true
+
+      - name: Build for testing
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -eo pipefail
+          xcodebuild build-for-testing \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }},OS=latest" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | tee build-for-testing.log
+
       - name: Run unit tests
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -eo pipefail
-          xcodebuild test \
+          xcodebuild test-without-building \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
             -configuration "$CONFIGURATION" \
