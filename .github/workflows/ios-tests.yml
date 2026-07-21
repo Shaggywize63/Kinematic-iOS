@@ -1,0 +1,87 @@
+name: iOS Unit Tests
+
+# Runs the KinematicTests XCTest bundle on an iOS 26 simulator. The app's
+# deployment target is iOS 26 and the codebase uses iOS 26 SwiftUI APIs, so
+# tests (which host inside the app via TEST_HOST) must build against the
+# iOS 26 SDK that ships with Xcode 26 — only present on the macos-26 image.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Unit tests (iOS Simulator)
+    runs-on: macos-26
+
+    env:
+      SCHEME: Kinematic
+      PROJECT_DIR: Kinematic
+      PROJECT: Kinematic.xcodeproj
+      CONFIGURATION: Debug
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: |
+          set -e
+          latest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n1 || echo "")
+          if [ -n "$latest" ]; then
+            sudo xcode-select -s "$latest/Contents/Developer"
+          fi
+          xcodebuild -version
+          echo "Installed iOS simulator SDKs:"
+          xcodebuild -showsdks | grep -i "iphonesimulator" || true
+          if ! xcodebuild -showsdks | grep -qiE "iphonesimulator2[6-9]|iphonesimulator[3-9][0-9]"; then
+            echo "::error::iOS 26+ simulator SDK not found. Tests need Xcode 26 (iOS 26 SDK) on a macos-26 runner."
+            exit 1
+          fi
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: deriveddata-tests-${{ runner.os }}-${{ hashFiles('Kinematic/Kinematic.xcodeproj/project.pbxproj') }}
+          restore-keys: deriveddata-tests-${{ runner.os }}-
+
+      - name: Resolve an available iOS Simulator
+        id: sim
+        run: |
+          set -e
+          # Pick the newest available iPhone simulator by name. Falls back to
+          # "iPhone 16" if the parse comes up empty.
+          device=$(xcrun simctl list devices available \
+            | grep -Eo 'iPhone [0-9]+( Pro)?( Max)?' \
+            | sort -V | tail -n1 || true)
+          if [ -z "$device" ]; then device="iPhone 16"; fi
+          echo "device=$device" >> "$GITHUB_OUTPUT"
+          echo "Chosen simulator: $device"
+
+      - name: Run unit tests
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -eo pipefail
+          xcodebuild test \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }},OS=latest" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | tee xcodebuild-test.log
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results
+          path: |
+            Kinematic/TestResults.xcresult
+            Kinematic/xcodebuild-test.log
+          if-no-files-found: warn
+          retention-days: 14

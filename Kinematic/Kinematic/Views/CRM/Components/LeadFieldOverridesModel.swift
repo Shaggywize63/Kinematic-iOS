@@ -65,6 +65,20 @@ final class LeadFieldOverridesModel: ObservableObject {
         b2bMerged = buildMerged(for: false, from: out)
     }
 
+    /// Test seam: seed the merged snapshots from a raw override map without
+    /// touching the network, mirroring exactly what `load()` does after
+    /// decoding `/api/v1/crm/settings`. Kept `internal` (not `private`) so
+    /// unit tests can exercise the merge/lookup logic deterministically.
+    /// Production code paths are unchanged — `load()` still performs the
+    /// real network fetch and calls the same `buildMerged`.
+    func ingest(rawOverrides: [String: FieldOverride], businessType bt: String? = nil) {
+        if let bt { businessType = bt }
+        overrides = rawOverrides
+        b2cMerged = buildMerged(for: true, from: rawOverrides)
+        b2bMerged = buildMerged(for: false, from: rawOverrides)
+        didLoad = true
+    }
+
     /// Walk the raw `lead.<key>` and `lead.<key>@scope` entries and emit a
     /// flat `key → mergedOverride` dict for the requested scope. The
     /// merge rule is "scoped wins per-property" — same as the web's
