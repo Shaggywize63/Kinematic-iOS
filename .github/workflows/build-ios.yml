@@ -98,8 +98,13 @@ jobs:
             exit 1
           fi
           mkdir -p ../dist
-          (cd "$(dirname "$APP_DIR")" && zip -ry "../../../dist/Kinematic-simulator-${GITHUB_SHA::7}.zip" "$(basename "$APP_DIR")")
-          ls -la ../dist
+          # Resolve dist to an ABSOLUTE path — the zip runs from deep inside
+          # build/Build/Products/Debug-iphonesimulator, so a relative
+          # "../../../dist" landed in the wrong place (Kinematic/build/dist)
+          # and zip failed with "Could not create output file".
+          DIST_DIR="$(cd ../dist && pwd)"
+          (cd "$(dirname "$APP_DIR")" && zip -ry "$DIST_DIR/Kinematic-simulator-${GITHUB_SHA::7}.zip" "$(basename "$APP_DIR")")
+          ls -la "$DIST_DIR"
 
       - name: Upload simulator .app as build artifact
         uses: actions/upload-artifact@v4
