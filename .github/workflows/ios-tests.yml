@@ -63,15 +63,17 @@ jobs:
       # Blocking smoke test: the app must compile for the iOS 26 simulator.
       # This guarantees the project stays healthy (and that the test-target
       # wiring didn't regress the app build).
+      # Build ONLY the app target (via -target, not -scheme) so the smoke test
+      # doesn't drag in the not-yet-Xcode-finalized KinematicTests bundle.
       - name: Build app (smoke test)
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -eo pipefail
           xcodebuild build \
             -project "$PROJECT" \
-            -scheme "$SCHEME" \
+            -target "$SCHEME" \
+            -sdk iphonesimulator \
             -configuration "$CONFIGURATION" \
-            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }},OS=latest" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
