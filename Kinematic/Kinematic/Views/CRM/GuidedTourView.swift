@@ -62,8 +62,45 @@ extension GuidedTour {
         ]
     )
 
+    /// Deals — track an opportunity from first conversation to closed-won.
+    static let deals = GuidedTour(
+        id: "deals",
+        title: "Deals",
+        subtitle: "Track opportunities to closed-won",
+        icon: "indianrupeesign.circle.fill",
+        steps: [
+            .init(icon: "hand.wave.fill",
+                  title: "Welcome to Deals",
+                  detail: "Track every opportunity from first conversation to closed. It takes under a minute — you can skip anytime."),
+            .init(icon: "plus.circle.fill",
+                  title: "Create a deal",
+                  detail: "Add a deal from the Deals tab, or convert a qualified lead. Give it a name, a value and a pipeline."),
+            .init(icon: "arrow.triangle.branch",
+                  title: "Pipelines & stages",
+                  detail: "Every deal lives in a pipeline and moves through its stages. Switch pipelines to see the right stages for that flow."),
+            .init(icon: "rectangle.split.3x1.fill",
+                  title: "Work the Kanban",
+                  detail: "Open the Kanban board from More → Pipeline to drag deals between stages and see your whole pipeline at a glance."),
+            .init(icon: "briefcase.fill",
+                  title: "Open a deal",
+                  detail: "Tap any deal to see its value, stage, the linked lead or contact, and the products attached to it."),
+            .init(icon: "shippingbox.fill",
+                  title: "Products & value",
+                  detail: "Add products to a deal; the value rolls up automatically so the amount always reflects what's inside."),
+            .init(icon: "checkmark.square.fill",
+                  title: "Log activity",
+                  detail: "Record calls, visits and meetings on the deal so the whole timeline stays in one place."),
+            .init(icon: "trophy.fill",
+                  title: "Close the deal",
+                  detail: "Mark a deal Won with its closed amount, or Lost. A partial win can spin off a balance deal for the remainder."),
+            .init(icon: "checkmark.seal.fill",
+                  title: "You're all set!",
+                  detail: "That's Deals. Replay this tour anytime from More → Guided Tour."),
+        ]
+    )
+
     /// Every tour listed in the re-launch hub. Add new tours here.
-    static let all: [GuidedTour] = [.leadManagement]
+    static let all: [GuidedTour] = [.leadManagement, .deals]
 }
 
 // MARK: - Tour player (full-screen, step-by-step)
