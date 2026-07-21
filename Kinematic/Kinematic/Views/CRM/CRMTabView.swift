@@ -93,7 +93,7 @@ struct CRMTabView: View {
                 // Switch to the Leads tab so its anchors (search / add / a row)
                 // are laid out, then run the interactive spotlight.
                 selectedTab = 1
-                spotlight.start(.leadManagement)
+                spotlight.start(SpotlightStep.leadManagement)
             }
             guard canShowKiniFab else { return }
             kiniUsage = await AIChatService.shared.fetchUsage()
@@ -114,7 +114,7 @@ struct CRMTabView: View {
             if requested {
                 spotlight.replayRequested = false
                 selectedTab = 1
-                spotlight.start(.leadManagement)
+                spotlight.start(SpotlightStep.leadManagement)
             }
         }
     }
