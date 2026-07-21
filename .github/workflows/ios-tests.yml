@@ -77,6 +77,9 @@ jobs:
 
       - name: Upload test results
         if: always()
+        # Don't fail the job if the artifact upload hits the account's
+        # storage quota — the xcodebuild test result is the source of truth.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ios-test-results
