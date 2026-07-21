@@ -10,6 +10,11 @@ extension Notification.Name {
 struct LeadsListView: View {
     @StateObject var vm = LeadsViewModel()
     @StateObject private var queue = OfflineLeadQueue.shared
+    // First-login spotlight tour. Optional environment value (nil when this
+    // screen is reached outside the CRM tab shell, e.g. from CRMHomeView) so
+    // it never crashes; the overlay just doesn't render there. Anchors below
+    // tag the search field, the "+" FAB and the first row.
+    @Environment(\.spotlightModel) private var spotlight
     @State private var showCreate = false
     @State private var showScanCard = false
     @State private var showImport = false
@@ -135,6 +140,7 @@ struct LeadsListView: View {
             .background(Color(uiColor: .secondarySystemBackground))
             .cornerRadius(10)
             .padding(.horizontal)
+            .spotlightAnchor(SpotlightKeys.leadsSearch)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -230,6 +236,7 @@ struct LeadsListView: View {
                                 LeadRow(lead: lead)
                             }
                             .buttonStyle(.plain)
+                            .spotlightAnchor(SpotlightKeys.leadsRow, if: lead.id == vm.filtered.first?.id)
                             .contextMenu {
                                 Button { editingLead = lead } label: { Label("Edit", systemImage: "pencil") }
                             }
@@ -274,6 +281,7 @@ struct LeadsListView: View {
             .accessibilityLabel("New lead")
             .padding(.trailing, 18)
             .padding(.bottom, 22)
+            .spotlightAnchor(SpotlightKeys.leadsAdd)
         }
         .navigationTitle("Leads")
         .toolbar {
@@ -358,5 +366,8 @@ struct LeadsListView: View {
                 hasAppearedOnce = true
             }
         }
+        // Host the first-login spotlight overlay above the whole screen and
+        // resolve the current step's anchor (search / add / row).
+        .spotlightHost(spotlight)
     }
 }

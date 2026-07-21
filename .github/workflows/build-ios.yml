@@ -1,22 +1,20 @@
 name: Build iOS Simulator app
 
-# Manual-trigger only for now.
-#
 # The project's deployment target is iOS 26 and the codebase uses iOS 26
 # SwiftUI APIs (e.g. .tabBarMinimizeBehavior(.onScrollDown), the
 # `Tab(...value:...) { }` closure form, the new TabView Liquid Glass
-# treatment). GitHub Actions hosted macOS runners (macos-15 and earlier)
-# only ship Xcode 16, which carries the iOS 18 SDK — so `xcodebuild` here
-# fails with exit code 65 the moment it hits any iOS 26 API.
+# treatment). Those need the iOS 26 SDK, which ships with Xcode 26 — only
+# present on the macos-26 runner image (macos-15 and earlier top out at
+# Xcode 16 / iOS 18 SDK, which failed with exit code 65 on any iOS 26 API).
 #
-# Until GitHub publishes a macos-26 runner image (or macos-latest is
-# upgraded to one with Xcode 26), running this on every push to main
-# just generates a failed-build email per merge. So we keep the workflow
-# file in place but trigger it only on workflow_dispatch — click "Run
-# workflow" on the Actions tab if you want to retest. Once Xcode 26 is
-# on the runners, flip the trigger back to `push: branches: [main]`.
+# Now that macos-26 is available we build on it and verify every PR + push
+# to main, plus on-demand via workflow_dispatch.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -24,9 +22,9 @@ permissions:
 jobs:
   build:
     name: Build for iOS Simulator
-    # macos-15 ships Xcode 16. Xcode 26 (required for iOS 26 SDK) lives on
-    # macos-15-xlarge or future macos-26 images — switch when GA.
-    runs-on: macos-15
+    # macos-26 ships Xcode 26 (iOS 26 SDK), which the codebase's iOS 26
+    # SwiftUI APIs require. macos-15 and earlier only had Xcode 16 (iOS 18).
+    runs-on: macos-26
 
     env:
       SCHEME: Kinematic
@@ -42,16 +40,24 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Select latest Xcode
-        # Pick the newest Xcode available on the runner so iOS 26 SDK is
-        # used when the image rolls. Falls back gracefully.
+        # Pick the newest Xcode available on the runner (Xcode 26 on macos-26),
+        # then fail fast with a clear message if the iOS 26 SDK isn't present —
+        # that means the runner image regressed and the build below would emit
+        # the old confusing "exit code 65 on an iOS 26 API" instead.
         run: |
           set -e
-          ls /Applications | grep -i 'Xcode.*\.app' || true
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
           latest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n1 || echo "")
           if [ -n "$latest" ]; then
             sudo xcode-select -s "$latest/Contents/Developer"
           fi
           xcodebuild -version
+          echo "Installed iOS simulator SDKs:"
+          xcodebuild -showsdks | grep -i "iphonesimulator" || true
+          if ! xcodebuild -showsdks | grep -qiE "iphonesimulator2[6-9]|iphonesimulator[3-9][0-9]"; then
+            echo "::error::iOS 26+ simulator SDK not found on this runner. The codebase needs Xcode 26 (iOS 26 SDK). Check that runs-on is a macos image that ships it."
+            exit 1
+          fi
           xcrun simctl list runtimes | head -n 20
 
       - name: Cache DerivedData
@@ -92,8 +98,13 @@ jobs:
             exit 1
           fi
           mkdir -p ../dist
-          (cd "$(dirname "$APP_DIR")" && zip -ry "../../../dist/Kinematic-simulator-${GITHUB_SHA::7}.zip" "$(basename "$APP_DIR")")
-          ls -la ../dist
+          # Resolve dist to an ABSOLUTE path — the zip runs from deep inside
+          # build/Build/Products/Debug-iphonesimulator, so a relative
+          # "../../../dist" landed in the wrong place (Kinematic/build/dist)
+          # and zip failed with "Could not create output file".
+          DIST_DIR="$(cd ../dist && pwd)"
+          (cd "$(dirname "$APP_DIR")" && zip -ry "$DIST_DIR/Kinematic-simulator-${GITHUB_SHA::7}.zip" "$(basename "$APP_DIR")")
+          ls -la "$DIST_DIR"
 
       - name: Upload simulator .app as build artifact
         uses: actions/upload-artifact@v4
