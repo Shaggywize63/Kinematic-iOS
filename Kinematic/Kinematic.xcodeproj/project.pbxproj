@@ -5,6 +5,18 @@
 	};
 	objectVersion = 77;
 	objects = {
+/* Begin PBXBuildFile section */
+		AB0000000000000000000020 /* APIEnvelopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000010 /* APIEnvelopeTests.swift */; };
+		AB0000000000000000000021 /* AnyJSONTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000011 /* AnyJSONTests.swift */; };
+		AB0000000000000000000022 /* CRMClientScopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000012 /* CRMClientScopeTests.swift */; };
+		AB0000000000000000000023 /* CurrencyFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000013 /* CurrencyFormatterTests.swift */; };
+		AB0000000000000000000024 /* LeadFieldOverridesModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000014 /* LeadFieldOverridesModelTests.swift */; };
+		AB0000000000000000000025 /* LeadModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000015 /* LeadModelTests.swift */; };
+		AB0000000000000000000026 /* LeadsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000016 /* LeadsViewModelTests.swift */; };
+		AB0000000000000000000027 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000017 /* TestSupport.swift */; };
+		AB0000000000000000000028 /* WhatsAppHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000018 /* WhatsAppHelperTests.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXCopyFilesBuildPhase section */
 		8E096DDC2F94AFE2003D8F01 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -23,6 +35,15 @@
 		8E096DC72F94AFE0003D8F01 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		8E6066E52F84E703009FFCFF /* Kinematic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kinematic.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB0000000000000000000002 /* KinematicTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KinematicTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB0000000000000000000010 /* APIEnvelopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIEnvelopeTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000011 /* AnyJSONTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyJSONTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000012 /* CRMClientScopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRMClientScopeTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000013 /* CurrencyFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyFormatterTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000014 /* LeadFieldOverridesModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadFieldOverridesModelTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000015 /* LeadModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadModelTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000016 /* LeadsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsViewModelTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000017 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
+		AB0000000000000000000018 /* WhatsAppHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsAppHelperTests.swift; sourceTree = "<group>"; };
 		8E96A0032F94B222003D8F01 /* Kinematic/Models/ShiftActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kinematic/Models/ShiftActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -30,11 +51,6 @@
 		8E6066E72F84E703009FFCFF /* Kinematic */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Kinematic;
-			sourceTree = "<group>";
-		};
-		AB0000000000000000000001 /* KinematicTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = KinematicTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -70,7 +86,7 @@
 			isa = PBXGroup;
 			children = (
 				8E6066E72F84E703009FFCFF /* Kinematic */,
-				AB0000000000000000000001 /* KinematicTests */,
+				AB000000000000000000002F /* KinematicTests */,
 				8E096DC42F94AFE0003D8F01 /* Frameworks */,
 				8E6066E62F84E703009FFCFF /* Products */,
 				8E8927E52F9511EB00A1120C /* Recovered References */,
@@ -92,6 +108,22 @@
 				8E96A0032F94B222003D8F01 /* Kinematic/Models/ShiftActivityAttributes.swift */,
 			);
 			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+		AB000000000000000000002F /* KinematicTests */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000017 /* TestSupport.swift */,
+				AB0000000000000000000010 /* APIEnvelopeTests.swift */,
+				AB0000000000000000000011 /* AnyJSONTests.swift */,
+				AB0000000000000000000012 /* CRMClientScopeTests.swift */,
+				AB0000000000000000000013 /* CurrencyFormatterTests.swift */,
+				AB0000000000000000000014 /* LeadFieldOverridesModelTests.swift */,
+				AB0000000000000000000015 /* LeadModelTests.swift */,
+				AB0000000000000000000016 /* LeadsViewModelTests.swift */,
+				AB0000000000000000000018 /* WhatsAppHelperTests.swift */,
+			);
+			path = KinematicTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -132,9 +164,6 @@
 			);
 			dependencies = (
 				AB0000000000000000000007 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				AB0000000000000000000001 /* KinematicTests */,
 			);
 			name = KinematicTests;
 			packageProductDependencies = (
@@ -221,6 +250,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AB0000000000000000000027 /* TestSupport.swift in Sources */,
+				AB0000000000000000000020 /* APIEnvelopeTests.swift in Sources */,
+				AB0000000000000000000021 /* AnyJSONTests.swift in Sources */,
+				AB0000000000000000000022 /* CRMClientScopeTests.swift in Sources */,
+				AB0000000000000000000023 /* CurrencyFormatterTests.swift in Sources */,
+				AB0000000000000000000024 /* LeadFieldOverridesModelTests.swift in Sources */,
+				AB0000000000000000000025 /* LeadModelTests.swift in Sources */,
+				AB0000000000000000000026 /* LeadsViewModelTests.swift in Sources */,
+				AB0000000000000000000028 /* WhatsAppHelperTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
