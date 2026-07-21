@@ -23,6 +23,11 @@ struct CRMTabView: View {
     // aren't distracted by it.
     @State private var showKini: Bool = false
     @State private var kiniUsage: KiniUsage? = nil
+    // First-launch guided tour. `crm.tour.seen` persists across launches so the
+    // tour auto-shows exactly once (on the first authenticated load of the CRM
+    // shell); it can always be replayed from More → Guided Tour.
+    @AppStorage("crm.tour.seen") private var tourSeen: Bool = false
+    @State private var showTour: Bool = false
 
     private var canShowKiniFab: Bool {
         Session.currentUser?.hasCrm ?? false
@@ -72,7 +77,16 @@ struct CRMTabView: View {
         }) {
             KiniChatView(onClose: { showKini = false })
         }
+        // First-login guided tour (Lead Management). Marked seen the moment it
+        // opens so it never re-appears automatically; replay from More.
+        .fullScreenCover(isPresented: $showTour) {
+            GuidedTourView(tour: .leadManagement) { showTour = false }
+        }
         .task {
+            if !tourSeen {
+                tourSeen = true
+                showTour = true
+            }
             guard canShowKiniFab else { return }
             kiniUsage = await AIChatService.shared.fetchUsage()
         }
@@ -229,6 +243,9 @@ struct CRMMoreMenu: View {
             // understand how a Lead → Contact → Deal flows through the CRM
             // without needing a training session.
             Section("Learn") {
+                NavigationLink {
+                    GuidedToursListView()
+                } label: { MoreRow(icon: "figure.walk.motion", title: "Guided Tour", tint: Brand.red) }
                 NavigationLink {
                     CRMHelpView()
                 } label: { MoreRow(icon: "books.vertical.fill", title: "How CRM works", tint: Brand.red) }
