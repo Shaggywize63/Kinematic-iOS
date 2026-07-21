@@ -210,9 +210,30 @@ struct GuidedTourView: View {
 
 struct GuidedToursListView: View {
     @State private var active: GuidedTour?
+    @Environment(\.spotlightModel) private var spotlight
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         List {
+            Section {
+                Button {
+                    // Relaunch the interactive spotlight on the real Leads
+                    // screen. The tour runs on the shell, so flip the replay
+                    // signal and dismiss back to it.
+                    spotlight?.replayRequested = true
+                    dismiss()
+                } label: {
+                    hubRow(icon: "scope", title: "Guided walkthrough",
+                           subtitle: "Highlights each button on the Leads screen",
+                           trailing: "play.circle.fill")
+                }
+                NavigationLink {
+                    ScreenOverviewView()
+                } label: {
+                    hubRow(icon: "map", title: "Screen overview",
+                           subtitle: "What every button does")
+                }
+            }
             Section {
                 ForEach(GuidedTour.all) { tour in
                     Button { active = tour } label: {
@@ -242,6 +263,23 @@ struct GuidedToursListView: View {
         .navigationTitle("Guided Tour")
         .fullScreenCover(item: $active) { tour in
             GuidedTourView(tour: tour) { active = nil }
+        }
+    }
+
+    private func hubRow(icon: String, title: String, subtitle: String, trailing: String? = nil) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(Brand.red.opacity(0.18))
+                    .frame(width: 38, height: 38)
+                Image(systemName: icon).foregroundStyle(Brand.red)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if let trailing { Image(systemName: trailing).foregroundStyle(Brand.red) }
         }
     }
 }

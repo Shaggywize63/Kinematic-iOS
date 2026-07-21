@@ -28,6 +28,11 @@ struct CRMTabView: View {
     // shell); it can always be replayed from More → Guided Tour.
     @AppStorage("crm.tour.seen") private var tourSeen: Bool = false
     @State private var showTour: Bool = false
+    // Interactive spotlight tour — a coach-mark overlay that dims the Leads
+    // screen and highlights one real control at a time. Owned here and injected
+    // so the Leads screen (anchors + overlay) and the guided-tour hub (replay)
+    // both reach it.
+    @StateObject private var spotlight = SpotlightModel()
 
     private var canShowKiniFab: Bool {
         Session.currentUser?.hasCrm ?? false
@@ -85,7 +90,10 @@ struct CRMTabView: View {
         .task {
             if !tourSeen {
                 tourSeen = true
-                showTour = true
+                // Switch to the Leads tab so its anchors (search / add / a row)
+                // are laid out, then run the interactive spotlight.
+                selectedTab = 1
+                spotlight.start(.leadManagement)
             }
             guard canShowKiniFab else { return }
             kiniUsage = await AIChatService.shared.fetchUsage()
@@ -95,6 +103,20 @@ struct CRMTabView: View {
         // doesn't inherit the root's colorScheme, this guarantees the Light/
         // Dark/System pick in More actually takes effect here.
         .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))
+        // Make the spotlight model available (as an optional environment value)
+        // to the Leads screen (anchors + overlay) and the guided-tour hub
+        // (replay). Optional so LeadsListView never crashes when reached from
+        // another entry point that doesn't own a tour.
+        .environment(\.spotlightModel, spotlight)
+        // Replay from the hub: it flips replayRequested and pops back; relaunch
+        // the tour from the Leads tab.
+        .onChange(of: spotlight.replayRequested) { _, requested in
+            if requested {
+                spotlight.replayRequested = false
+                selectedTab = 1
+                spotlight.start(.leadManagement)
+            }
+        }
     }
 }
 
