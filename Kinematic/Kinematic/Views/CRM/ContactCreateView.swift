@@ -26,6 +26,8 @@ struct ContactCreateView: View {
     @State private var country = "India"
     @State private var marketingConsent = false
     @State private var whatsappConsent = false
+    // DPDP §5/§6 — primary consent for the contact's personal data.
+    @State private var dataConsent = false
     /// Built-in field overrides (hide / relabel / require) for contact
     /// columns, scoped by the contact's B2B/B2C mode like the lead form.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
@@ -108,6 +110,13 @@ struct ContactCreateView: View {
                             }
                         }
                     }
+                    // DPDP §5/§6 — at-collection notice + primary consent.
+                    Section("Data Collection & Consent") {
+                        Text("We collect this person’s name, contact details and the information entered here to create and manage their record and to contact them, as described in our Privacy Notice. They may access, correct or erase their data, or raise a grievance, at any time.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Toggle("The individual has been shown this notice and consents to the collection and processing of their personal data.", isOn: $dataConsent)
+                    }
                 }
             }
             .task { await fieldOverrides.load() }
@@ -155,6 +164,12 @@ struct ContactCreateView: View {
             body["marketing_consent"] = marketingConsent
             body["whatsapp_consent"]  = whatsappConsent
         }
+        // DPDP §6 — capture consent at collection (recorded in crm_consents).
+        body["_consent"] = [
+            "consented": dataConsent,
+            "method": "in_app",
+            "notice_version": "2026-07-22",
+        ]
         return body
     }
 }
