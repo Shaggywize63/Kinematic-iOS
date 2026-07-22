@@ -57,6 +57,10 @@ struct LeadCreateView: View {
     @State private var country = "India"
     @State private var marketingConsent = false
     @State private var whatsappConsent = false
+    // DPDP §5/§6 — at-collection notice + primary consent for the lead's
+    // personal data. Recorded in the crm_consents ledger via the `_consent`
+    // block on create. Distinct from the marketing/WhatsApp opt-ins above.
+    @State private var dataConsent = false
 
     /// Admin-defined custom fields for leads, scoped to the user's org role.
     @StateObject private var customFields = CustomFieldsModel()
@@ -406,6 +410,14 @@ struct LeadCreateView: View {
                             }
                         }
                     }
+                }
+
+                // DPDP §5/§6 — at-collection notice + primary consent (B2B + B2C).
+                Section("Data Collection & Consent") {
+                    Text("We collect this person’s name, contact details and the information entered here to create and manage their record and to contact them, as described in our Privacy Notice. They may access, correct or erase their data, or raise a grievance, at any time.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Toggle("The individual has been shown this notice and consents to the collection and processing of their personal data.", isOn: $dataConsent)
                 }
 
                 // Admin-defined custom fields for this user's hierarchy role.
@@ -785,6 +797,13 @@ struct LeadCreateView: View {
         if isTata && logAsSiteVisit {
             body["_auto_log_site_visit"] = true
         }
+        // DPDP §6 — capture consent at collection. Always recorded in the
+        // crm_consents ledger; the backend enforces any per-tenant hard gate.
+        body["_consent"] = [
+            "consented": dataConsent,
+            "method": "in_app",
+            "notice_version": "2026-07-22",
+        ]
         return body
     }
 }
