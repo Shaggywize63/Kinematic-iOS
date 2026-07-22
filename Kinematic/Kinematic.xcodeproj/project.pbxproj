@@ -5,6 +5,18 @@
 	};
 	objectVersion = 77;
 	objects = {
+/* Begin PBXBuildFile section */
+		AB0000000000000000000020 /* APIEnvelopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000010 /* APIEnvelopeTests.swift */; };
+		AB0000000000000000000021 /* AnyJSONTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000011 /* AnyJSONTests.swift */; };
+		AB0000000000000000000022 /* CRMClientScopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000012 /* CRMClientScopeTests.swift */; };
+		AB0000000000000000000023 /* CurrencyFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000013 /* CurrencyFormatterTests.swift */; };
+		AB0000000000000000000024 /* LeadFieldOverridesModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000014 /* LeadFieldOverridesModelTests.swift */; };
+		AB0000000000000000000025 /* LeadModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000015 /* LeadModelTests.swift */; };
+		AB0000000000000000000026 /* LeadsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000016 /* LeadsViewModelTests.swift */; };
+		AB0000000000000000000027 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000017 /* TestSupport.swift */; };
+		AB0000000000000000000028 /* WhatsAppHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000018 /* WhatsAppHelperTests.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXCopyFilesBuildPhase section */
 		8E096DDC2F94AFE2003D8F01 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -22,6 +34,16 @@
 		8E096DC52F94AFE0003D8F01 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		8E096DC72F94AFE0003D8F01 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		8E6066E52F84E703009FFCFF /* Kinematic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kinematic.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB0000000000000000000002 /* KinematicTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KinematicTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB0000000000000000000010 /* APIEnvelopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIEnvelopeTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000011 /* AnyJSONTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyJSONTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000012 /* CRMClientScopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRMClientScopeTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000013 /* CurrencyFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyFormatterTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000014 /* LeadFieldOverridesModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadFieldOverridesModelTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000015 /* LeadModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadModelTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000016 /* LeadsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsViewModelTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000017 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
+		AB0000000000000000000018 /* WhatsAppHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsAppHelperTests.swift; sourceTree = "<group>"; };
 		8E96A0032F94B222003D8F01 /* Kinematic/Models/ShiftActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kinematic/Models/ShiftActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -35,6 +57,13 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		8E6066E22F84E703009FFCFF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AB0000000000000000000005 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -57,6 +86,7 @@
 			isa = PBXGroup;
 			children = (
 				8E6066E72F84E703009FFCFF /* Kinematic */,
+				AB000000000000000000002F /* KinematicTests */,
 				8E096DC42F94AFE0003D8F01 /* Frameworks */,
 				8E6066E62F84E703009FFCFF /* Products */,
 				8E8927E52F9511EB00A1120C /* Recovered References */,
@@ -67,6 +97,7 @@
 			isa = PBXGroup;
 			children = (
 				8E6066E52F84E703009FFCFF /* Kinematic.app */,
+				AB0000000000000000000002 /* KinematicTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -77,6 +108,22 @@
 				8E96A0032F94B222003D8F01 /* Kinematic/Models/ShiftActivityAttributes.swift */,
 			);
 			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+		AB000000000000000000002F /* KinematicTests */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000017 /* TestSupport.swift */,
+				AB0000000000000000000010 /* APIEnvelopeTests.swift */,
+				AB0000000000000000000011 /* AnyJSONTests.swift */,
+				AB0000000000000000000012 /* CRMClientScopeTests.swift */,
+				AB0000000000000000000013 /* CurrencyFormatterTests.swift */,
+				AB0000000000000000000014 /* LeadFieldOverridesModelTests.swift */,
+				AB0000000000000000000015 /* LeadModelTests.swift */,
+				AB0000000000000000000016 /* LeadsViewModelTests.swift */,
+				AB0000000000000000000018 /* WhatsAppHelperTests.swift */,
+			);
+			path = KinematicTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -105,7 +152,37 @@
 			productReference = 8E6066E52F84E703009FFCFF /* Kinematic.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AB0000000000000000000003 /* KinematicTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AB000000000000000000000B /* Build configuration list for PBXNativeTarget "KinematicTests" */;
+			buildPhases = (
+				AB0000000000000000000004 /* Sources */,
+				AB0000000000000000000005 /* Frameworks */,
+				AB0000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AB0000000000000000000007 /* PBXTargetDependency */,
+			);
+			name = KinematicTests;
+			packageProductDependencies = (
+			);
+			productName = KinematicTests;
+			productReference = AB0000000000000000000002 /* KinematicTests.xctest */;
+			productType = "com.apple.product-type.unit-test-bundle";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		AB0000000000000000000008 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8E6066DD2F84E703009FFCFF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8E6066E42F84E703009FFCFF;
+			remoteInfo = Kinematic;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXProject section */
 		8E6066DD2F84E703009FFCFF /* Project object */ = {
@@ -117,6 +194,10 @@
 				TargetAttributes = {
 					8E6066E42F84E703009FFCFF = {
 						CreatedOnToolsVersion = 26.4;
+					};
+					AB0000000000000000000003 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = 8E6066E42F84E703009FFCFF;
 					};
 				};
 			};
@@ -135,12 +216,20 @@
 			projectRoot = "";
 			targets = (
 				8E6066E42F84E703009FFCFF /* Kinematic */,
+				AB0000000000000000000003 /* KinematicTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		8E6066E32F84E703009FFCFF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AB0000000000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -157,7 +246,31 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AB0000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB0000000000000000000027 /* TestSupport.swift in Sources */,
+				AB0000000000000000000020 /* APIEnvelopeTests.swift in Sources */,
+				AB0000000000000000000021 /* AnyJSONTests.swift in Sources */,
+				AB0000000000000000000022 /* CRMClientScopeTests.swift in Sources */,
+				AB0000000000000000000023 /* CurrencyFormatterTests.swift in Sources */,
+				AB0000000000000000000024 /* LeadFieldOverridesModelTests.swift in Sources */,
+				AB0000000000000000000025 /* LeadModelTests.swift in Sources */,
+				AB0000000000000000000026 /* LeadsViewModelTests.swift in Sources */,
+				AB0000000000000000000028 /* WhatsAppHelperTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AB0000000000000000000007 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8E6066E42F84E703009FFCFF /* Kinematic */;
+			targetProxy = AB0000000000000000000008 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		8E6066EE2F84E706009FFCFF /* Debug */ = {
@@ -346,6 +459,66 @@
 			};
 			name = Release;
 		};
+		AB0000000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K7PLGT7499;
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shaggywize63.kinematicTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kinematic.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Kinematic";
+			};
+			name = Debug;
+		};
+		AB000000000000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K7PLGT7499;
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shaggywize63.kinematicTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kinematic.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Kinematic";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -363,6 +536,15 @@
 			buildConfigurations = (
 				8E6066F12F84E706009FFCFF /* Debug */,
 				8E6066F22F84E706009FFCFF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AB000000000000000000000B /* Build configuration list for PBXNativeTarget "KinematicTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB0000000000000000000009 /* Debug */,
+				AB000000000000000000000A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
