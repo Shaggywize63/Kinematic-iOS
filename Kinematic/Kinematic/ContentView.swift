@@ -38,6 +38,7 @@ func formatTime(_ iso: String?) -> String {
 // --- MAIN VIEWS ---
 struct ContentView: View {
     @EnvironmentObject var appState: KiniAppState
+    @StateObject private var updateChecker = AppUpdateChecker()
 
     var body: some View {
         // GLOBAL CANVAS (Root-Level Atmospheric Background). The KINI FAB
@@ -61,6 +62,14 @@ struct ContentView: View {
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
         }
+        // Update prompt — sits above the app when this build is behind the
+        // App Store. A required update is a hard gate; a soft one is
+        // dismissable. Runs independent of auth (the check is unauthenticated).
+        .overlay {
+            AppUpdateOverlay(checker: updateChecker)
+                .animation(.easeInOut(duration: 0.25), value: updateChecker.state)
+        }
+        .task { await updateChecker.check() }
         .task(id: appState.isAuthenticated) {
             // Prefetch on auth so the FAB chip (now inside CRMTabView) is
             // populated on first paint. Without this, sessions cached
@@ -1229,5 +1238,172 @@ struct SOSView: View {
             Color.red.ignoresSafeArea()
             VStack(spacing: 40) { Text("EMERGENCY SOS").font(.largeTitle.bold()).foregroundColor(.white); Text("\(vm.countdown)").font(.system(size: 120, weight: .bold)).foregroundColor(.white); Button("CANCEL") { d() }.padding().background(.white.opacity(0.2)).cornerRadius(12).foregroundColor(.white) }
         }.onAppear { vm.start() }
+    }
+}
+
+// MARK: - App update prompt
+//
+// Launch-time version check. Fetches the public GET /api/v1/app/version and,
+// if the installed build is behind what's live on the App Store, publishes an
+// `UpdateState` that ContentView renders as a prompt. A soft (optional) prompt
+// is dismissable and remembers the version the user deferred so it doesn't
+// re-nag; a hard (required) prompt — installed build below the server minimum —
+// blocks the app until they update.
+
+@MainActor
+final class AppUpdateChecker: ObservableObject {
+    enum UpdateState: Equatable {
+        case none
+        case optional(latest: String, storeURL: String, message: String?)
+        case required(latest: String, storeURL: String, message: String?)
+    }
+
+    @Published var state: UpdateState = .none
+
+    private let dismissedKey = "dismissed_update_version"
+    private let endpoint = "https://api.kinematicapp.com/api/v1/app/version"
+
+    func check() async {
+        guard let url = URL(string: endpoint) else { return }
+        do {
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 10
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let decoded = try JSONDecoder().decode(AppVersionResponse.self, from: data)
+            guard let platform = decoded.ios,
+                  let latest = platform.latestVersion, !latest.isEmpty,
+                  let storeURL = platform.storeURL, !storeURL.isEmpty else { return }
+            let current = Self.installedVersion
+            let minimum = platform.minimumVersion?.isEmpty == false ? platform.minimumVersion! : "0.0.0"
+
+            // Already on latest (or ahead) — nothing to prompt.
+            guard Self.compare(current, latest) < 0 else { return }
+
+            if Self.compare(current, minimum) < 0 {
+                state = .required(latest: latest, storeURL: storeURL, message: platform.message)
+            } else {
+                // Soft prompt — honour a prior "Later" for this same version.
+                if UserDefaults.standard.string(forKey: dismissedKey) == latest { return }
+                state = .optional(latest: latest, storeURL: storeURL, message: platform.message)
+            }
+        } catch {
+            // Network / decode failure — never block the app on the check.
+        }
+    }
+
+    /// Dismiss a soft prompt and remember the version so we don't re-nag until
+    /// a newer one ships. A required prompt has no dismiss path.
+    func dismissOptional() {
+        if case let .optional(latest, _, _) = state {
+            UserDefaults.standard.set(latest, forKey: dismissedKey)
+        }
+        state = .none
+    }
+
+    static var installedVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
+    }
+
+    /// Compare dotted numeric versions ("1.0" vs "1.0.0"), padding missing
+    /// components with 0 so "1.0" == "1.0.0". Returns <0 when a<b, 0 equal, >0 a>b.
+    static func compare(_ a: String, _ b: String) -> Int {
+        let pa = a.split(separator: ".").map { Int($0) ?? 0 }
+        let pb = b.split(separator: ".").map { Int($0) ?? 0 }
+        let n = max(pa.count, pb.count)
+        for i in 0..<n {
+            let x = i < pa.count ? pa[i] : 0
+            let y = i < pb.count ? pb[i] : 0
+            if x != y { return x < y ? -1 : 1 }
+        }
+        return 0
+    }
+}
+
+/// GET /api/v1/app/version — public, unwrapped (no ApiResponse envelope).
+struct AppVersionResponse: Codable {
+    let ios: AppVersionInfo?
+    let android: AppVersionInfo?
+}
+
+struct AppVersionInfo: Codable {
+    let latestVersion: String?
+    let minimumVersion: String?
+    let storeURL: String?
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case latestVersion = "latest_version"
+        case minimumVersion = "minimum_version"
+        case storeURL = "store_url"
+        case message
+    }
+}
+
+/// The update prompt itself. Renders nothing in `.none`; a dimmed card
+/// otherwise. Required blocks (scrim tap does nothing, no "Later"); optional
+/// is dismissable.
+struct AppUpdateOverlay: View {
+    @ObservedObject var checker: AppUpdateChecker
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        switch checker.state {
+        case .none:
+            EmptyView()
+        case let .optional(_, storeURL, message):
+            card(required: false, storeURL: storeURL, message: message)
+        case let .required(_, storeURL, message):
+            card(required: true, storeURL: storeURL, message: message)
+        }
+    }
+
+    private func card(required: Bool, storeURL: String, message: String?) -> some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+                .onTapGesture { if !required { checker.dismissOptional() } }
+
+            VStack(spacing: 18) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 46))
+                    .foregroundColor(Brand.red)
+
+                Text(required ? "Update required" : "Update available")
+                    .font(.title2.bold())
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(Color(uiColor: .label))
+
+                Text(message ?? (required
+                    ? "A newer version of Kinematic is required to continue. Please update to keep using the app."
+                    : "A newer version of Kinematic is available with the latest fixes and improvements."))
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button {
+                    if let url = URL(string: storeURL) { openURL(url) }
+                } label: {
+                    Text("Update now")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Brand.red)
+                        .foregroundColor(.white)
+                        .cornerRadius(14)
+                }
+
+                if !required {
+                    Button("Later") { checker.dismissOptional() }
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color(uiColor: .systemBackground))
+            )
+            .padding(.horizontal, 32)
+        }
     }
 }
