@@ -22,6 +22,11 @@ final class CustomFieldsModel: ObservableObject {
         defs = all
             .filter { d in
                 guard d.entityType == entity else { return false }
+                // Skip tombstoned (is_active=false) and admin-hidden defs —
+                // deleting a field on the dashboard reconciles it to
+                // inactive, and without this filter "deleted" fields kept
+                // rendering on the form (matches Android + web).
+                if d.isActive == false || d.hidden == true { return false }
                 // The four product-line keys are rendered by the dedicated
                 // ProductLinesSection card on the lead form, so drop them
                 // here to avoid double-rendering.
@@ -86,6 +91,26 @@ final class CustomFieldsModel: ObservableObject {
         }
     }
 
+    /// Labels of admin-required custom fields (crm_custom_field_defs.required)
+    /// whose value is still empty. Create/edit forms call this before submit
+    /// and block with "Please fill: X" while non-empty — the backend accepts
+    /// the row without them otherwise. `defs` is already filtered by load()
+    /// (entity + role + tombstoned/hidden), so a field can never be
+    /// required-but-invisible. Formula fields are exempt (server-computed);
+    /// a boolean toggle always carries a value.
+    var missingRequiredLabels: [String] {
+        defs.filter { $0.required == true && $0.fieldType != "formula" && $0.fieldType != "boolean" }
+            .filter { d in
+                switch d.fieldType {
+                case "multiselect":
+                    return (multi[d.fieldKey] ?? []).isEmpty
+                default:
+                    return (text[d.fieldKey] ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+                }
+            }
+            .map(\.label)
+    }
+
     /// Plain JSON-serialisable values (String / Double / Bool / [String]) for
     /// the create body. Empty entries are skipped. Formula fields are
     /// skipped entirely — the backend recomputes + stamps them on save,
@@ -129,11 +154,11 @@ struct CustomFieldsSection: View {
     private func row(_ d: CRMCustomFieldDef) -> some View {
         switch d.fieldType {
         case "boolean":
-            Toggle(d.label, isOn: Binding(
+            Toggle(d.formLabel, isOn: Binding(
                 get: { model.bool[d.fieldKey] ?? false },
                 set: { model.bool[d.fieldKey] = $0 }))
         case "select", "radio":
-            Picker(d.label, selection: Binding(
+            Picker(d.formLabel, selection: Binding(
                 get: { model.text[d.fieldKey] ?? "" },
                 set: { model.text[d.fieldKey] = $0 })) {
                     Text("—").tag("")
@@ -163,7 +188,7 @@ struct CustomFieldsSection: View {
             )
         case "multiselect":
             VStack(alignment: .leading, spacing: 6) {
-                Text(d.label).font(.caption).foregroundColor(.secondary)
+                Text(d.formLabel).font(.caption).foregroundColor(.secondary)
                 ForEach(d.options ?? [], id: \.self) { opt in
                     Toggle(opt, isOn: Binding(
                         get: { model.multi[d.fieldKey]?.contains(opt) ?? false },
@@ -179,7 +204,7 @@ struct CustomFieldsSection: View {
             // into custom_fields on save. We show the most recent value
             // (from hydrate()) read-only so the rep can preview it.
             HStack {
-                Text(d.label)
+                Text(d.formLabel)
                 Spacer()
                 let stored = model.text[d.fieldKey] ?? ""
                 Text(stored.isEmpty ? "—" : stored)
@@ -196,7 +221,7 @@ struct CustomFieldsSection: View {
             // the same format the backend / web write, so this round-trips
             // through hydrate(from:) without a schema change.
             DatePicker(
-                d.label,
+                d.formLabel,
                 selection: Binding(
                     get: { Self.parseISODate(model.text[d.fieldKey]) ?? Date() },
                     set: { newDate in model.text[d.fieldKey] = Self.formatISODate(newDate) }
@@ -205,7 +230,7 @@ struct CustomFieldsSection: View {
             )
         case "datetime":
             DatePicker(
-                d.label,
+                d.formLabel,
                 selection: Binding(
                     get: { Self.parseISODateTime(model.text[d.fieldKey]) ?? Date() },
                     set: { newDate in model.text[d.fieldKey] = Self.formatISODateTime(newDate) }
@@ -214,7 +239,7 @@ struct CustomFieldsSection: View {
         default:
             // text / longtext / number / currency / url / email / phone
             HStack {
-                Text(d.label)
+                Text(d.formLabel)
                 Spacer()
                 TextField(d.fieldType == "number" || d.fieldType == "currency" ? "0" : "",
                           text: Binding(get: { model.text[d.fieldKey] ?? "" },
@@ -292,7 +317,7 @@ private struct LookupSearchPickerRow: View {
             sheetOpen = true
         } label: {
             HStack {
-                Text(def.label)
+                Text(def.formLabel)
                     .foregroundColor(.primary)
                 Spacer()
                 Text(displayLabel)

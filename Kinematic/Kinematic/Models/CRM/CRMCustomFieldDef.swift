@@ -12,6 +12,10 @@ struct CRMCustomFieldDef: Codable, Identifiable, Hashable {
     let options: [String]?
     let required: Bool?
     let position: Int?
+    // Lifecycle flags. Deleting/reconciling a field tombstones it
+    // (is_active=false, often hidden=true) — forms must skip both.
+    let isActive: Bool?
+    let hidden: Bool?
     let orgRoleIds: [String]?
     // Lookup-only — the table whose rows the picker searches when
     // fieldType == "lookup". Decoded from `target_table` on the JSON row.
@@ -20,6 +24,10 @@ struct CRMCustomFieldDef: Codable, Identifiable, Hashable {
     // 'is_active', op: 'eq', value: true }]`) that narrow the search.
     // Encoded as JSON in the /lookup/search ?filter= query string.
     let lookupFilter: [LookupFilterClause]?
+
+    /// Label for form rows — appends the same " *" marker built-in
+    /// required fields use when the admin marked this field mandatory.
+    var formLabel: String { required == true ? label + " *" : label }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -30,6 +38,8 @@ struct CRMCustomFieldDef: Codable, Identifiable, Hashable {
         case options
         case required
         case position
+        case isActive = "is_active"
+        case hidden
         case orgRoleIds = "org_role_ids"
         case targetTable = "target_table"
         case lookupFilter = "lookup_filter"
