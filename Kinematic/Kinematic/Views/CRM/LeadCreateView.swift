@@ -518,6 +518,16 @@ struct LeadCreateView: View {
                         if !ClientFeatures.isKinematic && !hasValidCoords { locator.requestLocation() }
                         Task {
                             saving = true
+                            // Admin-required custom fields (crm_custom_field_defs
+                            // .required) block submit the same way built-in
+                            // required fields do — the backend would accept
+                            // the row without them otherwise.
+                            let missingCustom = customFields.missingRequiredLabels
+                            guard missingCustom.isEmpty else {
+                                saving = false
+                                saveError = "Please fill: \(missingCustom.joined(separator: ", "))"
+                                return
+                            }
                             let body = buildBody()
                             guard !body.isEmpty else {
                                 saving = false
@@ -592,6 +602,16 @@ struct LeadCreateView: View {
                         if !ClientFeatures.isKinematic && !hasValidCoords { locator.requestLocation() }
                         Task {
                             saving = true
+                            // Admin-required custom fields (crm_custom_field_defs
+                            // .required) block submit the same way built-in
+                            // required fields do — the backend would accept
+                            // the row without them otherwise.
+                            let missingCustom = customFields.missingRequiredLabels
+                            guard missingCustom.isEmpty else {
+                                saving = false
+                                saveError = "Please fill: \(missingCustom.joined(separator: ", "))"
+                                return
+                            }
                             let body = buildBody()
                             // Empty body means the require-gate caught a
                             // bad state (e.g. last_name required + blank);
