@@ -35,6 +35,10 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Used to print bills on a Bluetooth thermal printer.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Used to print bills on a Bluetooth thermal printer.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>We need camera access to capture selfies for attendance verification.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
