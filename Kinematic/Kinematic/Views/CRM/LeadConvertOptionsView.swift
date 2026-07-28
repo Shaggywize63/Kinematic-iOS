@@ -106,14 +106,11 @@ struct LeadConvertOptionsView: View {
                 }
             }
             .task {
-                // Default the deal name to "{company} Opportunity" when the
-                // lead is B2B, matching the web modal's default.
+                // Default the deal name to the lead's own name (no
+                // "Opportunity" suffix) so the deal reads the same as
+                // the lead it was converted from.
                 if dealName.isEmpty {
-                    if let co = lead.company, !co.isEmpty {
-                        dealName = "\(co) Opportunity"
-                    } else {
-                        dealName = "\(lead.displayName) Opportunity"
-                    }
+                    dealName = lead.displayName
                 }
                 onLoadProducts()
                 // Load the product catalogue into the basket model (Tata only
