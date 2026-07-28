@@ -5,6 +5,17 @@ struct StoreVisitView: View {
     @EnvironmentObject var appState: KiniAppState
     @State private var isStartingVisit = false
     @State private var showingPlanogramCapture = false
+    // Van-sales entry points (distribution SKU only). Presented locally over
+    // this store-visit modal — the app-level `activeSecondaryRoute` cover can't
+    // stack on top of an already-presented full-screen cover, so we mount the
+    // distribution screens here the same way PlanogramCapture / ActivitySubmission
+    // are, passing the selected outlet straight through.
+    @State private var showOrderCart = false
+    @State private var showPaymentCollect = false
+
+    /// Distribution SKU gate — mirrors the entitlement checks used elsewhere
+    /// (`hasPackage("distribution")`). Non-distribution tenants see nothing new.
+    private var hasDistribution: Bool { Session.currentUser?.hasDistribution ?? true }
 
     var isVisitActive: Bool {
         appState.activeVisitOutletId == appState.selectedOutlet?.id
@@ -79,6 +90,40 @@ struct StoreVisitView: View {
                 visitId: appState.activeVisitId,
                 planogramId: nil
             )
+        }
+        // Book Order — van-sales cart for the selected outlet. Wrapped in a
+        // NavigationStack (mirrors SecondaryScreenHost) so the screen gets its
+        // nav bar + an explicit Close affordance (OrderCartView has none of its
+        // own).
+        .fullScreenCover(isPresented: $showOrderCart) {
+            NavigationStack {
+                OrderCartView(
+                    outletId: appState.selectedOutlet?.id ?? "",
+                    outletName: appState.selectedOutlet?.storeName,
+                    visitId: appState.activeVisitId
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Close") { showOrderCart = false }
+                    }
+                }
+            }
+        }
+        // Collect Payment — payment capture for the selected outlet.
+        // PaymentCollectView dismisses itself on a successful sync; the Close
+        // button covers manual cancel.
+        .fullScreenCover(isPresented: $showPaymentCollect) {
+            NavigationStack {
+                PaymentCollectView(
+                    outletId: appState.selectedOutlet?.id ?? "",
+                    outletName: appState.selectedOutlet?.storeName
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Close") { showPaymentCollect = false }
+                    }
+                }
+            }
         }
         // Activity form is its own full screen — driven by an isPresented
         // Binding so we never run into iOS 18 .fullScreenCover(item:)
@@ -192,6 +237,35 @@ struct StoreVisitView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.top, 28)
                     }
+                }
+
+                // ── Van Sales (distribution SKU only) ──────────────────────
+                // Order booking + payment collection for this outlet. Gated on
+                // the distribution package so non-distribution tenants see no
+                // change to the store-visit screen.
+                if hasDistribution {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("VAN SALES")
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundColor(.gray)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        DistributionActionCard(
+                            icon: "cart.fill",
+                            title: "Book Order",
+                            subtitle: "CREATE A NEW ORDER",
+                            tint: .indigo
+                        ) { showOrderCart = true }
+
+                        DistributionActionCard(
+                            icon: "indianrupeesign.circle.fill",
+                            title: "Collect Payment",
+                            subtitle: "RECORD A PAYMENT",
+                            tint: .green
+                        ) { showPaymentCollect = true }
+                    }
+                    .padding(.top, 4)
                 }
 
                 Spacer().frame(height: 120)
@@ -336,6 +410,60 @@ private struct PlanogramAuditCard: View {
                     Text("CAPTURE SHELF · AI COMPLIANCE")
                         .font(.system(size: 10, weight: .black))
                         .foregroundColor(Brand.red)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(uiColor: .secondarySystemBackground))
+            .cornerRadius(18)
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.5), .clear, .black.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Van-sales action row (Book Order / Collect Payment). Styled to match
+/// PlanogramAuditCard; the tint colour distinguishes each action.
+private struct DistributionActionCard: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(tint.opacity(0.12))
+                        .frame(width: 46, height: 46)
+                    Image(systemName: icon)
+                        .font(.system(size: 18))
+                        .foregroundColor(tint)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .label))
+                    Text(subtitle)
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(tint)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")

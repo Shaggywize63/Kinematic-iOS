@@ -12,6 +12,7 @@ struct SideMenuView: View {
     /// Per-client SKU snapshot for nav gating. Refreshes whenever Session.currentUser changes.
     private var hasCrm: Bool         { Session.currentUser?.hasCrm ?? true }
     private var hasFieldForce: Bool  { Session.currentUser?.hasFieldForce ?? true }
+    private var hasDistribution: Bool { Session.currentUser?.hasDistribution ?? true }
     private func hasModule(_ id: String) -> Bool { Session.currentUser?.hasModule(id) ?? true }
 
     var body: some View {
@@ -73,6 +74,17 @@ struct SideMenuView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                 showCRM = true
                             }
+                        }
+                    }
+
+                    // ── Distribution / Van Sales — only visible to clients who
+                    //    own the distribution SKU. Opens the order history sheet
+                    //    via the same SecondaryRoute mechanism the other rows use;
+                    //    SecondaryScreenHost re-checks the package gate.
+                    if hasDistribution {
+                        MenuButton(icon: "cart.fill", title: "My Orders", isSelected: false, color: .indigo) {
+                            withAnimation { isOpen = false }
+                            appState.activeSecondaryRoute = ModalRoute(route: .orderHistory)
                         }
                     }
 
