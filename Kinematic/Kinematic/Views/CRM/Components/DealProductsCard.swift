@@ -34,6 +34,13 @@ struct DealProductsCard: View {
     @State private var savedClosed: [String: Double] = [:]
     @State private var saving: Bool = false
 
+    // "Add / edit products" — reuses the multi-line basket editor (add / remove /
+    // auto-computed amount) in a sheet, seeded from the current basket and saving
+    // product_lines onto the DEAL (the deal owns its products here + at edit).
+    @State private var showEditProducts: Bool = false
+    @State private var savingProducts: Bool = false
+    @StateObject private var productLines = ProductLinesModel()
+
     struct ProductRow: Identifiable {
         let id: String  // == productId
         let productName: String
@@ -59,11 +66,94 @@ struct DealProductsCard: View {
                 Spacer()
             }
             content
+            if !loading {
+                Button {
+                    showEditProducts = true
+                } label: {
+                    Label(rows.isEmpty ? "Add products" : "Add / edit products", systemImage: "plus.circle")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(Brand.red)
+                .padding(.top, 2)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
         .task { await load() }
+        .sheet(isPresented: $showEditProducts) { editProductsSheet }
+    }
+
+    // MARK: – Add / edit products sheet
+
+    private var editProductsSheet: some View {
+        NavigationStack {
+            Form {
+                ProductLinesSection(model: productLines)
+            }
+            .navigationTitle("Products")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { showEditProducts = false }.tint(Brand.red).disabled(savingProducts)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await saveProducts() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if savingProducts { ProgressView().tint(.white).scaleEffect(0.8) }
+                            Text(savingProducts ? "Saving…" : "Save")
+                        }
+                        .font(.system(size: 14, weight: .bold))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Brand.red)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+                    .disabled(savingProducts)
+                }
+            }
+            .task {
+                // Load the catalogue, then seed the editor from the current
+                // basket (deal's own product_lines, or the linked lead's rows
+                // for legacy deals — whatever `rows` already resolved to).
+                await productLines.load()
+                seedProductLines()
+            }
+        }
+    }
+
+    @MainActor
+    private func seedProductLines() {
+        let seeded: [ProductLinesModel.ProductLine] = rows.map { r in
+            var l = ProductLinesModel.ProductLine()
+            l.productId = r.id
+            l.quantityText = r.estimated == r.estimated.rounded() ? String(Int(r.estimated)) : String(r.estimated)
+            l.measuringUnit = r.unit.isEmpty ? nil : r.unit
+            l.estimatedAmount = productLines.computeAmount(l)
+            return l
+        }
+        productLines.lines = seeded.isEmpty ? [ProductLinesModel.ProductLine()] : seeded
+    }
+
+    @MainActor
+    private func saveProducts() async {
+        if savingProducts { return }
+        savingProducts = true
+        defer { savingProducts = false }
+        var next = dealCustomFields
+        for (k, v) in productLines.jsonValues { next[k] = v }
+        do {
+            _ = try await CRMService.shared.patchDeal(id: dealId, body: ["custom_fields": next])
+            dealCustomFields = next
+            showEditProducts = false
+            await load()
+        } catch {
+            // Swallow; the rep can retry from the same Save button.
+        }
     }
 
     @ViewBuilder
@@ -73,12 +163,8 @@ struct DealProductsCard: View {
                 ProgressView()
                 Text("Loading…").font(.caption).foregroundColor(.secondary)
             }
-        } else if rows.isEmpty && leadId == nil {
-            Text("No product lines on this deal yet. Add them from Edit Deal to track quantities here.")
-                .font(.caption)
-                .foregroundColor(.secondary)
         } else if rows.isEmpty {
-            Text("No product lines yet. Add them from Edit Deal (or capture them on the lead form) to see them here.")
+            Text("No products on this deal yet. Tap “Add products” below to add them.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         } else {
