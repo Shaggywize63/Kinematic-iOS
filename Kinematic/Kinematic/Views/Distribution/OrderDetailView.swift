@@ -139,8 +139,9 @@ struct OrderDetailView: View {
 
     /// Map the loaded order + line items onto the receipt model. CGST/SGST are
     /// summed from the per-line tax fields; the subtotal prefers the order's
-    /// taxable value and falls back to the line sum. GSTIN is left blank — the
-    /// distribution order model doesn't carry a seller GSTIN.
+    /// taxable value and falls back to the line sum. The company header, address
+    /// and GSTIN come from the order's nested `distributor` when present, falling
+    /// back to the tenant constant.
     private func buildReceipt(from order: DistOrder) -> ReceiptBill {
         let lines = order.order_items ?? []
         let items = lines.map {
@@ -155,10 +156,28 @@ struct OrderDetailView: View {
         let cgst = lines.reduce(0) { $0 + $1.cgst }
         let sgst = lines.reduce(0) { $0 + $1.sgst }
 
+        let dist = order.distributor
+        let fallbackName = ClientFeatures.isTataTiscon ? "TATA TISCON" : "KINEMATIC"
+        let companyName: String = {
+            if let name = dist?.name, !name.isEmpty { return name }
+            return fallbackName
+        }()
+        let gstin: String? = {
+            if let g = dist?.gstin, !g.isEmpty { return g }
+            return nil
+        }()
+        let address: String? = {
+            guard let a = dist?.address else { return nil }
+            let parts = [a.line1, a.city, a.state, a.pincode]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+            return parts.isEmpty ? nil : parts.joined(separator: ", ")
+        }()
+
         return ReceiptBill(
-            companyName: ClientFeatures.isTataTiscon ? "TATA TISCON" : "KINEMATIC",
-            address: nil,
-            gstin: nil,
+            companyName: companyName,
+            address: address,
+            gstin: gstin,
             outletName: order.outlet_name,
             billNo: order.order_no,
             date: receiptDate(order.placed_at),
