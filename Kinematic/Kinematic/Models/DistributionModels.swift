@@ -65,6 +65,21 @@ struct OrderPreview: Codable {
     let intra_state: Bool?
 }
 
+struct OrderDistributorAddress: Codable {
+    let line1: String?
+    let city: String?
+    let state: String?
+    let pincode: String?
+}
+
+struct OrderDistributor: Codable {
+    let name: String?
+    let gstin: String?
+    let address: OrderDistributorAddress?
+    let state_code: String?
+    let place_of_supply: String?
+}
+
 struct DistOrder: Codable, Identifiable {
     let id: String
     let order_no: String
@@ -79,6 +94,7 @@ struct DistOrder: Codable, Identifiable {
     let geofence_passed: Bool?
     let geofence_distance_m: Int?
     let order_items: [PricedLine]?
+    let distributor: OrderDistributor?
 }
 
 struct OutletSummary: Codable {
