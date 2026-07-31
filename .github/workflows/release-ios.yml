@@ -71,19 +71,31 @@ jobs:
             exit 1
           fi
 
-      - name: Normalize signing secrets (strip stray whitespace/newlines)
-        # A trailing newline pasted into MATCH_GIT_BASIC_AUTHORIZATION (or a
-        # line-wrapped base64) corrupts the git Authorization header and makes
-        # the certs-repo clone fail (400 / "could not read Username"). Strip all
-        # whitespace so the value works no matter how it was generated/pasted.
+      - name: Configure certs-repo git auth (robust to base64 newlines)
+        # match authenticates the certs-repo clone with an "Authorization: Basic"
+        # header built from MATCH_GIT_BASIC_AUTHORIZATION (base64 of user:token).
+        # If that base64 was produced with `echo "user:token" | base64`, the
+        # newline echo appends is encoded INSIDE the base64, so the decoded
+        # credential is "user:token\n" — a corrupt header that GitHub rejects
+        # with HTTP 400. Fix deterministically: decode, strip whitespace from the
+        # DECODED value, and inject the credential via git's insteadOf rewrite.
+        # Then blank the header var so match doesn't also send its own.
         run: |
           set -e
-          clean_auth=$(printf '%s' "$MATCH_GIT_BASIC_AUTHORIZATION" | tr -d '[:space:]')
-          clean_url=$(printf '%s' "$MATCH_GIT_URL" | tr -d '[:space:]')
-          echo "::add-mask::$clean_auth"
-          echo "::add-mask::$clean_url"
-          echo "MATCH_GIT_BASIC_AUTHORIZATION=$clean_auth" >> "$GITHUB_ENV"
+          creds=$(printf '%s' "$MATCH_GIT_BASIC_AUTHORIZATION" | tr -d '[:space:]' | openssl base64 -A -d 2>/dev/null | tr -d '[:space:]')
+          case "$creds" in
+            *:*) : ;;
+            *) echo "::error::MATCH_GIT_BASIC_AUTHORIZATION must be base64 of 'username:token'. Rebuild: printf '%s' 'USER:TOKEN' | base64 | tr -d '\n'"; exit 1 ;;
+          esac
+          user=${creds%%:*}
+          token=${creds#*:}
+          echo "::add-mask::$token"
+          git config --global url."https://${user}:${token}@github.com/".insteadOf "https://github.com/"
+          # Normalize the URL to plain https (strip any embedded user:pass@) so the
+          # insteadOf rewrite applies, and blank the header var to avoid double auth.
+          clean_url=$(printf '%s' "$MATCH_GIT_URL" | tr -d '[:space:]' | sed -E 's#https://[^@/]+@#https://#')
           echo "MATCH_GIT_URL=$clean_url" >> "$GITHUB_ENV"
+          echo "MATCH_GIT_BASIC_AUTHORIZATION=" >> "$GITHUB_ENV"
 
       - name: Set up Ruby + fastlane (bundler)
         uses: ruby/setup-ruby@v1
