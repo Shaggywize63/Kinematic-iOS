@@ -38,10 +38,10 @@ def sign_and_build(bnum)
     type: "appstore",
     app_identifier: APP_IDENTIFIER,
     api_key: asc_api_key,
-    # Not readonly: the build lane creates the distribution cert + profile on
-    # first run and reuses them thereafter (match is idempotent). readonly:true
-    # crashes if the repo has no usable identity yet ("cannot create ... readonly").
-    readonly: false,
+    # Build lanes MUST NOT create certs (that hit Apple's 2-cert cap when the
+    # stored cert wasn't reusable). Only the `certs` lane creates/repairs signing;
+    # builds just consume what's already in the match repo.
+    readonly: true,
   )
   # match names the profile with a unique suffix (e.g. "match AppStore <id> 178…"),
   # so read the exact name it installed this run instead of hardcoding it.
