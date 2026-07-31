@@ -82,13 +82,18 @@ jobs:
         # Then blank the header var so match doesn't also send its own.
         run: |
           set -e
-          creds=$(printf '%s' "$MATCH_GIT_BASIC_AUTHORIZATION" | tr -d '[:space:]' | openssl base64 -A -d 2>/dev/null | tr -d '[:space:]')
-          case "$creds" in
-            *:*) : ;;
-            *) echo "::error::MATCH_GIT_BASIC_AUTHORIZATION must be base64 of 'username:token'. Rebuild: printf '%s' 'USER:TOKEN' | base64 | tr -d '\n'"; exit 1 ;;
+          raw=$(printf '%s' "$MATCH_GIT_BASIC_AUTHORIZATION" | tr -d '[:space:]')
+          decoded=$(printf '%s' "$raw" | openssl base64 -A -d 2>/dev/null | tr -d '[:space:]' || true)
+          # Accept the token in whatever form the secret holds:
+          case "$decoded" in
+            *:*)                       user=${decoded%%:*}; token=${decoded#*:} ;;  # base64 of "username:token"
+            github_pat_*|ghp_*|gho_*|ghs_*) user="x-access-token"; token="$decoded" ;;  # base64 of the token alone
+            *)                         user="x-access-token"; token="$raw" ;;       # raw token pasted directly
           esac
-          user=${creds%%:*}
-          token=${creds#*:}
+          if [ -z "$token" ]; then
+            echo "::error::Could not derive a git token from MATCH_GIT_BASIC_AUTHORIZATION. Set it to your raw github_pat_… token (simplest), or base64 of 'username:token'."
+            exit 1
+          fi
           echo "::add-mask::$token"
           git config --global url."https://${user}:${token}@github.com/".insteadOf "https://github.com/"
           # Normalize the URL to plain https (strip any embedded user:pass@) so the
