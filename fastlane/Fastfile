@@ -38,10 +38,12 @@ def sign_and_build(bnum)
     type: "appstore",
     app_identifier: APP_IDENTIFIER,
     api_key: asc_api_key,
-    # Build lanes MUST NOT create certs (that hit Apple's 2-cert cap when the
-    # stored cert wasn't reusable). Only the `certs` lane creates/repairs signing;
-    # builds just consume what's already in the match repo.
-    readonly: true,
+    # Self-contained signing: create (if needed) AND use the cert in THIS runner's
+    # keychain. The split "certs on one runner, build on another" fails because the
+    # stored .p12 won't re-import cleanly on a fresh runner (errSecInternalComponent).
+    # Same-keychain create+use is reliable. Apple caps distribution certs at 2, so
+    # avoid re-running needlessly; revoke stale certs if you hit the cap.
+    readonly: false,
   )
   # match names the profile with a unique suffix (e.g. "match AppStore <id> 178…"),
   # so read the exact name it installed this run instead of hardcoding it.
