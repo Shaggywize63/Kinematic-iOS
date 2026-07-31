@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Push Notifications capability. Xcode/automatic signing enables the
+	     matching App ID capability and provisioning profile via
+	     -allowProvisioningUpdates. The value stays "development" here; the
+	     App Store distribution export re-signs it to "production" APNs. -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

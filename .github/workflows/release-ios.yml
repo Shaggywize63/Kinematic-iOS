@@ -1,0 +1,81 @@
+name: Release iOS (TestFlight / App Store)
+
+# Manual only — App Store / TestFlight uploads should be intentional, not fired
+# on every push. Pick the lane when you dispatch:
+#   • beta    → build + upload to TestFlight
+#   • release → build + upload to App Store Connect (finish metadata & submit in ASC)
+#   • certs   → one-time bootstrap: create signing cert + profile in the match repo
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   ASC_KEY_ID                    App Store Connect API key ID
+#   ASC_ISSUER_ID                 App Store Connect API issuer ID
+#   ASC_KEY_P8_BASE64             base64 of the .p8 key file  (base64 -i AuthKey_XXX.p8)
+#   MATCH_PASSWORD                passphrase that encrypts the match repo
+#   MATCH_GIT_URL                 https URL of a PRIVATE repo that stores signing assets
+#   MATCH_GIT_BASIC_AUTHORIZATION base64 of "<github-username>:<PAT-with-repo-scope>"
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Fastlane lane to run"
+        required: true
+        default: "beta"
+        type: choice
+        options:
+          - beta
+          - release
+          - certs
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build & upload (${{ inputs.lane }})
+    # macos-26 ships Xcode 26 (iOS 26 SDK). The codebase uses iOS 26 SwiftUI
+    # APIs to compile even though the deployment target is iOS 18, so an older
+    # runner (Xcode 16 / iOS 18 SDK) would fail with exit code 65.
+    runs-on: macos-26
+
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      # Deterministic, English locale so fastlane/xcodebuild parse cleanly.
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+      FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "180"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode (26 / iOS 26 SDK)
+        run: |
+          set -e
+          latest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n1 || echo "")
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest/Contents/Developer"; fi
+          xcodebuild -version
+
+      - name: Fail fast if signing secrets are missing
+        run: |
+          set -e
+          missing=""
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64 MATCH_PASSWORD MATCH_GIT_URL MATCH_GIT_BASIC_AUTHORIZATION; do
+            if [ -z "${!v}" ]; then missing="$missing $v"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secret(s):$missing — add them in repo Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Set up Ruby + fastlane (bundler)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Run fastlane ${{ inputs.lane }}
+        run: bundle exec fastlane ${{ inputs.lane }}

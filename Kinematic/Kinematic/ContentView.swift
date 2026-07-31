@@ -155,7 +155,7 @@ struct MainTabView: View {
                 }
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabBarMinimizeOnScrollIfAvailable()
         .tint(Brand.red)
         .overlay(alignment: .bottom) {
             if appState.showGlobalSuccess {
@@ -1404,6 +1404,23 @@ struct AppUpdateOverlay: View {
                     .fill(Color(uiColor: .systemBackground))
             )
             .padding(.horizontal, 32)
+        }
+    }
+}
+
+// MARK: - Availability helpers
+
+extension View {
+    /// iOS 26's auto-hiding tab bar (`.tabBarMinimizeBehavior(.onScrollDown)`)
+    /// applied only where the OS supports it. The app's deployment target is
+    /// iOS 18, so this iOS 26 API must be gated; on iOS 18–25 it's a no-op and
+    /// the tab bar simply stays visible.
+    @ViewBuilder
+    func tabBarMinimizeOnScrollIfAvailable() -> some View {
+        if #available(iOS 26.0, *) {
+            self.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            self
         }
     }
 }
