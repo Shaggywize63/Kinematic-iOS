@@ -72,22 +72,52 @@ struct PlanogramCaptureView: View {
     }
 
     private var placeholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color.white.opacity(0.05))
-                .frame(maxWidth: .infinity, minHeight: 320)
-            VStack(spacing: 14) {
-                Image(systemName: "camera.viewfinder")
-                    .font(.system(size: 56, weight: .light))
-                    .foregroundColor(.white.opacity(0.6))
-                Text("No capture yet")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
-                AlignmentBar(score: vm.alignmentScore)
-                    .padding(.top, 8)
-                    .padding(.horizontal, 24)
+        VStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color.white.opacity(0.06))
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [9, 7]))
+                    .foregroundColor(alignmentColor.opacity(0.7))
+                VStack(spacing: 12) {
+                    Image(systemName: "viewfinder")
+                        .font(.system(size: 54, weight: .light))
+                        .foregroundColor(alignmentColor)
+                    Text(alignmentHeadline)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                    Text(alignmentGuidance)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.78))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 26)
+                }
+                .padding(.horizontal, 20)
             }
+            .frame(maxWidth: .infinity, minHeight: 320)
+
+            AlignmentBar(score: vm.alignmentScore)
+                .padding(.horizontal, 4)
+            Text("A level, straight-on shot helps the AI read every SKU accurately. This is a guide — you can tap Capture at any time.")
+                .font(.system(size: 11))
+                .foregroundColor(.white.opacity(0.55))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
         }
+    }
+
+    /// Colour + copy that react to the live alignment score so the rep knows
+    /// exactly how to hold the phone before shooting (green = ready).
+    private var alignmentColor: Color {
+        vm.alignmentScore >= 0.8 ? .green : vm.alignmentScore >= 0.5 ? .yellow : .red
+    }
+    private var alignmentHeadline: String {
+        vm.alignmentScore >= 0.8 ? "Good alignment" : "Align your shot"
+    }
+    private var alignmentGuidance: String {
+        if vm.alignmentScore >= 0.8 { return "Hold steady and tap Capture." }
+        if vm.alignmentScore >= 0.5 { return "Almost there — straighten the phone so it's parallel to the shelf." }
+        return "Hold your phone flat and square to the shelf — keep it level, not tilted."
     }
 
     private func preview(image: UIImage) -> some View {
