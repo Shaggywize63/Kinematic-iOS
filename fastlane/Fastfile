@@ -43,6 +43,9 @@ def sign_and_build(bnum)
     # crashes if the repo has no usable identity yet ("cannot create ... readonly").
     readonly: false,
   )
+  # match names the profile with a unique suffix (e.g. "match AppStore <id> 178…"),
+  # so read the exact name it installed this run instead of hardcoding it.
+  profile_name = ENV.fetch("sigh_#{APP_IDENTIFIER}_appstore_profile-name")
   # Point the project at the match profile with manual signing for the archive.
   update_code_signing_settings(
     use_automatic_signing: false,
@@ -50,7 +53,7 @@ def sign_and_build(bnum)
     team_id: TEAM_ID,
     code_sign_identity: "Apple Distribution",
     bundle_identifier: APP_IDENTIFIER,
-    profile_name: "match AppStore #{APP_IDENTIFIER}",
+    profile_name: profile_name,
     targets: [SCHEME],
   )
   build_app(
@@ -61,7 +64,7 @@ def sign_and_build(bnum)
     xcargs: "CURRENT_PROJECT_VERSION=#{bnum}",
     export_options: {
       signingStyle: "manual",
-      provisioningProfiles: { APP_IDENTIFIER => "match AppStore #{APP_IDENTIFIER}" },
+      provisioningProfiles: { APP_IDENTIFIER => profile_name },
     },
   )
 end
