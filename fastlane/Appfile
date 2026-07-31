@@ -1,0 +1,6 @@
+app_identifier("com.shaggywize63.kinematic")
+
+# Apple Developer Program team. App Store Connect authentication is done with
+# the API key configured in the Fastfile (app_store_connect_api_key), so no
+# Apple ID / password / 2FA is needed for headless CI.
+team_id("K7PLGT7499")
