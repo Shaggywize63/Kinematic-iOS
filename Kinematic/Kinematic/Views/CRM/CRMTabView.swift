@@ -68,7 +68,7 @@ struct CRMTabView: View {
                 }
             }
             .tint(Brand.red)
-            .tabBarMinimizeBehavior(.onScrollDown)
+            .tabBarMinimizeOnScrollIfAvailable()
 
             if canShowKiniFab {
                 KiniFAB(usage: kiniUsage) { showKini = true }
