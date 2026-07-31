@@ -71,6 +71,20 @@ jobs:
             exit 1
           fi
 
+      - name: Normalize signing secrets (strip stray whitespace/newlines)
+        # A trailing newline pasted into MATCH_GIT_BASIC_AUTHORIZATION (or a
+        # line-wrapped base64) corrupts the git Authorization header and makes
+        # the certs-repo clone fail (400 / "could not read Username"). Strip all
+        # whitespace so the value works no matter how it was generated/pasted.
+        run: |
+          set -e
+          clean_auth=$(printf '%s' "$MATCH_GIT_BASIC_AUTHORIZATION" | tr -d '[:space:]')
+          clean_url=$(printf '%s' "$MATCH_GIT_URL" | tr -d '[:space:]')
+          echo "::add-mask::$clean_auth"
+          echo "::add-mask::$clean_url"
+          echo "MATCH_GIT_BASIC_AUTHORIZATION=$clean_auth" >> "$GITHUB_ENV"
+          echo "MATCH_GIT_URL=$clean_url" >> "$GITHUB_ENV"
+
       - name: Set up Ruby + fastlane (bundler)
         uses: ruby/setup-ruby@v1
         with:
