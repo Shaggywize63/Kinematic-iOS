@@ -95,12 +95,16 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$token"
-          git config --global url."https://${user}:${token}@github.com/".insteadOf "https://github.com/"
-          # Normalize the URL to plain https (strip any embedded user:pass@) so the
-          # insteadOf rewrite applies, and blank the header var to avoid double auth.
+          # Rebuild a guaranteed-clean, single-line base64 of user:token and let
+          # match send it as its own Authorization header. (Do NOT also use git
+          # insteadOf — match always injects its header, and it would win, so two
+          # mechanisms conflict.) Normalize the URL to plain https so there is
+          # exactly one auth path.
+          newauth=$(printf '%s' "${user}:${token}" | openssl base64 -A | tr -d '\n')
+          echo "::add-mask::$newauth"
           clean_url=$(printf '%s' "$MATCH_GIT_URL" | tr -d '[:space:]' | sed -E 's#https://[^@/]+@#https://#')
           echo "MATCH_GIT_URL=$clean_url" >> "$GITHUB_ENV"
-          echo "MATCH_GIT_BASIC_AUTHORIZATION=" >> "$GITHUB_ENV"
+          echo "MATCH_GIT_BASIC_AUTHORIZATION=$newauth" >> "$GITHUB_ENV"
 
       - name: Set up Ruby + fastlane (bundler)
         uses: ruby/setup-ruby@v1
