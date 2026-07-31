@@ -2,11 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Push Notifications capability. Xcode/automatic signing enables the
-	     matching App ID capability and provisioning profile via
-	     -allowProvisioningUpdates. The value stays "development" here; the
-	     App Store distribution export re-signs it to "production" APNs. -->
-	<key>aps-environment</key>
-	<string>development</string>
+	<!-- Push Notifications is temporarily disabled for the first App Store /
+	     TestFlight build. The `aps-environment` entitlement forces Apple's
+	     managed signing to mint a Push-capable provisioning profile at export
+	     time; on this newly-approved account that export was failing
+	     (xcodebuild -exportArchive exit 70) because the App ID's Push
+	     capability / signing team was not yet lined up, which blocked the
+	     whole build even though the app compiled cleanly.
+
+	     To RE-ENABLE push once the App ID has Push Notifications enabled under
+	     the same team Xcode Cloud signs with, restore the single key below:
+
+	         <key>aps-environment</key>
+	         <string>development</string>
+
+	     (Xcode/App Store distribution re-signs "development" to "production"
+	     APNs automatically.) The PushNotificationManager wiring is already in
+	     place, so this file is the only change needed to turn push back on. -->
 </dict>
 </plist>
