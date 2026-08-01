@@ -31,11 +31,13 @@ struct Deal: Codable, Identifiable, Hashable {
     // persisted by the Products section.
     let customFields: [String: AnyCodable]?
     // Server-stamped display fields — GET /deals and /deals/:id enrich
-    // each row with the resolved dealer label plus the linked lead's
-    // name/phone. Read-only: never included in create/PATCH bodies.
+    // each row with the resolved dealer label, the linked lead's
+    // name/phone, and the owner's name (stampOwnerName on the backend).
+    // Read-only: never included in create/PATCH bodies.
     let dealerName: String?
     let leadName: String?
     let leadPhone: String?
+    let ownerName: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -63,5 +65,6 @@ struct Deal: Codable, Identifiable, Hashable {
         case dealerName = "dealer_name"
         case leadName = "lead_name"
         case leadPhone = "lead_phone"
+        case ownerName = "owner_name"
     }
 }
