@@ -1,4 +1,8 @@
 import SwiftUI
+import UIKit
+
+/// Wraps a rendered share image so it can drive a `.sheet(item:)`.
+private struct ShareImageItem: Identifiable { let id = UUID(); let image: UIImage }
 
 /// CRM activity row — redesigned to read like a polished feed entry rather
 /// than a sparse two-liner. Mirrors the web dashboard's status pills + type
@@ -7,6 +11,9 @@ import SwiftUI
 struct ActivityTimelineItem: View {
     let activity: Activity
     @Environment(\.openURL) private var openURL
+
+    @State private var shareBusy = false
+    @State private var shareItem: ShareImageItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -37,6 +44,19 @@ struct ActivityTimelineItem: View {
                         .foregroundColor(.secondary)
                         .monospacedDigit()
                 }
+                // Share the activity as a branded card (WhatsApp-ready image).
+                Button { shareActivity() } label: {
+                    if shareBusy {
+                        ProgressView().scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Brand.red)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(shareBusy)
+                .accessibilityLabel("Share activity")
             }
 
             // ── Body: description + optional photo ──────────────────────
@@ -142,6 +162,24 @@ struct ActivityTimelineItem: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color(uiColor: .separator).opacity(0.25), lineWidth: 0.5)
         )
+        .sheet(item: $shareItem) { item in
+            LeadShareActivitySheet(items: [item.image])
+        }
+    }
+
+    // MARK: Share
+
+    /// Render the activity's branded card (linked record, type, when, owner,
+    /// site photo) and open the system share sheet.
+    private func shareActivity() {
+        guard !shareBusy else { return }
+        shareBusy = true
+        Task { @MainActor in
+            defer { shareBusy = false }
+            if let img = await ActivityShareCardBuilder.makeImage(for: activity) {
+                shareItem = ShareImageItem(image: img)
+            }
+        }
     }
 
     // MARK: Derived

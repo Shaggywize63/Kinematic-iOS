@@ -121,10 +121,9 @@ struct DealDetailView: View {
         .navigationTitle(initialDeal?.name ?? "Deal")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                // Share the linked lead's card (WhatsApp-ready image). Only
-                // shown when the deal has a lead to share.
-                if let lid = initialDeal?.leadId, !lid.isEmpty {
-                    Button { shareLinkedLead(lid) } label: {
+                // Share the deal's branded card (WhatsApp-ready image).
+                if let deal = initialDeal {
+                    Button { shareDeal(deal) } label: {
                         if shareBusy {
                             ProgressView()
                         } else {
@@ -133,7 +132,7 @@ struct DealDetailView: View {
                     }
                     .tint(Brand.red)
                     .disabled(shareBusy)
-                    .accessibilityLabel("Share lead")
+                    .accessibilityLabel("Share deal")
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -277,16 +276,14 @@ struct DealDetailView: View {
 
     // MARK: - Share
 
-    /// Fetch the linked lead and render its branded share card, then open
-    /// the system share sheet. Mirrors the lead detail screen's share so
-    /// the same image is reachable from the deal a rep is working.
-    private func shareLinkedLead(_ leadId: String) {
+    /// Render the deal's branded card (name, lead, dealer, tonnage, value,
+    /// owner, site photo) and open the system share sheet.
+    private func shareDeal(_ deal: Deal) {
         guard !shareBusy else { return }
         shareBusy = true
         Task { @MainActor in
             defer { shareBusy = false }
-            guard let lead = try? await CRMService.shared.getLead(id: leadId),
-                  let image = await LeadShareCardBuilder.makeImage(for: lead) else {
+            guard let image = await DealShareCardBuilder.makeImage(for: deal) else {
                 shareError = "Could not build the share image. Please try again."
                 return
             }
