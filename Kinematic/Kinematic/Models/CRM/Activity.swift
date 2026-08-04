@@ -27,11 +27,19 @@ struct Activity: Codable, Identifiable, Hashable {
     /// Denormalised name of the linked lead — stamped by the backend so the
     /// activity card can surface context without a second fetch.
     let leadName: String?
+    /// Denormalised phone of the linked lead (backend stamp) — surfaced as
+    /// the activity card's "Contact" when there's no directory number.
+    let leadPhone: String?
     /// Denormalised name of the linked contact (fallback when no lead is set).
     let contactName: String?
     /// Denormalised name of the linked deal (fallback when neither lead nor
     /// contact is set).
     let dealName: String?
+    /// SRS / BMW site-visits link a People-Directory dealer via
+    /// custom_fields.dealer_name; the backend resolves it to the person's
+    /// name + mobile so the card can show "Radha Traders · 9431188608".
+    let directoryName: String?
+    let directoryPhone: String?
 
     /// Effective workflow state for UI rendering — falls back to a sensible
     /// default when the backend hasn't stamped `status` yet (older rows).
@@ -58,7 +66,10 @@ struct Activity: Codable, Identifiable, Hashable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case leadName = "lead_name"
+        case leadPhone = "lead_phone"
         case contactName = "contact_name"
         case dealName = "deal_name"
+        case directoryName = "directory_name"
+        case directoryPhone = "directory_phone"
     }
 }

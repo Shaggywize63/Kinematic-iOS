@@ -299,6 +299,18 @@ enum LeadShareCardBuilder {
                 }
                 return (s, nil, nil)
             }
+            // Plain scalar custom fields (number / boolean) — e.g. SRS's
+            // "Construction Area (SQ FT)" is stored as a raw number, so it
+            // never matched the dict/string branches above and silently
+            // dropped off the card. Render it directly.
+            if let b = any as? Bool { return (b ? "Yes" : "No", nil, nil) }
+            if let i = any as? Int { return (String(i), nil, nil) }
+            if let d = any as? Double {
+                // Trim a trailing ".0" so 1500.0 reads "1500". Guard the Int
+                // conversion against out-of-range doubles (Int(_:) traps).
+                let s = (d == d.rounded() && abs(d) < 1e15) ? String(Int(d)) : String(d)
+                return (s, nil, nil)
+            }
             return (nil, nil, nil)
         }
 
@@ -377,8 +389,15 @@ enum DealShareCardBuilder {
         let cf = deal.customFields ?? [:]
         let createdText = shareCreatedText(deal.createdAt)
 
-        // Site photo — a deal image custom field is just a stored bucket URL.
-        let photo = await shareFetchPhoto(firstImageURL(in: cf))
+        // Site photo — prefer an image attached to the deal's own custom
+        // fields; otherwise tag the linked lead's site photo (its column or a
+        // custom-field image). "Tag site photo from lead (if any attached)".
+        var photoURL = firstImageURL(in: cf)
+        if photoURL == nil, let leadId = deal.leadId,
+           let lead = try? await CRMService.shared.getLead(id: leadId) {
+            photoURL = lead.photoUrl ?? firstImageURL(in: lead.customFields ?? [:])
+        }
+        let photo = await shareFetchPhoto(photoURL)
 
         let leadName = deal.leadName?.trimmingCharacters(in: .whitespaces)
         let displayName = deal.name.isEmpty ? (leadName ?? "Deal") : deal.name
@@ -387,7 +406,9 @@ enum DealShareCardBuilder {
         if let v = createdText { rows.append(("Created", v)) }
         if let v = deal.ownerName?.trimmingCharacters(in: .whitespaces), !v.isEmpty { rows.append(("Owner", v)) }
         if let v = deal.dealerName?.trimmingCharacters(in: .whitespaces), !v.isEmpty { rows.append(("Dealer", v)) }
-        if let n = leadName, !n.isEmpty { rows.append(("Lead", n)) }
+        // The lead name already headlines the card (name / subtitle up top),
+        // so don't repeat it here — surface the lead's contact number instead.
+        if let v = deal.leadPhone?.trimmingCharacters(in: .whitespaces), !v.isEmpty { rows.append(("Lead Contact", v)) }
         if let v = shareFormatKg(derivedWeightKg(cf)) { rows.append(("Tonnage", v)) }
         if let amt = deal.amount, amt > 0 { rows.append(("Value", CurrencyFormatter.formatINR(amt))) }
 
@@ -445,8 +466,10 @@ enum ActivityShareCardBuilder {
         let photo = await shareFetchPhoto(activity.imageUrl)
 
         // "Lead name or Directory name" — the linked record. Falls back
-        // through lead → contact (directory) → deal.
-        let linked = [activity.leadName, activity.contactName, activity.dealName]
+        // through lead → directory (people-directory dealer) → contact → deal.
+        let leadName = activity.leadName?.trimmingCharacters(in: .whitespaces)
+        let directoryName = activity.directoryName?.trimmingCharacters(in: .whitespaces)
+        let linked = [leadName, directoryName, activity.contactName, activity.dealName]
             .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty }
         let typeLabel = (activity.type ?? "activity")
@@ -455,9 +478,18 @@ enum ActivityShareCardBuilder {
         let subject = activity.subject?.trimmingCharacters(in: .whitespaces)
         let displayName = linked ?? (subject?.isEmpty == false ? subject! : typeLabel)
 
+        // Contact number to reach them — the directory's mobile, else the
+        // linked lead's phone.
+        let contactNumber = [activity.directoryPhone, activity.leadPhone]
+            .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
+
         var rows: [(String, String)] = []
         rows.append(("Type", typeLabel))
         if let v = createdText { rows.append(("Created", v)) }
+        if let v = leadName, !v.isEmpty, v != displayName { rows.append(("Lead", v)) }
+        if let v = directoryName, !v.isEmpty, v != displayName { rows.append(("Directory", v)) }
+        if let v = contactNumber { rows.append(("Contact", v)) }
         if let v = activity.ownerName?.trimmingCharacters(in: .whitespaces), !v.isEmpty { rows.append(("Owner", v)) }
 
         return ShareCardData(
