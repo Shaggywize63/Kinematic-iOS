@@ -44,11 +44,6 @@ struct ActivityComposeView: View {
     @State private var uploading: Bool = false
     @State private var imageUrl: String? = nil
     @State private var showSourceSheet: Bool = false
-    /// Admin-curated subject presets from /api/v1/crm/activity-subjects.
-    /// Loaded on appear; default order from the backend already puts
-    /// Meeting first (position=0). Tapping a row replaces the subject
-    /// text; free-typing still works.
-    @State private var subjectPresets: [String] = []
 
     /// Admin-defined custom fields for activities (e.g. a Dealer lookup,
     /// Visit kind select, First visit toggle), scoped to the user's org
@@ -90,6 +85,25 @@ struct ActivityComposeView: View {
         customFields.defs.contains { d in
             d.fieldType == "lookup" && !(customFields.text[d.fieldKey] ?? "").isEmpty
         }
+    }
+
+    /// Human label for an activity type slug — used to derive the subject now
+    /// that the Subject field is gone. `capitalized` handles the built-ins
+    /// ("meeting" → "Meeting"); "site_visit" is special-cased so it doesn't
+    /// render as "Site_visit".
+    private func labelForType(_ t: String) -> String {
+        switch t {
+        case "site_visit": return "Site Visit"
+        default: return t.capitalized
+        }
+    }
+
+    /// The subject we persist. A caller-supplied subject wins (the call button
+    /// / site-visit prefill sets a descriptive one); otherwise fall back to the
+    /// selected type's display name so the timeline and reports still read.
+    private var effectiveSubject: String {
+        let s = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty ? labelForType(type) : s
     }
 
     var body: some View {
@@ -145,19 +159,11 @@ struct ActivityComposeView: View {
                     }
                 }
                 Section("Details") {
-                    if subjectPresets.isEmpty {
-                        // No admin-curated presets for this tenant — fall
-                        // back to a free-text subject so the form stays usable.
-                        TextField("Subject", text: $subject)
-                    } else {
-                        // Subject preset picker — pulled from the admin
-                        // catalogue (Meeting first by position). The dropdown
-                        // is the only subject control; reps pick a preset.
-                        Picker("Subject", selection: $subject) {
-                            Text("— pick a preset —").tag("")
-                            ForEach(subjectPresets, id: \.self) { Text($0).tag($0) }
-                        }
-                    }
+                    // Subject is no longer its own field — Type and Subject
+                    // were near-duplicates, so the rep now picks only the Type
+                    // above and the subject is derived from it on save (see
+                    // effectiveSubject). A subject passed in by the caller (the
+                    // call button / site-visit prefill) is still honoured.
                     TextField("Description", text: $desc, axis: .vertical).lineLimit(3...6)
                     // Editable time. Default is now; tap to change. Reps
                     // who log a call after the fact want to back-date it,
@@ -219,10 +225,10 @@ struct ActivityComposeView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Log") {
                         Task {
-                            await onSubmit(type, subject, desc, imageUrl, when, selectedLead?.id, customFields.jsonValues)
+                            await onSubmit(type, effectiveSubject, desc, imageUrl, when, selectedLead?.id, customFields.jsonValues)
                             dismiss()
                         }
-                    }.disabled(subject.isEmpty || uploading || (allowLeadPicker && selectedLead == nil && !hasDirectoryLink))
+                    }.disabled(uploading || (allowLeadPicker && selectedLead == nil && !hasDirectoryLink))
                 }
             }
             .confirmationDialog("Attach image", isPresented: $showSourceSheet, titleVisibility: .visible) {
@@ -238,13 +244,6 @@ struct ActivityComposeView: View {
             }
             .sheet(isPresented: $showLeadPicker) {
                 LeadSearchPickerSheet { lead in selectedLead = lead }
-            }
-            // Load admin-curated subject presets on appear. Backend
-            // returns active rows ordered by position (Meeting first);
-            // we just take the names. Falls back silently to a free-
-            // text input if the catalogue is empty.
-            .task {
-                subjectPresets = await CRMService.shared.listActivitySubjects()
             }
             .task { await customFields.load(entity: "activity") }
             .onChange(of: pickedImage) { _, newImage in
