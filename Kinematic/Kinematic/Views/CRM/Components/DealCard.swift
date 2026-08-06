@@ -72,7 +72,10 @@ struct DealCard: View {
         if let dealer = deal.dealerName?.trimmingCharacters(in: .whitespaces), !dealer.isEmpty {
             parts.append(dealer)
         }
-        if let kg = volumeKg, kg > 0 {
+        // Weight/tonnage is a steel-dealer (Tata / BMW) concept only — never
+        // surface kg for Kinematic or any other tenant, even if a stray
+        // volume_kg value somehow rode along on the deal.
+        if ClientFeatures.isTataTiscon, let kg = volumeKg, kg > 0 {
             let formatted = Self.kgFormatter.string(from: NSNumber(value: kg)) ?? String(Int(kg))
             parts.append("\(formatted) kg")
         }

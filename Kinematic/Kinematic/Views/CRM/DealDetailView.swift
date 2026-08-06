@@ -318,7 +318,9 @@ struct DealDetailView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
                     }
-                    if kg > 0 {
+                    // Weight/tonnage is a steel-dealer (Tata / BMW) concept —
+                    // never render it for Kinematic or any other tenant.
+                    if ClientFeatures.isTataTiscon, kg > 0 {
                         Divider().frame(height: 36)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("WEIGHT")
