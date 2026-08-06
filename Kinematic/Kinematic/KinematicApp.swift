@@ -2210,9 +2210,32 @@ class KinematicRepository {
     private static let refreshLock = NSLock()
     private static var refreshInFlight: Task<Bool, Never>?
 
+    /// Clean teardown for an unrecoverable/dead session — the refresh token was
+    /// rejected (revoked / expired / rotated) or is absent. Mirrors the
+    /// DEVICE_REPLACED path so the user is routed back to Login with a friendly
+    /// explainer instead of being stranded on cached screens that all 401
+    /// (the "Session expired on every action" symptom). No-op in demo mode and
+    /// idempotent — logout() empties the token, so a coalesced/duplicate call
+    /// is harmless. Only ever called on a DEFINITIVE rejection (4xx / no token),
+    /// never on a transient network / 5xx failure, so an offline blip can't sign
+    /// the user out.
+    private func endDeadSession() async {
+        if Session.isDemoMode { return }
+        if Session.sharedToken.isEmpty { return }
+        await MainActor.run {
+            KiniAppState.shared.sessionKickedMsg = "Your session has expired. Please sign in again."
+            KiniAppState.shared.logout()
+        }
+    }
+
     func refreshAccessToken() async -> Bool {
         let saved = Session.refreshToken
-        guard !saved.isEmpty else { return false }
+        guard !saved.isEmpty else {
+            // No refresh token to recover with — a real (non-demo) authenticated
+            // request that 401s with no way to refresh has a dead session.
+            await endDeadSession()
+            return false
+        }
 
         // Coalesce — if another caller already kicked off a refresh, await
         // its result instead of issuing a second POST.
@@ -2243,6 +2266,10 @@ class KinematicRepository {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard code == 200 else {
                     print("🚩 REFRESH_FAILED: status \(code)")
+                    // 4xx = the refresh token itself was rejected (revoked /
+                    // expired / rotated) → dead session, tear down and route to
+                    // Login. 5xx = a server hiccup → transient, keep the session.
+                    if (400..<500).contains(code) { await self.endDeadSession() }
                     return false
                 }
                 struct Body: Codable {
@@ -2258,7 +2285,12 @@ class KinematicRepository {
                     }
                 }
                 let parsed = try JSONDecoder().decode(Body.self, from: data)
-                guard parsed.success, let newAccess = parsed.data?.accessToken else { return false }
+                guard parsed.success, let newAccess = parsed.data?.accessToken else {
+                    // Reachable + 200 but no fresh session minted = a definitive
+                    // rejection → dead session.
+                    await self.endDeadSession()
+                    return false
+                }
                 Session.sharedToken = newAccess
                 if let newRefresh = parsed.data?.refreshToken, !newRefresh.isEmpty {
                     Session.refreshToken = newRefresh

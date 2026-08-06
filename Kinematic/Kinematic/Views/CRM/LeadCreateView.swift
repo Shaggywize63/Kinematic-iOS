@@ -35,7 +35,13 @@ struct LeadCreateView: View {
     // by client_id so Tata reps only see Tata sources like Site Visit).
     @State private var sources: [CRMLeadSource] = []
     @State private var sourceId: String = ""
-    @State private var isB2C = false
+    // Default to B2C. Fail-safe: if the /crm/settings business_type hasn't
+    // resolved yet, failed (401 on a dead session / offline), or the client_id
+    // is missing so `isTata` reads false, we must NOT leak the B2B option or
+    // silently save a B2B lead. Every configured tenant on this build is either
+    // B2C-locked or explicitly "both"; a genuine "both" tenant gets the picker
+    // (below) and can switch to B2B deliberately.
+    @State private var isB2C = true
     /// Today's lead-target progress badge (achieved/target).
     @State private var target: CRMTarget?
 
@@ -178,11 +184,14 @@ struct LeadCreateView: View {
                     }
                 }
 
-                // Tata Tiscon is consumer-only — never offer the B2B option.
-                // isB2C is forced true once settings resolve (below). Deferred
-                // behind `settingsLoaded` so a b2c-locked tenant never flashes
-                // the B2B option before business_type arrives.
-                if settingsLoaded && !isTata {
+                // B2B/B2C picker — shown ONLY for a tenant whose crm_settings
+                // business_type is explicitly "both". Every other case is
+                // locked: "b2c" / nil / Tata → B2C; "b2b" → B2B (see the .task
+                // + isB2C default). Gating on == "both" (rather than !isTata)
+                // means a dead-session or racing fetch — where business_type is
+                // nil and the client_id (hence `isTata`) may be missing — can
+                // never leak the B2B picker; it stays on the fail-safe B2C default.
+                if settingsLoaded && businessType?.lowercased() == "both" {
                     Section {
                         Picker("Lead type", selection: $isB2C) {
                             Text("B2B (Business)").tag(false)
@@ -572,13 +581,18 @@ struct LeadCreateView: View {
                 // Resolve businessType so the Tata-equivalent gate works
                 // even when Session.currentUser.clientId is stale.
                 businessType = await CRMService.shared.getCRMSettings()?.business_type
-                // Lock the form to B2C when the tenant is consumer-only, so a
-                // b2c-locked tenant (e.g. BMW) renders the consumer fields
-                // rather than defaulting to the B2B layout. Mirrors LeadEditView.
-                if businessType?.lowercased() == "b2c" { isB2C = true }
+                // Lock the lead type from the tenant's business_type: "b2c" →
+                // consumer, "b2b" → business. "both" leaves the user's choice
+                // (picker shown below); a nil / failed fetch stays on the
+                // fail-safe B2C default so a racing or dead session can never
+                // leak the B2B option or silently persist a B2B lead.
+                switch businessType?.lowercased() ?? "" {
+                case "b2c": isB2C = true
+                case "b2b": isB2C = false
+                default:    break
+                }
                 // Flip regardless of success/failure so the picker (deferred
-                // above) still appears for a genuine b2b/both tenant even if
-                // /crm/settings fails to load.
+                // above, and only shown for a "both" tenant) resolves.
                 settingsLoaded = true
             }
             .onAppear {
