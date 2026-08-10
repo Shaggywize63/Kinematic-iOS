@@ -27,9 +27,6 @@ final class PlanogramCaptureViewModel: ObservableObject {
     @Published var storeId: String? = nil
     @Published var visitId: String? = nil
 
-    /// 0..1 — drives the AR alignment overlay color.
-    @Published var alignmentScore: Double = 0
-
     private let service: PlanogramService
     private let location: CLLocationManager
 
@@ -41,16 +38,6 @@ final class PlanogramCaptureViewModel: ObservableObject {
         // values from a nonisolated default-argument position.
         self.service = service ?? PlanogramService.shared
         self.location = location ?? CLLocationManager()
-    }
-
-    /// Heuristic alignment quality from device motion (called from the camera
-    /// preview every few frames). Closer to 1 = better aligned.
-    func updateAlignment(roll: Double, pitch: Double) {
-        // Reps should hold the phone roughly perpendicular to the shelf.
-        // Penalize roll & extreme pitch.
-        let rollPenalty = min(1, abs(roll) / 0.4)
-        let pitchPenalty = min(1, max(0, abs(pitch) - 0.1) / 0.5)
-        alignmentScore = max(0, 1 - (0.6 * rollPenalty + 0.4 * pitchPenalty))
     }
 
     var canSubmit: Bool {
@@ -89,8 +76,7 @@ final class PlanogramCaptureViewModel: ObservableObject {
                 visitId: visitId,
                 planogramId: planogramId,
                 imageURL: finalURL,
-                location: coords,
-                angleScore: alignmentScore
+                location: coords
             )
             phase = .complete(response)
         } catch let error as PlanogramServiceError {
