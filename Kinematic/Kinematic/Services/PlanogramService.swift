@@ -65,8 +65,7 @@ final class PlanogramService {
         visitId: String?,
         planogramId: String?,
         imageURL: String,
-        location: (lat: Double, lng: Double)?,
-        angleScore: Double? = nil
+        location: (lat: Double, lng: Double)?
     ) async throws -> CaptureResponse {
         guard let jpeg = image.jpegData(compressionQuality: 0.85) else {
             throw PlanogramServiceError.server("Could not encode image.")
@@ -90,11 +89,6 @@ final class PlanogramService {
             body["capture_lat"] = location.lat
             body["capture_lng"] = location.lng
         }
-
-        // Surfaces the AR alignment quality (0..1) computed locally during
-        // capture so the dashboard's image-quality column has a value to
-        // sort/filter on. Backend stores it as `angle_score`.
-        if let s = angleScore { body["angle_score"] = s }
 
         return try await postJSON("/api/v1/planograms/captures", body: body)
     }
