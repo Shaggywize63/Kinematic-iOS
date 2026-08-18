@@ -388,12 +388,40 @@ class AttendanceViewModel: ObservableObject {
             battery: batteryLevel >= 0 ? batteryLevel : nil
         )
 
+        // ── Face-recognition attendance (module face_attendance) ──────────────
+        // On-device 1:1 match of the captured selfie against the enrolled
+        // reference. BEST-EFFORT: a missing model / not-enrolled / low quality
+        // never blocks check-in (the selfie still uploaded) — it only annotates
+        // the record with {score, verified}. First check-in auto-enrols the
+        // reference, so the feature works without a separate enrolment screen.
+        var faceScore: Double? = nil
+        var faceVerified: Bool? = nil
+        var faceModelId: String? = nil
+        if ClientFeatures.hasFaceAttendance, let img = selfie, await FaceRecognition.shared.isAvailable {
+            if case .success(let vec, let mid) = await FaceRecognition.shared.embed(img) {
+                faceModelId = mid
+                if let ref = await KinematicRepository.shared.fetchFaceEnrollment(), ref.modelId == mid {
+                    let sim = FaceRecognition.shared.similarity(vec, ref.embedding)
+                    faceScore = Double(sim)
+                    faceVerified = sim >= FACE_MATCH_THRESHOLD
+                } else {
+                    // Not enrolled (or model changed): enrol this trusted frame.
+                    _ = await KinematicRepository.shared.enrollFace(embedding: vec, modelId: mid, selfieUrl: selfieUrl, quality: nil)
+                    faceScore = 1.0
+                    faceVerified = true
+                }
+            }
+        }
+
         let (success, err, record) = await KinematicRepository.shared.markAttendance(
             isCheckIn: isCheckIn,
             lat: loc.coordinate.latitude,
             lng: loc.coordinate.longitude,
             selfieUrl: selfieUrl,
             battery: batteryLevel >= 0 ? batteryLevel : nil,
+            faceScore: faceScore,
+            faceVerified: faceVerified,
+            faceModelId: faceModelId,
             idempotencyKey: pending.idempotencyKey
         )
 

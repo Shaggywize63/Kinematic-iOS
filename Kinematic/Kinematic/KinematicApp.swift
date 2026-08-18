@@ -2821,13 +2821,20 @@ class KinematicRepository {
         }
     }
     
-    func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil, idempotencyKey: String? = nil) async -> (Bool, String?, AttendanceRecord?) {
+    func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil,
+                        faceScore: Double? = nil, faceVerified: Bool? = nil, faceModelId: String? = nil,
+                        idempotencyKey: String? = nil) async -> (Bool, String?, AttendanceRecord?) {
         let endpoint = isCheckIn ? "/attendance/checkin" : "/attendance/checkout"
 
         do {
             var payload: [String: Any] = ["latitude": lat, "longitude": lng]
             if let selfie = selfieUrl { payload["selfie_url"] = selfie }
             if let battery = battery { payload["battery_percentage"] = battery }
+            // Face-recognition attendance (module face_attendance): the
+            // on-device 1:1 match result. Absent for clients without the module.
+            if let faceScore { payload["face_score"] = faceScore }
+            if let faceVerified { payload["face_verified"] = faceVerified }
+            if let faceModelId { payload["face_model_id"] = faceModelId }
 
             let body = try? JSONSerialization.data(withJSONObject: payload)
             let res: ApiResponse<AttendanceRecord>? = try await performRequest(
@@ -2842,7 +2849,37 @@ class KinematicRepository {
             return (false, error.localizedDescription, nil)
         }
     }
-    
+
+    // MARK: Face-recognition attendance (module face_attendance)
+    private struct FaceEnrollmentDTO: Codable {
+        let enrolled: Bool
+        let embedding: [Double]?
+        let embedding_dim: Int?
+        let model_id: String?
+    }
+
+    /// Enrol / replace the caller's reference face embedding. Returns success.
+    func enrollFace(embedding: [Float], modelId: String, selfieUrl: String?, quality: Double?) async -> Bool {
+        var payload: [String: Any] = ["embedding": embedding.map { Double($0) }, "model_id": modelId]
+        if let selfieUrl { payload["selfie_url"] = selfieUrl }
+        if let quality { payload["quality_score"] = quality }
+        do {
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<FaceEnrollmentDTO>? = try await performRequest(
+                "/attendance/face/enroll", method: "POST", body: body)
+            return res?.success == true
+        } catch { return false }
+    }
+
+    /// The caller's reference embedding for the on-device match. nil ⇒ not enrolled.
+    func fetchFaceEnrollment() async -> (embedding: [Float], modelId: String)? {
+        do {
+            let res: ApiResponse<FaceEnrollmentDTO>? = try await performRequest("/attendance/face/enrollment")
+            guard let d = res?.data, d.enrolled, let emb = d.embedding, let mid = d.model_id else { return nil }
+            return (emb.map { Float($0) }, mid)
+        } catch { return nil }
+    }
+
     // MARK: Route plan outlet update (Android parity — PATCH /route-plan/outlets/{id})
     /// Update an outlet visit's status / checkin / checkout. `status` is one of
     /// "pending" | "in_progress" | "completed" | "skipped". Coordinates and

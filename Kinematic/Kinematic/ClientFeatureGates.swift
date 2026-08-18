@@ -76,6 +76,15 @@ enum ClientFeatures {
         Session.currentUser?.enabledModules.contains("crm_conversation_intel") == true
     }
 
+    /// True when the signed-in org has the Face Attendance module switched on.
+    /// STRICT entitlement check (like `hasConversationIntel`): an empty
+    /// legacy-session module list must NOT enable this biometric surface, so we
+    /// read `enabled_modules` directly rather than the lenient `User.hasModule`.
+    /// Off ⇒ attendance behaves exactly as before (plain selfie, no face match).
+    static var hasFaceAttendance: Bool {
+        Session.currentUser?.enabledModules.contains("face_attendance") == true
+    }
+
     // MARK: - SRS TATA Steel slimmed build
 
     /// True when the signed-in user belongs to SRS TATA Steel. This is the
