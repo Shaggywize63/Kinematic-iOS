@@ -108,13 +108,33 @@ class ActivityFeedViewModel: ObservableObject {
 class RoutePlansViewModel: ObservableObject {
     @Published var plans: [RoutePlan] = []
     @Published var isLoading = false
-    
+    @Published var optimizing = false
+    @Published var optimizeMessage: String?
+
     func refresh() async {
         await MainActor.run { isLoading = true }
         let newPlans = await KinematicRepository.shared.fetchMyRoutePlan()
-        await MainActor.run { 
+        await MainActor.run {
             self.plans = newPlans
             self.isLoading = false
+        }
+    }
+
+    /// Optimize the rep's beat for today (module route_optimization) and refresh
+    /// the reordered stops. Best-effort — a failure just surfaces a message.
+    func optimize() async {
+        await MainActor.run { optimizing = true; optimizeMessage = nil }
+        let r = await KinematicRepository.shared.optimizeMyRoute()
+        let fresh = r.ok ? await KinematicRepository.shared.fetchMyRoutePlan() : nil
+        await MainActor.run {
+            if let fresh { self.plans = fresh }
+            optimizing = false
+            if r.ok {
+                let km = r.savedKm ?? 0
+                optimizeMessage = km > 0.01 ? String(format: "Route optimized — saved %.1f km", km) : "Your route is already optimal"
+            } else {
+                optimizeMessage = r.error ?? "Couldn't optimize route"
+            }
         }
     }
 }

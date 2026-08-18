@@ -2986,6 +2986,30 @@ class KinematicRepository {
         }
     }
     
+    // Response of POST /route-plan/optimize/apply (module route_optimization).
+    private struct OptimizeRouteDTO: Codable { let total_saved_km: Double?; let date: String? }
+
+    /// Optimize + PERSIST the caller's route for today (nearest-neighbour + 2-opt
+    /// on the server). Returns km saved. Invalidates the route-plan cache so the
+    /// next fetch shows the reordered stops. Gated server-side by the
+    /// route_optimization module (403 when the client lacks it).
+    func optimizeMyRoute() async -> (ok: Bool, savedKm: Double?, error: String?) {
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; df.timeZone = .current
+        let date = df.string(from: Date())
+        do {
+            let body = try? JSONSerialization.data(withJSONObject: ["date": date])
+            let res: ApiResponse<OptimizeRouteDTO>? = try await performRequest(
+                "/route-plan/optimize/apply", method: "POST", body: body)
+            if res?.success == true {
+                OutletCache.shared.invalidate(.routePlan)
+                return (true, res?.data?.total_saved_km, nil)
+            }
+            return (false, nil, res?.error ?? res?.message ?? "Optimization unavailable")
+        } catch {
+            return (false, nil, error.localizedDescription)
+        }
+    }
+
     func fetchMyRoutePlan() async -> [RoutePlan] {
         if let cached = OutletCache.shared.get([RoutePlan].self, key: .routePlan) {
             return cached

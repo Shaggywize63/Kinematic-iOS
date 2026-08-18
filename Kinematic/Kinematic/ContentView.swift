@@ -677,6 +677,23 @@ struct RoutePlansView: View {
                     }
                     Text("Today's Route").font(.title3).fontWeight(.bold).foregroundColor(Color(uiColor: .label)).padding(.leading, 8)
                     Spacer()
+                    // Optimize my beat — only when the client carries the module.
+                    if ClientFeatures.hasRouteOptimization {
+                        Button(action: { Task { await vm.optimize() } }) {
+                            Group {
+                                if vm.optimizing {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "wand.and.stars")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(Color(uiColor: .label))
+                                }
+                            }
+                            .frame(width: 40, height: 40)
+                            .background(Color(uiColor: .secondarySystemBackground), in: Circle())
+                        }
+                        .disabled(vm.optimizing)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
@@ -691,6 +708,19 @@ struct RoutePlansView: View {
                         // all plans for the day; falls back to local counts.
                         if !vm.plans.isEmpty {
                             RoutePlanProgressHeader(plans: vm.plans).padding(.horizontal, 20)
+                        }
+
+                        // Result of an "optimize my beat" run (module route_optimization).
+                        if let msg = vm.optimizeMessage {
+                            HStack(spacing: 8) {
+                                Image(systemName: "wand.and.stars")
+                                Text(msg).font(.footnote).fontWeight(.semibold)
+                            }
+                            .foregroundColor(Color(uiColor: .label))
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+                            .padding(.horizontal, 20)
+                            .transition(.opacity)
                         }
 
                         let isShiftEnded = appState.today?.checkoutAt != nil

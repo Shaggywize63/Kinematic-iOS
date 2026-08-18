@@ -81,6 +81,12 @@ enum ClientFeatures {
     /// legacy-session module list must NOT enable this biometric surface, so we
     /// read `enabled_modules` directly rather than the lenient `User.hasModule`.
     /// Off ⇒ attendance behaves exactly as before (plain selfie, no face match).
+    /// Route optimization (Phase B module route_optimization, off by default):
+    /// the rep can auto-sequence their beat by shortest travel.
+    static var hasRouteOptimization: Bool {
+        Session.currentUser?.enabledModules.contains("route_optimization") == true
+    }
+
     static var hasFaceAttendance: Bool {
         Session.currentUser?.enabledModules.contains("face_attendance") == true
     }
