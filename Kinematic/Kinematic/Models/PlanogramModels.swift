@@ -51,6 +51,10 @@ struct DetectedSKU: Codable, Identifiable, Hashable {
     let bbox: [Double]            // [x, y, w, h] normalized
     let confidence: Double
     let is_competitor: Bool
+    // Retail-execution additions (nil on captures that predate them, so the
+    // synthesized decoder maps these snake_case keys via decodeIfPresent).
+    let units_estimate: Int?      // estimated physical units on shelf
+    let stock_status: String?     // "in_stock" | "low" | "out"
 
     var rect: CGRect {
         guard bbox.count == 4 else { return .zero }
@@ -63,6 +67,9 @@ struct ShelfRecognition: Codable {
     let shelf_map: ShelfMap?
     let overall_confidence: Double
     let needs_review: Bool
+    // Point-of-sale materials detected on the shelf image. Absent on older
+    // recognitions that predate POSM detection (optional → decodes safely).
+    let posm: [PosmDetection]?
 
     struct ShelfMap: Codable {
         let shelf_count: Int
@@ -106,6 +113,70 @@ struct ComplianceRecommendation: Codable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Retail execution (stock availability + POSM)
+
+/// One SKU reference inside a stock list. `units_estimate` is present on the
+/// low-stock list and omitted on the out-of-stock list.
+struct StockSkuRef: Codable, Identifiable, Hashable {
+    var id: String { sku_id }
+    let sku_id: String
+    let sku_name: String
+    let units_estimate: Int?
+}
+
+/// On-shelf stock estimate rollup for a capture (units + availability).
+/// The nested arrays are always present when the summary itself is present
+/// (the backend builds them, empty when there is nothing to report).
+struct StockSummary: Codable, Hashable {
+    let total_units: Int
+    let own_units: Int
+    let competitor_units: Int
+    let availability_rate: Double        // share of expected SKUs in stock, 0..100
+    let oos_count: Int
+    let low_count: Int
+    let out_of_stock_skus: [StockSkuRef]
+    let low_stock_skus: [StockSkuRef]
+}
+
+/// A point-of-sale material element detected on the shelf image (recognition).
+struct PosmDetection: Codable, Identifiable, Hashable {
+    var id: String { type + "_" + name }
+    let type: String
+    let name: String
+    let brand: String?
+    let bbox: [Double]?
+    let condition: String                // "good" | "damaged" | "obscured"
+    let confidence: Double
+}
+
+/// A POSM entry in the compliance `missing` / `damaged` lists (`{ type, name }`).
+struct PosmItem: Codable, Identifiable, Hashable {
+    var id: String { type + "_" + name }
+    let type: String
+    let name: String
+}
+
+/// A POSM entry in the compliance `found` list.
+struct PosmFound: Codable, Identifiable, Hashable {
+    var id: String { type + "_" + name }
+    let type: String
+    let name: String
+    let brand: String?
+    let condition: String                // "good" | "damaged" | "obscured"
+    let confidence: Double
+}
+
+/// POSM compliance rollup — expected point-of-sale materials vs what was found.
+struct PosmCompliance: Codable, Hashable {
+    let expected_count: Int
+    let required_count: Int
+    let found_count: Int
+    let score: Double?                    // 0..100, nil when nothing was expected
+    let missing: [PosmItem]
+    let damaged: [PosmItem]
+    let found: [PosmFound]
+}
+
 struct ComplianceResult: Codable {
     let score: Double
     let presence_score: Double
@@ -116,6 +187,13 @@ struct ComplianceResult: Codable {
     let misplaced_skus: [ComplianceMisplaced]
     let facing_deltas: [ComplianceFacingDelta]
     let recommendations: [ComplianceRecommendation]
+    // Retail-execution rollups — all optional so older captures still decode.
+    let stock_summary: StockSummary?
+    let posm: PosmCompliance?
+    let posm_score: Double?              // scalar mirror of posm.score
+    let availability_rate: Double?       // scalar mirror of stock_summary.availability_rate
+    let oos_count: Int?                  // scalar mirror of stock_summary.oos_count
+    let low_stock_count: Int?            // scalar mirror of stock_summary.low_count
 }
 
 struct CaptureResponse: Codable {

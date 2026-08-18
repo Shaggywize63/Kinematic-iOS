@@ -37,6 +37,10 @@ struct PlanogramComplianceView: View {
 
                     scoreBreakdown
 
+                    availabilitySection
+
+                    posmSection
+
                     if !response.result.recommendations.isEmpty {
                         section("Recommended actions") {
                             ForEach(response.result.recommendations) { r in
@@ -210,6 +214,260 @@ struct PlanogramComplianceView: View {
                 }
             }
             .frame(height: 5)
+        }
+    }
+
+    // MARK: Stock & availability (retail execution)
+
+    /// Detected SKUs that carry a unit estimate or stock status — the only ones
+    /// worth listing per-SKU. Empty on captures that predate stock estimation.
+    private var perSkuStockRows: [DetectedSKU] {
+        response.recognition.detected_skus.filter {
+            $0.units_estimate != nil || $0.stock_status != nil
+        }
+    }
+
+    @ViewBuilder
+    private var availabilitySection: some View {
+        if let stock = response.result.stock_summary {
+            let rate = response.result.availability_rate ?? stock.availability_rate
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Stock & availability").font(.system(size: 14, weight: .heavy))
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(Int(rate))")
+                            .font(.system(size: 34, weight: .black))
+                            .foregroundColor(scoreColor(rate))
+                        Text("%")
+                            .font(.system(size: 16, weight: .heavy))
+                            .foregroundColor(scoreColor(rate))
+                        Text("in stock")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    HStack(spacing: 12) {
+                        stockStat("Total units", value: stock.total_units, color: .primary)
+                        stockStat("Own", value: stock.own_units, color: .green)
+                        stockStat("Competitor", value: stock.competitor_units, color: .red)
+                    }
+                    if !stock.out_of_stock_skus.isEmpty {
+                        stockList(title: "Out of stock",
+                                  skus: stock.out_of_stock_skus,
+                                  chip: ("Out", .red))
+                    }
+                    if !stock.low_stock_skus.isEmpty {
+                        stockList(title: "Low stock",
+                                  skus: stock.low_stock_skus,
+                                  chip: ("Low", .yellow),
+                                  showUnits: true)
+                    }
+                    if !perSkuStockRows.isEmpty {
+                        perSkuUnits(perSkuStockRows)
+                    }
+                }
+                .padding(14)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+
+    private func stockStat(_ label: String, value: Int, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(value)")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(color)
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func stockList(title: String,
+                           skus: [StockSkuRef],
+                           chip: (String, Color),
+                           showUnits: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(.secondary)
+            ForEach(Array(skus.enumerated()), id: \.offset) { _, sku in
+                HStack(spacing: 8) {
+                    Text(sku.sku_name).font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    if showUnits, let u = sku.units_estimate {
+                        Text("\(u) left").font(.system(size: 12)).foregroundColor(.secondary)
+                    }
+                    badge(chip.0, color: chip.1)
+                }
+                .padding(.vertical, 5)
+            }
+        }
+    }
+
+    private func perSkuUnits(_ skus: [DetectedSKU]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Per-SKU units".uppercased())
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(.secondary)
+            ForEach(Array(skus.enumerated()), id: \.offset) { _, sku in
+                HStack(spacing: 8) {
+                    Text(sku.sku_name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Spacer()
+                    if let u = sku.units_estimate {
+                        Text("\(u)")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.secondary)
+                    }
+                    if let status = sku.stock_status {
+                        stockStatusChip(status)
+                    }
+                }
+                .padding(.vertical, 5)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func stockStatusChip(_ status: String) -> some View {
+        switch status {
+        case "in_stock": badge("In stock", color: .green)
+        case "low":      badge("Low", color: .yellow)
+        case "out":      badge("Out", color: .red)
+        default:         badge(status, color: .gray)
+        }
+    }
+
+    // MARK: POSM compliance (retail execution)
+
+    @ViewBuilder
+    private var posmSection: some View {
+        if let posm = response.result.posm {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("POSM compliance").font(.system(size: 14, weight: .heavy))
+                VStack(alignment: .leading, spacing: 14) {
+                    if posm.expected_count == 0 {
+                        Text("No POSM expected for this planogram.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            if let score = response.result.posm_score ?? posm.score {
+                                Text("\(Int(score))")
+                                    .font(.system(size: 34, weight: .black))
+                                    .foregroundColor(scoreColor(score))
+                                Text("%")
+                                    .font(.system(size: 16, weight: .heavy))
+                                    .foregroundColor(scoreColor(score))
+                            } else {
+                                Text("N/A")
+                                    .font(.system(size: 28, weight: .black))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Text("\(posm.found_count)/\(posm.expected_count) found")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                        if !posm.missing.isEmpty {
+                            posmItemList(title: "Missing", items: posm.missing, chip: nil)
+                        }
+                        if !posm.damaged.isEmpty {
+                            posmItemList(title: "Damaged", items: posm.damaged, chip: ("Damaged", .red))
+                        }
+                        if !posm.found.isEmpty {
+                            posmFoundList(posm.found)
+                        }
+                    }
+                }
+                .padding(14)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+
+    private func posmItemList(title: String,
+                              items: [PosmItem],
+                              chip: (String, Color)?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(.secondary)
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(spacing: 8) {
+                    Text(item.name).font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Text(posmTypeLabel(item.type))
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    if let chip {
+                        badge(chip.0, color: chip.1)
+                    }
+                }
+                .padding(.vertical, 5)
+            }
+        }
+    }
+
+    private func posmFoundList(_ found: [PosmFound]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Found".uppercased())
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(.secondary)
+            ForEach(Array(found.enumerated()), id: \.offset) { _, f in
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(f.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                        HStack(spacing: 4) {
+                            Text(posmTypeLabel(f.type))
+                            if let brand = f.brand, !brand.isEmpty {
+                                Text("· \(brand)")
+                            }
+                        }
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    posmConditionChip(f.condition)
+                }
+                .padding(.vertical, 5)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func posmConditionChip(_ condition: String) -> some View {
+        switch condition {
+        case "good":     badge("Good", color: .green)
+        case "obscured": badge("Obscured", color: .yellow)
+        case "damaged":  badge("Damaged", color: .red)
+        default:         badge(condition, color: .gray)
+        }
+    }
+
+    private func posmTypeLabel(_ type: String) -> String {
+        switch type {
+        case "poster":       return "Poster"
+        case "dangler":      return "Dangler"
+        case "wobbler":      return "Wobbler"
+        case "shelf_strip":  return "Shelf strip"
+        case "standee":      return "Standee"
+        case "gondola_end":  return "Gondola end"
+        case "cooler":       return "Cooler"
+        case "branded_rack": return "Branded rack"
+        case "tent_card":    return "Tent card"
+        case "bunting":      return "Bunting"
+        case "banner":       return "Banner"
+        case "other":        return "Other"
+        default:             return type.capitalized
         }
     }
 
