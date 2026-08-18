@@ -280,8 +280,10 @@ class AttendanceViewModel: ObservableObject {
     // 15+, accuracy fallback below that). On detection it POSTs the
     // alert to /security/alert (which fires the manager push) and
     // returns false here so the caller refuses to mark attendance.
-    private func checkSecurity(action: String, lat: Double? = nil, lng: Double? = nil) async -> Bool {
-        let loc = LocationTrackingService.shared.lastLocation
+    private func checkSecurity(action: String, lat: Double? = nil, lng: Double? = nil, location: CLLocation? = nil) async -> Bool {
+        // Prefer the exact captured fix (e.g. the attendance location) so the
+        // mock check runs on it; fall back to the last known live-tracking fix.
+        let loc = location ?? LocationTrackingService.shared.lastLocation
         let result = await SecurityCheck.preflight(action: action, location: loc)
         switch result {
         case .ok:
@@ -306,7 +308,7 @@ class AttendanceViewModel: ObservableObject {
         }
         let action = isCheckIn ? "CHECK_IN" : "CHECK_OUT"
         
-        guard await checkSecurity(action: action, lat: loc.coordinate.latitude, lng: loc.coordinate.longitude) else { return }
+        guard await checkSecurity(action: action, lat: loc.coordinate.latitude, lng: loc.coordinate.longitude, location: loc) else { return }
         
         // OPTIMISTIC UI — flip `today` to the new state immediately so the
         // user sees "Checked In" / "Checked Out" the moment they commit, even
@@ -413,6 +415,13 @@ class AttendanceViewModel: ObservableObject {
             }
         }
 
+        // GPS-integrity signals from the exact captured fix (all field-force
+        // tenants). A mocked fix is already blocked by checkSecurity above, so
+        // on a successful check-in is_mock is normally false; accuracy always
+        // rides along for the dashboard trust view.
+        let isMock = SecurityCheck.isMockLocation(loc)
+        let locationAccuracyM: Double? = loc.horizontalAccuracy >= 0 ? loc.horizontalAccuracy : nil
+
         let (success, err, record) = await KinematicRepository.shared.markAttendance(
             isCheckIn: isCheckIn,
             lat: loc.coordinate.latitude,
@@ -422,6 +431,8 @@ class AttendanceViewModel: ObservableObject {
             faceScore: faceScore,
             faceVerified: faceVerified,
             faceModelId: faceModelId,
+            isMock: isMock,
+            locationAccuracyM: locationAccuracyM,
             idempotencyKey: pending.idempotencyKey
         )
 

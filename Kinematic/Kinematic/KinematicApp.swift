@@ -276,7 +276,8 @@ class KiniAppState: ObservableObject {
         _ = await KinematicRepository.shared.sendLiveTrackingPing(
             lat: location.coordinate.latitude,
             lng: location.coordinate.longitude,
-            battery: battery
+            battery: battery,
+            location: location
         )
     }
 }
@@ -1777,7 +1778,7 @@ class KinematicRepository {
         }
     }
     
-    func sendLiveTrackingPing(lat: Double, lng: Double, battery: Int) async -> Bool {
+    func sendLiveTrackingPing(lat: Double, lng: Double, battery: Int, location: CLLocation? = nil) async -> Bool {
         // Hard kill switch for Tata Tiscon — even if a stale timer fires
         // (e.g. user logged in elsewhere then the JWT swapped), skip the
         // network round-trip so we don't drain battery on a 204 from
@@ -1786,7 +1787,7 @@ class KinematicRepository {
             return true
         }
         do {
-            let payload = UserStatusUpdate.heartbeat(lat: lat, lng: lng, battery: battery)
+            let payload = UserStatusUpdate.heartbeat(lat: lat, lng: lng, battery: battery, location: location)
             let body = try? JSONEncoder().encode(payload)
             let res: ApiResponse<[String: String]>? = try await performRequest(
                 "/users/status",
@@ -2823,6 +2824,7 @@ class KinematicRepository {
     
     func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil,
                         faceScore: Double? = nil, faceVerified: Bool? = nil, faceModelId: String? = nil,
+                        isMock: Bool? = nil, locationAccuracyM: Double? = nil,
                         idempotencyKey: String? = nil) async -> (Bool, String?, AttendanceRecord?) {
         let endpoint = isCheckIn ? "/attendance/checkin" : "/attendance/checkout"
 
@@ -2835,6 +2837,10 @@ class KinematicRepository {
             if let faceScore { payload["face_score"] = faceScore }
             if let faceVerified { payload["face_verified"] = faceVerified }
             if let faceModelId { payload["face_model_id"] = faceModelId }
+            // GPS-integrity signals (all field-force tenants — not a paid module).
+            // is_mock = the captured fix was software-simulated; accuracy in metres.
+            if let isMock { payload["is_mock"] = isMock }
+            if let locationAccuracyM { payload["location_accuracy_m"] = locationAccuracyM }
 
             let body = try? JSONSerialization.data(withJSONObject: payload)
             let res: ApiResponse<AttendanceRecord>? = try await performRequest(

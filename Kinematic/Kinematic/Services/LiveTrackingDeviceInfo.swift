@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import Combine
+import CoreLocation
 
 /// Snapshot of the device fields that the dashboard's Live-Tracking page
 /// expects on every heartbeat. This brings iOS to parity with Android, which
@@ -55,6 +56,12 @@ struct UserStatusUpdate: Codable {
     let deviceModel: String?
     let deviceBrand: String?
     let osVersion: String?
+    /// GPS-integrity signals — mirror Android. `is_mock` flags a
+    /// software-simulated fix (the backend also derives a teleport check from
+    /// the previous ping); `location_accuracy_m` is the horizontal accuracy in
+    /// metres. Both nil when unavailable so older behaviour is unchanged.
+    let isMock: Bool?
+    let locationAccuracyM: Double?
 
     enum CodingKeys: String, CodingKey {
         case latitude, longitude
@@ -63,12 +70,19 @@ struct UserStatusUpdate: Codable {
         case deviceModel       = "device_model"
         case deviceBrand       = "device_brand"
         case osVersion         = "os_version"
+        case isMock            = "is_mock"
+        case locationAccuracyM = "location_accuracy_m"
     }
 
     /// Convenience builder with the common HEARTBEAT defaults so callers do
-    /// not have to remember every field name.
-    static func heartbeat(lat: Double, lng: Double, battery: Int?) -> UserStatusUpdate {
+    /// not have to remember every field name. Pass the source `location` to
+    /// stamp the GPS-integrity signals from the exact fix.
+    static func heartbeat(lat: Double, lng: Double, battery: Int?, location: CLLocation? = nil) -> UserStatusUpdate {
         let device = DeviceInfoSnapshot.capture()
+        let accuracy: Double? = {
+            guard let acc = location?.horizontalAccuracy, acc >= 0 else { return nil }
+            return acc
+        }()
         return UserStatusUpdate(
             latitude: lat,
             longitude: lng,
@@ -76,7 +90,9 @@ struct UserStatusUpdate: Codable {
             activityType: "HEARTBEAT",
             deviceModel: device.deviceModel,
             deviceBrand: device.deviceBrand,
-            osVersion: device.osVersion
+            osVersion: device.osVersion,
+            isMock: location.map { SecurityCheck.isMockLocation($0) },
+            locationAccuracyM: accuracy
         )
     }
 }
