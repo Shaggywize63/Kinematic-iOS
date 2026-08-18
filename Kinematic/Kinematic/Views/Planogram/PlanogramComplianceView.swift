@@ -41,6 +41,17 @@ struct PlanogramComplianceView: View {
 
                     posmSection
 
+                    // Grouped so the two new sections count as ONE child of the
+                    // outer VStack (the ViewBuilder buildBlock caps at 10). Group
+                    // is a transparent layout container, so the outer VStack's
+                    // 16pt spacing still applies between them and empty (pre-v2)
+                    // sections add no gap.
+                    Group {
+                        shareOfShelfSection
+
+                        pricingSection
+                    }
+
                     if !response.result.recommendations.isEmpty {
                         section("Recommended actions") {
                             ForEach(response.result.recommendations) { r in
@@ -469,6 +480,262 @@ struct PlanogramComplianceView: View {
         case "other":        return "Other"
         default:             return type.capitalized
         }
+    }
+
+    // MARK: Share of shelf (retail execution v2)
+
+    @ViewBuilder
+    private var shareOfShelfSection: some View {
+        let own = response.result.shelf_share_own
+        let comp = response.result.shelf_share_competitor
+        let categories = response.result.category_breakdown ?? []
+        if own != nil || comp != nil || !categories.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Share of shelf").font(.system(size: 14, weight: .heavy))
+                VStack(alignment: .leading, spacing: 14) {
+                    if own != nil || comp != nil {
+                        shareHeadline(own: own, competitor: comp)
+                    }
+                    if let occ = response.result.occupancy_score {
+                        HStack {
+                            Text("Occupancy")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(Int(occ))%")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(scoreColor(occ))
+                        }
+                    }
+                    if !categories.isEmpty {
+                        categoryShareList(categories)
+                    }
+                }
+                .padding(14)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+
+    private func shareHeadline(own: Double?, competitor: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                shareStat("Own", value: own, color: .green)
+                shareStat("Competitor", value: competitor, color: .red)
+                Spacer()
+            }
+            shareBar(own: own, competitor: competitor)
+        }
+    }
+
+    private func shareStat(_ label: String, value: Double?, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                Text(value.map { "\(Int($0))" } ?? "—")
+                    .font(.system(size: 28, weight: .black))
+                    .foregroundColor(color)
+                if value != nil {
+                    Text("%")
+                        .font(.system(size: 14, weight: .heavy))
+                        .foregroundColor(color)
+                }
+            }
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    /// Two-tone proportion bar: own (green) then competitor (red) as fractions
+    /// of the full width, remainder is the empty-shelf track. Widths clip to the
+    /// capsule so an over-100 sum can never overflow.
+    private func shareBar(own: Double?, competitor: Double?) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.18))
+                HStack(spacing: 0) {
+                    if let own {
+                        Rectangle().fill(Color.green)
+                            .frame(width: geo.size.width * CGFloat(min(1, max(0, own / 100))))
+                    }
+                    if let competitor {
+                        Rectangle().fill(Color.red)
+                            .frame(width: geo.size.width * CGFloat(min(1, max(0, competitor / 100))))
+                    }
+                }
+                .clipShape(Capsule())
+            }
+        }
+        .frame(height: 8)
+    }
+
+    private func categoryShareList(_ cats: [CategoryBreakdown]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("By category".uppercased())
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(.secondary)
+            ForEach(Array(cats.enumerated()), id: \.offset) { _, c in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(c.category)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(c.facings) facings")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    shareBar(own: c.own_share, competitor: c.competitor_share)
+                    HStack(spacing: 8) {
+                        Text("Own \(Int(c.own_share))%")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.green)
+                        Text("· Comp \(Int(c.competitor_share))%")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.red)
+                        Spacer()
+                        if let ao = c.avg_own_price, let ac = c.avg_competitor_price {
+                            Text("Avg \(priceText(ao)) vs \(priceText(ac))")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+        }
+    }
+
+    // MARK: Pricing / competitor price (retail execution v2)
+
+    @ViewBuilder
+    private var pricingSection: some View {
+        let rows = response.result.pricing ?? []
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Pricing").font(.system(size: 14, weight: .heavy))
+                VStack(alignment: .leading, spacing: 14) {
+                    let compare = avgPriceCompareLines
+                    if !compare.isEmpty {
+                        priceCompareBlock(compare)
+                    }
+                    pricingList(rows)
+                }
+                .padding(14)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+
+    /// Categories where BOTH an average own and competitor price were read — the
+    /// clearest own-vs-competitor price comparison. Empty when a side has none.
+    private var avgPriceCompareLines: [(category: String, own: Double, comp: Double)] {
+        (response.result.category_breakdown ?? []).compactMap { c in
+            guard let own = c.avg_own_price, let comp = c.avg_competitor_price else { return nil }
+            return (c.category, own, comp)
+        }
+    }
+
+    private func priceCompareBlock(_ lines: [(category: String, own: Double, comp: Double)]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Avg price · own vs competitor".uppercased())
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(.secondary)
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                HStack(spacing: 8) {
+                    Text(line.category)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Spacer()
+                    Text(priceText(line.own))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.green)
+                    Text("vs")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Text(priceText(line.comp))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.red)
+                }
+                .padding(.vertical, 5)
+            }
+        }
+    }
+
+    private func pricingList(_ rows: [PricingRow]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Prices read".uppercased())
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(.secondary)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                pricingRow(r)
+            }
+        }
+    }
+
+    private func pricingRow(_ r: PricingRow) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(r.sku_name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(r.is_competitor ? .red : .primary)
+                        .lineLimit(1)
+                    if r.is_competitor {
+                        badge("Competitor", color: .red)
+                    }
+                }
+                if let brand = r.brand, !brand.isEmpty {
+                    Text(brand)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 3) {
+                if let p = r.price {
+                    Text(priceText(p, currency: r.currency))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.primary)
+                } else {
+                    Text("—")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                if !r.is_competitor {
+                    mrpDeltaChip(r)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    /// Delta chip for an OWN row vs its expected MRP — red when the shelf price
+    /// is above MRP, green when below. Uses the backend `delta` when present,
+    /// else derives it from price − expected. Renders nothing without an MRP.
+    @ViewBuilder
+    private func mrpDeltaChip(_ r: PricingRow) -> some View {
+        if let expected = r.expected_price,
+           let d = r.delta ?? r.price.map({ $0 - expected }) {
+            let sign = d > 0 ? "+" : ""
+            let color: Color = d > 0 ? .red : (d < 0 ? .green : .gray)
+            badge("\(sign)\(trimNumber(d)) vs MRP", color: color)
+        }
+    }
+
+    /// Trims a Double for display: whole values show as integers, otherwise up
+    /// to two decimals with trailing zeros dropped (249.5, not 249.50).
+    private func trimNumber(_ n: Double) -> String {
+        let rounded = (n * 100).rounded() / 100
+        if rounded == rounded.rounded() { return String(Int(rounded)) }
+        return String(format: "%g", rounded)
+    }
+
+    /// Formats a shelf price with its currency prefix (₹ when the row omits one).
+    private func priceText(_ value: Double, currency: String? = nil) -> String {
+        "\(currency ?? "₹")\(trimNumber(value))"
     }
 
     private func recommendationRow(_ r: ComplianceRecommendation) -> some View {

@@ -177,6 +177,52 @@ struct PosmCompliance: Codable, Hashable {
     let found: [PosmFound]
 }
 
+// MARK: - Share of shelf + competitor price (retail execution v2)
+
+/// Per-category rollup for category-wise shelf analysis (own vs competitor
+/// share, occupancy, facings and average shelf prices). `avg_own_price` /
+/// `avg_competitor_price` are null when no price was read for that side —
+/// hence optional; the remaining fields are always present when the array is.
+struct CategoryBreakdown: Codable, Identifiable, Hashable {
+    var id: String { category }
+    let category: String
+    let occupancy: Double                 // filled shelf space for the category, 0..100
+    let own_share: Double                 // own facings % within the category, 0..100
+    let competitor_share: Double
+    let facings: Int
+    let sku_count: Int
+    let avg_own_price: Double?
+    let avg_competitor_price: Double?
+}
+
+/// Own vs competitor facings within a placement band (low / eye-level / top).
+struct ZoneBreakdown: Codable, Identifiable, Hashable {
+    var id: String { zone }
+    let zone: String                      // "low" | "eye" | "top"
+    let own_facings: Int
+    let competitor_facings: Int
+    let own_share: Double                 // own share of the band, 0..100
+    let sku_ids: [String]
+}
+
+/// A single pricing observation — an own SKU (shelf price vs expected MRP) or a
+/// competitor. Backend-nullable numerics (`price`, `expected_price`, `delta`)
+/// are optional; the always-present `sku_name` / `is_competitor` / `confidence`
+/// are not. `currency`/`source`/`brand` are optional metadata.
+struct PricingRow: Codable, Identifiable, Hashable {
+    var id: String { (sku_id ?? sku_name) + "_\(is_competitor)" }
+    let sku_id: String?
+    let sku_name: String
+    let is_competitor: Bool
+    let price: Double?
+    let currency: String?
+    let expected_price: Double?
+    let delta: Double?                    // shelf price − expected MRP (own rows)
+    let source: String?                   // "shelf_tag" | "on_pack" | "promo"
+    let confidence: Double
+    let brand: String?                    // competitor identity, when matched
+}
+
 struct ComplianceResult: Codable {
     let score: Double
     let presence_score: Double
@@ -194,6 +240,15 @@ struct ComplianceResult: Codable {
     let availability_rate: Double?       // scalar mirror of stock_summary.availability_rate
     let oos_count: Int?                  // scalar mirror of stock_summary.oos_count
     let low_stock_count: Int?            // scalar mirror of stock_summary.low_count
+    // Share-of-shelf + pricing (retail-execution v2). All optional so pre-v2
+    // captures still decode; property-name decoding maps each snake_case key
+    // through the synthesized decodeIfPresent.
+    let shelf_share_own: Double?         // own facings % of total, 0..100
+    let shelf_share_competitor: Double?  // competitor facings % of total, 0..100
+    let occupancy_score: Double?         // filled shelf space %, 0..100
+    let category_breakdown: [CategoryBreakdown]?
+    let zone_breakdown: [ZoneBreakdown]?
+    let pricing: [PricingRow]?
 }
 
 struct CaptureResponse: Codable {
