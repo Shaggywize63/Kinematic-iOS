@@ -613,6 +613,30 @@ struct SettingsView: View {
 
                     CRMOnlyToggleCard()
                         .padding(.horizontal)
+
+                    // Face enrolment (module face_attendance) — supervised enroll /
+                    // re-enroll on top of the silent auto-enrol at first check-in.
+                    if ClientFeatures.hasFaceAttendance {
+                        NavigationLink(destination: FaceEnrollmentView()) {
+                            HStack(spacing: 14) {
+                                Image(systemName: "faceid")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.red)
+                                    .frame(width: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Face Enrollment").font(.headline).foregroundColor(.white)
+                                    Text("Register your face for attendance").font(.caption).foregroundColor(.gray)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundColor(.gray).font(.caption)
+                            }
+                            .padding(16)
+                            .background(Color.white.opacity(0.03))
+                            .cornerRadius(20)
+                            .padding(.horizontal)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 
                 // Account Summary
