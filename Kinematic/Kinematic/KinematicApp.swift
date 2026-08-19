@@ -94,7 +94,21 @@ enum SecondaryRoute: String, Identifiable {
     // Distribution module
     case orderHistory, orderCart, orderReview, orderDetail
     case paymentCollect, returns, distributorStock, secondarySales
+    // Van Sales Wave A — gated on their own module ids (ship OFF by default).
+    case vanLoad
     var id: String { rawValue }
+
+    /// Fine-grained module id this route requires, checked ahead of the package
+    /// gate. Non-nil only for capabilities that ship OFF by default via
+    /// `enabled_modules` (Van Load + Distributor Stock), so an existing
+    /// distribution client sees nothing new until the admin enables the module.
+    var requiredModule: String? {
+        switch self {
+        case .vanLoad:          return "distribution_van"
+        case .distributorStock: return "distribution_stock"
+        default:                return nil
+        }
+    }
 
     /// Which package SKU this route belongs to. Universal routes return `nil`
     /// and are always available. Used by SecondaryScreenHost + SideMenuView to
@@ -109,12 +123,21 @@ enum SecondaryRoute: String, Identifiable {
             return "field_force"
         // Distribution / Supply Chain
         case .orderHistory, .orderCart, .orderReview, .orderDetail,
-             .paymentCollect, .returns, .distributorStock, .secondarySales:
+             .paymentCollect, .returns, .secondarySales:
             return "distribution"
+        // Module-gated distribution routes — no package fallback; the module
+        // gate above (`requiredModule`) is the sole entitlement check.
+        case .vanLoad, .distributorStock:
+            return nil
         }
     }
 
     func isAvailable(for user: User?) -> Bool {
+        // A specific module id (Van Load / Distributor Stock) wins over the
+        // package gate, mirroring how SideMenuView reads `hasModule(...)`.
+        if let mod = requiredModule {
+            return user?.hasModule(mod) ?? true   // missing user → assume legacy / open
+        }
         guard let pkg = requiredPackage else { return true }
         return user?.hasPackage(pkg) ?? true   // missing user → assume legacy / open
     }

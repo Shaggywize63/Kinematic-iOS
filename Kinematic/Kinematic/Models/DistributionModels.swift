@@ -303,3 +303,103 @@ struct Invoice: Codable {
     let buyer_gstin: String?
     let buyer_state_code: String?
 }
+
+// ── SKU catalogue lite (van load-in picker) ───────────────────────────────
+// Backs GET /skus. The DistributionAPI decoder is a plain JSONDecoder (no
+// snake_case strategy), so keys stay snake_case. Optional fields tolerate a
+// sparse row; `is_active` defaults to true at the call site when absent.
+
+struct SkuLite: Codable, Identifiable {
+    let id: String
+    let name: String?
+    let sku_code: String?
+    let category: String?
+    let is_active: Bool?
+}
+
+// ── Van load (rep day-start load-in + end-of-day reconcile) ───────────────
+// Backs GET /salesman/van-load/today, POST /salesman/van-load and
+// POST /salesman/van-load/{id}/reconcile. Quantities are decoded as Double so
+// a numeric column that comes back fractional (or as `5.0`) never fails.
+
+struct VanLoadItemSku: Codable {
+    let name: String?
+    let sku_code: String?
+}
+
+struct VanLoadItem: Codable, Identifiable {
+    let id: String
+    let sku_id: String
+    let loaded_qty: Double
+    let sold_qty: Double
+    let returned_qty: Double
+    let damaged_qty: Double
+    let skus: VanLoadItemSku?
+}
+
+struct VanLoadTotals: Codable {
+    let loaded: Double
+    let sold: Double
+    let returned: Double
+    let damaged: Double
+}
+
+struct VanLoad: Codable, Identifiable {
+    let id: String
+    let user_id: String?
+    let distributor_id: String?
+    let route_plan_id: String?
+    let load_date: String
+    let status: String
+    let opened_at: String?
+    let closed_at: String?
+    let notes: String?
+    let items: [VanLoadItem]
+    let totals: VanLoadTotals?
+}
+
+struct VanLoadItemInput: Codable {
+    let sku_id: String
+    let loaded_qty: Double
+}
+
+struct VanLoadCreateInput: Codable {
+    let distributor_id: String?
+    let route_plan_id: String?
+    let load_date: String?
+    let notes: String?
+    let items: [VanLoadItemInput]
+}
+
+struct VanReconcileItemInput: Codable {
+    let sku_id: String
+    let returned_qty: Double?
+    let damaged_qty: Double?
+}
+
+struct VanReconcileInput: Codable {
+    let items: [VanReconcileItemInput]
+    let notes: String?
+}
+
+// ── Distributor stock (read-only on-hand view) ────────────────────────────
+// Backs GET /distribution/distributors (picker) + GET /distribution/stock.
+
+struct DistributorLite: Codable, Identifiable {
+    let id: String
+    let name: String?
+    let code: String?
+}
+
+struct DistributorStockRow: Codable, Identifiable {
+    let id: String
+    let distributor_id: String?
+    let sku_id: String
+    let qty: Double
+    let reserved: Double
+    let available: Double
+    let updated_at: String?
+    let sku_name: String?
+    let sku_code: String?
+    let category: String?
+}

@@ -151,6 +151,56 @@ struct DistributionAPI {
                               body: Body(lat: lat, lng: lng),
                               idempotencyKey: "checkin-\(visitId)")
     }
+
+    // ── Van load (salesman surface) ───────────────────────────────────────────
+    /// The rep's open load for today, or `nil` when they haven't loaded yet.
+    /// The endpoint returns `data: null` in that case, decoded straight into the
+    /// optional (Envelope<VanLoad?> → nil), so no 404 catch is needed.
+    func vanLoadToday() async throws -> VanLoad? {
+        let data = try await request("/salesman/van-load/today")
+        return try decode(data)
+    }
+    /// Open a van load (day-start load-in). Min 1 item, loaded_qty ≥ 0.
+    func createVanLoad(_ input: VanLoadCreateInput, idempotencyKey: String) async throws -> VanLoad {
+        let data = try await request("/salesman/van-load", method: "POST", body: input, idempotencyKey: idempotencyKey)
+        return try decode(data)
+    }
+    /// Reconcile a van load (end-of-day returned + damaged per SKU). Server
+    /// derives sold = loaded − returned − damaged and flips status → reconciled.
+    func reconcileVanLoad(id: String, input: VanReconcileInput, idempotencyKey: String) async throws -> VanLoad {
+        let data = try await request("/salesman/van-load/\(id)/reconcile", method: "POST", body: input, idempotencyKey: idempotencyKey)
+        return try decode(data)
+    }
+
+    // ── Distributor stock (read-only on-hand) ─────────────────────────────────
+    /// Distributor picker source. Degrades to an empty list when the endpoint is
+    /// missing (404) or the reading user lacks the module (403) — the caller
+    /// shows a "no distributors" message instead of crashing.
+    func distributors() async throws -> [DistributorLite] {
+        do {
+            let data = try await request("/distribution/distributors")
+            return try decode(data)
+        } catch DistributionAPIError.http(404, _), DistributionAPIError.http(403, _) {
+            return []
+        }
+    }
+    /// Per-SKU on-hand rows for a distributor. `lowOnly` appends `low=1` to
+    /// filter to available ≤ 0.
+    func distributorStock(distributorId: String, lowOnly: Bool = false) async throws -> [DistributorStockRow] {
+        var q = "?distributor_id=\(distributorId)"
+        if lowOnly { q += "&low=1" }
+        let data = try await request("/distribution/stock\(q)")
+        return try decode(data)
+    }
+
+    // ── SKU catalogue (van load-in picker) ────────────────────────────────────
+    /// Full SKU list. The `inventory` module is universal, so this is reachable
+    /// for any distribution client. Response may be enveloped or a bare array —
+    /// `decode()` handles both.
+    func skus() async throws -> [SkuLite] {
+        let data = try await request("/skus")
+        return try decode(data)
+    }
 }
 
 /// Erases the static type so request() can encode any Encodable. Apple's

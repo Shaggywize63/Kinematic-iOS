@@ -78,8 +78,12 @@ struct SecondaryScreenHost: View {
                             PaymentCollectView(outletId: "", outletName: nil)
                         case .returns:
                             ReturnView(outletId: "", originalInvoiceId: "")
-                        case .distributorStock, .secondarySales:
-                            // Distributor-stock + secondary-sales lightweight UIs ship in a follow-up patch.
+                        case .vanLoad:
+                            VanLoadView()
+                        case .distributorStock:
+                            DistributorStockView()
+                        case .secondarySales:
+                            // Secondary-sales lightweight UI ships in a follow-up patch.
                             ComingSoonView()
                         }
                     }

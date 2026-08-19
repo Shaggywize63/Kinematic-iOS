@@ -88,6 +88,25 @@ struct SideMenuView: View {
                         }
                     }
 
+                    // ── Van Load (module distribution_van) — day-start load-in +
+                    //    end-of-day reconcile. Ships OFF by default; only shown
+                    //    when the client's enabled_modules includes the module.
+                    if hasModule("distribution_van") {
+                        MenuButton(icon: "truck.box.fill", title: "Van Load", isSelected: false, color: .indigo) {
+                            withAnimation { isOpen = false }
+                            appState.activeSecondaryRoute = ModalRoute(route: .vanLoad)
+                        }
+                    }
+
+                    // ── Distributor Stock (module distribution_stock) — read-only
+                    //    per-SKU on-hand view. Same module-gated OFF-by-default rule.
+                    if hasModule("distribution_stock") {
+                        MenuButton(icon: "archivebox.fill", title: "Distributor Stock", isSelected: false, color: .brown) {
+                            withAnimation { isOpen = false }
+                            appState.activeSecondaryRoute = ModalRoute(route: .distributorStock)
+                        }
+                    }
+
                     MenuButton(icon: "person.fill", title: "My Profile", isSelected: false, color: .orange) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .profile)
