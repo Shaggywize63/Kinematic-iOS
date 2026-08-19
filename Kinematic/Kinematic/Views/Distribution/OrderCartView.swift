@@ -64,25 +64,46 @@ struct OrderCartView: View {
     }
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text("Total").font(.caption).foregroundColor(.secondary)
-                Text(vm.preview.map { "₹\(format(($0.totals.grand_total)))" } ?? "—").font(.title2).bold()
+        VStack(alignment: .leading, spacing: 8) {
+            // Early credit hint — only when the priced preview flags the outlet
+            // near/over its limit. Read-only; never blocks Review/placement.
+            if let c = vm.preview?.credit, c.statusValue == "warning" || c.statusValue == "exceeded" {
+                creditHint(c)
             }
-            Spacer()
-            Button {
-                showReview = true
-            } label: {
-                Text("Review →").font(.headline)
-                    .padding(.horizontal, 20).padding(.vertical, 12)
-                    .background(Color(red: 208/255, green: 30/255, blue: 44/255))
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+            HStack {
+                VStack(alignment: .leading) {
+                    Text("Total").font(.caption).foregroundColor(.secondary)
+                    Text(vm.preview.map { "₹\(format(($0.totals.grand_total)))" } ?? "—").font(.title2).bold()
+                }
+                Spacer()
+                Button {
+                    showReview = true
+                } label: {
+                    Text("Review →").font(.headline)
+                        .padding(.horizontal, 20).padding(.vertical, 12)
+                        .background(Color(red: 208/255, green: 30/255, blue: 44/255))
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .disabled(vm.preview == nil || (vm.preview?.totals.grand_total ?? 0) <= 0)
             }
-            .disabled(vm.preview == nil || (vm.preview?.totals.grand_total ?? 0) <= 0)
         }
         .padding()
         .background(Color(.systemBackground))
+    }
+
+    private func creditHint(_ c: Credit) -> some View {
+        let exceeded = c.statusValue == "exceeded"
+        let tint: Color = exceeded ? .red : .orange
+        return HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill").font(.caption2)
+            Text(exceeded ? "Over credit limit" : "Nearing credit limit").font(.caption).bold()
+            Spacer()
+        }
+        .foregroundColor(tint)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.12)))
     }
 
     private func format(_ v: Double) -> String {

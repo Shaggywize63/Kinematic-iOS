@@ -58,11 +58,28 @@ struct PricedLine: Codable, Identifiable {
     let is_free_good: Bool?
 }
 
+/// Order-time credit snapshot returned by /salesman/orders/preview.
+/// Every field is optional so older previews (no `credit` object) — and any
+/// partial payload — still decode. `status` ∈ "na" | "ok" | "warning" |
+/// "exceeded"; use `statusValue` for a normalized, lowercased default of "na".
+struct Credit: Codable {
+    let credit_limit: Double?
+    let current_balance: Double?
+    let order_value: Double?
+    let projected_balance: Double?
+    let available: Double?
+    let utilization_pct: Int?
+    let status: String?
+
+    var statusValue: String { (status ?? "na").lowercased() }
+}
+
 struct OrderPreview: Codable {
     let lines: [PricedLine]
     let totals: OrderTotals
     let price_list_version: Int
     let intra_state: Bool?
+    let credit: Credit?
 }
 
 struct OrderDistributorAddress: Codable {
