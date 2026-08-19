@@ -3142,6 +3142,9 @@ struct KinematicApp: App {
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @StateObject private var locationService = LocationTrackingService.shared
     @StateObject private var appState = KiniAppState.shared
+    /// Biometric App Lock. Covers the app with a Face ID / passcode lock screen
+    /// on cold launch + foreground while a session exists and the feature is on.
+    @StateObject private var lockManager = LockManager.shared
     @Environment(\.scenePhase) private var scenePhase
     /// Brand splash shown for a brief minimum on launch (parity with Android).
     /// Dismissed purely on a timer so it can never hang on a setup task.
@@ -3222,6 +3225,17 @@ struct KinematicApp: App {
                         // latest entitlements show up without a re-login.
                         Task { await KinematicRepository.shared.refreshMe() }
                     }
+
+                    // Biometric App Lock lifecycle. Arm on real background;
+                    // prompt on foreground. `.inactive` is intentionally NOT a
+                    // trigger — it fires for transient states (Control Centre /
+                    // notification pulldown, the biometric sheet itself) that
+                    // must NOT lock the app or re-loop the prompt.
+                    switch phase {
+                    case .active:     lockManager.handleForeground()
+                    case .background: lockManager.handleBackground()
+                    default:          break
+                    }
                 }
                 .task {
                     UIDevice.current.isBatteryMonitoringEnabled = true
@@ -3247,6 +3261,25 @@ struct KinematicApp: App {
                         .transition(.opacity)
                         .zIndex(10)
                 }
+
+                // Biometric App Lock — sits above EVERYTHING (splash included)
+                // so no app content is revealed until the user authenticates.
+                if lockManager.isLocked {
+                    AppLockOverlay(lock: lockManager) {
+                        // Reuse the existing app-wide logout (Session.logout()).
+                        appState.logout()
+                        lockManager.clearForLogout()
+                    }
+                    .zIndex(20)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: lockManager.isLocked)
+            .onAppear {
+                // Cold launch: `.onChange(of: scenePhase)` does NOT fire for the
+                // initial `.active`, so prompt here. No-op unless enabled + a
+                // session exists (LockManager.init already armed isLocked).
+                lockManager.handleForeground()
             }
             .task {
                 // The iOS launch screen (now configured with UIImageName=LaunchLogo

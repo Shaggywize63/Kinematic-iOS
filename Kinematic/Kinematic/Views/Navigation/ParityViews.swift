@@ -639,6 +639,17 @@ struct SettingsView: View {
                     }
                 }
                 
+                // Security
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("SECURITY")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundColor(.gray)
+                        .padding(.horizontal)
+
+                    AppLockToggleCard()
+                        .padding(.horizontal)
+                }
+
                 // Account Summary
                 VStack(alignment: .leading, spacing: 16) {
                     Text("ACCOUNT")
@@ -764,6 +775,38 @@ struct CRMOnlyToggleCard: View {
                     Text("CRM-only mode")
                         .font(.system(size: 14, weight: .bold))
                     Text("Hide attendance + route. Show only CRM screens.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.gray)
+                }
+            }
+        }
+        .tint(.red)
+        .padding(16)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(16)
+    }
+}
+
+/// Toggle for the biometric App Lock. Persists to UserDefaults under
+/// `app_lock_enabled` (same key `LockManager` reads). Default OFF. Turning it
+/// on takes effect the next time the app is backgrounded / cold-launched — the
+/// lock never fires mid-session while the user is actively using Settings.
+struct AppLockToggleCard: View {
+    // Literal key kept in lockstep with `LockManager.enabledDefaultsKey`.
+    @AppStorage("app_lock_enabled") private var appLockEnabled: Bool = false
+
+    var body: some View {
+        Toggle(isOn: $appLockEnabled) {
+            HStack(spacing: 12) {
+                Image(systemName: "faceid")
+                    .foregroundColor(.red)
+                    .frame(width: 28, height: 28)
+                    .background(Color.red.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("App Lock (Face ID / passcode)")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Require Face ID, Touch ID, or your passcode each time you open the app.")
                         .font(.system(size: 11))
                         .foregroundColor(.gray)
                 }
