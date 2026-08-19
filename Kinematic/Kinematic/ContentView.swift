@@ -1101,14 +1101,17 @@ struct AttendanceView: View {
                         .alert("End shift?", isPresented: $showCheckoutAlert) {
                             Button("Stay clocked in", role: .cancel) { }
                             Button("Clock out", role: .destructive) {
-                                if let loc = locationService.lastLocation {
-                                    Task { await vm.toggleAttendance(loc: loc) }
-                                } else {
-                                    vm.startFlow()
-                                }
+                                // Capture a check-out selfie first — parity with check-in.
+                                // startFlow() opens the camera; on capture,
+                                // processCapturedSelfie → checkLocationAndSubmit auto-submits
+                                // toggleAttendance once the photo (and GPS) are ready, so the
+                                // selfie uploads as the check-out selfie. Previously this called
+                                // toggleAttendance directly whenever GPS was present, clocking
+                                // the user out with no selfie.
+                                vm.startFlow()
                             }
                         } message: {
-                            Text("Once you clock out you won't be able to clock in again today. Make sure you've finished all visits and submissions.")
+                            Text("You'll take a quick check-out selfie to confirm. Once you clock out you won't be able to clock in again today — make sure you've finished all visits and submissions.")
                         }
 
                         SessionCard(record: appState.today).padding(.horizontal, 20)
