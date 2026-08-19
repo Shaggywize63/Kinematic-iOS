@@ -14,6 +14,10 @@ struct OrderDetailView: View {
     @State private var pendingReceipt: Data?
     @State private var printMessage: String?
 
+    // GST invoice document. Offered only for invoiced orders; the invoice is
+    // fetched lazily inside InvoiceView on present.
+    @State private var showInvoice = false
+
     /// Distribution package gate — mirrors SideMenu / StoreVisit. Legacy
     /// sessions (empty entitlements) default to `true` so we never hide the
     /// action from an existing van-sales user mid-deploy; non-distribution
@@ -37,6 +41,24 @@ struct OrderDetailView: View {
                     }
                     Divider().padding(.vertical, 8)
                     HStack { Text("Grand total").bold(); Spacer(); Text("₹\(fmt(o.grand_total))").bold() }
+
+                    // VIEW INVOICE — only once the order is invoiced. Opens the
+                    // formal GST invoice document (InvoiceView loads it on
+                    // present and shows a graceful state if it isn't ready).
+                    if hasDistribution && o.status.lowercased() == "invoiced" {
+                        Button {
+                            showInvoice = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "doc.text.fill")
+                                Text("View invoice").bold()
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(Color(red: 208/255, green: 30/255, blue: 44/255)).foregroundColor(.white)
+                            .cornerRadius(12)
+                        }
+                        .padding(.top, 16)
+                    }
 
                     // PRINT BILL — 58mm Bluetooth thermal receipt. Gated on the
                     // distribution package so non-distribution tenants are
@@ -105,6 +127,11 @@ struct OrderDetailView: View {
                     pendingReceipt = nil
                 }
                 showPrinterPicker = false
+            }
+        }
+        .sheet(isPresented: $showInvoice) {
+            NavigationStack {
+                InvoiceView(orderId: orderId)
             }
         }
         .alert("Cancel this order?", isPresented: $showCancelConfirm) {

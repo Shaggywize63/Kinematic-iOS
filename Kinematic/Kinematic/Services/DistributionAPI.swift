@@ -87,6 +87,25 @@ struct DistributionAPI {
         return try decode(data)
     }
 
+    /// Full orderable SKU catalogue for an outlet (browse beyond reorder
+    /// suggestions). Mirrors `cartSuggest`'s decode path.
+    func catalogue(outletId: String) async throws -> OrderCatalogue {
+        let data = try await request("/salesman/outlets/\(outletId)/catalogue")
+        return try decode(data)
+    }
+
+    /// GST invoice document for an order. The endpoint returns 404 until the
+    /// order is invoiced, so we translate that single case into `nil` and let
+    /// every other error propagate for the caller to surface.
+    func orderInvoice(orderId: String) async throws -> Invoice? {
+        do {
+            let data = try await request("/salesman/orders/\(orderId)/invoice")
+            return try decode(data)
+        } catch DistributionAPIError.http(404, _) {
+            return nil
+        }
+    }
+
     // ── Mutations ────────────────────────────────────────────────────────────────
     func preview(_ input: OrderInput) async throws -> OrderPreview {
         let data = try await request("/salesman/orders/preview", method: "POST", body: input)

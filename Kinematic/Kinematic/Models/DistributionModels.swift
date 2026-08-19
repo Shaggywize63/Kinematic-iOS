@@ -221,3 +221,85 @@ struct DistributionReturn: Codable, Identifiable {
     let status: String
     let requires_supervisor: Bool?
 }
+
+// ── Catalogue (browse full orderable SKU list) ────────────────────────────
+// Backs GET /salesman/outlets/{outletId}/catalogue. Decoded by property name
+// (the DistributionAPI decoder is a plain JSONDecoder — no snake_case strategy),
+// so keys stay snake_case to match the payload. Optional fields tolerate a
+// sparse row (missing name/code/category/min/max).
+
+struct CatalogueItem: Codable, Identifiable {
+    var id: String { sku_id }
+    let sku_id: String
+    let sku_name: String?
+    let sku_code: String?
+    let category: String?
+    let uom: String
+    let pack_size: Double
+    let mrp: Double
+    let base_price: Double
+    let min_qty: Double?
+    let max_qty: Double?
+    let gst_rate: Double
+}
+
+struct OrderCatalogue: Codable {
+    let items: [CatalogueItem]
+    let price_list_version: Int?
+    let customer_class: String?
+    let credit: Credit?
+}
+
+// ── Invoice (GST tax-invoice document) ────────────────────────────────────
+// Backs GET /salesman/orders/{orderId}/invoice, which 404s until the order is
+// invoiced. EVERY field is optional on purpose: the exact invoice_items schema
+// isn't pinned down here, so optional-tolerant decoding avoids a strict-Codable
+// failure on any field the backend omits or renames a sibling of.
+
+struct InvoiceParty: Codable {
+    let name: String?
+    let gstin: String?
+    let address: String?
+    let state_code: String?
+    let place_of_supply: String?
+}
+
+struct InvoiceItem: Codable {
+    let sku_name: String?
+    let hsn_code: String?
+    let qty: Double?
+    let uom: String?
+    let unit_price: Double?
+    let taxable_value: Double?
+    let gst_rate: Double?
+    let cgst: Double?
+    let sgst: Double?
+    let igst: Double?
+    let cess: Double?
+    let total: Double?
+}
+
+struct Invoice: Codable {
+    let id: String?
+    let invoice_no: String?
+    let status: String?
+    let irn: String?
+    let qr_code_url: String?
+    let place_of_supply: String?
+    let subtotal: Double?
+    let discount_total: Double?
+    let taxable_value: Double?
+    let cgst: Double?
+    let sgst: Double?
+    let igst: Double?
+    let cess: Double?
+    let round_off: Double?
+    let grand_total: Double?
+    let bill_type: String?
+    let issued_at: String?
+    let invoice_items: [InvoiceItem]?
+    let distributor: InvoiceParty?
+    let outlet: InvoiceParty?
+    let buyer_gstin: String?
+    let buyer_state_code: String?
+}

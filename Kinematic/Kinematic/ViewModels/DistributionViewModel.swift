@@ -36,6 +36,15 @@ final class DistributionViewModel: ObservableObject {
         } catch { suggest = nil }
     }
 
+    @Published var catalogue: OrderCatalogue?
+
+    /// Full orderable SKU list for the outlet. Loaded lazily when the rep opens
+    /// the "Browse catalogue" sheet. Selections still land in `cartQty`, so
+    /// Preview/Place are unchanged.
+    func loadCatalogue(outletId: String) async {
+        do { catalogue = try await api.catalogue(outletId: outletId) } catch { catalogue = nil }
+    }
+
     func setQty(skuId: String, qty: Int) {
         if qty <= 0 { cartQty.removeValue(forKey: skuId) } else { cartQty[skuId] = qty }
     }
@@ -97,6 +106,18 @@ final class DistributionViewModel: ObservableObject {
 
     func loadOrder(_ id: String) async {
         do { currentOrder = try await api.order(id: id) } catch { currentOrder = nil }
+    }
+
+    @Published var invoice: Invoice?
+    @Published var loadingInvoice = false
+    /// True once a load attempt has completed, so the view can tell "still
+    /// loading" apart from "loaded, but the order has no invoice yet" (404 → nil).
+    @Published var invoiceLoaded = false
+
+    func loadInvoice(orderId: String) async {
+        loadingInvoice = true
+        defer { loadingInvoice = false; invoiceLoaded = true }
+        do { invoice = try await api.orderInvoice(orderId: orderId) } catch { invoice = nil }
     }
 
     @Published var cancelling = false
