@@ -96,6 +96,8 @@ enum SecondaryRoute: String, Identifiable {
     case paymentCollect, returns, distributorStock, secondarySales
     // Van Sales Wave A — gated on their own module ids (ship OFF by default).
     case vanLoad
+    // Damage / expiry register Wave B — gated on its own module id (OFF by default).
+    case damageLog
     var id: String { rawValue }
 
     /// Fine-grained module id this route requires, checked ahead of the package
@@ -106,6 +108,7 @@ enum SecondaryRoute: String, Identifiable {
         switch self {
         case .vanLoad:          return "distribution_van"
         case .distributorStock: return "distribution_stock"
+        case .damageLog:        return "distribution_damage"
         default:                return nil
         }
     }
@@ -127,7 +130,7 @@ enum SecondaryRoute: String, Identifiable {
             return "distribution"
         // Module-gated distribution routes — no package fallback; the module
         // gate above (`requiredModule`) is the sole entitlement check.
-        case .vanLoad, .distributorStock:
+        case .vanLoad, .distributorStock, .damageLog:
             return nil
         }
     }

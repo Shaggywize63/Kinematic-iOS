@@ -201,6 +201,20 @@ struct DistributionAPI {
         let data = try await request("/skus")
         return try decode(data)
     }
+
+    // ── Damage / expiry register (distributor damaged-stock log) ──────────────
+    /// Log a damaged / expired / breakage entry against a distributor. The
+    /// Idempotency-Key guards against a double-submit on a slow network.
+    func logDamage(_ input: DamageEntryInput, idempotencyKey: String) async throws -> DamageEntry {
+        let data = try await request("/distribution/damage", method: "POST", body: input, idempotencyKey: idempotencyKey)
+        return try decode(data)
+    }
+    /// Recent damage-register entries, optionally scoped to one distributor.
+    func damageEntries(distributorId: String? = nil) async throws -> [DamageEntry] {
+        let q = distributorId.map { "?distributor_id=\($0)" } ?? ""
+        let data = try await request("/distribution/damage\(q)")
+        return try decode(data)
+    }
 }
 
 /// Erases the static type so request() can encode any Encodable. Apple's

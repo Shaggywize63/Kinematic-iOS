@@ -403,3 +403,41 @@ struct DistributorStockRow: Codable, Identifiable {
     let sku_code: String?
     let category: String?
 }
+
+// ── Damage / expiry register (distributor damaged-stock log) ──────────────
+// Backs POST /distribution/damage and GET /distribution/damage. The
+// DistributionAPI decoder is a plain JSONDecoder (no snake_case strategy), so
+// keys stay snake_case to match the payload. The optional joins + detail
+// fields tolerate a sparse row (a fresh POST response may omit the sku /
+// distributor names the GET list joins in).
+
+struct DamageEntry: Codable, Identifiable {
+    let id: String
+    let distributor_id: String?
+    let sku_id: String
+    let qty: Int
+    let reason: String
+    let status: String
+    let batch_no: String?
+    let expiry_date: String?
+    let unit_value: Double?
+    let note: String?
+    let created_at: String?
+    let sku_name: String?
+    let sku_code: String?
+    let distributor_name: String?
+}
+
+// Encodable-only input for POST /distribution/damage. Optional fields are
+// synthesized with encodeIfPresent, so nil batch/expiry/unit_value/note are
+// omitted from the body entirely (matching the backend's optional contract).
+struct DamageEntryInput: Encodable {
+    let distributor_id: String
+    let sku_id: String
+    let qty: Int
+    let reason: String
+    let batch_no: String?
+    let expiry_date: String?
+    let unit_value: Double?
+    let note: String?
+}

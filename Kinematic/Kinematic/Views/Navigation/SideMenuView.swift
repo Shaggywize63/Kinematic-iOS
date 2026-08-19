@@ -107,6 +107,15 @@ struct SideMenuView: View {
                         }
                     }
 
+                    // ── Log Damage (module distribution_damage) — distributor
+                    //    damaged / expiry register. Same module-gated OFF-by-default rule.
+                    if hasModule("distribution_damage") {
+                        MenuButton(icon: "exclamationmark.triangle.fill", title: "Log Damage", isSelected: false, color: .orange) {
+                            withAnimation { isOpen = false }
+                            appState.activeSecondaryRoute = ModalRoute(route: .damageLog)
+                        }
+                    }
+
                     MenuButton(icon: "person.fill", title: "My Profile", isSelected: false, color: .orange) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .profile)
