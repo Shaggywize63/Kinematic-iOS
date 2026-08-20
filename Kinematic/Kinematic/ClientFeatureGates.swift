@@ -91,6 +91,13 @@ enum ClientFeatures {
         Session.currentUser?.enabledModules.contains("face_attendance") == true
     }
 
+    /// Field Expense / Travel Claims module (field_expenses, off by default).
+    /// STRICT entitlement check so an empty legacy-session module list does NOT
+    /// surface it — only clients explicitly granted the module see Expenses.
+    static var hasExpenses: Bool {
+        Session.currentUser?.enabledModules.contains("field_expenses") == true
+    }
+
     // MARK: - SRS TATA Steel slimmed build
 
     /// True when the signed-in user belongs to SRS TATA Steel. This is the
@@ -143,6 +150,10 @@ enum ClientFeatures {
     /// tenant) — "People & Support" was dropped from the CRM-only build. Full
     /// field-force tenants keep it.
     static var showsLeave:    Bool { !isSrsTataSteel && !isCrmOnly }
+    /// Expenses is a module-gated field-force capability that DOES appear on the
+    /// CRM-only build (unlike Leave), so it's gated on the module grant, not
+    /// `!isCrmOnly`. Strict module check keeps it hidden for tenants without it.
+    static var showsExpenses: Bool { hasExpenses && !isSrsTataSteel }
 
     /// Conversation Intelligence surfaces require BOTH the module SKU to be on
     /// AND the tenant to not be SRS TATA Steel (who have it switched off). The

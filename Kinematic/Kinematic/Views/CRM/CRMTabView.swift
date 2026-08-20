@@ -238,6 +238,19 @@ struct CRMMoreMenu: View {
                     } label: { MoreRow(icon: "calendar.badge.clock", title: "Leave", tint: Brand.red) }
                 }
             }
+            // Field Expenses — module-gated (field_expenses), independent of
+            // Leave, and shown on the CRM-only build. Rep files claims (mileage
+            // auto-priced from GPS, receipts AI-OCR'd); managers approve.
+            if ClientFeatures.showsExpenses {
+                Section("Expenses") {
+                    NavigationLink {
+                        ExpenseClaimsView()
+                    } label: { MoreRow(icon: "doc.text.magnifyingglass", title: "Expense Claims", tint: Brand.red) }
+                    NavigationLink {
+                        ExpenseApprovalsView()
+                    } label: { MoreRow(icon: "checkmark.seal", title: "Expense Approvals", tint: Brand.red) }
+                }
+            }
             // Insights section is split for Consumer Champion reps —
             // they still get a slimmed-down Reports view (3 KPI tiles)
             // but Dashboard + Lead Analytics are manager-tier surfaces
