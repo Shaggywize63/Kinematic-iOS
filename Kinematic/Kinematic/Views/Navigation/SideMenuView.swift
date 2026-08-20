@@ -203,8 +203,8 @@ struct SideMenuView: View {
             .padding(.leading, 44)
             .padding(.bottom, 30)
             
-            // Version Info
-            Text("Kinematic v1.0.9 (IRONCLAD)")
+            // Version Info — always the real bundle version, never a hardcoded string.
+            Text("Kinematic v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(.gray.opacity(0.4))
                 .padding(.bottom, safeAreaInsets.bottom + 10)

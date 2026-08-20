@@ -683,7 +683,7 @@ struct SettingsView: View {
                         .padding(.horizontal)
                     
                     VStack(spacing: 0) {
-                        AboutRow(label: "App Version", value: "1.0.8 (Stable)")
+                        AboutRow(label: "App Version", value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"))")
                         Divider().background(Color.white.opacity(0.1))
                         AboutRow(label: "Build Mode", value: "Production")
                     }
