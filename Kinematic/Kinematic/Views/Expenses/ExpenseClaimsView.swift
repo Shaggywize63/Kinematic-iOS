@@ -140,9 +140,7 @@ private struct ClaimRow: View {
                     .background(expenseStatusColor(claim.status).opacity(0.15))
                     .foregroundColor(expenseStatusColor(claim.status)).clipShape(Capsule())
             }
-            Text(expenseMoney(claim.total_amount, claim.currency)
-                 + (status == "submitted" && claim.approver_name != nil ? " · with \(claim.approver_name!) (L\(claim.current_level ?? 1))" : ""))
-                .font(.caption).foregroundColor(.secondary)
+            Text(subtitleText(status)).font(.caption).foregroundColor(.secondary)
             if let s = claim.ai_summary, !s.isEmpty {
                 Text("🧠 \(s)").font(.caption2).foregroundColor(.secondary)
             }
@@ -179,6 +177,13 @@ private struct ClaimRow: View {
         .padding(.vertical, 2)
     }
 
+    private func subtitleText(_ status: String) -> String {
+        var s = expenseMoney(claim.total_amount, claim.currency)
+        if status == "submitted", let ap = claim.approver_name {
+            s += " · with \(ap) (L\(claim.current_level ?? 1))"
+        }
+        return s
+    }
     private func flagColor(_ severity: String?) -> Color {
         switch severity { case "high": return .red; case "warn": return .orange; default: return .blue }
     }
@@ -220,9 +225,7 @@ private struct NewClaimSheet: View {
                 Section { TextField("Title (optional)", text: $title) }
                 if let p = vm.policy {
                     Section {
-                        Text("Mileage \(expenseMoney(p.mileage_rate, currency))/km · receipt required over \(expenseMoney(p.require_receipt_over, currency))"
-                             + (p.escalate_over.map { " · escalates over \(expenseMoney($0, currency))" } ?? ""))
-                            .font(.caption2).foregroundColor(.secondary)
+                        Text(policyHint(p)).font(.caption2).foregroundColor(.secondary)
                     }
                 }
                 ForEach($lines) { $line in
@@ -277,6 +280,12 @@ private struct NewClaimSheet: View {
 
     private var hasValidLine: Bool {
         lines.contains { (Double($0.amount) ?? 0) > 0 || ($0.category == "mileage" && (Double($0.distanceKm) ?? 0) > 0) }
+    }
+
+    private func policyHint(_ p: ExpensePolicy) -> String {
+        var s = "Mileage \(expenseMoney(p.mileage_rate, currency))/km · receipt required over \(expenseMoney(p.require_receipt_over, currency))"
+        if let esc = p.escalate_over { s += " · escalates over \(expenseMoney(esc, currency))" }
+        return s
     }
 
     private func create() async {

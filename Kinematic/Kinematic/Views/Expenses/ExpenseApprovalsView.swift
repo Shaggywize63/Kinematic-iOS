@@ -44,9 +44,7 @@ struct ExpenseApprovalsView: View {
     private func row(_ claim: ExpenseClaim) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(claim.user_name ?? "Team member").font(.subheadline).bold()
-            Text(expenseMoney(claim.total_amount, claim.currency) + " · " + (claim.claim_no ?? String((claim.submitted_at ?? "").prefix(10)))
-                 + ((claim.current_level ?? 1) > 1 ? " · level \(claim.current_level!)" : ""))
-                .font(.caption).foregroundColor(.secondary)
+            Text(rowSubtitle(claim)).font(.caption).foregroundColor(.secondary)
             if let s = claim.ai_summary, !s.isEmpty { Text("🧠 \(s)").font(.caption2).foregroundColor(.secondary) }
             if let flags = claim.ai_flags, !flags.isEmpty {
                 HStack(spacing: 6) {
@@ -78,6 +76,13 @@ struct ExpenseApprovalsView: View {
         .padding(.vertical, 2)
     }
 
+    private func rowSubtitle(_ claim: ExpenseClaim) -> String {
+        var s = expenseMoney(claim.total_amount, claim.currency) + " · "
+        s += claim.claim_no ?? String((claim.submitted_at ?? "").prefix(10))
+        let level = claim.current_level ?? 1
+        if level > 1 { s += " · level \(level)" }
+        return s
+    }
     private func flagColor(_ severity: String?) -> Color {
         switch severity { case "high": return .red; case "warn": return .orange; default: return .blue }
     }
