@@ -18,6 +18,13 @@ struct CRMSettingsView: View {
                 themeRow("Light",  appTheme: .light,  icon: "sun.max.fill")
                 themeRow("Dark",   appTheme: .dark,   icon: "moon.stars.fill")
             }
+            // Security — biometric App Lock, re-hosted here for CRM users. Like
+            // the Appearance toggle above, the field-force SettingsView where
+            // App Lock lives isn't reachable from CRMTabView, so CRM-only reps
+            // otherwise had no way to arm it (parity with Android's CRM More).
+            Section("Security") {
+                AppLockToggleCard()
+            }
             Section("CRM Configuration") {
                 NavigationLink("Pipelines") { PipelineView() }
                 NavigationLink("Email templates") { EmailTemplatesView() }
