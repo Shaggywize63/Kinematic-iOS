@@ -469,6 +469,29 @@ final class CRMService {
         return me?.orgRoleId
     }
 
+    // MARK: - Custom Objects (user-defined record types)
+    func listCustomObjects() async throws -> [CRMCustomObject] {
+        try await get("/api/v1/crm/custom-objects")
+    }
+    func getCustomObject(key: String) async throws -> CRMCustomObject {
+        try await get("/api/v1/crm/custom-objects/\(key)")
+    }
+    func listCustomRecords(objectKey: String, search: String? = nil) async throws -> [CRMCustomRecord] {
+        var q: [String: String] = ["limit": "100"]
+        if let search, !search.isEmpty { q["q"] = search }
+        let page: CRMCustomRecordsPage = try await get("/api/v1/crm/custom-objects/\(objectKey)/records", query: q)
+        return page.rows ?? []
+    }
+    func createCustomRecord(objectKey: String, body: [String: Any]) async throws -> CRMCustomRecord {
+        try await postJSON("/api/v1/crm/custom-objects/\(objectKey)/records", body: body)
+    }
+    func updateCustomRecord(objectKey: String, id: String, body: [String: Any]) async throws -> CRMCustomRecord {
+        try await sendJSON("/api/v1/crm/custom-objects/\(objectKey)/records/\(id)", method: "PATCH", body: body)
+    }
+    func deleteCustomRecord(objectKey: String, id: String) async throws {
+        let _: EmptyAck = try await delete("/api/v1/crm/custom-objects/\(objectKey)/records/\(id)")
+    }
+
     /// Manager: leaderboard for the chosen window (today | week | month).
     func leaderboard(period: String) async -> CRMLeaderboard? {
         try? await get("/api/v1/crm/targets/leaderboard", query: ["period": period])

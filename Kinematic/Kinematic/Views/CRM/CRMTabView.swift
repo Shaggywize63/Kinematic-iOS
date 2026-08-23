@@ -217,6 +217,11 @@ struct CRMMoreMenu: View {
                 NavigationLink {
                     ProductsListView()
                 } label: { MoreRow(icon: "shippingbox.fill", title: "Products", tint: Brand.red) }
+                if ClientFeatures.showsCustomObjects {
+                    NavigationLink {
+                        CustomObjectsListView()
+                    } label: { MoreRow(icon: "square.grid.2x2.fill", title: "Custom Objects", tint: Brand.red) }
+                }
             }
             // Field tools that ride on the rep's current location. Distinct
             // from "Records" because reps think of these as "where am I
