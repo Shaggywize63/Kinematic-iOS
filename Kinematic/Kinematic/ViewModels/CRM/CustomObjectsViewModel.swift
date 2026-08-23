@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// Lists the admin-defined object types.
 @MainActor
