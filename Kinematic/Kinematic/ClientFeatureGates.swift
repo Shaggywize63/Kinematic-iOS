@@ -116,6 +116,9 @@ enum ClientFeatures {
     /// intent-named switches rather than checking the client id inline.
     static var showsCardScan: Bool { !isSrsTataSteel && !isBmw }
     static var showsAccounts: Bool { !isSrsTataSteel && !isBmw }
+    /// Custom objects are a general CRM capability; tenants with none defined
+    /// simply see an empty list, so this only excludes the fixed-schema clients.
+    static var showsCustomObjects: Bool { !isSrsTataSteel && !isBmw }
 
     /// Tenants that are ALWAYS CRM-only, pinned by client id. These clients
     /// bought only the CRM product, so they must never fall into the
