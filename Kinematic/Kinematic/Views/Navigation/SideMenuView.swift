@@ -8,6 +8,10 @@ struct SideMenuView: View {
     /// KinematicApp.swift and we don't want to patch that large file just to
     /// add one route case.
     @State private var showCRM = false
+    /// MoiSoi's one-tap planogram capture is presented full-screen from here
+    /// (mirrors `showCRM`) so the self-contained `PlanogramCaptureView` isn't
+    /// double-wrapped in a navigation chrome.
+    @State private var showPlanogram = false
 
     /// Per-client SKU snapshot for nav gating. Refreshes whenever Session.currentUser changes.
     private var hasCrm: Bool         { Session.currentUser?.hasCrm ?? true }
@@ -39,6 +43,12 @@ struct SideMenuView: View {
             // below to dismiss the sheet, mirroring the dashboard's CRM
             // section behaviour.
             CRMTabView(onExit: { showCRM = false })
+        }
+        .fullScreenCover(isPresented: $showPlanogram) {
+            // Storeless shelf capture: no outlet/store/planogram selection. The
+            // backend scores it against the org's active planogram. Reuses the
+            // exact capture pipeline used inside a store visit.
+            PlanogramCaptureView(storeId: nil, visitId: nil, planogramId: nil)
         }
     }
     
@@ -73,6 +83,22 @@ struct SideMenuView: View {
                             // Defer presentation until the menu close animation finishes
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                 showCRM = true
+                            }
+                        }
+                    }
+
+                    // ── Planogram (MoiSoi) — one-tap storeless shelf capture.
+                    //    Opens the camera directly, submits with no store /
+                    //    outlet / planogram selection; the backend scores it
+                    //    against the org's active planogram. Only MoiSoi sees
+                    //    this entry; other clients capture planograms inside a
+                    //    store visit.
+                    if ClientFeatures.isMoiSoi {
+                        MenuButton(icon: "camera.viewfinder", title: "Planogram", isSelected: false, color: Brand.red) {
+                            withAnimation { isOpen = false }
+                            // Defer presentation until the menu close animation finishes.
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                showPlanogram = true
                             }
                         }
                     }
