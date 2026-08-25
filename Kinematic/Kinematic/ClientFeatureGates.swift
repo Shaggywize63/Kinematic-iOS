@@ -15,6 +15,12 @@ private let KINEMATIC_CLIENT_ID = "7ecd47d7-9268-4ea2-a8ce-384978c13667"
 /// off the client id like the other tenant gates so the policy lives in one
 /// place and is trivial to retarget.
 private let BMW_CLIENT_ID = "2ee5e03a-3a56-41c9-aaa0-16468920f871"
+/// MoiSoi — a retail-execution client running the planogram module. They get a
+/// one-tap "Planogram" entry in the field-force side menu that opens the camera
+/// and submits a storeless shelf capture (no outlet/store selection). Keyed off
+/// the client id like the other tenant gates so the policy lives in one place.
+/// Mirrors Android's `Entitlements.isMoiSoi` (same client id).
+private let MOISOI_CLIENT_ID = "d0000000-0000-4000-a000-000000000002"
 
 enum ClientFeatures {
     /// True when the signed-in user belongs to a steel-dealer tenant — Tata
@@ -40,6 +46,12 @@ enum ClientFeatures {
     /// the business-card scan shortcut, which BMW's leaner CRM doesn't use.
     static var isBmw: Bool {
         Session.currentUser?.clientId == BMW_CLIENT_ID
+    }
+
+    /// True when the signed-in user belongs to MoiSoi. Surfaces the one-tap
+    /// "Planogram" entry in the field-force side menu (storeless shelf capture).
+    static var isMoiSoi: Bool {
+        Session.currentUser?.clientId == MOISOI_CLIENT_ID
     }
 
     /// True when the signed-in user is a Consumer Champion (Tata Tiscon's
