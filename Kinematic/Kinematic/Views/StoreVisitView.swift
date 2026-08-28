@@ -22,7 +22,10 @@ struct StoreVisitView: View {
     }
 
     var resolvedActivities: [RouteActivity] {
-        // Priority 1: Backend aggregated activities array (newly supported)
+        // Priority 1: Backend aggregated activities array. A single visit can
+        // carry MULTIPLE assigned activities (the backend groups every
+        // route_plan_outlets row for the store into this array), so render them
+        // all — never collapse to one.
         let explicit = appState.selectedOutlet?.activities ?? []
         if !explicit.isEmpty { return explicit }
 
@@ -31,10 +34,42 @@ struct StoreVisitView: View {
             return [RouteActivity(id: activityId, name: "Store Activity", status: "pending")]
         }
 
-        // Priority 3: Testing Fallback: Ensure user can ALWAYS test the Test Form even if linkage is missing
-        return [
-            RouteActivity(id: "test_audit_001", name: "Test Product Audit", status: "pending")
-        ]
+        // No linkage → no synthetic "test" activity. Previously a fake
+        // "Test Product Audit" was injected here, which masked real multi-activity
+        // data and showed a bogus task on every outlet. The empty-state UI below
+        // handles "no tasks assigned".
+        return []
+    }
+
+    /// Distinct route-plan target types assigned for this outlet's activities.
+    /// Drives which extra per-visit actions (planogram audit, van-sales order)
+    /// are offered — so they appear ONLY when actually assigned, not by default.
+    private var assignedTargetTypes: Set<String> {
+        Set(resolvedActivities.compactMap { $0.targetType?.lowercased() }.filter { !$0.isEmpty && $0 != "general" })
+    }
+
+    /// Narrow name-based bridge for legacy plans whose target_type still
+    /// defaults to 'general' but whose activity is clearly of a given kind.
+    private func anyActivityNameContains(_ needles: [String]) -> Bool {
+        resolvedActivities.contains { act in
+            let n = (act.name ?? "").lowercased()
+            return needles.contains { n.contains($0) }
+        }
+    }
+
+    /// Planogram audit shows only when a merchandising / display-check activity
+    /// is assigned (or an activity explicitly named "planogram").
+    private var showPlanogramAudit: Bool {
+        !assignedTargetTypes.isDisjoint(with: ["merchandising", "display_check"]) ||
+        anyActivityNameContains(["planogram"])
+    }
+
+    /// Van-sales order / payment actions show only when an order-collection
+    /// activity is assigned (or an activity explicitly named "order"), AND the
+    /// distribution SKU is enabled.
+    private var showOrderActions: Bool {
+        hasDistribution &&
+        (assignedTargetTypes.contains("order_collection") || anyActivityNameContains(["order"]))
     }
 
     var isClockedIn: Bool {
@@ -199,13 +234,18 @@ struct StoreVisitView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 24)
                 } else {
-                    PlanogramAuditCard {
-                        if isVisitActive {
-                            showingPlanogramCapture = true
-                        } else {
-                            self.isStartingVisit = true
-                            startVisit()
-                            showingPlanogramCapture = true
+                    // Planogram audit is an ASSIGNED action, not a default one —
+                    // only surface it when a merchandising/display-check activity
+                    // is on this visit (see showPlanogramAudit).
+                    if showPlanogramAudit {
+                        PlanogramAuditCard {
+                            if isVisitActive {
+                                showingPlanogramCapture = true
+                            } else {
+                                self.isStartingVisit = true
+                                startVisit()
+                                showingPlanogramCapture = true
+                            }
                         }
                     }
 
@@ -239,11 +279,11 @@ struct StoreVisitView: View {
                     }
                 }
 
-                // ── Van Sales (distribution SKU only) ──────────────────────
+                // ── Van Sales (distribution SKU + assigned order activity) ──
                 // Order booking + payment collection for this outlet. Gated on
-                // the distribution package so non-distribution tenants see no
-                // change to the store-visit screen.
-                if hasDistribution {
+                // BOTH the distribution package AND an assigned order-collection
+                // activity, so these no longer appear on every visit by default.
+                if showOrderActions {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("VAN SALES")
                             .font(.system(size: 11, weight: .bold))
