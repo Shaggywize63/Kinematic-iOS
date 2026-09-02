@@ -278,6 +278,13 @@ struct ActivitySubmissionView: View {
                             for img in images {
                                 if let url = await KinematicRepository.shared.uploadImage(image: img, type: "activity_form") {
                                     uploadedUrls.append(url)
+                                } else if let data = img.jpegData(compressionQuality: 0.7) {
+                                    // OFFLINE / upload failed — cache the photo and use a
+                                    // `kinematic-offline://image-…` placeholder. The
+                                    // OfflineMutationQueue uploads it and rewrites the URL
+                                    // when the queued submission replays, so photos aren't
+                                    // lost when the rep captures with no signal.
+                                    uploadedUrls.append(OfflineImageCache.save(data))
                                 }
                             }
                             photoValue = uploadedUrls.joined(separator: ",")

@@ -1620,6 +1620,24 @@ struct RouteActivity: Codable, Identifiable {
     let id: String?
     let name: String?
     var status: String? // Changed to var for local state updates
+    // Route-plan assignment type: order_collection | merchandising | display_check
+    // | stock_check | scheme_communication | data_collection | general. Drives
+    // which per-visit actions the store-visit screen offers (planogram audit,
+    // book order …) so those appear only when actually assigned — see
+    // StoreVisitView.assignedTargetTypes.
+    var targetType: String?
+
+    init(id: String?, name: String?, status: String?, targetType: String? = nil) {
+        self.id = id
+        self.name = name
+        self.status = status
+        self.targetType = targetType
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, status
+        case targetType = "target_type"
+    }
 }
 
 // --- SERVICES ---
@@ -1781,26 +1799,44 @@ class KinematicRepository {
     private let cachedRoutePlanKey = "cached_route_plan_payload"
     
     func logVisit(outletId: String, lat: Double, lng: Double) async -> String? {
+        let payload: [String: Any] = [
+            "visit_outlet_id": outletId,
+            "latitude": lat,
+            "longitude": lng,
+            "rating": "good",
+            "remarks": "Visit started"
+        ]
         do {
-            let payload: [String: Any] = [
-                "visit_outlet_id": outletId,
-                "latitude": lat,
-                "longitude": lng,
-                "rating": "good",
-                "remarks": "Visit started"
-            ]
             let body = try? JSONSerialization.data(withJSONObject: payload)
-            
             // Using a generic [String: Any] response dictionary for flexibility with the visit log ID
             let res: ApiResponse<[String: String]>? = try await performRequest(
                 "/visits",
                 method: "POST",
                 body: body
             )
-            return res?.data?["id"]
+            // Server accepted but returned no id → still start the visit locally.
+            return res?.data?["id"] ?? "local_visit_\(UUID().uuidString)"
+        } catch let urlError as URLError where [
+            .notConnectedToInternet, .timedOut, .cannotConnectToHost,
+            .networkConnectionLost, .dataNotAllowed,
+        ].contains(urlError.code) {
+            // OFFLINE: queue the visit-start so it posts when connectivity
+            // returns, and hand back a local id so the rep can keep working
+            // through the visit (activities/forms submitted meanwhile queue too).
+            await MainActor.run {
+                OfflineMutationQueue.shared.enqueue(
+                    method: "POST",
+                    path: "/api/v1/visits",
+                    body: payload,
+                    displayLabel: "Store visit",
+                    clientId: Session.currentUser?.clientId,
+                    lastError: urlError.localizedDescription
+                )
+            }
+            return "local_visit_\(UUID().uuidString)"
         } catch {
-            print("❌ LOG_VISIT_ERROR: \(error). Returning MOCK_ID.")
-            return "mock_visit_\(UUID().uuidString)"
+            print("❌ LOG_VISIT_ERROR: \(error). Returning local id.")
+            return "local_visit_\(UUID().uuidString)"
         }
     }
     
@@ -2510,6 +2546,30 @@ class KinematicRepository {
                 body: body
             )
             return res?.success ?? false
+        } catch let urlError as URLError where [
+            .notConnectedToInternet, .timedOut, .cannotConnectToHost,
+            .networkConnectionLost, .dataNotAllowed,
+        ].contains(urlError.code) {
+            // OFFLINE: persist the submission for replay. Any captured photos are
+            // already `kinematic-offline://image-…` placeholders (see
+            // ActivitySubmissionView) which the queue uploads + rewrites on
+            // replay before POSTing. Encode → dict so the queue stores it verbatim.
+            if let body = try? JSONEncoder().encode(request),
+               let dict = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+                await MainActor.run {
+                    OfflineMutationQueue.shared.enqueue(
+                        method: "POST",
+                        path: "/api/v1/forms/submit",
+                        body: dict,
+                        displayLabel: "Form · \(request.outletName ?? "submission")",
+                        clientId: Session.currentUser?.clientId,
+                        lastError: urlError.localizedDescription
+                    )
+                }
+                return true // optimistic — queued, will sync when back online
+            }
+            print("❌ SUBMIT_FORM_OFFLINE_ENCODE_FAILED")
+            return false
         } catch {
             print("❌ SUBMIT_FORM_ERROR: \(error)")
             return false

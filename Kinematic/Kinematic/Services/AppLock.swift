@@ -37,6 +37,23 @@ final class LockManager: ObservableObject {
     /// the Settings toggle writes to `UserDefaults.standard` under this same key.
     static let enabledDefaultsKey = "app_lock_enabled"
 
+    /// Timestamp (seconds since 1970) of the last successful unlock. Used to cap
+    /// the prompt at once per CALENDAR DAY: after unlocking once today, minimising
+    /// and reopening the app neither re-prompts nor re-covers it until tomorrow.
+    static let lastUnlockDefaultsKey = "app_lock_last_unlocked_at"
+
+    /// True when the last successful unlock was earlier today — so we should not
+    /// prompt / cover again until the next calendar day.
+    private func unlockedToday() -> Bool {
+        let ts = UserDefaults.standard.double(forKey: Self.lastUnlockDefaultsKey)
+        guard ts > 0 else { return false }
+        return Calendar.current.isDateInToday(Date(timeIntervalSince1970: ts))
+    }
+
+    private func markUnlockedToday() {
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastUnlockDefaultsKey)
+    }
+
     /// True while the opaque lock overlay must cover the whole app.
     @Published private(set) var isLocked: Bool
     /// True while a biometric / passcode prompt is on screen. Suppresses a
@@ -46,9 +63,12 @@ final class LockManager: ObservableObject {
     @Published private(set) var didFail = false
 
     private init() {
-        // Cold launch: start locked if the feature is on AND a session exists.
+        // Cold launch: start locked if the feature is on AND a session exists —
+        // unless the user already unlocked today (the once-per-day cap).
         let enabled = UserDefaults.standard.bool(forKey: Self.enabledDefaultsKey)
-        isLocked = enabled && Session.isAuthenticated
+        let ts = UserDefaults.standard.double(forKey: Self.lastUnlockDefaultsKey)
+        let already = ts > 0 && Calendar.current.isDateInToday(Date(timeIntervalSince1970: ts))
+        isLocked = enabled && Session.isAuthenticated && !already
     }
 
     /// App Lock is on (Settings toggle) AND the user is signed in. Reads the
@@ -66,6 +86,12 @@ final class LockManager: ObservableObject {
             if isLocked { isLocked = false }
             return
         }
+        // Once-per-day cap: if the user already unlocked today, don't prompt or
+        // cover again — just reveal the app.
+        if unlockedToday() {
+            if isLocked { isLocked = false }
+            return
+        }
         // Auto-prompt when we become active and are locked — but NOT right after
         // a failed / cancelled attempt. Presenting the LA prompt briefly bounces
         // the scene through `.inactive` → `.active`; without this guard a cancel
@@ -79,6 +105,9 @@ final class LockManager: ObservableObject {
     /// the login screen and opted-out users are never covered.
     func handleBackground() {
         guard shouldGate else { return }
+        // Already unlocked today → leave it revealed so reopening won't re-cover
+        // or re-prompt (the once-per-day cap).
+        if unlockedToday() { return }
         isLocked = true
         didFail = false
         // Any prompt in flight is invalidated by the system when we background;
@@ -116,6 +145,7 @@ final class LockManager: ObservableObject {
                 guard let self else { return }
                 self.isAuthenticating = false
                 if success {
+                    self.markUnlockedToday()   // once-per-day cap
                     self.isLocked = false
                     self.didFail = false
                 } else {

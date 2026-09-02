@@ -72,6 +72,7 @@ struct LeadDetailView: View {
     @State private var shareBusy = false
     @State private var shareImage: UIImage? = nil
     @State private var showShareSheet = false
+    @State private var showProposal = false
 
     // MARK: Conversation Intelligence (Record call)
     // Whole feature is gated on `ClientFeatures.hasConversationIntel`
@@ -196,6 +197,17 @@ struct LeadDetailView: View {
                     Button("Edit") { editing = true }.tint(Brand.red)
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                // Generate an AI-tailored, branded proposal PDF from the lead's
+                // interested products, then share (WhatsApp / email) or save to phone.
+                if vm.lead != nil {
+                    Button { showProposal = true } label: {
+                        Image(systemName: "doc.badge.plus")
+                    }
+                    .tint(Brand.red)
+                    .accessibilityLabel("Generate proposal")
+                }
+            }
         }
         .sheet(isPresented: $editing) {
             if let lead = vm.lead {
@@ -204,6 +216,9 @@ struct LeadDetailView: View {
                     Task { await vm.load() }
                 }
             }
+        }
+        .sheet(isPresented: $showProposal) {
+            if let lead = vm.lead { GenerateProposalView(lead: lead) }
         }
         .sheet(isPresented: $converting) {
             if let lead = vm.lead {

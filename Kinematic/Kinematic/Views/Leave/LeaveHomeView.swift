@@ -306,7 +306,11 @@ private struct LeaveRequestRow: View {
     let onCancel: () async -> Void
     @State private var cancelling = false
 
-    private var isPending: Bool { (request.status ?? "pending").lowercased() == "pending" }
+    // Pending OR approved leave can be cancelled (matches the backend), so an
+    // approved leave is cancellable from mobile too.
+    private var isCancellable: Bool {
+        ["pending", "approved"].contains((request.status ?? "pending").lowercased())
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -331,7 +335,7 @@ private struct LeaveRequestRow: View {
             if let note = request.decisionNote, !note.isEmpty {
                 Text("Note: \(note)").font(.caption2).foregroundColor(.secondary).italic()
             }
-            if isPending {
+            if isCancellable {
                 Button {
                     Task { cancelling = true; await onCancel(); cancelling = false }
                 } label: {
