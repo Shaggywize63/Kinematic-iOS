@@ -67,6 +67,15 @@ final class CRMService {
         return try await get("/api/v1/crm/leads", query: q)
     }
     func getLead(id: String) async throws -> Lead { try await get("/api/v1/crm/leads/\(id)") }
+
+    // MARK: Proposals
+    /// Generate an AI-tailored, branded proposal PDF from the products a lead is
+    /// interested in. `items` are [{ product_id, name, sku, unit, unit_price,
+    /// quantity, discount_pct, tax_rate_pct }]. Returns the proposal incl. a
+    /// signed `pdf_url` the caller downloads to share / save to the phone.
+    func createProposal(leadId: String, title: String, items: [[String: Any]]) async throws -> Proposal {
+        try await postJSON("/api/v1/crm/leads/\(leadId)/proposals", body: ["title": title, "items": items])
+    }
     /// Lightweight geo points for the map — every geo-tagged lead (up to
     /// 5000), bypassing the 200-row list cap. Decodes into Lead (the geo
     /// payload is a subset of Lead's fields). Honours the city/state scope.
