@@ -538,3 +538,15 @@ struct LeadShareActivitySheet: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+
+/// A text activity item that also supplies an email subject. Added alongside a
+/// file item so the OS share sheet gives Mail a proper subject + body and gives
+/// WhatsApp a proper caption — instead of an attachment with no message.
+final class ShareTextItemSource: NSObject, UIActivityItemSource {
+    private let text: String
+    private let subject: String
+    init(text: String, subject: String) { self.text = text; self.subject = subject }
+    func activityViewControllerPlaceholderItem(_ controller: UIActivityViewController) -> Any { text }
+    func activityViewController(_ controller: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? { text }
+    func activityViewController(_ controller: UIActivityViewController, subjectForActivityType activityType: UIActivity.ActivityType?) -> String { subject }
+}

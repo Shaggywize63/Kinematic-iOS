@@ -193,10 +193,35 @@ struct GenerateProposalView: View {
             let name = "Proposal-\(gen.proposalNumber ?? gen.id).pdf".replacingOccurrences(of: "/", with: "-")
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(name)
             try data.write(to: tmp, options: .atomic)
-            shareItems = [tmp]
+            // Ship a proper subject + message body alongside the PDF so Mail /
+            // WhatsApp carry a real message, not a bare attachment.
+            let msg = ShareTextItemSource(text: shareMessage(gen), subject: shareSubject(gen))
+            shareItems = [tmp, msg]
             showShare = true
         } catch {
             errorText = "Could not prepare the PDF to share."
         }
+    }
+
+    /// Email subject line for the shared proposal.
+    private func shareSubject(_ gen: Proposal) -> String {
+        let base = gen.title ?? "Proposal"
+        if let n = gen.proposalNumber, !n.isEmpty { return "\(base) — \(n)" }
+        return base
+    }
+
+    /// Message body / caption — the AI cover note when present, else a courteous
+    /// fallback, with the headline total appended.
+    private func shareMessage(_ gen: Proposal) -> String {
+        var parts: [String] = []
+        let note = gen.coverNote?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let note, !note.isEmpty {
+            parts.append(note)
+        } else {
+            let n = (gen.proposalNumber?.isEmpty == false) ? " \(gen.proposalNumber!)" : ""
+            parts.append("Dear \(lead.displayName), please find attached our proposal\(n). We look forward to working with you.")
+        }
+        if let t = gen.grandTotal { parts.append("Proposal total: \(inr(t))") }
+        return parts.joined(separator: "\n\n")
     }
 }
