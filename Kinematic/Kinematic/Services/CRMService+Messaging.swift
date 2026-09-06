@@ -92,7 +92,7 @@ private extension CRMService {
     }
 
     func msgRequest(path: String, method: String, body: Data?, query: [String: String] = [:]) throws -> URLRequest {
-        let baseURL = URL(string: "https://kinematic-production.up.railway.app")!
+        let baseURL = URL(string: "https://api.kinematicapp.com")!
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         if !query.isEmpty {
             components?.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
