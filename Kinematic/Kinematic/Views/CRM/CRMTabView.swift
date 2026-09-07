@@ -41,28 +41,29 @@ struct CRMTabView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             TabView(selection: $selectedTab) {
-                // First tab is the analytics Dashboard for every tenant.
-                // The "Home" mission-control surface (CrmHomeMissionView)
-                // is still reachable from More → Insights → Dashboard if
-                // anyone needs it, but the daily-mission home was removed
-                // from the bottom bar at the user's request — reps land
-                // straight on the KPI tiles + date picker.
-                Tab("Dashboard", systemImage: "chart.bar.fill", value: 0) {
+                // Home — the lead-management mission-control landing
+                // (target ring, next-best-actions, closest-to-closing,
+                // today's activity, playbook). Restored to the first tab
+                // at the user's request so reps land on their day, not the
+                // KPI dashboard.
+                Tab("Home", systemImage: "house.fill", value: 0) {
+                    NavigationStack { CrmHomeMissionView() }
+                }
+                Tab("Dashboard", systemImage: "chart.bar.fill", value: 1) {
                     NavigationStack { CRMDashboardView() }
                 }
-                Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 1) {
+                Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 2) {
                     NavigationStack { LeadsListView() }
                 }
                 // Deals is the higher-frequency surface (list view, search,
                 // close actions) so it gets the bottom slot. Pipeline (the
                 // kanban view) moved into the More menu — same kanban,
                 // just one tap deeper.
-                Tab("Deals", systemImage: "indianrupeesign.circle.fill", value: 2) {
+                Tab("Deals", systemImage: "indianrupeesign.circle.fill", value: 3) {
                     NavigationStack { DealsListView() }
                 }
-                Tab("Activities", systemImage: "checkmark.square.fill", value: 3) {
-                    NavigationStack { ActivitiesView() }
-                }
+                // Activities moved into More at the user's request — it's a
+                // lower-frequency surface than Home/Leads/Deals for most reps.
                 Tab("More", systemImage: "ellipsis.circle", value: 4) {
                     NavigationStack { CRMMoreMenu(onExit: onExit) }
                 }
@@ -92,7 +93,7 @@ struct CRMTabView: View {
                 tourSeen = true
                 // Switch to the Leads tab so its anchors (search / add / a row)
                 // are laid out, then run the interactive spotlight.
-                selectedTab = 1
+                selectedTab = 2
                 spotlight.start(SpotlightStep.leadManagement)
             }
             guard canShowKiniFab else { return }
@@ -113,7 +114,7 @@ struct CRMTabView: View {
         .onChange(of: spotlight.replayRequested) { _, requested in
             if requested {
                 spotlight.replayRequested = false
-                selectedTab = 1
+                selectedTab = 2
                 spotlight.start(SpotlightStep.leadManagement)
             }
         }
@@ -190,6 +191,15 @@ struct CRMMoreMenu: View {
                     }
                 }
                 .foregroundColor(.primary)
+            }
+
+            // Activities — the rep's scheduled calls / meetings / tasks.
+            // Moved here from the bottom tab at the user's request; same
+            // ActivitiesView, now one tap into More.
+            Section("Work") {
+                NavigationLink {
+                    ActivitiesView()
+                } label: { MoreRow(icon: "checkmark.square.fill", title: "Activities", tint: Brand.red) }
             }
 
             // CRM module surfaces only what's actually available on the
