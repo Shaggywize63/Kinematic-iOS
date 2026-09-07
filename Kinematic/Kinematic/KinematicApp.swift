@@ -13,6 +13,10 @@ struct User: Codable, Identifiable {
     let mobile: String?
     let orgId: String?
     let clientId: String?
+    /// Human-readable organisation name (users → organisations.name), surfaced
+    /// flat by /auth/login and /auth/me as `org_name`. The Profile screen shows
+    /// this instead of the org_id UUID.
+    let orgName: String?
     /// Profile picture URL stored on users.avatar_url. Optional — the
     /// ProfileView falls back to a coloured initial circle when absent.
     let avatarUrl: String?
@@ -40,6 +44,7 @@ struct User: Codable, Identifiable {
         case id, name, email, role, mobile, permissions
         case orgId = "org_id"
         case clientId = "client_id"
+        case orgName = "org_name"
         case avatarUrl = "avatar_url"
         case enabledModules = "enabled_modules"
         case enabledPackages = "enabled_packages"
@@ -57,6 +62,7 @@ struct User: Codable, Identifiable {
         mobile          = try c.decodeIfPresent(String.self, forKey: .mobile)
         orgId           = try c.decodeIfPresent(String.self, forKey: .orgId)
         clientId        = try c.decodeIfPresent(String.self, forKey: .clientId)
+        orgName         = try c.decodeIfPresent(String.self, forKey: .orgName)
         avatarUrl       = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
         enabledModules  = (try? c.decode([String].self, forKey: .enabledModules)) ?? []
         enabledPackages = (try? c.decode([String].self, forKey: .enabledPackages)) ?? []

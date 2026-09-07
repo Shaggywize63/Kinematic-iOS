@@ -2,22 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Push Notifications is temporarily disabled for the first App Store /
-	     TestFlight build. The `aps-environment` entitlement forces Apple's
-	     managed signing to mint a Push-capable provisioning profile at export
-	     time; on this newly-approved account that export was failing
-	     (xcodebuild -exportArchive exit 70) because the App ID's Push
-	     capability / signing team was not yet lined up, which blocked the
-	     whole build even though the app compiled cleanly.
+	<!-- Push Notifications. Without this key the app can never obtain an APNs
+	     device token, so it never registers one with the backend, so
+	     users.apns_token stays NULL and the dispatcher skips every iOS push —
+	     which is why notifications weren't arriving on iOS. The backend APNs
+	     wiring (APNS_* env) and PushNotificationManager are already in place.
 
-	     To RE-ENABLE push once the App ID has Push Notifications enabled under
-	     the same team Xcode Cloud signs with, restore the single key below:
+	     "development" is re-signed to "production" APNs automatically by
+	     App Store / TestFlight distribution.
 
-	         <key>aps-environment</key>
-	         <string>development</string>
-
-	     (Xcode/App Store distribution re-signs "development" to "production"
-	     APNs automatically.) The PushNotificationManager wiring is already in
-	     place, so this file is the only change needed to turn push back on. -->
+	     PREREQUISITE (Apple Developer portal, outside this repo): the App ID
+	     `com.shaggywize63.kinematic` MUST have the Push Notifications capability
+	     enabled under the SAME team Xcode Cloud / fastlane signs with. Managed
+	     signing mints a Push-capable provisioning profile from this key at
+	     export time; if the App ID lacks the capability the archive export
+	     fails with `xcodebuild -exportArchive` exit 70 (this is why it was
+	     previously disabled). Enable Push on the App ID before building. -->
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>
