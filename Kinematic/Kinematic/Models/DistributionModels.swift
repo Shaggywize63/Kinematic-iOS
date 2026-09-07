@@ -441,3 +441,64 @@ struct DamageEntryInput: Encodable {
     let unit_value: Double?
     let note: String?
 }
+
+// ── Supply Chain — batch & expiry (FEFO stock batches + receiving/GRN) ─────
+// Backs GET /distribution/batches, GET /distribution/batches/alerts and
+// POST /distribution/receiving. The DistributionAPI decoder is a plain
+// JSONDecoder (no snake_case strategy), so keys stay snake_case to match the
+// payload — same convention as DamageEntry / DistributorStockRow above.
+// Quantities are decoded as Double so a numeric column that comes back
+// fractional (or as `100.0`) never fails; the join/detail fields are optional
+// to tolerate a sparse row (a fresh POST response may omit the sku join or the
+// dates the GET list carries). `days_to_expiry` is negative once expired.
+
+struct StockBatch: Codable, Identifiable {
+    let id: String
+    let batch_no: String?
+    let sku_id: String
+    let sku_name: String?
+    let sku_code: String?
+    let distributor_id: String?
+    let expiry_date: String?
+    let mfg_date: String?
+    let received_at: String?
+    let qty_received: Double
+    let qty_remaining: Double
+    let unit_cost: Double?
+    let status: String          // "active" | "near_expiry" | "expired"
+    let days_to_expiry: Int?
+}
+
+struct BatchAlertCounts: Codable {
+    let near_expiry: Int
+    let expired: Int
+    let total: Int
+}
+
+struct BatchAlerts: Codable {
+    let near_expiry: [StockBatch]
+    let expired: [StockBatch]
+    let counts: BatchAlertCounts
+}
+
+// POST /distribution/receiving returns `{ batch, balance }`. We only need the
+// created batch to confirm success + refresh; `balance` is ignored (extra keys
+// are dropped by Codable). `decode()` transparently unwraps a `{success,data}`
+// envelope or takes the bare object.
+struct ReceiveBatchResult: Codable {
+    let batch: StockBatch
+}
+
+// Encodable-only input for POST /distribution/receiving. Optional fields are
+// synthesized with encodeIfPresent, so nil batch/expiry/mfg/unit_cost/reference
+// are omitted from the body entirely (matching the backend's optional contract).
+struct ReceiveBatchInput: Encodable {
+    let distributor_id: String
+    let sku_id: String
+    let qty: Double
+    let batch_no: String?
+    let expiry_date: String?
+    let mfg_date: String?
+    let unit_cost: Double?
+    let reference: String?
+}

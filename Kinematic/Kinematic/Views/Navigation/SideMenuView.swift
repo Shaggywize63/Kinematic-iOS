@@ -142,6 +142,19 @@ struct SideMenuView: View {
                         }
                     }
 
+                    // ── Stock & Batches (module distribution_batches) — Supply
+                    //    Chain FEFO batch / expiry view + Receive (GRN). STRICT
+                    //    entitlement gate (ClientFeatures.hasDistributionBatches):
+                    //    unlike the lenient `hasModule` rows above, an empty
+                    //    legacy-session module list must NOT surface this, so we
+                    //    read enabled_modules directly. Off by default.
+                    if ClientFeatures.hasDistributionBatches {
+                        MenuButton(icon: "calendar.badge.exclamationmark", title: "Stock & Batches", isSelected: false, color: .purple) {
+                            withAnimation { isOpen = false }
+                            appState.activeSecondaryRoute = ModalRoute(route: .stockBatches)
+                        }
+                    }
+
                     MenuButton(icon: "person.fill", title: "My Profile", isSelected: false, color: .orange) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .profile)

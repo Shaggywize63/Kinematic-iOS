@@ -110,6 +110,26 @@ enum ClientFeatures {
         Session.currentUser?.enabledModules.contains("field_expenses") == true
     }
 
+    /// Supply Chain — Batch & Expiry module (distribution_batches, off by
+    /// default). STRICT entitlement check (like `hasConversationIntel`): an empty
+    /// legacy-session module list must NOT surface the FEFO batch / expiry
+    /// screen or its alerts, so we read `enabled_modules` directly rather than
+    /// the lenient `User.hasModule`, whose legacy fallback reads an empty list as
+    /// full access. No `distribution_batches` module ⇒ the Stock & Batches nav
+    /// row and screen never render.
+    static var hasDistributionBatches: Bool {
+        Session.currentUser?.enabledModules.contains("distribution_batches") == true
+    }
+
+    /// Supply Chain — Receiving / GRN module (distribution_receiving, off by
+    /// default). STRICT check (same rationale as `hasDistributionBatches`): the
+    /// Receive (GRN) form is only reachable when the rep's org explicitly holds
+    /// this module. Empty legacy-session module list ⇒ the Receive control is
+    /// hidden entirely.
+    static var hasDistributionReceiving: Bool {
+        Session.currentUser?.enabledModules.contains("distribution_receiving") == true
+    }
+
     // MARK: - SRS TATA Steel slimmed build
 
     /// True when the signed-in user belongs to SRS TATA Steel. This is the

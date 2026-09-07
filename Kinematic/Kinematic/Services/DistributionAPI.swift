@@ -215,6 +215,34 @@ struct DistributionAPI {
         let data = try await request("/distribution/damage\(q)")
         return try decode(data)
     }
+
+    // ── Supply Chain — batch & expiry (FEFO batches + receiving/GRN) ───────────
+    /// Stock batches for a distributor. `status` filters active | near_expiry |
+    /// expired | all (default all when nil); `nearDays` overrides the server's
+    /// near-expiry window. Rows include days_to_expiry for FEFO ordering.
+    func fetchBatches(distributorId: String, status: String? = nil, nearDays: Int? = nil) async throws -> [StockBatch] {
+        var q = "?distributor_id=\(distributorId)"
+        if let status = status, !status.isEmpty { q += "&status=\(status)" }
+        if let nearDays = nearDays { q += "&near_days=\(nearDays)" }
+        let data = try await request("/distribution/batches\(q)")
+        return try decode(data)
+    }
+    /// Near-expiry / expired rollup for a distributor. `withinDays` sets the
+    /// near-expiry window (server default when nil). Backs the alerts summary.
+    func fetchBatchAlerts(distributorId: String, withinDays: Int? = nil) async throws -> BatchAlerts {
+        var q = "?distributor_id=\(distributorId)"
+        if let withinDays = withinDays { q += "&within_days=\(withinDays)" }
+        let data = try await request("/distribution/batches/alerts\(q)")
+        return try decode(data)
+    }
+    /// Receive stock (GRN) against a distributor — opens (or tops up) a batch.
+    /// The Idempotency-Key guards against a double-submit on a slow network.
+    /// Returns the created / updated batch (the `balance` field is discarded).
+    func receiveBatch(_ input: ReceiveBatchInput, idempotencyKey: String) async throws -> StockBatch {
+        let data = try await request("/distribution/receiving", method: "POST", body: input, idempotencyKey: idempotencyKey)
+        let result: ReceiveBatchResult = try decode(data)
+        return result.batch
+    }
 }
 
 /// Erases the static type so request() can encode any Encodable. Apple's
