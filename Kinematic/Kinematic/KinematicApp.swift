@@ -101,6 +101,9 @@ extension User {
 enum SecondaryRoute: String, Identifiable {
     case profile, broadcast, learning, settings, camera
     case leaderboard, notifications, grievance, visitlog, stock, sos, activity
+    // CRM lead-management Home (mission control) — universal; opened when a
+    // daily-briefing notification is tapped (data.kind == "crm_home").
+    case crmHome
     // Leave management + attendance regularization (universal — available to
     // every client, gated only by the API/role, not by a package SKU).
     case leave
@@ -148,7 +151,7 @@ enum SecondaryRoute: String, Identifiable {
     var requiredPackage: String? {
         switch self {
         // Universal — every client gets these
-        case .profile, .settings, .learning, .notifications, .sos, .leave:
+        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome:
             return nil
         // Field Force
         case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:

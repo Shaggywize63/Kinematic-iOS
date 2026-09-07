@@ -51,6 +51,8 @@ struct SecondaryScreenHost: View {
                             LeaderboardView()
                         case .notifications:
                             NotificationsView()
+                        case .crmHome:
+                            CrmHomeMissionView()
                         case .grievance:
                             GrievanceView()
                         case .visitlog:
