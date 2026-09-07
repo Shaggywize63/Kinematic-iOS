@@ -520,7 +520,7 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 1) {
             ProfileRow(icon: "envelope.fill", label: "Email", value: user?.email ?? "Not logged")
             ProfileRow(icon: "phone.fill", label: "Mobile", value: user?.mobile ?? "NA")
-            ProfileRow(icon: "building.2.fill", label: "Organization", value: user?.orgId ?? "Kinematic Global")
+            ProfileRow(icon: "building.2.fill", label: "Organization", value: user?.orgName ?? "Kinematic Global")
         }
         .background(Color.white.opacity(0.03))
         .cornerRadius(20)
