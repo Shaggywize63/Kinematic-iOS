@@ -111,7 +111,23 @@ enum SecondaryRoute: String, Identifiable {
     case vanLoad
     // Damage / expiry register Wave B — gated on its own module id (OFF by default).
     case damageLog
+    // Supply Chain — batch & expiry (+ receiving/GRN). STRICT-gated (see
+    // `strictModule`): only clients explicitly granted `distribution_batches`.
+    case stockBatches
     var id: String { rawValue }
+
+    /// Module ids that ship OFF by default AND must be gated STRICTLY — an empty
+    /// legacy-session module list must NOT open them (unlike `requiredModule`,
+    /// whose `hasModule` fallback treats a legacy session as full access). Keyed
+    /// to the same module ids as `ClientFeatures.hasDistributionBatches` so the
+    /// sheet can't be reached by a pre-entitlement session even if a nav row
+    /// somehow rendered.
+    var strictModule: String? {
+        switch self {
+        case .stockBatches: return "distribution_batches"
+        default:            return nil
+        }
+    }
 
     /// Fine-grained module id this route requires, checked ahead of the package
     /// gate. Non-nil only for capabilities that ship OFF by default via
@@ -142,13 +158,19 @@ enum SecondaryRoute: String, Identifiable {
              .paymentCollect, .returns, .secondarySales:
             return "distribution"
         // Module-gated distribution routes — no package fallback; the module
-        // gate above (`requiredModule`) is the sole entitlement check.
-        case .vanLoad, .distributorStock, .damageLog:
+        // gate above (`requiredModule` / `strictModule`) is the sole check.
+        case .vanLoad, .distributorStock, .damageLog, .stockBatches:
             return nil
         }
     }
 
     func isAvailable(for user: User?) -> Bool {
+        // STRICT module routes (Supply Chain batch/expiry): require an explicit
+        // grant with no legacy fallback, so a pre-entitlement session can't open
+        // the sheet. Mirrors ClientFeatures.hasDistributionBatches.
+        if let strict = strictModule {
+            return user?.enabledModules.contains(strict) == true
+        }
         // A specific module id (Van Load / Distributor Stock) wins over the
         // package gate, mirroring how SideMenuView reads `hasModule(...)`.
         if let mod = requiredModule {
