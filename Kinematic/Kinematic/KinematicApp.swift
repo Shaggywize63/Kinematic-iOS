@@ -17,6 +17,11 @@ struct User: Codable, Identifiable {
     /// flat by /auth/login and /auth/me as `org_name`. The Profile screen shows
     /// this instead of the org_id UUID.
     let orgName: String?
+    /// Admin-configured live-tracking cadence in seconds (org_settings
+    /// `location_ping_interval_seconds`; 300/600/900 = 5/10/15 min). Drives the
+    /// location-ping timer so the admin's choice actually takes effect on iOS.
+    /// Absent on stale sessions → falls back to the previous 5-min default.
+    let locationPingIntervalSeconds: Int?
     /// Profile picture URL stored on users.avatar_url. Optional — the
     /// ProfileView falls back to a coloured initial circle when absent.
     let avatarUrl: String?
@@ -45,6 +50,7 @@ struct User: Codable, Identifiable {
         case orgId = "org_id"
         case clientId = "client_id"
         case orgName = "org_name"
+        case locationPingIntervalSeconds = "location_ping_interval_seconds"
         case avatarUrl = "avatar_url"
         case enabledModules = "enabled_modules"
         case enabledPackages = "enabled_packages"
@@ -63,6 +69,7 @@ struct User: Codable, Identifiable {
         orgId           = try c.decodeIfPresent(String.self, forKey: .orgId)
         clientId        = try c.decodeIfPresent(String.self, forKey: .clientId)
         orgName         = try c.decodeIfPresent(String.self, forKey: .orgName)
+        locationPingIntervalSeconds = try? c.decode(Int.self, forKey: .locationPingIntervalSeconds)
         avatarUrl       = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
         enabledModules  = (try? c.decode([String].self, forKey: .enabledModules)) ?? []
         enabledPackages = (try? c.decode([String].self, forKey: .enabledPackages)) ?? []
@@ -270,9 +277,14 @@ class KiniAppState: ObservableObject {
     
     func startTrackingTimer() {
         guard trackingTimer == nil else { return }
-        print("📡 [KiniAppState] Initializing Live Tracking Cycle (5min)")
-        
-        trackingTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        // Honor the admin-configured cadence (org_settings location_ping_interval_seconds,
+        // 300/600/900 = 5/10/15 min) delivered on /auth/me + login. Clamp to a sane range
+        // and fall back to the previous 5-min default for stale sessions that lack the field.
+        let configured = Session.currentUser?.locationPingIntervalSeconds ?? 300
+        let interval = TimeInterval(min(max(configured, 60), 3600))
+        print("📡 [KiniAppState] Initializing Live Tracking Cycle (\(Int(interval))s)")
+
+        trackingTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { [weak self] in
                 await self?.performLivePing()
             }
