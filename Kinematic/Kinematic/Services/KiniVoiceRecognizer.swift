@@ -15,6 +15,11 @@ import Speech
 final class KiniVoiceRecognizer: ObservableObject {
     @Published private(set) var isListening: Bool = false
     @Published private(set) var permissionError: String? = nil
+    /// Smoothed microphone amplitude in 0…1, published live while listening so
+    /// the voice UI (the animated orb) can react to how loudly the user speaks.
+    /// Computed as RMS of each captured buffer, mapped with gain and low-pass
+    /// smoothed so the animation reads as organic rather than jittery.
+    @Published private(set) var level: CGFloat = 0
 
     private let recognizer: SFSpeechRecognizer? = SFSpeechRecognizer(locale: Locale(identifier: "en-IN"))
         ?? SFSpeechRecognizer(locale: Locale.current)
@@ -59,6 +64,7 @@ final class KiniVoiceRecognizer: ObservableObject {
         request = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
         isListening = false
+        level = 0
     }
 
     private func beginRecording(onTranscript: @escaping (String) -> Void) {
@@ -83,6 +89,20 @@ final class KiniVoiceRecognizer: ObservableObject {
         let format = input.outputFormat(forBus: 0)
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             self?.request?.append(buffer)
+            // Live amplitude for the voice orb: RMS of the first channel, mapped
+            // with gain (speech RMS runs ~0.02–0.2) and low-pass smoothed on the
+            // main actor so the animation reads organic, not jittery.
+            guard let ch = buffer.floatChannelData?[0] else { return }
+            let n = Int(buffer.frameLength)
+            if n == 0 { return }
+            var sum: Float = 0
+            for i in 0..<n { let s = ch[i]; sum += s * s }
+            let rms = (sum / Float(n)).squareRoot()
+            let norm = min(1, CGFloat(rms) * 9)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.level = self.level * 0.55 + norm * 0.45
+            }
         }
 
         do {

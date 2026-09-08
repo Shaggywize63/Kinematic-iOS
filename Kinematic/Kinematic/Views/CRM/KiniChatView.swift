@@ -2,23 +2,23 @@ import AVFoundation
 import Combine
 import SwiftUI
 
+// Brand palette (file-local so the redesign is self-contained).
 private let brandRed = Color(red: 0xE0/255, green: 0x1E/255, blue: 0x2C/255)
 private let brandRedLight = Color(red: 0xFF/255, green: 0x4D/255, blue: 0x4D/255)
 private let brandBlue = Color(red: 0x1E/255, green: 0x3A/255, blue: 0x8A/255)
-private let headerGradient = LinearGradient(
-    colors: [brandRed, brandRedLight, brandBlue],
-    startPoint: .topLeading,
-    endPoint: .bottomTrailing
-)
+private let orbGradient = [brandRedLight, brandRed, brandBlue]
 
-/// KINI agentic copilot — chat surface with two modes:
-/// 1) Tap-to-talk text: type or hold mic, hit send.
-/// 2) Hands-free voice: header pill toggle. After every assistant reply,
-///    TTS speaks the text; when speech ends, the mic auto-reopens for the
-///    next turn. Toggling OFF silences mid-speech and cancels listening.
+/// KINI agentic copilot — redesigned chat surface.
 ///
-/// Tool-use results from the backend land in `m.cards` and render via
-/// `KiniToolResultCard` — agentic create/update results appear inline.
+/// - Modern message list with an assistant avatar, refined bubbles, inline
+///   tool-result cards, a "thinking" indicator, empty-state suggestions and
+///   follow-up chips.
+/// - Voice input: tapping the mic opens a full-screen **listening overlay**
+///   built around a live voice orb that reacts to the caller's microphone
+///   amplitude (`KiniVoiceRecognizer.level`). Transcription streams into the
+///   composer; releasing sends.
+/// - Optional hands-free loop (header toggle) still speaks replies via TTS and
+///   re-opens the mic after each turn.
 struct KiniChatView: View {
     @StateObject var vm = KINIChatViewModel()
     @StateObject private var voice = KiniVoiceRecognizer()
@@ -34,149 +34,228 @@ struct KiniChatView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
+        ZStack {
+            Color(uiColor: .systemBackground).ignoresSafeArea()
 
-            if capped, let u = vm.usage {
-                Text("You've used all \(u.cap) AI queries this month. The counter resets on the 1st.")
-                    .font(.caption)
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Brand.red.opacity(0.12))
+            VStack(spacing: 0) {
+                header
+                if capped { quotaBanner }
+                transcriptList
+                composer
             }
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        if vm.messages.isEmpty && !vm.isSending {
-                            emptyState
-                        }
-                        ForEach(vm.messages) { m in
-                            bubble(for: m).id(m.id)
-                        }
-                        if vm.isSending {
-                            workingIndicator
-                        } else if let last = vm.messages.last, last.role == "assistant" {
-                            // Follow-up chips after every assistant turn so the
-                            // conversation has obvious next steps without
-                            // forcing the rep to type. Each fires the same
-                            // agentic loop a typed prompt would.
-                            followUpChips
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-                }
-                .onChange(of: vm.messages.count) { _, _ in
-                    if let last = vm.messages.last {
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
-                    // Hands-free: speak each new assistant reply.
-                    if handsFree, vm.messages.count > lastSpokenMessageCount,
-                       let m = vm.messages.last, m.role == "assistant", !m.content.isEmpty {
-                        speaker.speak(m.content)
-                    }
-                    lastSpokenMessageCount = vm.messages.count
-                }
+            // Full-screen listening overlay — the voice-animation centrepiece.
+            if voice.isListening {
+                voiceOverlay
+                    .transition(.opacity.combined(with: .scale(scale: 1.02)))
+                    .zIndex(10)
             }
-
-            // Live voice/speech state strip — only visible during an active
-            // voice interaction. Replaces guesswork about whether the mic
-            // is hot or KINI is talking.
-            if voice.isListening || speaker.isSpeaking {
-                voiceStateStrip
-            }
-
-            Divider()
-
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField(capped ? "Monthly quota reached — resets on the 1st" : "Ask KINI to act on your CRM…",
-                          text: $vm.draft, axis: .vertical)
-                    .lineLimit(1...4)
-                    .disabled(capped)
-                    .padding(10)
-                    .background(Color(uiColor: .secondarySystemBackground))
-                    .cornerRadius(12)
-
-                if voice.isAvailable {
-                    Button {
-                        toggleSingleShotMic()
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(voice.isListening ? brandRed : Color(uiColor: .secondarySystemBackground))
-                                .frame(width: 40, height: 40)
-                            Image(systemName: voice.isListening ? "mic.fill" : "mic")
-                                .foregroundColor(voice.isListening ? .white : .primary)
-                                .font(.system(size: 16, weight: .bold))
-                        }
-                    }
-                    .disabled(capped || vm.isSending)
-                }
-
-                Button {
-                    Task { await vm.send() }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient(colors: [brandRed, brandRedLight],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 40, height: 40)
-                        if vm.isSending {
-                            ProgressView().tint(.white)
-                        } else {
-                            Image(systemName: "arrow.up")
-                                .foregroundColor(.white)
-                                .font(.system(size: 16, weight: .black))
-                        }
-                    }
-                }
-                .disabled(vm.draft.trimmingCharacters(in: .whitespaces).isEmpty || vm.isSending || capped)
-                .opacity((vm.draft.trimmingCharacters(in: .whitespaces).isEmpty || capped) ? 0.5 : 1)
-            }
-            .padding()
         }
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        // Auto-send when the recognizer ends a turn while hands-free is on.
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: voice.isListening)
+        // Hands-free: after the recognizer ends a turn, auto-send the draft.
         .onChange(of: voice.isListening) { wasListening, isNow in
-            guard wasListening && !isNow else { return }
-            guard pendingAutoSend else { return }
+            guard wasListening && !isNow, pendingAutoSend else { return }
             pendingAutoSend = false
             let txt = vm.draft.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !txt.isEmpty else { return }
             Task { await vm.send() }
         }
-        // When speech ends, give the mic back to the user — but only if
-        // hands-free is still on (toggling off mid-speech kills the loop).
         .onChange(of: speaker.isSpeaking) { wasSpeaking, isNow in
             guard wasSpeaking && !isNow else { return }
             if handsFree { startMicForAutoSend() }
         }
         .onChange(of: handsFree) { _, on in
-            if on {
-                // First turn — open the mic so the user can start talking.
-                startMicForAutoSend()
-            } else {
-                voice.stop()
-                speaker.stop()
-            }
+            if on { startMicForAutoSend() } else { voice.stop(); speaker.stop() }
         }
-        .onDisappear {
-            voice.stop()
-            speaker.stop()
+        .onDisappear { voice.stop(); speaker.stop() }
+    }
+
+    // MARK: - Transcript
+
+    private var transcriptList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 14) {
+                    if vm.messages.isEmpty && !vm.isSending {
+                        emptyState
+                    }
+                    ForEach(vm.messages) { m in
+                        bubble(for: m).id(m.id)
+                    }
+                    if vm.isSending {
+                        workingIndicator
+                    } else if let last = vm.messages.last, last.role == "assistant" {
+                        followUpChips
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+            }
+            .onChange(of: vm.messages.count) { _, _ in
+                if let last = vm.messages.last {
+                    withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
+                if handsFree, vm.messages.count > lastSpokenMessageCount,
+                   let m = vm.messages.last, m.role == "assistant", !m.content.isEmpty {
+                    speaker.speak(m.content)
+                }
+                lastSpokenMessageCount = vm.messages.count
+            }
         }
     }
 
-    private func toggleSingleShotMic() {
-        if voice.isListening {
-            voice.stop()
-        } else {
-            pendingAutoSend = false        // single-shot: stream into draft, don't auto-send
-            voice.start { text in vm.draft = text }
+    // MARK: - Composer (input bar)
+
+    private var composer: some View {
+        VStack(spacing: 0) {
+            LinearGradient(colors: [Color(uiColor: .separator).opacity(0.0), Color(uiColor: .separator).opacity(0.35)],
+                           startPoint: .top, endPoint: .bottom)
+                .frame(height: 1)
+            HStack(alignment: .bottom, spacing: 10) {
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField(capped ? "Monthly quota reached — resets on the 1st" : "Ask KINI to act on your CRM…",
+                              text: $vm.draft, axis: .vertical)
+                        .lineLimit(1...5)
+                        .disabled(capped)
+                        .font(.system(size: 15))
+                        .padding(.vertical, 4)
+
+                    if voice.isAvailable {
+                        Button { enterVoiceMode() } label: {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(brandRed)
+                                .frame(width: 30, height: 30)
+                                .background(Circle().fill(brandRed.opacity(0.10)))
+                        }
+                        .disabled(capped || vm.isSending)
+                        .accessibilityLabel("Speak to KINI")
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemBackground))
+                        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 1))
+                )
+
+                sendButton
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
+        .background(Color(uiColor: .systemBackground))
+    }
+
+    private var sendButton: some View {
+        let empty = vm.draft.trimmingCharacters(in: .whitespaces).isEmpty
+        return Button { Task { await vm.send() } } label: {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(colors: empty || capped ? [Color.gray.opacity(0.4), Color.gray.opacity(0.4)] : [brandRedLight, brandRed],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 44, height: 44)
+                    .shadow(color: (empty || capped) ? .clear : brandRed.opacity(0.35), radius: 8, y: 3)
+                if vm.isSending {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "arrow.up")
+                        .foregroundColor(.white)
+                        .font(.system(size: 17, weight: .black))
+                }
+            }
+        }
+        .disabled(empty || vm.isSending || capped)
+        .animation(.easeInOut(duration: 0.15), value: empty)
+    }
+
+    // MARK: - Voice overlay (the animation)
+
+    private var voiceOverlay: some View {
+        ZStack {
+            // Dimmed, blurred backdrop over the conversation.
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+                .overlay(Color.black.opacity(0.25).ignoresSafeArea())
+                .onTapGesture { } // swallow taps behind the controls
+
+            VStack(spacing: 28) {
+                Spacer()
+
+                VoiceOrb(level: voice.level, active: true)
+                    .frame(width: 300, height: 300)
+
+                VStack(spacing: 8) {
+                    Text("Listening…")
+                        .font(.system(size: 13, weight: .heavy))
+                        .tracking(1.6)
+                        .foregroundColor(brandRed)
+                    Text(vm.draft.isEmpty ? "Say something like “show my hottest leads”" : vm.draft)
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundColor(vm.draft.isEmpty ? .secondary : .primary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(4)
+                        .padding(.horizontal, 28)
+                        .animation(.easeOut(duration: 0.15), value: vm.draft)
+                }
+
+                Spacer()
+
+                HStack(spacing: 22) {
+                    // Cancel — discard what was heard.
+                    Button { voice.stop(); pendingAutoSend = false; vm.draft = "" } label: {
+                        overlayControl(system: "xmark", tint: .secondary, bg: Color(uiColor: .secondarySystemBackground))
+                    }
+                    .accessibilityLabel("Cancel voice")
+
+                    // Send — stop the mic and fire the turn.
+                    Button {
+                        voice.stop()
+                        let txt = vm.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !txt.isEmpty { Task { await vm.send() } }
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(colors: [brandRedLight, brandRed], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 76, height: 76)
+                                .shadow(color: brandRed.opacity(0.45), radius: 16, y: 6)
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 26, weight: .black))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .disabled(vm.draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .opacity(vm.draft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+                    .accessibilityLabel("Send")
+
+                    // Keyboard — bail to typing.
+                    Button { voice.stop(); pendingAutoSend = false } label: {
+                        overlayControl(system: "keyboard", tint: .secondary, bg: Color(uiColor: .secondarySystemBackground))
+                    }
+                    .accessibilityLabel("Switch to keyboard")
+                }
+                .padding(.bottom, 44)
+            }
+        }
+    }
+
+    private func overlayControl(system: String, tint: Color, bg: Color) -> some View {
+        Image(systemName: system)
+            .font(.system(size: 20, weight: .bold))
+            .foregroundColor(tint)
+            .frame(width: 58, height: 58)
+            .background(Circle().fill(bg))
+            .overlay(Circle().stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 1))
+    }
+
+    private func enterVoiceMode() {
+        pendingAutoSend = false     // single-shot: stream into the composer, send on the ↑ control
+        vm.draft = ""
+        voice.start { text in vm.draft = text }
     }
 
     private func startMicForAutoSend() {
@@ -186,196 +265,157 @@ struct KiniChatView: View {
         voice.start { text in vm.draft = text }
     }
 
-    private var voiceStateStrip: some View {
-        HStack(spacing: 10) {
-            PulsingDot(color: voice.isListening ? brandRed : brandBlue)
-            Text(voice.isListening ? "Listening…  \(vm.draft)" : "KINI is speaking…")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(voice.isListening ? brandRed : brandBlue)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Cancel") {
-                voice.stop()
-                speaker.stop()
-                pendingAutoSend = false
-            }
-            .font(.system(size: 12, weight: .bold))
-            .foregroundColor(voice.isListening ? brandRed : brandBlue)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .background((voice.isListening ? brandRed : brandBlue).opacity(0.08))
-    }
+    // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 11) {
             if let onClose {
                 Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 32, height: 32)
-                        .background(Color.white.opacity(0.18))
-                        .clipShape(Circle())
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.primary)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color(uiColor: .secondarySystemBackground)))
                 }
             }
+
             ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white)
-                    .frame(width: 36, height: 36)
-                KiniMascotView(size: 30)
+                Circle()
+                    .fill(LinearGradient(colors: orbGradient, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 38, height: 38)
+                KiniMascotView(size: 26)
             }
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text("Kini AI")
-                        .font(.system(size: 15, weight: .black))
-                        .foregroundColor(.white)
-                    Text("CRM")
-                        .font(.system(size: 9, weight: .black))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(Color.white.opacity(0.18))
-                        .clipShape(Capsule())
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Kini AI")
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundColor(.primary)
+                HStack(spacing: 5) {
+                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                    Text("Agentic CRM copilot")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
                 }
-                Text("AGENTIC CRM COPILOT")
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.2)
-                    .foregroundColor(.white.opacity(0.9))
             }
+
             Spacer()
-            // Hands-free toggle pill — turning this on starts the
-            // listen→answer→speak→listen loop.
-            Button { handsFree.toggle() } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: handsFree ? "ear.fill" : "ear")
-                        .font(.system(size: 11, weight: .bold))
-                    Text(handsFree ? "Voice ON" : "Voice")
-                        .font(.system(size: 10, weight: .black))
-                }
-                .foregroundColor(handsFree ? brandRed : .white)
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(handsFree ? Color.white : Color.white.opacity(0.18))
-                .clipShape(Capsule())
-            }
+
             if let u = vm.usage, !u.exempt {
                 Text("\(u.used)/\(u.cap)")
-                    .font(.system(size: 10, weight: .black))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(u.remaining == 0 ? Color.black.opacity(0.35) : Color.white.opacity(0.18))
-                    .clipShape(Capsule())
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(u.remaining == 0 ? brandRed : .secondary)
+                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .background(Capsule().fill(Color(uiColor: .secondarySystemBackground)))
             }
-            Button(action: { vm.reset(); lastSpokenMessageCount = 0 }) {
-                Text("Clear")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(Color.white.opacity(0.18))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Menu {
+                Button { handsFree.toggle() } label: {
+                    Label(handsFree ? "Turn off spoken replies" : "Turn on spoken replies",
+                          systemImage: handsFree ? "speaker.slash" : "speaker.wave.2")
+                }
+                Button(role: .destructive) { vm.reset(); lastSpokenMessageCount = 0 } label: {
+                    Label("Clear conversation", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.primary)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(Color(uiColor: .secondarySystemBackground)))
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(headerGradient)
+        .padding(.vertical, 12)
+        .background(Color(uiColor: .systemBackground))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color(uiColor: .separator).opacity(0.4)).frame(height: 0.5)
+        }
     }
 
-    // MARK: - Empty state + suggestions
+    private var quotaBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "hourglass").font(.system(size: 12, weight: .bold))
+            Text("You've used all \(vm.usage?.cap ?? 0) AI queries this month. Resets on the 1st.")
+                .font(.system(size: 12, weight: .medium))
+        }
+        .foregroundColor(brandRed)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(brandRed.opacity(0.10))
+    }
 
-    /// What reps see the first time they open KINI in a session. The four
-    /// suggested prompts are the queries Hemanth-style reps actually run
-    /// (per the dashboard analytics) — tapping fills the draft so they can
-    /// edit before sending. Removes the "blank box, what do I type?" hurdle.
+    // MARK: - Empty state + chips
+
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [brandRed, brandRedLight, brandBlue],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 72, height: 72)
-                Text("K")
-                    .font(.system(size: 32, weight: .black))
-                    .foregroundColor(.white)
-            }
-            .padding(.top, 32)
+        VStack(spacing: 18) {
+            VoiceOrb(level: 0, active: false)
+                .frame(width: 132, height: 132)
+                .padding(.top, 26)
 
-            VStack(spacing: 4) {
+            VStack(spacing: 6) {
                 Text("Hi, I'm KINI")
-                    .font(.system(size: 18, weight: .black))
-                Text("Your CRM copilot. I can search leads, draft messages, move deals, and surface what needs your attention next.")
-                    .font(.system(size: 13))
+                    .font(.system(size: 22, weight: .heavy))
+                Text("Your CRM copilot. I can search leads, draft messages, move deals, and surface what needs you next.")
+                    .font(.system(size: 14))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 20)
             }
 
             Text("TRY ASKING")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 11, weight: .heavy))
+                .tracking(1.4)
                 .foregroundColor(.secondary)
-                .padding(.top, 6)
+                .padding(.top, 4)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 9) {
                 suggestionChip("Show my hottest leads this week", icon: "flame.fill")
                 suggestionChip("Which deals are at risk of slipping?", icon: "exclamationmark.triangle.fill")
                 suggestionChip("Draft a follow-up to my top lead", icon: "envelope.fill")
                 suggestionChip("What activities are due today?", icon: "calendar")
-                suggestionChip("Summarise this week's pipeline", icon: "chart.line.uptrend.xyaxis")
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.bottom, 8)
     }
 
     private func suggestionChip(_ prompt: String, icon: String) -> some View {
         Button {
-            // One-tap agentic kickoff — fill the draft AND fire the turn
-            // so the rep sees KINI actually act, not just a pre-filled
-            // input they need to send themselves.
             vm.draft = prompt
             Task { await vm.send() }
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Image(systemName: icon)
                     .foregroundColor(brandRed)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .frame(width: 24)
                 Text(prompt)
-                    .font(.system(size: 13))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "arrow.up.right")
                     .foregroundColor(.secondary)
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, weight: .bold))
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
+            .padding(.horizontal, 16).padding(.vertical, 14)
             .background(
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color(uiColor: .secondarySystemBackground))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(brandRed.opacity(0.18), lineWidth: 1)
-                    )
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(brandRed.opacity(0.14), lineWidth: 1))
             )
         }
         .buttonStyle(.plain)
     }
 
-    /// "KINI is working…" — three staggered dots + sparkle icon. Replaces
-    /// the old `typingIndicator` so the affordance reads as "agent is
-    /// running tools" rather than "model is typing prose" (those have
-    /// different latency profiles and the user should feel both).
-    /// Three contextual continuation chips shown beneath the last
-    /// assistant reply. Curated to cover the common follow-ups; each
-    /// fires the same agentic turn as a typed prompt.
     private var followUpChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                followUpChip("Tell me more",   prompt: "Tell me more — expand on the last point with examples from my CRM.")
+                followUpChip("Tell me more", prompt: "Tell me more — expand on the last point with examples from my CRM.")
                 followUpChip("Show as a list", prompt: "Show that as a structured list with the most important details first.")
-                followUpChip("What's next?",   prompt: "Based on that, what's the next best action I should take?")
+                followUpChip("What's next?", prompt: "Based on that, what's the next best action I should take?")
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 44)
         }
         .padding(.top, 2)
     }
@@ -386,112 +426,166 @@ struct KiniChatView: View {
             Task { await vm.send() }
         } label: {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(
-                    Capsule().fill(Color(uiColor: .secondarySystemBackground))
-                )
-                .overlay(
-                    Capsule().stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 1)
-                )
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(brandRed)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Capsule().fill(brandRed.opacity(0.08)))
+                .overlay(Capsule().stroke(brandRed.opacity(0.20), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
 
     private var workingIndicator: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(brandRed.opacity(0.12)).frame(width: 32, height: 32)
-                Text("✦").font(.system(size: 14)).foregroundColor(brandRed)
-            }
-            HStack(spacing: 4) {
+        HStack(alignment: .top, spacing: 10) {
+            assistantAvatar
+            HStack(spacing: 5) {
                 TypingDot(delay: 0.0)
-                TypingDot(delay: 0.2)
-                TypingDot(delay: 0.4)
+                TypingDot(delay: 0.18)
+                TypingDot(delay: 0.36)
             }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(Color(uiColor: .secondarySystemBackground))
-            .cornerRadius(18)
-            Text("KINI is working…")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(uiColor: .secondarySystemBackground)))
             Spacer(minLength: 40)
+        }
+    }
+
+    private var assistantAvatar: some View {
+        ZStack {
+            Circle().fill(LinearGradient(colors: orbGradient, startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 30, height: 30)
+            KiniMascotView(size: 20)
         }
     }
 
     @ViewBuilder
     private func bubble(for m: ChatMessage) -> some View {
         let isUser = m.role == "user"
-        HStack {
-            if isUser { Spacer(minLength: 40) }
-            VStack(alignment: .leading, spacing: 6) {
-                Text(m.content)
-                    .foregroundColor(isUser ? .white : .primary)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(
-                        Group {
-                            if isUser {
-                                LinearGradient(colors: [brandRed, brandRedLight],
-                                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                            } else {
-                                Color(uiColor: .secondarySystemBackground)
+        HStack(alignment: .top, spacing: 8) {
+            if isUser {
+                Spacer(minLength: 44)
+            } else {
+                assistantAvatar
+            }
+            VStack(alignment: isUser ? .trailing : .leading, spacing: 8) {
+                if !m.content.isEmpty {
+                    Text(m.content)
+                        .font(.system(size: 15))
+                        .foregroundColor(isUser ? .white : .primary)
+                        .padding(.horizontal, 15).padding(.vertical, 11)
+                        .background(
+                            Group {
+                                if isUser {
+                                    LinearGradient(colors: [brandRedLight, brandRed], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                } else {
+                                    Color(uiColor: .secondarySystemBackground)
+                                }
                             }
-                        }
-                    )
-                    .cornerRadius(18)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(isUser ? Color.clear : Color(uiColor: .separator), lineWidth: 0.5)
-                    )
+                        )
+                        .clipShape(BubbleShape(isUser: isUser))
+                        .overlay(isUser ? nil : BubbleShape(isUser: isUser).stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5))
+                }
                 if let cards = m.cards, !cards.isEmpty {
                     ForEach(cards, id: \.id) { card in
                         KiniToolResultCard(card: card)
                     }
                 }
             }
-            if !isUser { Spacer(minLength: 40) }
+            if !isUser { Spacer(minLength: 44) }
         }
     }
 }
 
-/// One pulsing dot used by the typing indicator. Three of these in a row,
-/// staggered by a constant delay, gives a clean "···" cadence that reads
-/// as "thinking" without spinning a generic ProgressView.
+// MARK: - Voice orb
+
+/// The live voice-input animation. A radial-gradient core (KINI's mascot at the
+/// centre) that scales and glows with the caller's microphone amplitude, wrapped
+/// in concentric rings that ripple outward. When inactive it breathes gently so
+/// the empty-state feels alive without any audio.
+private struct VoiceOrb: View {
+    var level: CGFloat       // 0…1 live mic amplitude
+    var active: Bool
+    @State private var breathe = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = min(geo.size.width, geo.size.height)
+            let core = side * 0.5
+            let amp = max(0, min(1, level))
+            ZStack {
+                // Emitted rings — expand with amplitude while active.
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .stroke(brandRed.opacity(0.22 - Double(i) * 0.06), lineWidth: 2)
+                        .frame(width: core + CGFloat(i) * side * 0.14 + (active ? amp * side * 0.35 : 0),
+                               height: core + CGFloat(i) * side * 0.14 + (active ? amp * side * 0.35 : 0))
+                        .scaleEffect(breathe ? 1.04 : 0.96)
+                        .animation(.easeInOut(duration: 2.4 + Double(i) * 0.4).repeatForever(autoreverses: true), value: breathe)
+                }
+
+                // Core orb.
+                Circle()
+                    .fill(RadialGradient(colors: orbGradient, center: .center, startRadius: 2, endRadius: core * 0.75))
+                    .frame(width: core, height: core)
+                    .scaleEffect(1 + (active ? amp * 0.30 : 0) + (breathe ? 0.02 : -0.02))
+                    .shadow(color: brandRed.opacity(0.5), radius: 20 + (active ? amp * 26 : 6))
+                    .overlay(
+                        Circle().fill(Color.white.opacity(0.18))
+                            .frame(width: core * 0.42, height: core * 0.42)
+                            .offset(x: -core * 0.12, y: -core * 0.14)
+                            .blur(radius: 6)
+                    )
+
+                KiniMascotView(size: core * 0.46)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .animation(.easeOut(duration: 0.12), value: level)
+        }
+        .onAppear { breathe = true }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Asymmetric chat-bubble shape — a full corner radius with the tail corner
+/// tightened, so user (right) and assistant (left) bubbles read directionally.
+private struct BubbleShape: Shape {
+    let isUser: Bool
+    func path(in rect: CGRect) -> Path {
+        let r: CGFloat = 18
+        let tail: CGFloat = 5
+        let tl = isUser ? r : tail
+        let tr = isUser ? tail : r
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX + tl, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY))
+        p.addArc(center: CGPoint(x: rect.maxX - tr, y: rect.minY + tr), radius: tr, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        p.addArc(center: CGPoint(x: rect.maxX - r, y: rect.maxY - r), radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+        p.addArc(center: CGPoint(x: rect.minX + r, y: rect.maxY - r), radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + tl))
+        p.addArc(center: CGPoint(x: rect.minX + tl, y: rect.minY + tl), radius: tl, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// One pulsing dot for the "thinking" indicator.
 private struct TypingDot: View {
     let delay: Double
     @State private var on = false
-
     var body: some View {
         Circle()
-            .fill(Color.secondary)
-            .frame(width: 6, height: 6)
+            .fill(brandRed.opacity(0.7))
+            .frame(width: 7, height: 7)
             .opacity(on ? 1.0 : 0.3)
+            .scaleEffect(on ? 1.0 : 0.7)
             .animation(.easeInOut(duration: 0.6).repeatForever().delay(delay), value: on)
             .onAppear { on = true }
     }
 }
 
-/// Animated dot used by the voice-state strip. Same vibe as `TypingDot` but
-/// pulses by scale so it reads as "live signal" rather than "thinking".
-private struct PulsingDot: View {
-    let color: Color
-    @State private var on = false
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 10, height: 10)
-            .scaleEffect(on ? 1.0 : 0.7)
-            .opacity(on ? 1.0 : 0.7)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: on)
-            .onAppear { on = true }
-    }
-}
-
-/// Thin wrapper around `AVSpeechSynthesizer` so the SwiftUI view can observe
-/// `isSpeaking` and react when speech finishes (drives the hands-free
-/// listen→speak→listen loop). en-IN voice preferred to match the user base;
-/// falls back to system default when unavailable.
+/// Thin wrapper around `AVSpeechSynthesizer` for the optional hands-free loop
+/// (spoken replies). en-IN preferred to match the user base.
 @MainActor
 final class KiniSpeaker: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published private(set) var isSpeaking: Bool = false
@@ -504,8 +598,6 @@ final class KiniSpeaker: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
 
     func speak(_ text: String) {
         if text.isEmpty { return }
-        // Route audio through the speaker even if a phone call earpiece
-        // was last active for the session.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .mixWithOthers])
         try? AVAudioSession.sharedInstance().setActive(true, options: [])
         let utt = AVSpeechUtterance(string: text)
@@ -525,7 +617,6 @@ final class KiniSpeaker: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in self.isSpeaking = false }
     }
-
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in self.isSpeaking = false }
     }
