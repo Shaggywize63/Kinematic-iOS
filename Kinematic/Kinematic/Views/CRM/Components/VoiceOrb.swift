@@ -10,7 +10,7 @@ private let voiceOrbBlue = Color(red: 0x1E/255, green: 0x3A/255, blue: 0x8A/255)
 /// (`KiniVoiceRecognizer.level`), wrapped in concentric rings that expand with
 /// it. Breathes gently at idle. Shared by the voice surfaces (currently the
 /// lead-form "Fill with voice" panel); the KINI chat has its own private copy.
-struct VoiceOrb: View {
+struct VoiceInputOrb: View {
     var level: CGFloat        // 0…1 live mic amplitude
     var active: Bool
     @State private var breathe = false

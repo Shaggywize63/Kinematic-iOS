@@ -25,7 +25,7 @@ struct LeadVoiceCaptureView: View {
                 VStack(spacing: 20) {
                     Spacer(minLength: 8)
 
-                    VoiceOrb(level: voice.level, active: voice.isListening)
+                    VoiceInputOrb(level: voice.level, active: voice.isListening)
                         .frame(width: 220, height: 220)
 
                     VStack(spacing: 8) {
