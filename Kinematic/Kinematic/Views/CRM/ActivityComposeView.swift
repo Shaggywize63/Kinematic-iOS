@@ -19,6 +19,13 @@ struct ActivityComposeView: View {
     /// Activities "+", where there's no parent record). Detail screens pass
     /// false — they already supply the linked entity themselves.
     let allowLeadPicker: Bool
+    /// Scheduling mode. When true the composer creates a *future, open*
+    /// activity (a reminder) rather than *logging* a completed one: the title,
+    /// button and date label change, the date defaults to the near future, and
+    /// "note" (which never reminds) is dropped from the type picker. The caller
+    /// routes the submit to `schedule(...)` (status=open + due_at) so the
+    /// backend reminder cron picks it up.
+    let scheduled: Bool
     /// Callback receives type, subject, description, optional imageUrl, the
     /// chosen "when" date, an optional picked lead id (nil unless a lead was
     /// chosen via the picker), and the entered admin-defined activity
@@ -58,6 +65,7 @@ struct ActivityComposeView: View {
         initialDescription: String = "",
         initialWhen: Date? = nil,
         allowLeadPicker: Bool = false,
+        scheduled: Bool = false,
         onSubmit: @escaping (String, String, String, String?, Date, String?, [String: Any]) async -> Void
     ) {
         self.initialType = initialType
@@ -65,16 +73,28 @@ struct ActivityComposeView: View {
         self.initialDescription = initialDescription
         self.initialWhen = initialWhen
         self.allowLeadPicker = allowLeadPicker
+        self.scheduled = scheduled
         self.onSubmit = onSubmit
         // Steel-dealer tenants (Tata Tiscon / BMW) run a fixed site-visit
         // flow: the type is locked to "site_visit" and the subject defaults
         // to "First Visit". Every other tenant keeps the caller-provided
-        // type + subject unchanged.
+        // type + subject unchanged. When scheduling (not steel-dealer), default
+        // the type to "task" — the natural "remind me to…" shape.
         let steelDealer = ClientFeatures.isTataTiscon
-        _type = State(initialValue: steelDealer ? "site_visit" : initialType)
+        let defaultType = steelDealer ? "site_visit" : (scheduled && initialType == "meeting" ? "task" : initialType)
+        _type = State(initialValue: defaultType)
         _subject = State(initialValue: (initialSubject.isEmpty && steelDealer) ? "First Visit" : initialSubject)
         _desc = State(initialValue: initialDescription)
-        _when = State(initialValue: initialWhen ?? Date())
+        // Scheduling defaults to a near-future time (next hour, on the hour) so
+        // the reminder is actually ahead of "now"; logging defaults to now.
+        _when = State(initialValue: initialWhen ?? (scheduled ? Self.defaultReminderTime() : Date()))
+    }
+
+    /// Next round hour from now — a sensible default target for a new reminder.
+    private static func defaultReminderTime() -> Date {
+        let cal = Calendar.current
+        let inOneHour = Date().addingTimeInterval(3600)
+        return cal.date(bySetting: .minute, value: 0, of: inOneHour) ?? inOneHour
     }
 
     /// A filled lookup-typed custom field (the Dealer / People Directory
@@ -122,7 +142,9 @@ struct ActivityComposeView: View {
                         Picker("Type", selection: $type) {
                             // "Meeting" leads — matches field-force usage. Order
                             // mirrors the web dashboard's activity type picker.
-                            ForEach(["meeting", "call", "email", "note", "task"], id: \.self) {
+                            // When scheduling, "note" is dropped — a note never
+                            // reminds, so it isn't a schedulable shape.
+                            ForEach(scheduled ? ["task", "meeting", "call", "email"] : ["meeting", "call", "email", "note", "task"], id: \.self) {
                                 Text($0.capitalized).tag($0)
                             }
                         }.pickerStyle(.segmented)
@@ -165,14 +187,31 @@ struct ActivityComposeView: View {
                     // effectiveSubject). A subject passed in by the caller (the
                     // call button / site-visit prefill) is still honoured.
                     TextField("Description", text: $desc, axis: .vertical).lineLimit(3...6)
-                    // Editable time. Default is now; tap to change. Reps
-                    // who log a call after the fact want to back-date it,
-                    // and tasks want a future due date.
-                    DatePicker(
-                        type == "task" ? "Due" : "When",
-                        selection: $when,
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
+                    // Editable time. Logging defaults to now (tap to back-date a
+                    // call logged after the fact); scheduling defaults to the
+                    // near future and is constrained to future times so the
+                    // reminder can't be set in the past.
+                    if scheduled {
+                        DatePicker(
+                            "Remind me at",
+                            selection: $when,
+                            in: Date()...,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                    } else {
+                        DatePicker(
+                            type == "task" ? "Due" : "When",
+                            selection: $when,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                    }
+                }
+                if scheduled {
+                    Section {
+                        Label("You'll get a reminder around this time.", systemImage: "bell.badge")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 // Admin-defined activity custom fields (Dealer lookup, Visit
                 // kind, First visit, …). Renders through the same section the
@@ -219,11 +258,11 @@ struct ActivityComposeView: View {
                     }
                 }
             }
-            .navigationTitle("Log Activity")
+            .navigationTitle(scheduled ? "Schedule Activity" : "Log Activity")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Log") {
+                    Button(scheduled ? "Schedule" : "Log") {
                         Task {
                             await onSubmit(type, effectiveSubject, desc, imageUrl, when, selectedLead?.id, customFields.jsonValues)
                             dismiss()

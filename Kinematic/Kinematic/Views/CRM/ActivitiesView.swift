@@ -3,6 +3,9 @@ import SwiftUI
 struct ActivitiesView: View {
     @StateObject var vm: ActivitiesViewModel
     @State private var showCompose = false
+    /// Whether the compose sheet opens in Schedule (future reminder) or Log
+    /// (completed) mode. Set by the "+" menu before the sheet is shown.
+    @State private var composeScheduled = false
     @State private var showDateSheet = false
     /// Activity the rep tapped to edit. Drives the edit sheet; nil hides it.
     /// Reps wanted to open an existing activity to enrich notes or change
@@ -167,16 +170,33 @@ struct ActivitiesView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showCompose = true } label: { Image(systemName: "plus") }
+                Menu {
+                    Button {
+                        composeScheduled = true; showCompose = true
+                    } label: { Label("Schedule activity", systemImage: "calendar.badge.plus") }
+                    Button {
+                        composeScheduled = false; showCompose = true
+                    } label: { Label("Log activity", systemImage: "square.and.pencil") }
+                } label: {
+                    Image(systemName: "plus")
+                }
             }
         }
         .sheet(isPresented: $showCompose) {
-            ActivityComposeView(allowLeadPicker: true) { type, subject, desc, imageUrl, when, leadId, customFields in
-                await vm.log(
-                    type: type, subject: subject, description: desc,
-                    dealId: nil, leadId: leadId, imageUrl: imageUrl, completedAt: when,
-                    customFields: customFields
-                )
+            ActivityComposeView(allowLeadPicker: true, scheduled: composeScheduled) { type, subject, desc, imageUrl, when, leadId, customFields in
+                if composeScheduled {
+                    await vm.schedule(
+                        type: type, subject: subject, description: desc,
+                        dealId: nil, leadId: leadId, imageUrl: imageUrl, remindAt: when,
+                        customFields: customFields
+                    )
+                } else {
+                    await vm.log(
+                        type: type, subject: subject, description: desc,
+                        dealId: nil, leadId: leadId, imageUrl: imageUrl, completedAt: when,
+                        customFields: customFields
+                    )
+                }
             }
         }
         // Edit sheet — tap a row to open the same compose view with
