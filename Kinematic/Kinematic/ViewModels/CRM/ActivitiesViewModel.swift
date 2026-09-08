@@ -102,6 +102,46 @@ final class ActivitiesViewModel: ObservableObject {
         }
     }
 
+    /// Schedule a FUTURE activity (a reminder) rather than logging a completed
+    /// one. Persists `status: "open"` + `due_at`, which is exactly what the
+    /// backend `dispatch-activity-reminders` cron scans for — so the rep (the
+    /// creator/owner) gets a push + in-app reminder as the due time approaches.
+    /// Distinct from `log`, which stamps `completed`/`completed_at` for
+    /// after-the-fact records that never remind.
+    func schedule(
+        type: String,
+        subject: String,
+        description: String,
+        dealId: String?,
+        leadId: String?,
+        imageUrl: String? = nil,
+        remindAt: Date,
+        customFields: [String: Any] = [:]
+    ) async {
+        let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSubject.isEmpty else { return }
+        do {
+            var body: [String: Any] = [
+                "type": type,
+                "subject": trimmedSubject,
+                // Open so the reminder cron picks it up (a scheduled activity is
+                // not a completed one). due_at drives the reminder window.
+                "status": "open",
+                "due_at": ISO8601DateFormatter().string(from: remindAt),
+            ]
+            let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedDesc.isEmpty { body["description"] = trimmedDesc }
+            if let dealId { body["deal_id"] = dealId }
+            if let leadId { body["lead_id"] = leadId }
+            if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
+            if !customFields.isEmpty { body["custom_fields"] = customFields }
+            let a = try await api.createActivity(body)
+            activities.insert(a, at: 0)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// PATCH an existing activity from the tap-to-edit row. Updates
     /// the local cache in place so the list reflects the change
     /// without a full refresh round-trip. Same body shape as `log`.
