@@ -91,6 +91,10 @@ struct LeadCreateView: View {
     @State private var saving: Bool = false
     @State private var saveError: String?
 
+    /// "Fill with voice" — presents the KINI voice-capture sheet; the extracted
+    /// fields are mapped onto the form by `apply(_:)`.
+    @State private var showVoiceCapture = false
+
     /// Returns true when the lead was created (or queued offline); false
     /// when the parent's create call failed. The form keeps itself open
     /// on false so the rep can adjust + retry — the previous Void
@@ -169,6 +173,38 @@ struct LeadCreateView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // KINI "Fill with voice" — dictate a prospect and let KINI
+                // auto-fill the form. Fills only fields the admin hasn't hidden
+                // (apply() writes @State; the override gating still controls
+                // render + save). Voice is input only.
+                Section {
+                    Button {
+                        showVoiceCapture = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(LinearGradient(colors: [Color(red: 1, green: 0.30, blue: 0.30), Brand.red],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                                    .frame(width: 34, height: 34)
+                                Image(systemName: "mic.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Fill with voice")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                Text("Describe the lead — KINI fills the form")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "sparkles").foregroundColor(Brand.red)
+                        }
+                    }
+                }
+
                 if let t = target, t.hasTarget {
                     Section {
                         HStack(spacing: 10) {
@@ -664,6 +700,55 @@ struct LeadCreateView: View {
             } message: {
                 Text(saveError ?? "")
             }
+            .sheet(isPresented: $showVoiceCapture) {
+                LeadVoiceCaptureView(isB2C: isB2C) { extracted in
+                    apply(extracted)
+                }
+            }
+        }
+    }
+
+    /// Map KINI-extracted fields onto the form's @State. Only non-empty values
+    /// overwrite (so a partial transcript never wipes what the rep already
+    /// typed). Hidden fields are harmless — the override gating still controls
+    /// what renders and `buildBody` still strips admin-hidden keys on save.
+    private func apply(_ e: ExtractedLead) {
+        func clean(_ v: String?) -> String? {
+            let t = v?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (t?.isEmpty == false) ? t : nil
+        }
+        if let v = clean(e.firstName) { firstName = v }
+        if let v = clean(e.lastName) { lastName = v }
+        if let v = clean(e.email) { email = v.lowercased() }
+        if let raw = e.phone {
+            let d = String(raw.filter { $0.isNumber }.prefix(10))
+            if !d.isEmpty { phone = d }
+        }
+        if let alts = e.alternateMobiles {
+            let cleaned = alts.map { String($0.filter { $0.isNumber }.prefix(10)) }.filter { $0.count == 10 }
+            if !cleaned.isEmpty { alternateMobiles = cleaned }
+        }
+        if let v = clean(e.company) { company = v }
+        if let v = clean(e.title) { title = v }
+        if let v = clean(e.industry) { industry = v }
+        if let v = clean(e.addressLine1) { addressLine1 = v }
+        if let v = clean(e.city) { city = v }
+        if let v = clean(e.state) { state = v }
+        if let v = clean(e.country) { country = v }
+        if let g = clean(e.gender)?.lowercased(),
+           ["male", "female", "other", "prefer_not_to_say"].contains(g) { gender = g }
+        if let ch = clean(e.preferredContactMethod)?.lowercased(),
+           ["email", "phone", "whatsapp", "sms"].contains(ch) { preferredChannel = ch }
+        if let dob = clean(e.dateOfBirth) {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            f.timeZone = TimeZone(identifier: "UTC")
+            if let d = f.date(from: dob) { dateOfBirth = d; hasDOB = true }
+        }
+        // Source hint → best-effort match against the tenant's source list.
+        if let hint = clean(e.sourceHint)?.lowercased(),
+           let match = sources.first(where: { $0.name.lowercased().contains(hint) || hint.contains($0.name.lowercased()) }) {
+            sourceId = match.id
         }
     }
 

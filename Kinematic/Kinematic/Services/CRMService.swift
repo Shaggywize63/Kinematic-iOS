@@ -652,6 +652,12 @@ final class CRMService {
         if let contextNote { body["context"] = contextNote }
         return try await postJSON("/api/v1/crm/ai/draft-reply", body: body)
     }
+    /// "Fill with voice" — send a dictated transcript, get back structured lead
+    /// fields to pre-fill the create form. Single-shot Haiku helper; does not
+    /// consume the KINI chat quota.
+    func extractLead(transcript: String, isB2C: Bool) async throws -> ExtractedLead {
+        try await postJSON("/api/v1/crm/ai/extract-lead", body: ["transcript": transcript, "is_b2c": isB2C])
+    }
 
     // MARK: - Media signing (private-bucket images → short-lived signed URLs)
 
