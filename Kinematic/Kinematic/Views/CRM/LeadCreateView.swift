@@ -91,9 +91,37 @@ struct LeadCreateView: View {
     @State private var saving: Bool = false
     @State private var saveError: String?
 
-    /// "Fill with voice" — presents the KINI voice-capture sheet; the extracted
-    /// fields are mapped onto the form by `apply(_:)`.
-    @State private var showVoiceCapture = false
+    // MARK: - Inline "Fill with voice" (push-to-talk / walkie-talkie)
+    //
+    // Press and HOLD the mic to record, RELEASE to submit: on release we stop,
+    // transcribe, call extract-lead and hand the result to `apply(_:)`, which
+    // maps the fields onto this form (still gated by the field-override
+    // contract). The live listening + processing animation renders INLINE as an
+    // overlay layered on this same view (`voiceOverlay`) — there is NO separate
+    // voice sheet, screen or navigation destination. Voice is input only.
+    @StateObject private var voice = KiniVoiceRecognizer()
+    @State private var voicePhase: VoicePhase = .idle
+    @State private var voiceTranscript = ""
+    /// True while a single press-and-hold is in flight — guards the press-down
+    /// handler from re-firing on every drag-move callback.
+    @State private var isHoldingMic = false
+    /// Set when the finger has slid far off the mic; releasing then cancels
+    /// instead of submitting.
+    @State private var voiceWillCancel = false
+
+    /// State machine for the inline push-to-talk mic control.
+    private enum VoicePhase: Equatable {
+        case idle           // nothing happening — collapsed
+        case listening      // holding the mic, recording live
+        case processing     // released with a transcript; calling extract-lead
+        case success        // fields applied — brief tick before collapsing
+        case error(String)  // friendly failure message
+    }
+
+    /// Local brand red (0xE0/0x1E/0x2C) for the voice surfaces — matches the
+    /// voice orb and the removed voice sheet. `Brand.red` is a slightly darker
+    /// 0xD0; the mic accent uses this brighter red.
+    private let voiceBrandRed = Color(red: 0xE0/255, green: 0x1E/255, blue: 0x2C/255)
 
     /// Returns true when the lead was created (or queued offline); false
     /// when the parent's create call failed. The form keeps itself open
@@ -173,36 +201,50 @@ struct LeadCreateView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // KINI "Fill with voice" — dictate a prospect and let KINI
-                // auto-fill the form. Fills only fields the admin hasn't hidden
-                // (apply() writes @State; the override gating still controls
-                // render + save). Voice is input only.
+                // KINI "Fill with voice" — INLINE push-to-talk. Press and HOLD
+                // the mic to record, release to fill. On release we stop,
+                // transcribe, call extract-lead and apply() the fields onto the
+                // form (fills only fields the admin hasn't hidden — apply()
+                // writes @State; the override gating still controls render +
+                // save). The live listening + processing animation renders
+                // inline over this view (`voiceOverlay`) — no separate sheet or
+                // screen. Voice is input only.
                 Section {
-                    Button {
-                        showVoiceCapture = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            ZStack {
-                                Circle()
-                                    .fill(LinearGradient(colors: [Color(red: 1, green: 0.30, blue: 0.30), Brand.red],
-                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                                    .frame(width: 34, height: 34)
-                                Image(systemName: "mic.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.white)
-                            }
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("Fill with voice")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                Text("Describe the lead — KINI fills the form")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "sparkles").foregroundColor(Brand.red)
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(colors: [Color(red: 1, green: 0.30, blue: 0.30), voiceBrandRed],
+                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 40, height: 40)
+                                .scaleEffect(voicePhase == .listening ? 1.14 : 1)
+                                .shadow(color: voiceBrandRed.opacity(voicePhase == .listening ? 0.5 : 0),
+                                        radius: 10, y: 3)
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white)
                         }
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Fill with voice")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.primary)
+                            Text(micHintText)
+                                .font(.system(size: 12))
+                                .foregroundColor(voicePhase == .listening ? voiceBrandRed : .secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "sparkles").foregroundColor(voiceBrandRed)
                     }
+                    // Not a Button — a plain row carrying the press-and-hold
+                    // gesture, so the DragGesture's press-down / release drive
+                    // recording directly without fighting a Button's tap.
+                    .contentShape(Rectangle())
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: voicePhase)
+                    .gesture(micHoldGesture)
+                    .disabled(!voice.isAvailable)
+                    .accessibilityLabel("Fill with voice")
+                    .accessibilityHint("Hold to speak, release to fill the form")
+                } footer: {
+                    Text("Hold the mic and describe the lead — release and KINI fills the form.")
                 }
 
                 if let t = target, t.hasTarget {
@@ -700,11 +742,184 @@ struct LeadCreateView: View {
             } message: {
                 Text(saveError ?? "")
             }
-            .sheet(isPresented: $showVoiceCapture) {
-                LeadVoiceCaptureView(isB2C: isB2C) { extracted in
-                    apply(extracted)
+            // Inline listening / processing animation layered over the form
+            // (NOT a sheet). Placed after the sticky Create bar so it covers the
+            // whole screen while active.
+            .overlay { voiceOverlay }
+            .onDisappear { voice.stop() }
+        }
+    }
+
+    // MARK: - Inline voice (push-to-talk) plumbing
+
+    /// Hint under the "Fill with voice" title, reflecting the current phase.
+    private var micHintText: String {
+        switch voicePhase {
+        case .listening:  return "Listening… release to fill"
+        case .processing: return "Reading…"
+        case .success:    return "Filled from your voice"
+        case .error:      return "Hold to try again"
+        case .idle:       return "Hold to speak · release to fill"
+        }
+    }
+
+    /// True only while actively recording — drives the orb's amplitude
+    /// reactivity + the live transcript preview.
+    private var isVoiceActive: Bool {
+        if case .listening = voicePhase { return true }
+        return false
+    }
+
+    /// Press-and-HOLD gesture. `minimumDistance: 0` makes `.onChanged` fire on
+    /// touch-down; `.onEnded` fires on release. Sliding far off the mic before
+    /// release cancels instead of submitting.
+    private var micHoldGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if !isHoldingMic {
+                    isHoldingMic = true
+                    beginVoiceHold()
+                }
+                // Squared-distance compare (no sqrt) — slide > 140pt off the
+                // mic to arm cancel-on-release.
+                let dx = value.translation.width
+                let dy = value.translation.height
+                voiceWillCancel = (dx * dx + dy * dy) > 140 * 140
+            }
+            .onEnded { _ in
+                guard isHoldingMic else { return }
+                isHoldingMic = false
+                let cancelled = voiceWillCancel
+                voiceWillCancel = false
+                endVoiceHold(cancelled: cancelled)
+            }
+    }
+
+    /// Press-down: enter the listening state and start the recognizer, which
+    /// requests speech + mic permission if needed.
+    private func beginVoiceHold() {
+        // Never interrupt an in-flight extraction with a fresh hold.
+        if case .processing = voicePhase { return }
+        voiceTranscript = ""
+        withAnimation(.easeOut(duration: 0.2)) { voicePhase = .listening }
+        voice.start { text in voiceTranscript = text }
+    }
+
+    /// Release: stop recording and, if we captured something usable, transcribe
+    /// → extract-lead → apply(). Cancelled / empty / too-short holds collapse
+    /// silently, keeping whatever the rep already typed.
+    private func endVoiceHold(cancelled: Bool) {
+        guard case .listening = voicePhase else { return }
+        voice.stop()
+        let t = voiceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cancelled || t.count < 2 {
+            withAnimation(.easeOut(duration: 0.2)) { voicePhase = .idle }
+            voiceTranscript = ""
+            return
+        }
+        withAnimation(.easeOut(duration: 0.2)) { voicePhase = .processing }
+        Task { @MainActor in
+            do {
+                let e = try await CRMService.shared.extractLead(transcript: t, isB2C: isB2C)
+                apply(e)
+                withAnimation(.easeOut(duration: 0.2)) { voicePhase = .success }
+                try? await Task.sleep(nanoseconds: 1_300_000_000)
+                if case .success = voicePhase {
+                    withAnimation(.easeOut(duration: 0.25)) { voicePhase = .idle }
+                }
+            } catch {
+                withAnimation(.easeOut(duration: 0.2)) { voicePhase = .error(voiceFriendly(error)) }
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if case .error = voicePhase {
+                    withAnimation(.easeOut(duration: 0.25)) { voicePhase = .idle }
                 }
             }
+        }
+    }
+
+    /// Friendly failure text — mirrors the removed voice sheet, including the
+    /// monthly-limit case.
+    private func voiceFriendly(_ error: Error) -> String {
+        let s = String(describing: error).lowercased()
+        if s.contains("usage limit") || s.contains("monthly") {
+            return "KINI has hit its monthly AI limit. Try again after it resets, or type the details in."
+        }
+        return "Couldn't read that — please try again, or type the details in."
+    }
+
+    private var voiceHeadline: String {
+        switch voicePhase {
+        case .listening:  return "LISTENING…"
+        case .processing: return "READING…"
+        case .success:    return "FILLED FROM VOICE"
+        case .error:      return "COULDN'T READ THAT"
+        case .idle:       return ""
+        }
+    }
+
+    private var voiceHeadlineColor: Color {
+        if case .success = voicePhase { return Brand.success }
+        return voiceBrandRed
+    }
+
+    /// The inline listening / processing panel, layered over the form via
+    /// `.overlay`. Non-interactive (`allowsHitTesting(false)`) so it never
+    /// steals the in-flight press-and-hold touch from the mic underneath — the
+    /// mic's DragGesture keeps receiving the release event.
+    @ViewBuilder
+    private var voiceOverlay: some View {
+        if voicePhase != .idle {
+            ZStack {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .ignoresSafeArea()
+                VStack(spacing: 16) {
+                    VoiceInputOrb(level: voice.level, active: isVoiceActive)
+                        .frame(width: 200, height: 200)
+
+                    Text(voiceHeadline)
+                        .font(.system(size: 13, weight: .heavy))
+                        .tracking(1.5)
+                        .foregroundColor(voiceHeadlineColor)
+
+                    if isVoiceActive {
+                        Text(voiceTranscript.isEmpty
+                             ? "Describe the lead — name, mobile, and what they need"
+                             : voiceTranscript)
+                            .font(.system(size: 16, weight: voiceTranscript.isEmpty ? .regular : .semibold))
+                            .foregroundColor(voiceTranscript.isEmpty ? .secondary : .primary)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(5)
+                            .padding(.horizontal, 28)
+                    }
+
+                    switch voicePhase {
+                    case .processing:
+                        ProgressView().tint(voiceBrandRed)
+                    case .success:
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundColor(Brand.success)
+                    case .error(let msg):
+                        Text(msg)
+                            .font(.footnote)
+                            .foregroundColor(voiceBrandRed)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 30)
+                    default:
+                        if let perr = voice.permissionError {
+                            Text(perr)
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 30)
+                        }
+                    }
+                }
+                .padding(.vertical, 24)
+            }
+            .allowsHitTesting(false)
+            .transition(.opacity)
         }
     }
 
