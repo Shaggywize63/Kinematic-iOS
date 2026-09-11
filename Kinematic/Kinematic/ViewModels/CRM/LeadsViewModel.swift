@@ -16,8 +16,20 @@ final class LeadsViewModel: ObservableObject {
     @Published var ownerFilter: String = "all"      // "all" or an owner user id
     @Published var sourceFilter: String = "all"     // "all" or a lead-source id
     // Sorting. sortKey "recent" = backend default; others map to ?sort=&order=.
-    @Published var sortKey: String = "recent"
+    // The parent Kinematic tenant runs an inside-sales CRM that works the
+    // freshest inbound leads first, so it defaults to newest-added-first
+    // ("created" descending). Every other tenant keeps the recent-activity
+    // order. Mirrors the web dashboard's Kinematic default.
+    static var defaultSortKey: String { ClientFeatures.isKinematic ? "created" : "recent" }
+    @Published var sortKey: String = LeadsViewModel.defaultSortKey
     @Published var sortAscending: Bool = false
+
+    /// True when the list is at its tenant's default ordering — drives the
+    /// sort icon's neutral (vs. "a sort is applied") colour so the newest-first
+    /// Kinematic default doesn't read as an active override.
+    var isAtDefaultSort: Bool {
+        ClientFeatures.isKinematic ? (sortKey == "created" && !sortAscending) : (sortKey == "recent")
+    }
     // Options for the owner / source pickers (loaded lazily when the sheet opens).
     @Published var owners: [AssignableUser] = []
     @Published var sources: [CRMLeadSource] = []

@@ -57,7 +57,7 @@ struct LeadsListView: View {
             }
         } label: {
             Image(systemName: "arrow.up.arrow.down.circle")
-                .foregroundColor(vm.sortKey == "recent" ? .secondary : Brand.red)
+                .foregroundColor(vm.isAtDefaultSort ? .secondary : Brand.red)
         }
     }
 
