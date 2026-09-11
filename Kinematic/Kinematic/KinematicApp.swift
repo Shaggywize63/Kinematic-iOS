@@ -314,6 +314,15 @@ class KiniAppState: ObservableObject {
         let interval = TimeInterval(min(max(configured, 60), 3600))
         print("📡 [KiniAppState] Initializing Live Tracking Cycle (\(Int(interval))s)")
 
+        // Let the location service also ping on real GPS fixes at this same
+        // cadence (throttled + sharing lastPingAt with the Timer so the two
+        // never double-send). This makes the first trail point land promptly
+        // instead of a full interval after shift start.
+        LocationTrackingService.shared.pingIntervalSeconds = interval
+        LocationTrackingService.shared.onPingDue = { [weak self] in
+            await self?.performLivePing()
+        }
+
         trackingTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { [weak self] in
                 await self?.performLivePing()
@@ -351,6 +360,9 @@ class KiniAppState: ObservableObject {
         #if DEBUG
         print("📍 [Tracking] Sending Ping: \(location.coordinate.latitude), \(location.coordinate.longitude) | Battery: \(battery)%")
         #endif
+        // Reset the shared throttle so a Timer-driven send also holds off the
+        // fix-driven path (and vice-versa) for one cadence interval.
+        LocationTrackingService.shared.markPinged()
         _ = await KinematicRepository.shared.sendLiveTrackingPing(
             lat: location.coordinate.latitude,
             lng: location.coordinate.longitude,
@@ -1784,7 +1796,25 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
     static let shared = LocationTrackingService()
     private let locationManager = CLLocationManager()
     @Published var lastLocation: CLLocation?
-    
+
+    // --- Fix-driven live ping (trail density) ---
+    // The trail was showing only a couple of points/day because the live
+    // ping was driven *solely* by a repeating Timer at the admin cadence:
+    // the first point wasn't sent until one whole interval (e.g. 15 min)
+    // after shift start, so a short foreground session logged 0–1 points.
+    // We also ping on real GPS fixes here (throttled to the same cadence
+    // floor) so the FIRST fix is sent immediately and movement is tracked,
+    // while `lastPingAt` is shared with the Timer path so the two never
+    // double-ping. (Background coverage is a separate matter — it needs the
+    // paid background-location entitlement; without it iOS suspends updates
+    // when backgrounded and tracking stays foreground-only, by design.)
+    var pingIntervalSeconds: TimeInterval = 300
+    var onPingDue: (() async -> Void)?
+    private(set) var lastPingAt = Date.distantPast
+    /// Called by whichever path actually sends a ping (Timer or fix-driven)
+    /// so the shared throttle window resets for both.
+    func markPinged() { lastPingAt = Date() }
+
     override private init() {
         super.init()
         locationManager.delegate = self
@@ -1849,6 +1879,15 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         self.lastLocation = locations.last
+        // Fire a live ping as soon as we have a fix, throttled to the admin
+        // cadence and sharing `lastPingAt` with the Timer so we never send
+        // two pings inside one interval. This makes the first trail point
+        // land promptly (rather than after a full interval) and tracks
+        // movement while the app is foregrounded.
+        if Date().timeIntervalSince(lastPingAt) >= pingIntervalSeconds, let hook = onPingDue {
+            markPinged()
+            Task { await hook() }
+        }
     }
 
     // MARK: - Location honesty (shared apps↔backend contract)
