@@ -15,21 +15,20 @@ final class LeadsViewModel: ObservableObject {
     @Published var convertedFilter: String = "all"  // all | yes | no
     @Published var ownerFilter: String = "all"      // "all" or an owner user id
     @Published var sourceFilter: String = "all"     // "all" or a lead-source id
-    // Sorting. sortKey "recent" = backend default; others map to ?sort=&order=.
-    // The parent Kinematic tenant runs an inside-sales CRM that works the
-    // freshest inbound leads first, so it defaults to newest-added-first
-    // ("created" descending). Every other tenant keeps the recent-activity
-    // order. Mirrors the web dashboard's Kinematic default.
-    static var defaultSortKey: String { ClientFeatures.isKinematic ? "created" : "recent" }
-    @Published var sortKey: String = LeadsViewModel.defaultSortKey
+    // Sorting. sortKey "recent" = backend recent-activity order; "created"
+    // (descending) = newest-added first, which is the resting default for the
+    // Leads list on the web dashboard across EVERY tenant. iOS matches it, so
+    // the list opens on the freshest leads. Being tenant-agnostic also means
+    // the default never depends on the session's clientId being loaded before
+    // the list first renders (a StateObject built pre-auth would otherwise miss
+    // a tenant gate).
+    @Published var sortKey: String = "created"
     @Published var sortAscending: Bool = false
 
-    /// True when the list is at its tenant's default ordering — drives the
-    /// sort icon's neutral (vs. "a sort is applied") colour so the newest-first
-    /// Kinematic default doesn't read as an active override.
-    var isAtDefaultSort: Bool {
-        ClientFeatures.isKinematic ? (sortKey == "created" && !sortAscending) : (sortKey == "recent")
-    }
+    /// True when the list is at its default ordering — drives the sort icon's
+    /// neutral (vs. "a sort is applied") colour so the newest-first default
+    /// doesn't read as an active override.
+    var isAtDefaultSort: Bool { sortKey == "created" && !sortAscending }
     // Options for the owner / source pickers (loaded lazily when the sheet opens).
     @Published var owners: [AssignableUser] = []
     @Published var sources: [CRMLeadSource] = []
