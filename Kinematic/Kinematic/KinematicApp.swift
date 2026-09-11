@@ -3231,11 +3231,16 @@ class KinematicRepository {
     /// on the server). Returns km saved. Invalidates the route-plan cache so the
     /// next fetch shows the reordered stops. Gated server-side by the
     /// route_optimization module (403 when the client lacks it).
-    func optimizeMyRoute() async -> (ok: Bool, savedKm: Double?, error: String?) {
+    func optimizeMyRoute(start: (lat: Double, lng: Double)? = nil) async -> (ok: Bool, savedKm: Double?, error: String?) {
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"; df.timeZone = .current
         let date = df.string(from: Date())
         do {
-            let body = try? JSONSerialization.data(withJSONObject: ["date": date])
+            var payload: [String: Any] = ["date": date]
+            // Start from the device's fresh GPS when we have it, so the route is
+            // ordered from where the rep actually is. Omitted → the server falls
+            // back to their last known location.
+            if let start { payload["start"] = ["lat": start.lat, "lng": start.lng] }
+            let body = try? JSONSerialization.data(withJSONObject: payload)
             let res: ApiResponse<OptimizeRouteDTO>? = try await performRequest(
                 "/route-plan/optimize/apply", method: "POST", body: body)
             if res?.success == true {
