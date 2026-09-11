@@ -124,7 +124,11 @@ class RoutePlansViewModel: ObservableObject {
     /// the reordered stops. Best-effort — a failure just surfaces a message.
     func optimize() async {
         await MainActor.run { optimizing = true; optimizeMessage = nil }
-        let r = await KinematicRepository.shared.optimizeMyRoute()
+        // Best route from where the rep is now: grab a fresh one-shot fix (nil if
+        // permission's off / no fix in time — the server then uses the last known
+        // location). Then optimize + persist from that start.
+        let start = await CurrentLocationProvider.oneShot()
+        let r = await KinematicRepository.shared.optimizeMyRoute(start: start)
         let fresh = r.ok ? await KinematicRepository.shared.fetchMyRoutePlan() : nil
         await MainActor.run {
             if let fresh { self.plans = fresh }
