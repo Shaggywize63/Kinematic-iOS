@@ -62,6 +62,10 @@ struct UserStatusUpdate: Codable {
     /// metres. Both nil when unavailable so older behaviour is unchanged.
     let isMock: Bool?
     let locationAccuracyM: Double?
+    /// Whether this fix came from precise/full-accuracy authorization
+    /// (`accuracyAuthorization == .fullAccuracy`). nil when unknown so older
+    /// behaviour is unchanged.
+    let locationPrecise: Bool?
 
     enum CodingKeys: String, CodingKey {
         case latitude, longitude
@@ -72,12 +76,14 @@ struct UserStatusUpdate: Codable {
         case osVersion         = "os_version"
         case isMock            = "is_mock"
         case locationAccuracyM = "location_accuracy_m"
+        case locationPrecise   = "location_precise"
     }
 
     /// Convenience builder with the common HEARTBEAT defaults so callers do
     /// not have to remember every field name. Pass the source `location` to
-    /// stamp the GPS-integrity signals from the exact fix.
-    static func heartbeat(lat: Double, lng: Double, battery: Int?, location: CLLocation? = nil) -> UserStatusUpdate {
+    /// stamp the GPS-integrity signals from the exact fix, and `precise` to
+    /// record whether the app currently holds full-accuracy authorization.
+    static func heartbeat(lat: Double, lng: Double, battery: Int?, location: CLLocation? = nil, precise: Bool? = nil) -> UserStatusUpdate {
         let device = DeviceInfoSnapshot.capture()
         let accuracy: Double? = {
             guard let acc = location?.horizontalAccuracy, acc >= 0 else { return nil }
@@ -92,7 +98,8 @@ struct UserStatusUpdate: Codable {
             deviceBrand: device.deviceBrand,
             osVersion: device.osVersion,
             isMock: location.map { SecurityCheck.isMockLocation($0) },
-            locationAccuracyM: accuracy
+            locationAccuracyM: accuracy,
+            locationPrecise: precise
         )
     }
 }
