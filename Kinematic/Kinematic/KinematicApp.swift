@@ -212,6 +212,11 @@ class KiniAppState: ObservableObject {
     @Published var selectedTab: Int = 0
     @Published var selectedOutlet: RouteOutlet? = nil
     @Published var attendanceVM = AttendanceViewModel()
+    /// Non-nil when a geo-stamped attendance action (check-in / selfie flow)
+    /// was blocked because location is off — drives the root-level blocking
+    /// "turn on location" alert. Form submit uses its own local gate state
+    /// because it presents inside a fullScreenCover.
+    @Published var locationGatePrompt: LocationGatePrompt? = nil
     
     // --- Shared Home Data (Parity with Android AppViewModel) ---
     @Published var today: AttendanceRecord? = nil
@@ -332,6 +337,10 @@ class KiniAppState: ObservableObject {
         // Gate 2: Fetch Coordinates
         guard let location = LocationTrackingService.shared.lastLocation else {
             print("⚠️ [Tracking] No GPS fix. Skipping ping.")
+            // A scheduled heartbeat couldn't get a fix (usually permission /
+            // services off). Report the honest device-location state so the
+            // dashboard doesn't just silently go stale.
+            LocationTrackingService.shared.reportLocationStatus()
             return
         }
         
@@ -410,11 +419,19 @@ struct AnyCodableValue: Codable {
     }
 }
 
+/// Structured error details the backend attaches to failures. Today we read
+/// `code` for the geo-stamp backstop (`"LOCATION_REQUIRED"`); all fields are
+/// optional so existing decodes are unaffected.
+struct ApiErrorDetails: Codable {
+    let code: String?
+}
+
 struct ApiResponse<T: Codable>: Codable {
     let success: Bool
     let data: T?
     let error: String?
     let message: String?
+    let details: ApiErrorDetails?
 }
 
 // MARK: - Daily AI briefing — GET /crm/ai/daily-briefing
@@ -1829,9 +1846,65 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
         locationManager.startUpdatingLocation()
     }
     func stopTracking() { locationManager.stopUpdatingLocation() }
-    
+
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         self.lastLocation = locations.last
+    }
+
+    // MARK: - Location honesty (shared apps↔backend contract)
+
+    /// Current authorization mapped to the backend `permission` field.
+    var permissionField: String {
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: return "granted"
+        case .denied:                                 return "denied"
+        case .restricted:                             return "restricted"
+        case .notDetermined:                          return "not_determined"
+        @unknown default:                             return "not_determined"
+        }
+    }
+
+    /// Precise (full-accuracy) vs reduced location authorization — the
+    /// `precise` field on both the location-status report and the heartbeat.
+    var isPreciseAuthorized: Bool {
+        locationManager.accuracyAuthorization == .fullAccuracy
+    }
+
+    /// True only when the app can actually read a fix: permission granted AND
+    /// the device Location Services master switch is on. Gates the geo-stamped
+    /// actions (check-in / selfie / form submit).
+    var isLocationUsable: Bool {
+        let granted: Bool
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: granted = true
+        default:                                      granted = false
+        }
+        return granted && CLLocationManager.locationServicesEnabled()
+    }
+
+    /// Fire-and-forget honest report of the device's location state to
+    /// PATCH /users/location-status. Never blocks the UI; the 204 that tenants
+    /// with live tracking disabled return is ignored downstream.
+    func reportLocationStatus() {
+        guard Session.isAuthenticated else { return }
+        let permission = permissionField
+        let precise = isPreciseAuthorized
+        Task.detached {
+            // locationServicesEnabled() can block, so read it off the main thread.
+            let servicesOn = CLLocationManager.locationServicesEnabled()
+            await KinematicRepository.shared.reportLocationStatus(
+                permission: permission,
+                servicesEnabled: servicesOn,
+                precise: precise
+            )
+        }
+    }
+
+    /// Fires right after the permission prompt is answered and on any later
+    /// authorization / accuracy change — including changes triggered by a
+    /// prompt raised on the one-shot manager, since authorization is app-wide.
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        reportLocationStatus()
     }
 }
 
@@ -1892,7 +1965,12 @@ class KinematicRepository {
             return true
         }
         do {
-            let payload = UserStatusUpdate.heartbeat(lat: lat, lng: lng, battery: battery, location: location)
+            // Tag the heartbeat with whether this fix was precise/full-accuracy
+            // (contract feature 2) — everything else stays exactly as before.
+            let payload = UserStatusUpdate.heartbeat(
+                lat: lat, lng: lng, battery: battery, location: location,
+                precise: LocationTrackingService.shared.isPreciseAuthorized
+            )
             let body = try? JSONEncoder().encode(payload)
             let res: ApiResponse<[String: String]>? = try await performRequest(
                 "/users/status",
@@ -1909,6 +1987,27 @@ class KinematicRepository {
         } catch {
             print("❌ TRACKING_PING_FAILED: \(error)")
             return false
+        }
+    }
+
+    /// Feature 1 — honest device-location state → PATCH /users/location-status.
+    /// Fire-and-forget: the backend returns 200 `{data:{location_status,changed}}`
+    /// or 204 for tenants with live tracking disabled. We ignore the body and
+    /// never surface an error — an empty 204 body simply fails to decode and is
+    /// swallowed here.
+    func reportLocationStatus(permission: String, servicesEnabled: Bool, precise: Bool) async {
+        do {
+            let payload = LocationStatusUpdate(permission: permission, servicesEnabled: servicesEnabled, precise: precise)
+            let body = try? JSONEncoder().encode(payload)
+            let _: ApiResponse<AnyCodableValue>? = try await performRequest(
+                "/users/location-status",
+                method: "PATCH",
+                body: body
+            )
+        } catch {
+            #if DEBUG
+            print("ℹ️ [LocationStatus] report skipped: \(error)")
+            #endif
         }
     }
     
@@ -2578,7 +2677,7 @@ class KinematicRepository {
         }
     }
 
-    func submitForm(request: FormSubmissionRequest) async -> Bool {
+    func submitForm(request: FormSubmissionRequest) async -> FormSubmitOutcome {
         do {
             let body = try? JSONEncoder().encode(request)
             // Backend returns the full submission object (mixed types: strings, ints, booleans, dates)
@@ -2588,7 +2687,11 @@ class KinematicRepository {
                 method: "POST",
                 body: body
             )
-            return res?.success ?? false
+            if res?.success == true { return .success }
+            // Server backstop: strict tenants reject a location-less submission
+            // with details.code == "LOCATION_REQUIRED" — same gate as check-in.
+            if res?.details?.code == "LOCATION_REQUIRED" { return .locationRequired }
+            return .failed
         } catch let urlError as URLError where [
             .notConnectedToInternet, .timedOut, .cannotConnectToHost,
             .networkConnectionLost, .dataNotAllowed,
@@ -2609,16 +2712,16 @@ class KinematicRepository {
                         lastError: urlError.localizedDescription
                     )
                 }
-                return true // optimistic — queued, will sync when back online
+                return .success // optimistic — queued, will sync when back online
             }
             print("❌ SUBMIT_FORM_OFFLINE_ENCODE_FAILED")
-            return false
+            return .failed
         } catch {
             print("❌ SUBMIT_FORM_ERROR: \(error)")
-            return false
+            return .failed
         }
     }
-    
+
     // --- BROADCAST ---
     func getBroadcastHistory() async -> [BroadcastQuestion] {
         do {
@@ -2979,6 +3082,12 @@ class KinematicRepository {
                 idempotencyKey: idempotencyKey
             )
             if res?.success == true { return (true, nil, res?.data) }
+            // Server backstop: a strict tenant rejects a location-less punch
+            // with details.code == "LOCATION_REQUIRED". Surface the raw code so
+            // the caller can show the same "turn on location" gate.
+            if res?.details?.code == "LOCATION_REQUIRED" {
+                return (false, "LOCATION_REQUIRED", nil)
+            }
             return (false, res?.error ?? res?.message ?? "Failed to mark attendance", nil)
         } catch {
             return (false, error.localizedDescription, nil)
@@ -3353,6 +3462,10 @@ struct KinematicApp: App {
                         // (e.g. a DP/avatar set on the web dashboard) and the
                         // latest entitlements show up without a re-login.
                         Task { await KinematicRepository.shared.refreshMe() }
+                        // Report the honest device-location state on every
+                        // foreground/resume — the master switch can be toggled
+                        // while we're backgrounded, where no delegate fires.
+                        LocationTrackingService.shared.reportLocationStatus()
                     }
 
                     // Biometric App Lock lifecycle. Arm on real background;

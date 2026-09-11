@@ -20,6 +20,10 @@ struct ActivitySubmissionView: View {
     // Labels of unmet required fields when the user taps Submit on an
     // incomplete form. Surfaced inline above the submit button.
     @State private var missingRequiredLabels: [String] = []
+    // Feature 3: drives the blocking "turn on location to submit" gate. Local
+    // to this view because the form is presented inside a fullScreenCover, so
+    // the root-level attendance gate would not surface above it.
+    @State private var locationGate: LocationGatePrompt? = nil
 
     /// Required fields the user hasn't satisfied yet. A field is
     /// satisfied when it has a non-empty text response OR (for image /
@@ -86,6 +90,7 @@ struct ActivitySubmissionView: View {
                 }
             }
             .task { await loadTemplate() }
+            .locationGateAlert($locationGate)
         }
     }
 
@@ -264,6 +269,14 @@ struct ActivitySubmissionView: View {
             return
         }
         missingRequiredLabels = []
+
+        // Feature 3 gate: the submission is geo-stamped, so refuse to send a
+        // location-less row when location is off. Block, prompt, and report.
+        if let prompt = LocationGate.promptIfBlocked(verb: "submit") {
+            locationGate = prompt
+            return
+        }
+
         isSubmitting = true
         Task {
             var finalResponses: [String: FormResponse] = [:]
@@ -311,10 +324,17 @@ struct ActivitySubmissionView: View {
                 responses: processedResponses
             )
 
-            let success = await KinematicRepository.shared.submitForm(request: request)
+            let outcome = await KinematicRepository.shared.submitForm(request: request)
             await MainActor.run {
                 isSubmitting = false
-                if success {
+                // Server backstop: strict tenants reject a location-less
+                // submission — show the same "turn on location" gate + report.
+                if outcome == .locationRequired {
+                    locationGate = LocationGatePrompt(verb: "submit")
+                    LocationTrackingService.shared.reportLocationStatus()
+                    return
+                }
+                if outcome == .success {
                     // Field reps can submit the same activity multiple times
                     // per visit (e.g. one entry per shelf / aisle). After a
                     // successful save we:

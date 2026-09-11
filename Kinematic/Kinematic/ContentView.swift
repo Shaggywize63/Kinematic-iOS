@@ -59,6 +59,11 @@ struct ContentView: View {
             }
         }
         .background(VibrantBackgroundView().ignoresSafeArea())
+        // Feature 3: blocking "turn on location" gate for the attendance
+        // check-in / selfie flow. Attendance lives in a tab (not a modal), so
+        // a root-level alert presents reliably. The form submit hosts its own
+        // gate because it runs inside a fullScreenCover.
+        .locationGateAlert($appState.locationGatePrompt)
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
         }

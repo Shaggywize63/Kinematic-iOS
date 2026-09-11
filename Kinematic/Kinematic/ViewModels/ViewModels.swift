@@ -226,6 +226,15 @@ class AttendanceViewModel: ObservableObject {
     }
     
     func startFlow() {
+        // Feature 3 gate: don't even open the selfie camera when location is
+        // off — a check-in is geo-stamped. Block, prompt, and report the
+        // off-state instead of walking the rep through a capture we can't stamp.
+        let isCheckIn = KiniAppState.shared.today?.checkinAt == nil
+        if let prompt = LocationGate.promptIfBlocked(verb: isCheckIn ? "check in" : "check out") {
+            KiniAppState.shared.locationGatePrompt = prompt
+            return
+        }
+
         print("🔥 [CRITICAL] BROADCASTING CAMERA SIGNAL")
         print("🚀 ATTEMPT: startFlow() signal broadcasted")
         print("📸 [AttendanceVM] startFlow() entered")
@@ -326,6 +335,15 @@ class AttendanceViewModel: ObservableObject {
             await MainActor.run { message = "Shift already completed for today." }
             return
         }
+
+        // Feature 3 gate: never stamp an attendance punch when location is off.
+        // Covers the direct-call paths (a lastLocation was already present) that
+        // bypass startFlow(). Blocks, prompts, and reports the off-state.
+        if let prompt = LocationGate.promptIfBlocked(verb: isCheckIn ? "check in" : "check out") {
+            await MainActor.run { KiniAppState.shared.locationGatePrompt = prompt }
+            return
+        }
+
         let action = isCheckIn ? "CHECK_IN" : "CHECK_OUT"
         
         guard await checkSecurity(action: action, lat: loc.coordinate.latitude, lng: loc.coordinate.longitude, location: loc) else { return }
@@ -456,6 +474,10 @@ class AttendanceViewModel: ObservableObject {
             idempotencyKey: pending.idempotencyKey
         )
 
+        // Server backstop: a strict tenant rejected this punch because it
+        // arrived without a live fix (details.code == "LOCATION_REQUIRED").
+        let locationRequired = (err == "LOCATION_REQUIRED")
+
         if success {
             await AttendanceCache.shared.markSynced(pending.id)
         } else {
@@ -500,6 +522,19 @@ class AttendanceViewModel: ObservableObject {
                 } else {
                     LocationTrackingService.shared.stopTracking()
                 }
+            } else if locationRequired {
+                // The fix was lost in flight and the server refused a
+                // location-less punch. Roll back the optimistic check-in and
+                // show the same "turn on location" gate (feature 3). The
+                // force-refresh below reconciles with server ground truth.
+                self.today = previousToday
+                KiniAppState.shared.today = previousToday
+                isLoading = false
+                self.selfie = nil
+                self.lastAttendanceActionTime = nil
+                message = ""
+                KiniAppState.shared.locationGatePrompt = LocationGatePrompt(verb: isCheckIn ? "check in" : "check out")
+                LocationTrackingService.shared.reportLocationStatus()
             } else {
                 // Don't rollback — the row is queued; the user's intent is
                 // captured and we'll sync on next foreground/reachability.
