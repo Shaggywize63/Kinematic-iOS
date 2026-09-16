@@ -664,6 +664,33 @@ struct RoutePreviewRow: View {
     }
 }
 
+/// Hands a stop (or the whole remaining beat) to Google Maps for turn-by-turn.
+/// Uses the universal https dir links: iOS routes them into the Google Maps
+/// APP when it's installed and falls back to the browser otherwise — no
+/// LSApplicationQueriesSchemes entry needed because we never call canOpenURL.
+enum MapsNavigator {
+    static func navigate(toLat lat: Double, lng: Double) {
+        open("https://www.google.com/maps/dir/?api=1&destination=\(lat),\(lng)&travelmode=driving")
+    }
+
+    /// Whole route in optimized visit order: intermediate stops become
+    /// waypoints (Google Maps caps them at 9 — keep the first 9 in order),
+    /// destination = the final stop. Origin is left empty so Maps starts
+    /// from the rep's live location.
+    static func navigateRoute(_ stops: [(lat: Double, lng: Double)]) {
+        guard let last = stops.last else { return }
+        var s = "https://www.google.com/maps/dir/?api=1&destination=\(last.lat),\(last.lng)&travelmode=driving"
+        let mids = stops.dropLast().prefix(9).map { "\($0.lat),\($0.lng)" }.joined(separator: "%7C")
+        if !mids.isEmpty { s += "&waypoints=\(mids)" }
+        open(s)
+    }
+
+    private static func open(_ s: String) {
+        guard let url = URL(string: s) else { return }
+        UIApplication.shared.open(url)
+    }
+}
+
 struct RoutePlansView: View {
     @EnvironmentObject var appState: KiniAppState
     @StateObject var vm = RoutePlansViewModel()
@@ -682,6 +709,18 @@ struct RoutePlansView: View {
                     }
                     Text("Today's Route").font(.title3).fontWeight(.bold).foregroundColor(Color(uiColor: .label)).padding(.leading, 8)
                     Spacer()
+                    // Navigate the remaining beat in Google Maps (visit order
+                    // preserved as waypoints). Hidden when no pending stop has
+                    // coordinates.
+                    if !remainingGeoStops.isEmpty {
+                        Button(action: { MapsNavigator.navigateRoute(remainingGeoStops) }) {
+                            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.blue)
+                                .frame(width: 40, height: 40)
+                                .background(Color(uiColor: .secondarySystemBackground), in: Circle())
+                        }
+                    }
                     // Optimize my beat — only when the client carries the module.
                     if ClientFeatures.hasRouteOptimization {
                         Button(action: { Task { await vm.optimize() } }) {
@@ -766,6 +805,20 @@ struct RoutePlansView: View {
                 .refreshable { await vm.refresh() }
             }
         }.onAppear { Task { await vm.refresh() } }
+    }
+
+    /// Pending stops (not yet visited) with coordinates, in visit order —
+    /// the payload for the header's "navigate my beat" hand-off to Maps.
+    private var remainingGeoStops: [(lat: Double, lng: Double)] {
+        vm.plans.flatMap { orderedOutlets($0) }
+            .filter { o in
+                let s = (o.status ?? "").lowercased()
+                return !(s == "visited" || s == "completed" || o.checkoutAt != nil)
+            }
+            .compactMap { o in
+                guard let la = o.storeLat, let ln = o.storeLng else { return nil }
+                return (lat: la, lng: ln)
+            }
     }
 
     /// Sort outlets by visit_order (Android parity). Outlets without an
@@ -914,6 +967,18 @@ struct OutletCard: View {
                 }
 
                 Spacer()
+                // Tap-to-navigate: hands this stop to Google Maps turn-by-turn.
+                if let la = outlet.storeLat, let ln = outlet.storeLng {
+                    Button(action: { MapsNavigator.navigate(toLat: la, lng: ln) }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "location.fill").font(.system(size: 9, weight: .black))
+                            Text("Navigate").font(.caption2).fontWeight(.black)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.15))
+                        .foregroundColor(.blue).cornerRadius(15)
+                    }
+                }
                 let isShiftEnded = appState.today?.checkoutAt != nil
                 Button(action: { if !isShiftEnded || isDone { appState.selectedOutlet = outlet } }) {
                     Text(isDone ? "View Details" : (isShiftEnded ? "Shift Ended" : "Start Visit"))
