@@ -275,6 +275,27 @@ final class LeadDetailViewModel: ObservableObject {
         }
     }
 
+    /// Statuses the lead PATCH accepts (backend crm.validators status enum).
+    /// `converted` / `lost` are terminal outcomes with their own flows
+    /// (Convert / Mark Lost) that capture a reason, so they are not offered by
+    /// the inline status switcher.
+    static let settableStatuses = ["new", "working", "nurturing", "qualified", "unqualified"]
+
+    /// Inline status switcher on the detail header. Reuses the same PATCH the
+    /// Qualify / Deactivate actions use; no-ops when the value is unchanged.
+    func setStatus(_ status: String) async {
+        guard lead?.status?.lowercased() != status else { return }
+        qualifyBusy = true
+        defer { qualifyBusy = false }
+        do {
+            let updated = try await api.updateLead(id: leadId, body: ["status": status])
+            self.lead = updated
+            successMessage = "Status set to \(status)"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func deactivate() async {
         guard lead?.status?.lowercased() != "converted" else {
             errorMessage = "Cannot deactivate a converted lead"
