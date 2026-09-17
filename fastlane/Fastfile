@@ -145,71 +145,51 @@ def sign_and_build(bnum)
   )
 end
 
-# Upload a built .ipa to App Store Connect by driving `xcrun altool` directly,
-# placing a correct API-key .p8 at altool's own key search path ourselves.
+# Upload a built .ipa to App Store Connect via iTMSTransporter.
 #
-# Why not upload_to_testflight / upload_to_app_store: fastlane's transporter
-# writes a MALFORMED App Store Connect key file for altool (with either
-# is_key_content_base64 setting), so altool dies before any transfer with
-# "Failed to generate JWT token: … isn't in the correct format. (259)" — even
-# though spaceship parses the identical key in-memory and authenticates (match
-# and the pre-upload check both succeed). Writing the decoded .p8 to
-# ~/.appstoreconnect/private_keys/AuthKey_<id>.p8 (a standard altool key dir)
-# and invoking altool ourselves removes fastlane from the key path entirely.
-# --use-old-altool forces the stable legacy transporter, since Xcode 26's new
-# altool path is buggy (fastlane/fastlane#29698, #29743). A build uploaded this
-# way lands in App Store Connect for both TestFlight testing and App Store
-# submission.
-def upload_ipa_via_altool(ipa_path)
+# altool on the Xcode 26 runner is broken: it fails to generate its auth JWT
+# from a VALID App Store Connect API key ("Failed to generate JWT token: …
+# isn't in the correct format. (259)"). This was proven not to be our key or a
+# shadowing file — a diagnostic run showed the written .p8 parses via openssl,
+# it sits alone on altool's key search path, and our own Ruby signer
+# (asc_api_jwt) mints working tokens from it (the certs lane revoked certs with
+# it). It is an Apple altool bug on this toolchain.
+#
+# iTMSTransporter (bundled with Xcode, separate Java JWT code) uploads the same
+# build fine. It reads AuthKey_<id>.p8 from ./private_keys or the home key dirs;
+# we write it to both and authenticate with -apiKey/-apiIssuer (Apple's forums
+# report that path works where -jwt has regressed), falling back to a
+# pre-generated JWT if that first attempt fails. A build uploaded this way lands
+# in App Store Connect for both TestFlight testing and App Store submission.
+def upload_ipa(ipa_path)
   require "base64"
   require "fileutils"
   UI.user_error!("No .ipa was produced to upload (got #{ipa_path.inspect})") if ipa_path.nil? || !File.exist?(ipa_path)
 
   key_id = ENV.fetch("ASC_KEY_ID")
   issuer = ENV.fetch("ASC_ISSUER_ID")
-  keys_dir = File.join(Dir.home, ".appstoreconnect", "private_keys")
-  FileUtils.mkdir_p(keys_dir)
-  key_file = File.join(keys_dir, "AuthKey_#{key_id}.p8")
-  File.write(key_file, Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64")))
-  File.chmod(0o600, key_file)
+  key_bytes = Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64"))
+  home_keys = File.join(Dir.home, ".appstoreconnect", "private_keys")
+  local_keys = File.join(Dir.pwd, "private_keys")
+  [home_keys, local_keys].each do |d|
+    FileUtils.mkdir_p(d)
+    p = File.join(d, "AuthKey_#{key_id}.p8")
+    File.write(p, key_bytes)
+    File.chmod(0o600, p)
+  end
+  ENV["API_PRIVATE_KEYS_DIR"] = home_keys
 
-  # --- Diagnostics (non-fatal) ---------------------------------------------
-  # The (259) failures are altool unable to read the API key when generating
-  # its JWT, even though Ruby/OpenSSL parses the same key fine (asc_api_jwt
-  # works — the certs lane revoked via it). Confirm OUR key parses, surface any
-  # AuthKey that could shadow it on altool's earlier-priority search dirs, and
-  # note whether iTMSTransporter is available as a fallback uploader.
+  base = ["xcrun", "iTMSTransporter", "-m", "upload", "-assetFile", ipa_path, "-v", "informative"]
+  UI.message("Uploading #{File.basename(ipa_path)} to App Store Connect via iTMSTransporter…")
   begin
-    sh("openssl", "pkey", "-in", key_file, "-noout")
-    UI.message("DIAG: written .p8 parses OK via openssl")
+    sh(*base, "-apiKey", key_id, "-apiIssuer", issuer)
   rescue StandardError
-    UI.important("DIAG: openssl could NOT parse the written .p8")
+    UI.important("iTMSTransporter -apiKey upload failed; retrying with a pre-generated JWT…")
+    sh(*base, "-jwt", asc_api_jwt)
   end
-  ["./private_keys", File.join(Dir.home, "private_keys"), File.join(Dir.home, ".private_keys"), keys_dir].each do |d|
-    found = (Dir.glob(File.join(d, "AuthKey_*.p8")) rescue [])
-    UI.message("DIAG keydir #{d}: #{found.empty? ? '(no AuthKey_*.p8)' : found.join(', ')}")
-  end
-  itms = (sh("xcrun", "-f", "iTMSTransporter") rescue nil)
-  UI.message("DIAG iTMSTransporter: #{itms.to_s.strip.empty? ? 'NOT FOUND' : itms.strip}")
-  # -------------------------------------------------------------------------
-
-  UI.message("Uploading #{File.basename(ipa_path)} to App Store Connect via altool…")
-  # Force altool to use ONLY our key dir: it searches ./private_keys and
-  # ~/.private_keys BEFORE ~/.appstoreconnect/private_keys, so a stray or
-  # malformed AuthKey_*.p8 written there earlier (e.g. by match) could shadow
-  # the valid one and cause the JWT-generation (259). Array form keeps
-  # paths/ids as argv, never re-parsed by a shell.
-  ENV["API_PRIVATE_KEYS_DIR"] = keys_dir
-  sh(
-    "xcrun", "altool", "--upload-app",
-    "-f", ipa_path,
-    "-t", "ios",
-    "--apiKey", key_id,
-    "--apiIssuer", issuer,
-    "--use-old-altool",
-  )
 ensure
-  File.delete(key_file) if defined?(key_file) && key_file && File.exist?(key_file)
+  Dir.glob(File.join(Dir.home, ".appstoreconnect", "private_keys", "AuthKey_*.p8")).each { |f| File.delete(f) rescue nil }
+  Dir.glob(File.join(Dir.pwd, "private_keys", "AuthKey_*.p8")).each { |f| File.delete(f) rescue nil }
 end
 
 platform :ios do
@@ -236,7 +216,7 @@ platform :ios do
     setup_ci
     bnum = build_number
     ipa = sign_and_build(bnum)
-    upload_ipa_via_altool(ipa)
+    upload_ipa(ipa)
     UI.success("Uploaded build #{bnum} to App Store Connect — it will appear in TestFlight after processing ✈️")
   end
 
@@ -245,7 +225,7 @@ platform :ios do
     setup_ci
     bnum = build_number
     ipa = sign_and_build(bnum)
-    upload_ipa_via_altool(ipa)
+    upload_ipa(ipa)
     UI.success("Uploaded build #{bnum} to App Store Connect — finish metadata & submit in the ASC UI 🚀")
   end
 end
