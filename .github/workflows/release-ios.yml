@@ -56,6 +56,14 @@ jobs:
       LC_ALL: en_US.UTF-8
       LANG: en_US.UTF-8
       FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "180"
+      # Xcode 26's new altool breaks the TestFlight / App Store binary upload
+      # with "The file couldn't be opened because it isn't in the correct
+      # format. (259)" — it takes the deprecated --upload-app path. Force the
+      # legacy transporter for the upload. fastlane's altool wrapper (shared by
+      # pilot/upload_to_testflight and deliver/upload_to_app_store) reads this
+      # env var and appends it to the altool invocation.
+      # Ref: fastlane/fastlane#29698, #29743.
+      DELIVER_ALTOOL_ADDITIONAL_UPLOAD_PARAMETERS: "--verbose --use-old-altool"
 
     steps:
       - uses: actions/checkout@v4
