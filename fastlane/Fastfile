@@ -179,14 +179,22 @@ def upload_ipa(ipa_path)
   end
   ENV["API_PRIVATE_KEYS_DIR"] = home_keys
 
-  base = ["xcrun", "iTMSTransporter", "-m", "upload", "-assetFile", ipa_path, "-v", "informative"]
-  UI.message("Uploading #{File.basename(ipa_path)} to App Store Connect via iTMSTransporter…")
-  begin
-    sh(*base, "-apiKey", key_id, "-apiIssuer", issuer)
-  rescue StandardError
-    UI.important("iTMSTransporter -apiKey upload failed; retrying with a pre-generated JWT…")
-    sh(*base, "-jwt", asc_api_jwt)
-  end
+  # DIAG: which Xcodes (hence altool binaries) exist on the runner, so if the
+  # upload fails we know whether a non-26 altool is available to fall back to.
+  sh("bash", "-lc", "for x in /Applications/Xcode*.app; do echo \"XCODE: $x -> $(\"$x/Contents/Developer/usr/bin/xcodebuild\" -version 2>/dev/null | head -1)\"; done; echo 'ALTOOL BINARIES:'; ls -1 /Applications/Xcode*.app/Contents/Developer/usr/bin/altool 2>/dev/null || true") rescue nil
+
+  # iTMSTransporter is now just a stub on Xcode 26 ("install Transporter from the
+  # Mac App Store"), so it is not usable here. Use altool's NEW transport path
+  # (no --use-old-altool): only the legacy path was tested with a valid key so
+  # far, and it failed JWT generation — the new path is the last bundled option.
+  UI.message("Uploading #{File.basename(ipa_path)} to App Store Connect via altool…")
+  sh(
+    "xcrun", "altool", "--upload-app",
+    "-f", ipa_path,
+    "-t", "ios",
+    "--apiKey", key_id,
+    "--apiIssuer", issuer,
+  )
 ensure
   Dir.glob(File.join(Dir.home, ".appstoreconnect", "private_keys", "AuthKey_*.p8")).each { |f| File.delete(f) rescue nil }
   Dir.glob(File.join(Dir.pwd, "private_keys", "AuthKey_*.p8")).each { |f| File.delete(f) rescue nil }
