@@ -131,12 +131,16 @@ def sign_and_build(bnum)
     profile_name: profile_name,
     targets: [SCHEME],
   )
-  # build_app (gym) returns the absolute path to the exported .ipa.
+  # build_app (gym) returns the absolute path to the exported .ipa. Pin the
+  # output to a known path (build/Kinematic.ipa) so the workflow can hand the
+  # signed binary to the separate upload job as an artifact.
   build_app(
     project: XCODE_PROJECT,
     scheme: SCHEME,
     configuration: "Release",
     export_method: "app-store",
+    output_directory: "build",
+    output_name: "Kinematic",
     xcargs: "CURRENT_PROJECT_VERSION=#{bnum}",
     export_options: {
       signingStyle: "manual",
@@ -145,60 +149,17 @@ def sign_and_build(bnum)
   )
 end
 
-# Upload a built .ipa to App Store Connect via iTMSTransporter.
+# NOTE ON UPLOADS — why there is no upload lane here.
 #
-# altool on the Xcode 26 runner is broken: it fails to generate its auth JWT
-# from a VALID App Store Connect API key ("Failed to generate JWT token: …
-# isn't in the correct format. (259)"). This was proven not to be our key or a
-# shadowing file — a diagnostic run showed the written .p8 parses via openssl,
-# it sits alone on altool's key search path, and our own Ruby signer
-# (asc_api_jwt) mints working tokens from it (the certs lane revoked certs with
-# it). It is an Apple altool bug on this toolchain.
-#
-# iTMSTransporter (bundled with Xcode, separate Java JWT code) uploads the same
-# build fine. It reads AuthKey_<id>.p8 from ./private_keys or the home key dirs;
-# we write it to both and authenticate with -apiKey/-apiIssuer (Apple's forums
-# report that path works where -jwt has regressed), falling back to a
-# pre-generated JWT if that first attempt fails. A build uploaded this way lands
-# in App Store Connect for both TestFlight testing and App Store submission.
-def upload_ipa(ipa_path)
-  require "base64"
-  require "fileutils"
-  UI.user_error!("No .ipa was produced to upload (got #{ipa_path.inspect})") if ipa_path.nil? || !File.exist?(ipa_path)
-
-  key_id = ENV.fetch("ASC_KEY_ID")
-  issuer = ENV.fetch("ASC_ISSUER_ID")
-  key_bytes = Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64"))
-  home_keys = File.join(Dir.home, ".appstoreconnect", "private_keys")
-  local_keys = File.join(Dir.pwd, "private_keys")
-  [home_keys, local_keys].each do |d|
-    FileUtils.mkdir_p(d)
-    p = File.join(d, "AuthKey_#{key_id}.p8")
-    File.write(p, key_bytes)
-    File.chmod(0o600, p)
-  end
-  ENV["API_PRIVATE_KEYS_DIR"] = home_keys
-
-  # DIAG: which Xcodes (hence altool binaries) exist on the runner, so if the
-  # upload fails we know whether a non-26 altool is available to fall back to.
-  sh("bash", "-lc", "for x in /Applications/Xcode*.app; do echo \"XCODE: $x -> $(\"$x/Contents/Developer/usr/bin/xcodebuild\" -version 2>/dev/null | head -1)\"; done; echo 'ALTOOL BINARIES:'; ls -1 /Applications/Xcode*.app/Contents/Developer/usr/bin/altool 2>/dev/null || true") rescue nil
-
-  # iTMSTransporter is now just a stub on Xcode 26 ("install Transporter from the
-  # Mac App Store"), so it is not usable here. Use altool's NEW transport path
-  # (no --use-old-altool): only the legacy path was tested with a valid key so
-  # far, and it failed JWT generation — the new path is the last bundled option.
-  UI.message("Uploading #{File.basename(ipa_path)} to App Store Connect via altool…")
-  sh(
-    "xcrun", "altool", "--upload-app",
-    "-f", ipa_path,
-    "-t", "ios",
-    "--apiKey", key_id,
-    "--apiIssuer", issuer,
-  )
-ensure
-  Dir.glob(File.join(Dir.home, ".appstoreconnect", "private_keys", "AuthKey_*.p8")).each { |f| File.delete(f) rescue nil }
-  Dir.glob(File.join(Dir.pwd, "private_keys", "AuthKey_*.p8")).each { |f| File.delete(f) rescue nil }
-end
+# altool AND iTMSTransporter are both unusable on the macos-26 runner (Xcode
+# 26.x only): every bundled altool fails to parse the App Store Connect API key
+# when generating its auth JWT ("… isn't in the correct format. (259)") — proven
+# an Apple bug, since the same .p8 parses via openssl, sits alone on altool's key
+# search path, and our own Ruby signer (asc_api_jwt) mints working tokens from it
+# — and iTMSTransporter is now a stub that just says "install Transporter from
+# the Mac App Store". Xcode 16's altool (pre-bug) is fine, so the workflow builds
+# + signs here (build_only) and uploads the resulting .ipa on a separate macos-15
+# job via `xcrun altool`. See .github/workflows/release-ios.yml.
 
 platform :ios do
   # One-time bootstrap (or when the cert expires / is revoked): create the
@@ -219,21 +180,11 @@ platform :ios do
     )
   end
 
-  desc "Build and upload a build to TestFlight"
-  lane :beta do
+  desc "Build + sign the App Store .ipa (upload happens in a separate macos-15 job)"
+  lane :build_only do
     setup_ci
     bnum = build_number
     ipa = sign_and_build(bnum)
-    upload_ipa(ipa)
-    UI.success("Uploaded build #{bnum} to App Store Connect — it will appear in TestFlight after processing ✈️")
-  end
-
-  desc "Build and upload to App Store Connect (does NOT auto-submit for review)"
-  lane :release do
-    setup_ci
-    bnum = build_number
-    ipa = sign_and_build(bnum)
-    upload_ipa(ipa)
-    UI.success("Uploaded build #{bnum} to App Store Connect — finish metadata & submit in the ASC UI 🚀")
+    UI.success("Built + signed #{ipa} (build #{bnum}) — ready to upload from the macos-15 job")
   end
 end
