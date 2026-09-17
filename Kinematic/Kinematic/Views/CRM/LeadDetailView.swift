@@ -415,14 +415,46 @@ struct LeadDetailView: View {
                     }
                 }
             }
-            if let status = lead.status {
-                Text(status.uppercased())
-                    .font(.system(size: 10, weight: .heavy))
-                    .tracking(0.8)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(statusBackground(for: status))
-                    .foregroundColor(statusForeground(for: status))
-                    .cornerRadius(6)
+            // Status switcher — tap to set the lead's status inline. Terminal
+            // states (converted / lost) keep their dedicated flows in charge,
+            // so those render as a read-only chip. Gated through the field
+            // overrides like every other built-in field.
+            if let status = lead.status, !fieldOverrides.isHidden("status", isB2C: lead.isB2c == true) {
+                let lower = status.lowercased()
+                let isTerminal = lower == "converted" || lower == "lost"
+                let chip = HStack(spacing: 4) {
+                    Text(status.uppercased())
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(0.8)
+                    if !isTerminal {
+                        Image(systemName: "chevron.down").font(.system(size: 8, weight: .heavy))
+                    }
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(statusBackground(for: status))
+                .foregroundColor(statusForeground(for: status))
+                .cornerRadius(6)
+
+                if isTerminal {
+                    chip
+                } else {
+                    Menu {
+                        ForEach(LeadDetailViewModel.settableStatuses, id: \.self) { opt in
+                            Button {
+                                Task { await vm.setStatus(opt) }
+                            } label: {
+                                if opt == lower {
+                                    Label(opt.capitalized, systemImage: "checkmark")
+                                } else {
+                                    Text(opt.capitalized)
+                                }
+                            }
+                        }
+                    } label: {
+                        chip
+                    }
+                    .disabled(vm.qualifyBusy)
+                }
             }
         }
         .padding(16)
