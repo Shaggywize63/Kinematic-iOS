@@ -131,6 +131,7 @@ def sign_and_build(bnum)
     profile_name: profile_name,
     targets: [SCHEME],
   )
+  # build_app (gym) returns the absolute path to the exported .ipa.
   build_app(
     project: XCODE_PROJECT,
     scheme: SCHEME,
@@ -142,6 +143,48 @@ def sign_and_build(bnum)
       provisioningProfiles: { APP_IDENTIFIER => profile_name },
     },
   )
+end
+
+# Upload a built .ipa to App Store Connect by driving `xcrun altool` directly,
+# placing a correct API-key .p8 at altool's own key search path ourselves.
+#
+# Why not upload_to_testflight / upload_to_app_store: fastlane's transporter
+# writes a MALFORMED App Store Connect key file for altool (with either
+# is_key_content_base64 setting), so altool dies before any transfer with
+# "Failed to generate JWT token: … isn't in the correct format. (259)" — even
+# though spaceship parses the identical key in-memory and authenticates (match
+# and the pre-upload check both succeed). Writing the decoded .p8 to
+# ~/.appstoreconnect/private_keys/AuthKey_<id>.p8 (a standard altool key dir)
+# and invoking altool ourselves removes fastlane from the key path entirely.
+# --use-old-altool forces the stable legacy transporter, since Xcode 26's new
+# altool path is buggy (fastlane/fastlane#29698, #29743). A build uploaded this
+# way lands in App Store Connect for both TestFlight testing and App Store
+# submission.
+def upload_ipa_via_altool(ipa_path)
+  require "base64"
+  require "fileutils"
+  UI.user_error!("No .ipa was produced to upload (got #{ipa_path.inspect})") if ipa_path.nil? || !File.exist?(ipa_path)
+
+  key_id = ENV.fetch("ASC_KEY_ID")
+  issuer = ENV.fetch("ASC_ISSUER_ID")
+  keys_dir = File.join(Dir.home, ".appstoreconnect", "private_keys")
+  FileUtils.mkdir_p(keys_dir)
+  key_file = File.join(keys_dir, "AuthKey_#{key_id}.p8")
+  File.write(key_file, Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64")))
+  File.chmod(0o600, key_file)
+
+  UI.message("Uploading #{File.basename(ipa_path)} to App Store Connect via altool…")
+  # Array form so paths/ids are passed as argv, never re-parsed by a shell.
+  sh(
+    "xcrun", "altool", "--upload-app",
+    "-f", ipa_path,
+    "-t", "ios",
+    "--apiKey", key_id,
+    "--apiIssuer", issuer,
+    "--use-old-altool",
+  )
+ensure
+  File.delete(key_file) if defined?(key_file) && key_file && File.exist?(key_file)
 end
 
 platform :ios do
@@ -167,28 +210,17 @@ platform :ios do
   lane :beta do
     setup_ci
     bnum = build_number
-    sign_and_build(bnum)
-    upload_to_testflight(
-      api_key: asc_api_key,
-      skip_waiting_for_build_processing: true,
-      distribute_external: false,
-    )
-    UI.success("Uploaded build #{bnum} to TestFlight ✈️")
+    ipa = sign_and_build(bnum)
+    upload_ipa_via_altool(ipa)
+    UI.success("Uploaded build #{bnum} to App Store Connect — it will appear in TestFlight after processing ✈️")
   end
 
   desc "Build and upload to App Store Connect (does NOT auto-submit for review)"
   lane :release do
     setup_ci
     bnum = build_number
-    sign_and_build(bnum)
-    upload_to_app_store(
-      api_key: asc_api_key,
-      submit_for_review: false,
-      skip_metadata: true,
-      skip_screenshots: true,
-      precheck_include_in_app_purchases: false,
-      force: true,
-    )
+    ipa = sign_and_build(bnum)
+    upload_ipa_via_altool(ipa)
     UI.success("Uploaded build #{bnum} to App Store Connect — finish metadata & submit in the ASC UI 🚀")
   end
 end
