@@ -2,9 +2,21 @@ name: Release iOS (TestFlight / App Store)
 
 # Manual only — App Store / TestFlight uploads should be intentional, not fired
 # on every push. Pick the lane when you dispatch:
-#   • beta    → build + upload to TestFlight
-#   • release → build + upload to App Store Connect (finish metadata & submit in ASC)
+#   • beta    → build + sign, then upload to App Store Connect (appears in TestFlight)
+#   • release → build + sign, then upload to App Store Connect (finish metadata & submit in ASC)
 #   • certs   → one-time bootstrap: create signing cert + profile in the match repo
+#
+# beta and release do the same thing here (both upload the signed binary to App
+# Store Connect); the binary is then available for TestFlight testing AND for an
+# App Store submission you finish in the ASC UI.
+#
+# WHY TWO JOBS: the app must be BUILT on macos-26 (Xcode 26 / iOS 26 SDK — an
+# older SDK fails to compile the iOS 26 SwiftUI it uses). But every altool on the
+# macos-26 image (all Xcode 26.x) is broken: it can't parse the App Store Connect
+# API key when generating its auth JWT ("… isn't in the correct format. (259)"),
+# and iTMSTransporter there is a stub. So we build+sign on macos-26 and upload the
+# signed .ipa on macos-15, whose Xcode 16 altool authenticates with the API key
+# correctly.
 #
 # Required repo secrets (Settings → Secrets and variables → Actions):
 #   ASC_KEY_ID                    App Store Connect API key ID
@@ -12,7 +24,6 @@ name: Release iOS (TestFlight / App Store)
 #   ASC_KEY_P8_BASE64             base64 of the .p8 key file  (base64 -i AuthKey_XXX.p8)
 #   MATCH_PASSWORD                passphrase that encrypts the match repo
 #   MATCH_GIT_URL                 https URL of a PRIVATE repo that stores signing assets
-#   MATCH_GIT_BASIC_AUTHORIZATION base64 of "<github-username>:<PAT-with-repo-scope>"
 on:
   workflow_dispatch:
     inputs:
@@ -26,18 +37,18 @@ on:
           - release
           - certs
 
-# `contents: write` so the job's GITHUB_TOKEN can push match's encrypted signing
-# assets back to this repo (MATCH_GIT_URL points at this same repository — see
-# the "Normalise match git credentials" step). Without write, match mints a new
-# distribution certificate on every run but can never persist it, which both
-# exhausts Apple's 2-cert cap and leaves the read-only beta/release lanes with
-# no identity to find.
+# `contents: write` so the build job's GITHUB_TOKEN can push match's encrypted
+# signing assets back to this repo (MATCH_GIT_URL points at this same repository
+# — see the "Normalise match git credentials" step). Without write, match mints a
+# new distribution certificate on every run but can never persist it, which both
+# exhausts Apple's 2-cert cap and leaves the read-only build from finding an
+# identity.
 permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build & upload (${{ inputs.lane }})
+  build:
+    name: Build & sign (${{ inputs.lane }})
     # macos-26 ships Xcode 26 (iOS 26 SDK). The codebase uses iOS 26 SwiftUI
     # APIs to compile even though the deployment target is iOS 18, so an older
     # runner (Xcode 16 / iOS 18 SDK) would fail with exit code 65.
@@ -56,14 +67,6 @@ jobs:
       LC_ALL: en_US.UTF-8
       LANG: en_US.UTF-8
       FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "180"
-      # Xcode 26's new altool breaks the TestFlight / App Store binary upload
-      # with "The file couldn't be opened because it isn't in the correct
-      # format. (259)" — it takes the deprecated --upload-app path. Force the
-      # legacy transporter for the upload. fastlane's altool wrapper (shared by
-      # pilot/upload_to_testflight and deliver/upload_to_app_store) reads this
-      # env var and appends it to the altool invocation.
-      # Ref: fastlane/fastlane#29698, #29743.
-      DELIVER_ALTOOL_ADDITIONAL_UPLOAD_PARAMETERS: "--verbose --use-old-altool"
 
     steps:
       - uses: actions/checkout@v4
@@ -101,12 +104,12 @@ jobs:
       # match's attempt to persist a freshly-created distribution certificate
       # failed with HTTP 403 "Permission … denied", so every run re-minted a
       # certificate that was never saved (exhausting Apple's 2-cert cap) and the
-      # read-only beta/release lanes found no identity. The job's GITHUB_TOKEN
-      # has write access to this repo via `permissions: contents: write`, so use
-      # it for both clone and push. `x-access-token:<token>` is the form GitHub
-      # expects; re-encode as clean single-line base64 that match sends verbatim.
-      # MATCH_GIT_URL is stripped of stray whitespace (a baked-in newline
-      # otherwise corrupts the URL). openssl is always present on the runner.
+      # read-only build found no identity. The job's GITHUB_TOKEN has write access
+      # to this repo via `permissions: contents: write`, so use it for both clone
+      # and push. `x-access-token:<token>` is the form GitHub expects; re-encode
+      # as clean single-line base64 that match sends verbatim. MATCH_GIT_URL is
+      # stripped of stray whitespace (a baked-in newline otherwise corrupts the
+      # URL). openssl is always present on the runner.
       - name: Normalise match git credentials
         env:
           RAW_URL: ${{ secrets.MATCH_GIT_URL }}
@@ -122,5 +125,60 @@ jobs:
           echo "::add-mask::$clean"
           echo "MATCH_GIT_BASIC_AUTHORIZATION=$clean" >> "$GITHUB_ENV"
 
-      - name: Run fastlane ${{ inputs.lane }}
-        run: bundle exec fastlane ${{ inputs.lane }}
+      # certs → bootstrap signing assets and stop. beta/release → build + sign the
+      # .ipa (the upload runs in the separate macos-15 job below).
+      - name: Run fastlane (build or certs)
+        run: |
+          set -e
+          if [ "${{ inputs.lane }}" = "certs" ]; then
+            bundle exec fastlane certs
+          else
+            bundle exec fastlane build_only
+          fi
+
+      - name: Upload signed IPA artifact
+        if: ${{ inputs.lane != 'certs' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kinematic-ipa
+          path: build/Kinematic.ipa
+          if-no-files-found: error
+          retention-days: 1
+
+  upload:
+    name: Upload to App Store Connect (macos-15)
+    needs: build
+    # certs bootstraps signing only — nothing to upload.
+    if: ${{ inputs.lane != 'certs' }}
+    # macos-15 ships Xcode 16, whose altool authenticates with an App Store
+    # Connect API key correctly (Xcode 26's altool cannot — it fails JWT
+    # generation with error 259). It just transfers the already-signed binary.
+    runs-on: macos-15
+
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+
+    steps:
+      - name: Download signed IPA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kinematic-ipa
+          path: ipa
+
+      - name: Upload to App Store Connect via altool
+        run: |
+          set -euo pipefail
+          ipa="$(ls ipa/*.ipa | head -n1)"
+          echo "Uploading $ipa"
+          # Place the decoded .p8 where altool looks for AuthKey_<id>.p8.
+          keydir="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$keydir"
+          printf '%s' "$ASC_KEY_P8_BASE64" | tr -d '[:space:]' | openssl base64 -d -A > "$keydir/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "$keydir/AuthKey_${ASC_KEY_ID}.p8"
+          xcodebuild -version
+          xcrun altool --upload-app -f "$ipa" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
