@@ -20,12 +20,22 @@ SCHEME         = "Kinematic".freeze
 TEAM_ID        = "WQ25J762R4".freeze
 
 # App Store Connect API key assembled from base64 secret — reused by every lane.
+#
+# We decode the base64 .p8 ourselves and hand fastlane the raw PEM
+# (is_key_content_base64: false) rather than letting it decode. fastlane
+# >= 2.236.0 has a regression on the base64 path: it writes a malformed .p8 for
+# altool, so the TestFlight/App Store binary upload fails with
+# "The file couldn't be opened because it isn't in the correct format. (259)"
+# even though the spaceship auth (which reads the key correctly) succeeds.
+# Passing already-decoded content sidesteps that buggy code entirely.
+# Refs: fastlane/fastlane#30065, fastlane/fastlane#30066.
 def asc_api_key
+  require "base64"
   app_store_connect_api_key(
     key_id: ENV.fetch("ASC_KEY_ID"),
     issuer_id: ENV.fetch("ASC_ISSUER_ID"),
-    key_content: ENV.fetch("ASC_KEY_P8_BASE64"),
-    is_key_content_base64: true,
+    key_content: Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64")),
+    is_key_content_base64: false,
     in_house: false,
   )
 end
