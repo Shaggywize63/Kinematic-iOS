@@ -174,11 +174,29 @@ jobs:
           set -euo pipefail
           ipa="$(ls ipa/*.ipa | head -n1)"
           echo "Uploading $ipa"
-          # Place the decoded .p8 where altool looks for AuthKey_<id>.p8.
+          kid="$(printf '%s' "$ASC_KEY_ID" | tr -d '[:space:]')"
+          iss="$(printf '%s' "$ASC_ISSUER_ID" | tr -d '[:space:]')"
           keydir="$HOME/.appstoreconnect/private_keys"
           mkdir -p "$keydir"
-          printf '%s' "$ASC_KEY_P8_BASE64" | tr -d '[:space:]' | openssl base64 -d -A > "$keydir/AuthKey_${ASC_KEY_ID}.p8"
-          chmod 600 "$keydir/AuthKey_${ASC_KEY_ID}.p8"
+          key="$keydir/AuthKey_${kid}.p8"
+          # The ASC_KEY_P8_BASE64 secret decodes to the key's DER (binary) form.
+          # Ruby/OpenSSL and spaceship read DER fine (match + signing work), but
+          # altool reads AuthKey_<id>.p8 as a UTF-8 text PEM and throws
+          # "Failed to generate JWT token: … isn't in the correct format. (259)"
+          # on binary input — regardless of Xcode version. Convert to a clean PEM
+          # (and accept an already-PEM secret too, for robustness).
+          printf '%s' "$ASC_KEY_P8_BASE64" | tr -d '[:space:]' | openssl base64 -d -A > raw.key
+          if openssl pkey -in raw.key -out "$key" 2>/dev/null; then
+            echo "API key secret was PEM"
+          elif openssl pkey -inform DER -in raw.key -out "$key" 2>/dev/null; then
+            echo "API key secret was DER — converted to PEM"
+          else
+            echo "::error::Could not parse ASC_KEY_P8_BASE64 as a PEM or DER private key"
+            exit 1
+          fi
+          rm -f raw.key
+          chmod 600 "$key"
+          echo "key header: $(head -1 "$key")"
           xcodebuild -version
           xcrun altool --upload-app -f "$ipa" -t ios \
-            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+            --apiKey "$kid" --apiIssuer "$iss"
