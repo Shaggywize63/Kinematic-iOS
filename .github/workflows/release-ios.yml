@@ -77,5 +77,39 @@ jobs:
           ruby-version: "3.3"
           bundler-cache: true
 
+      # Normalise the match git credentials before fastlane runs. The stored
+      # MATCH_GIT_BASIC_AUTHORIZATION is base64 of "<user>:<token>", but a stray
+      # newline baked into that base64 (very common depending on how it was
+      # generated — `base64` line-wraps, `echo` appends \n) corrupts the git
+      # Authorization header, so `match`'s clone of the certs repo fails with
+      # "unable to access …: The requested URL returned error: 400". Decode,
+      # strip whitespace, tolerate a token-only value, and re-encode as clean
+      # single-line base64 that match sends verbatim. Also strip whitespace
+      # from MATCH_GIT_URL for the same reason. Uses openssl (always present)
+      # so it is portable on the macOS runner.
+      - name: Normalise match git credentials
+        env:
+          RAW_AUTH: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          RAW_URL: ${{ secrets.MATCH_GIT_URL }}
+        run: |
+          set -euo pipefail
+          url="$(printf '%s' "$RAW_URL" | tr -d '[:space:]')"
+          echo "::add-mask::$url"
+          echo "MATCH_GIT_URL=$url" >> "$GITHUB_ENV"
+
+          decoded="$(printf '%s' "$RAW_AUTH" | tr -d '[:space:]' | openssl base64 -d -A 2>/dev/null || true)"
+          decoded="$(printf '%s' "$decoded" | tr -d '\r\n')"
+          if printf '%s' "$decoded" | grep -q ':'; then
+            creds="$decoded"                       # already "<user>:<token>"
+          else
+            # No colon → the value is a bare token; pair it with a placeholder
+            # user (GitHub ignores the username for a PAT).
+            tok="${decoded:-$(printf '%s' "$RAW_AUTH" | tr -d '[:space:]')}"
+            creds="x-access-token:${tok}"
+          fi
+          clean="$(printf '%s' "$creds" | openssl base64 -A)"
+          echo "::add-mask::$clean"
+          echo "MATCH_GIT_BASIC_AUTHORIZATION=$clean" >> "$GITHUB_ENV"
+
       - name: Run fastlane ${{ inputs.lane }}
         run: bundle exec fastlane ${{ inputs.lane }}
