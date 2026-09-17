@@ -173,8 +173,33 @@ def upload_ipa_via_altool(ipa_path)
   File.write(key_file, Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64")))
   File.chmod(0o600, key_file)
 
+  # --- Diagnostics (non-fatal) ---------------------------------------------
+  # The (259) failures are altool unable to read the API key when generating
+  # its JWT, even though Ruby/OpenSSL parses the same key fine (asc_api_jwt
+  # works — the certs lane revoked via it). Confirm OUR key parses, surface any
+  # AuthKey that could shadow it on altool's earlier-priority search dirs, and
+  # note whether iTMSTransporter is available as a fallback uploader.
+  begin
+    sh("openssl", "pkey", "-in", key_file, "-noout")
+    UI.message("DIAG: written .p8 parses OK via openssl")
+  rescue StandardError
+    UI.important("DIAG: openssl could NOT parse the written .p8")
+  end
+  ["./private_keys", File.join(Dir.home, "private_keys"), File.join(Dir.home, ".private_keys"), keys_dir].each do |d|
+    found = (Dir.glob(File.join(d, "AuthKey_*.p8")) rescue [])
+    UI.message("DIAG keydir #{d}: #{found.empty? ? '(no AuthKey_*.p8)' : found.join(', ')}")
+  end
+  itms = (sh("xcrun", "-f", "iTMSTransporter") rescue nil)
+  UI.message("DIAG iTMSTransporter: #{itms.to_s.strip.empty? ? 'NOT FOUND' : itms.strip}")
+  # -------------------------------------------------------------------------
+
   UI.message("Uploading #{File.basename(ipa_path)} to App Store Connect via altool…")
-  # Array form so paths/ids are passed as argv, never re-parsed by a shell.
+  # Force altool to use ONLY our key dir: it searches ./private_keys and
+  # ~/.private_keys BEFORE ~/.appstoreconnect/private_keys, so a stray or
+  # malformed AuthKey_*.p8 written there earlier (e.g. by match) could shadow
+  # the valid one and cause the JWT-generation (259). Array form keeps
+  # paths/ids as argv, never re-parsed by a shell.
+  ENV["API_PRIVATE_KEYS_DIR"] = keys_dir
   sh(
     "xcrun", "altool", "--upload-app",
     "-f", ipa_path,
