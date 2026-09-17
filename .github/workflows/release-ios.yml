@@ -26,8 +26,14 @@ on:
           - release
           - certs
 
+# `contents: write` so the job's GITHUB_TOKEN can push match's encrypted signing
+# assets back to this repo (MATCH_GIT_URL points at this same repository — see
+# the "Normalise match git credentials" step). Without write, match mints a new
+# distribution certificate on every run but can never persist it, which both
+# exhausts Apple's 2-cert cap and leaves the read-only beta/release lanes with
+# no identity to find.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release:
@@ -43,7 +49,9 @@ jobs:
       ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
       MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
       MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
-      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      # MATCH_GIT_BASIC_AUTHORIZATION is intentionally NOT set here — it is
+      # derived from the job's GITHUB_TOKEN in "Normalise match git credentials"
+      # (the stored PAT is read-only and can't persist signing assets).
       # Deterministic, English locale so fastlane/xcodebuild parse cleanly.
       LC_ALL: en_US.UTF-8
       LANG: en_US.UTF-8
@@ -63,7 +71,7 @@ jobs:
         run: |
           set -e
           missing=""
-          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64 MATCH_PASSWORD MATCH_GIT_URL MATCH_GIT_BASIC_AUTHORIZATION; do
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64 MATCH_PASSWORD MATCH_GIT_URL; do
             if [ -z "${!v}" ]; then missing="$missing $v"; fi
           done
           if [ -n "$missing" ]; then
@@ -77,36 +85,31 @@ jobs:
           ruby-version: "3.3"
           bundler-cache: true
 
-      # Normalise the match git credentials before fastlane runs. The stored
-      # MATCH_GIT_BASIC_AUTHORIZATION is base64 of "<user>:<token>", but a stray
-      # newline baked into that base64 (very common depending on how it was
-      # generated — `base64` line-wraps, `echo` appends \n) corrupts the git
-      # Authorization header, so `match`'s clone of the certs repo fails with
-      # "unable to access …: The requested URL returned error: 400". Decode,
-      # strip whitespace, tolerate a token-only value, and re-encode as clean
-      # single-line base64 that match sends verbatim. Also strip whitespace
-      # from MATCH_GIT_URL for the same reason. Uses openssl (always present)
-      # so it is portable on the macOS runner.
+      # Authenticate match's git storage with the job's GITHUB_TOKEN.
+      #
+      # MATCH_GIT_URL points at THIS repository (the encrypted signing assets are
+      # stored here on the `master` branch). The PAT in
+      # MATCH_GIT_BASIC_AUTHORIZATION could clone (read) but not push (write) —
+      # match's attempt to persist a freshly-created distribution certificate
+      # failed with HTTP 403 "Permission … denied", so every run re-minted a
+      # certificate that was never saved (exhausting Apple's 2-cert cap) and the
+      # read-only beta/release lanes found no identity. The job's GITHUB_TOKEN
+      # has write access to this repo via `permissions: contents: write`, so use
+      # it for both clone and push. `x-access-token:<token>` is the form GitHub
+      # expects; re-encode as clean single-line base64 that match sends verbatim.
+      # MATCH_GIT_URL is stripped of stray whitespace (a baked-in newline
+      # otherwise corrupts the URL). openssl is always present on the runner.
       - name: Normalise match git credentials
         env:
-          RAW_AUTH: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
           RAW_URL: ${{ secrets.MATCH_GIT_URL }}
+          GH_PUSH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           url="$(printf '%s' "$RAW_URL" | tr -d '[:space:]')"
           echo "::add-mask::$url"
           echo "MATCH_GIT_URL=$url" >> "$GITHUB_ENV"
 
-          decoded="$(printf '%s' "$RAW_AUTH" | tr -d '[:space:]' | openssl base64 -d -A 2>/dev/null || true)"
-          decoded="$(printf '%s' "$decoded" | tr -d '\r\n')"
-          if printf '%s' "$decoded" | grep -q ':'; then
-            creds="$decoded"                       # already "<user>:<token>"
-          else
-            # No colon → the value is a bare token; pair it with a placeholder
-            # user (GitHub ignores the username for a PAT).
-            tok="${decoded:-$(printf '%s' "$RAW_AUTH" | tr -d '[:space:]')}"
-            creds="x-access-token:${tok}"
-          fi
+          creds="x-access-token:${GH_PUSH_TOKEN}"
           clean="$(printf '%s' "$creds" | openssl base64 -A)"
           echo "::add-mask::$clean"
           echo "MATCH_GIT_BASIC_AUTHORIZATION=$clean" >> "$GITHUB_ENV"
