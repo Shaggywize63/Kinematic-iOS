@@ -30,6 +30,63 @@ def asc_api_key
   )
 end
 
+# Short-lived ES256 JWT for the App Store Connect REST API, signed with the same
+# .p8 key the signing/upload steps use (jwt + openssl ship with fastlane).
+def asc_api_jwt
+  require "base64"
+  require "openssl"
+  require "jwt"
+  now = Time.now.to_i
+  JWT.encode(
+    { iss: ENV.fetch("ASC_ISSUER_ID"), iat: now, exp: now + 15 * 60, aud: "appstoreconnect-v1" },
+    OpenSSL::PKey.read(Base64.decode64(ENV.fetch("ASC_KEY_P8_BASE64"))),
+    "ES256",
+    { kid: ENV.fetch("ASC_KEY_ID"), typ: "JWT" },
+  )
+end
+
+def asc_api_request(method, path)
+  require "net/http"
+  uri = URI("https://api.appstoreconnect.apple.com#{path}")
+  klass = method == :delete ? Net::HTTP::Delete : Net::HTTP::Get
+  req = klass.new(uri)
+  req["Authorization"] = "Bearer #{asc_api_jwt}"
+  req["Accept"] = "application/json"
+  Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(req) }
+end
+
+# Revoke every App Store *distribution* certificate on the account. match mints a
+# distribution cert on each bootstrap, but while the git store was unwritable it
+# could never save the private key — so the account's two distribution slots
+# filled with orphaned certs no machine can use, and match could no longer create
+# the one it needs ("reached the maximum number of available Distribution
+# certificates"). Revoking them (development certs are left untouched, and already
+# uploaded/released builds stay valid) frees the slots so the next
+# match(readonly:false) can mint AND persist a usable identity.
+def revoke_distribution_certs
+  require "json"
+  res = asc_api_request(:get, "/v1/certificates?limit=200")
+  UI.user_error!("Could not list certificates (HTTP #{res.code}): #{res.body}") unless res.code.to_i == 200
+  certs = (JSON.parse(res.body)["data"] || []).select do |c|
+    c.dig("attributes", "certificateType").to_s.include?("DISTRIBUTION")
+  end
+  if certs.empty?
+    UI.message("No distribution certificates to revoke.")
+    return
+  end
+  certs.each do |c|
+    id   = c["id"]
+    type = c.dig("attributes", "certificateType")
+    name = c.dig("attributes", "name")
+    del  = asc_api_request(:delete, "/v1/certificates/#{id}")
+    if [200, 204].include?(del.code.to_i)
+      UI.message("Revoked distribution certificate #{type} #{id} (#{name})")
+    else
+      UI.important("Failed to revoke #{id} (HTTP #{del.code}): #{del.body}")
+    end
+  end
+end
+
 # Unique, monotonic build number (App Store Connect rejects duplicates). The
 # app's Info.plist reads CFBundleVersion from $(CURRENT_PROJECT_VERSION), so
 # overriding it at archive time via xcargs flows straight into the binary.
@@ -84,6 +141,10 @@ platform :ios do
   desc "Create/refresh signing assets in the match repo"
   lane :certs do
     setup_ci
+    # Clear orphaned distribution certs (see revoke_distribution_certs) so the
+    # create below is never blocked by Apple's 2-distribution-cert cap. This is
+    # a manual bootstrap lane, so revoke-then-create is exactly its job.
+    revoke_distribution_certs
     match(
       type: "appstore",
       app_identifier: APP_IDENTIFIER,
