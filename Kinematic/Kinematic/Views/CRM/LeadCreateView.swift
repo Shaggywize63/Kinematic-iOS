@@ -581,11 +581,13 @@ struct LeadCreateView: View {
                 }
                 }
 
-                // Tata Tiscon site-visit affordance — most leads are added
+                // Steel-dealer site-visit affordance — most leads are added
                 // while the rep is physically at the consumer / dealer
                 // counter, so we default it on. Backend spawns the
-                // matching activity in the same round-trip.
-                if isTata {
+                // matching activity in the same round-trip. Gated strictly on
+                // the steel-dealer tenant (Tata / BMW) — NOT on any B2C lead —
+                // so the parent Kinematic tenant never sees it.
+                if ClientFeatures.isTataTiscon {
                     Section {
                         Toggle("Also log this lead as a Site Visit activity", isOn: $logAsSiteVisit)
                     } footer: {
@@ -1125,10 +1127,12 @@ struct LeadCreateView: View {
         var cf = customFields.jsonValues
         for (k, v) in productLines.jsonValues { cf[k] = v }
         if !cf.isEmpty { body["custom_fields"] = cf }
-        // Tata Tiscon site-visit affordance — backend reads this flag,
+        // Steel-dealer site-visit affordance — backend reads this flag,
         // strips it before persisting the lead, and atomically spawns a
-        // completed `site_visit` activity tied to the new lead.
-        if isTata && logAsSiteVisit {
+        // completed `site_visit` activity tied to the new lead. Guard mirrors
+        // the toggle's render gate (steel-dealer tenant only) so it can never
+        // be sent for a Kinematic B2C lead where the toggle isn't shown.
+        if ClientFeatures.isTataTiscon && logAsSiteVisit {
             body["_auto_log_site_visit"] = true
         }
         // DPDP §6 — capture consent at collection. Always recorded in the
