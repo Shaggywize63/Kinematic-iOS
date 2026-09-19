@@ -240,10 +240,18 @@ struct LeadEditView: View {
                     if !fieldOverrides.isHidden("address_line2", isB2C: isB2C) {
                         TextField(fieldOverrides.labelFor("address_line2", defaultLabel: "Line 2", isB2C: isB2C), text: $addressLine2)
                     }
-                    // State + City share a LocationPicker so hide them together
-                    // if either is hidden — partial hide would leave a half-form.
-                    if !fieldOverrides.isHidden("city", isB2C: isB2C) && !fieldOverrides.isHidden("state", isB2C: isB2C) {
-                        LocationPicker(state: $state, city: $city)
+                    // State + City are gated INDEPENDENTLY (matching the web and
+                    // the Create form) so hiding one never drops the other. The
+                    // picker renders whichever field(s) are visible.
+                    if !fieldOverrides.isHidden("city", isB2C: isB2C) || !fieldOverrides.isHidden("state", isB2C: isB2C) {
+                        LocationPicker(
+                            state: $state,
+                            city: $city,
+                            showState: !fieldOverrides.isHidden("state", isB2C: isB2C),
+                            showCity: !fieldOverrides.isHidden("city", isB2C: isB2C),
+                            stateLabel: fieldOverrides.labelFor("state", defaultLabel: "State", isB2C: isB2C),
+                            cityLabel: fieldOverrides.labelFor("city", defaultLabel: "City", isB2C: isB2C),
+                        )
                     }
                     if !fieldOverrides.isHidden("postal_code", isB2C: isB2C) {
                         TextField(fieldOverrides.labelFor("postal_code", defaultLabel: "Postal code", isB2C: isB2C), text: $postalCode)
@@ -329,8 +337,10 @@ struct LeadEditView: View {
                     ProductLinesSection(model: productLines)
                 }
 
-                // ── Tata Tiscon: site-visit affordance on edit too ──
-                if isTata {
+                // ── Steel-dealer: site-visit affordance on edit too ──
+                // Gated strictly on the steel-dealer tenant (Tata / BMW), NOT
+                // on any B2C lead, so the parent Kinematic tenant never sees it.
+                if ClientFeatures.isTataTiscon {
                     Section {
                         Toggle("Also log a Site Visit", isOn: $logAsSiteVisit)
                     } footer: {
@@ -473,9 +483,11 @@ struct LeadEditView: View {
                 return merged
             })(),
         ]
-        // Tata Tiscon: backend pops this flag and spawns a fresh
-        // site_visit activity tied to the lead.
-        if isTata && logAsSiteVisit {
+        // Steel-dealer: backend pops this flag and spawns a fresh site_visit
+        // activity tied to the lead. Guard mirrors the toggle's render gate
+        // (steel-dealer tenant only) so it can never be sent for a Kinematic
+        // B2C lead where the toggle isn't shown.
+        if ClientFeatures.isTataTiscon && logAsSiteVisit {
             body["_auto_log_site_visit"] = true
         }
         if !isB2C {

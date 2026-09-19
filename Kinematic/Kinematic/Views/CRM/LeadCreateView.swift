@@ -35,6 +35,13 @@ struct LeadCreateView: View {
     // by client_id so Tata reps only see Tata sources like Site Visit).
     @State private var sources: [CRMLeadSource] = []
     @State private var sourceId: String = ""
+    // Lifecycle status + owner assignment — parity with the web create form
+    // and the Edit form. `status` defaults to "new" (the resting state for a
+    // freshly captured lead). Owners come from /crm assignable-users; the
+    // picker is gated on canReassignLeads + the field override like on Edit.
+    @State private var status: String = "new"
+    @State private var ownerId: String = ""
+    @State private var owners: [AssignableUser] = []
     // Default to B2C. Fail-safe: if the /crm/settings business_type hasn't
     // resolved yet, failed (401 on a dead session / offline), or the client_id
     // is missing so `isTata` reads false, we must NOT leak the B2B option or
@@ -326,6 +333,16 @@ struct LeadCreateView: View {
                             required: fieldOverrides.requiredFor("alternate_mobiles", defaultRequired: false, isB2C: isB2C),
                         )
                     }
+                    // Status picker — parity with the web create form and the
+                    // Edit form. Built-in field, so gated + relabelled via the
+                    // override helper like every other row.
+                    if !fieldOverrides.isHidden("status", isB2C: isB2C) {
+                        Picker(fieldOverrides.labelFor("status", defaultLabel: "Status", isB2C: isB2C), selection: $status) {
+                            ForEach(["new", "working", "qualified", "unqualified", "converted", "lost"], id: \.self) {
+                                Text($0.capitalized).tag($0)
+                            }
+                        }
+                    }
                     // Source picker — bound to crm_lead_sources so reps see
                     // the same options admins configure on the web console
                     // (e.g. Site Visit on Tata Tiscon). Loaded async; falls
@@ -338,6 +355,20 @@ struct LeadCreateView: View {
                             Text("— Unspecified —").tag("")
                             ForEach(sources, id: \.id) { s in
                                 Text(s.name).tag(s.id)
+                            }
+                        }
+                    }
+                    // Owner picker — parity with the web create form and the
+                    // Edit form. Same gate as Edit: only reps who may reassign
+                    // (and not Consumer Champions, who'd lose 'own'-scoped
+                    // visibility of the lead) see it, and the field override
+                    // can still hide it.
+                    if ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion
+                        && !fieldOverrides.isHidden("owner_id", isB2C: isB2C) {
+                        Picker(fieldOverrides.labelFor("owner_id", defaultLabel: "Owner", isB2C: isB2C), selection: $ownerId) {
+                            Text("Unassigned").tag("")
+                            ForEach(owners, id: \.id) { u in
+                                Text(u.name ?? u.email ?? "User").tag(u.id)
                             }
                         }
                     }
@@ -581,11 +612,13 @@ struct LeadCreateView: View {
                 }
                 }
 
-                // Tata Tiscon site-visit affordance — most leads are added
+                // Steel-dealer site-visit affordance — most leads are added
                 // while the rep is physically at the consumer / dealer
                 // counter, so we default it on. Backend spawns the
-                // matching activity in the same round-trip.
-                if isTata {
+                // matching activity in the same round-trip. Gated strictly on
+                // the steel-dealer tenant (Tata / BMW) — NOT on any B2C lead —
+                // so the parent Kinematic tenant never sees it.
+                if ClientFeatures.isTataTiscon {
                     Section {
                         Toggle("Also log this lead as a Site Visit activity", isOn: $logAsSiteVisit)
                     } footer: {
@@ -655,6 +688,13 @@ struct LeadCreateView: View {
             .task { await productLines.load() }
             .task { await fieldOverrides.load() }
             .task { sources = await CRMService.shared.listLeadSources() }
+            .task {
+                // Only load the owner list when the Owner picker can appear —
+                // saves a call for reps who can't reassign.
+                if ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion {
+                    owners = await CRMService.shared.listAssignableUsers()
+                }
+            }
             .task {
                 // Resolve businessType so the Tata-equivalent gate works
                 // even when Session.currentUser.clientId is stale.
@@ -1060,10 +1100,20 @@ struct LeadCreateView: View {
         let trimmedLast = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
         if lastNameRequired && trimmedLast.isEmpty { return [:] }
 
+        // status — from the picker (defaults to "new"). When the admin has
+        // hidden the Status field, fall back to "new" so a freshly captured
+        // lead still lands in the right resting state.
+        let statusValue = fieldOverrides.isHidden("status", isB2C: isB2C) ? "new" : status
         var body: [String: Any] = [
-            "status": "new",
+            "status": statusValue,
             "is_b2c": isB2C,
         ]
+        // owner_id — from the Owner picker, when the rep may reassign and the
+        // field isn't hidden. Empty = leave unassigned (omit the key).
+        if ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion
+            && !fieldOverrides.isHidden("owner_id", isB2C: isB2C) && !ownerId.isEmpty {
+            body["owner_id"] = ownerId
+        }
         if !trimmedLast.isEmpty { body["last_name"] = trimmedLast }
         put("first_name", firstName, into: &body)
         put("email",      email,     into: &body)
@@ -1125,10 +1175,12 @@ struct LeadCreateView: View {
         var cf = customFields.jsonValues
         for (k, v) in productLines.jsonValues { cf[k] = v }
         if !cf.isEmpty { body["custom_fields"] = cf }
-        // Tata Tiscon site-visit affordance — backend reads this flag,
+        // Steel-dealer site-visit affordance — backend reads this flag,
         // strips it before persisting the lead, and atomically spawns a
-        // completed `site_visit` activity tied to the new lead.
-        if isTata && logAsSiteVisit {
+        // completed `site_visit` activity tied to the new lead. Guard mirrors
+        // the toggle's render gate (steel-dealer tenant only) so it can never
+        // be sent for a Kinematic B2C lead where the toggle isn't shown.
+        if ClientFeatures.isTataTiscon && logAsSiteVisit {
             body["_auto_log_site_visit"] = true
         }
         // DPDP §6 — capture consent at collection. Always recorded in the
