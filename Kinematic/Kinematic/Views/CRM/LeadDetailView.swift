@@ -154,6 +154,7 @@ struct LeadDetailView: View {
                     }
                     alternateNumbersCard(lead: lead)
                     if lead.isB2c == true { b2cProfileCard(lead: lead) }
+                    addressCard(lead: lead)
                     if lead.latitude != nil || lead.longitude != nil { locationCard(lead: lead) }
                     if !ClientFeatures.isConsumerChampion, let score = vm.score { scoreCard(score: score) }
                     if !vm.relatedDeals.isEmpty { relatedDealsCard }
@@ -979,7 +980,7 @@ struct LeadDetailView: View {
         let showChannel = !fieldOverrides.isHidden("preferred_contact_method", isB2C: true)
         let showMarketing = !fieldOverrides.isHidden("marketing_consent", isB2C: true)
         let showWhatsapp = !fieldOverrides.isHidden("whatsapp_consent", isB2C: true)
-        let anyRow = showDOB || showGender || showChannel || showMarketing || showWhatsapp || (lead.fullAddress != nil)
+        let anyRow = showDOB || showGender || showChannel || showMarketing || showWhatsapp
         return Group {
             if anyRow {
                 Card(title: "CUSTOMER PROFILE") {
@@ -987,9 +988,38 @@ struct LeadDetailView: View {
                         if showDOB, let dob = lead.dateOfBirth { profileRow(fieldOverrides.labelFor("date_of_birth", defaultLabel: "Date of Birth", isB2C: true), value: dob) }
                         if showGender, let g = lead.gender { profileRow(fieldOverrides.labelFor("gender", defaultLabel: "Gender", isB2C: true), value: g.replacingOccurrences(of: "_", with: " ").capitalized) }
                         if showChannel, let pcm = lead.preferredContactMethod { profileRow(fieldOverrides.labelFor("preferred_contact_method", defaultLabel: "Preferred Channel", isB2C: true), value: pcm.capitalized) }
-                        if let addr = lead.fullAddress { profileRow("Address", value: addr) }
                         if showMarketing { profileRow(fieldOverrides.labelFor("marketing_consent", defaultLabel: "Marketing Consent", isB2C: true), value: (lead.marketingConsent ?? false) ? "Yes" : "No") }
                         if showWhatsapp { profileRow(fieldOverrides.labelFor("whatsapp_consent", defaultLabel: "WhatsApp Consent", isB2C: true), value: (lead.whatsappConsent ?? false) ? "Yes" : "No") }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Address (discrete rows, gated — web parity)
+
+    private func addressCard(lead: Lead) -> some View {
+        // Discrete address rows so City / State (and the rest) show on both
+        // B2B and B2C leads, matching the web detail. Each row is gated on its
+        // own field-override key and hides when the value is blank.
+        let b2c = lead.isB2c == true
+        let showL1 = !fieldOverrides.isHidden("address_line1", isB2C: b2c) && !(lead.addressLine1 ?? "").isEmpty
+        let showL2 = !fieldOverrides.isHidden("address_line2", isB2C: b2c) && !(lead.addressLine2 ?? "").isEmpty
+        let showCity = !fieldOverrides.isHidden("city", isB2C: b2c) && !(lead.city ?? "").isEmpty
+        let showState = !fieldOverrides.isHidden("state", isB2C: b2c) && !(lead.state ?? "").isEmpty
+        let showPostal = !fieldOverrides.isHidden("postal_code", isB2C: b2c) && !(lead.postalCode ?? "").isEmpty
+        let showCountry = !fieldOverrides.isHidden("country", isB2C: b2c) && !(lead.country ?? "").isEmpty
+        let anyRow = showL1 || showL2 || showCity || showState || showPostal || showCountry
+        return Group {
+            if anyRow {
+                Card(title: "ADDRESS") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if showL1 { profileRow(fieldOverrides.labelFor("address_line1", defaultLabel: "Address line 1", isB2C: b2c), value: lead.addressLine1 ?? "") }
+                        if showL2 { profileRow(fieldOverrides.labelFor("address_line2", defaultLabel: "Address line 2", isB2C: b2c), value: lead.addressLine2 ?? "") }
+                        if showCity { profileRow(fieldOverrides.labelFor("city", defaultLabel: "City", isB2C: b2c), value: lead.city ?? "") }
+                        if showState { profileRow(fieldOverrides.labelFor("state", defaultLabel: "State", isB2C: b2c), value: lead.state ?? "") }
+                        if showPostal { profileRow(fieldOverrides.labelFor("postal_code", defaultLabel: "Postal code", isB2C: b2c), value: lead.postalCode ?? "") }
+                        if showCountry { profileRow(fieldOverrides.labelFor("country", defaultLabel: "Country", isB2C: b2c), value: lead.country ?? "") }
                     }
                 }
             }
