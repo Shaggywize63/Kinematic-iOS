@@ -72,8 +72,20 @@
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		8E6066E72F84E703009FFCFF /* Kinematic */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Kinematic; sourceTree = "<group>"; };
-		D1D1D1D1D1D1D1D1D1D10001 /* KinematicWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; path = KinematicWidget; sourceTree = "<group>"; };
+		D1D1D1D1D1D1D1D1D1D10001 /* KinematicWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (D1D1D1D1D1D1D1D1D1D100D0 /* Exceptions for "KinematicWidget" folder in "KinematicWidgetExtension" target */, ); path = KinematicWidget; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		D1D1D1D1D1D1D1D1D1D100D0 /* Exceptions for "KinematicWidget" folder in "KinematicWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				KinematicWidget.entitlements,
+				README.md,
+			);
+			target = D1D1D1D1D1D1D1D1D1D10002 /* KinematicWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		8E6066E22F84E703009FFCFF /* Frameworks */ = {
