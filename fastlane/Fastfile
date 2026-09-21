@@ -190,6 +190,13 @@ platform :ios do
   desc "Create/refresh signing assets in the match repo"
   lane :certs do
     setup_ci
+    # setup_ci flips match into READONLY mode in CI ("Enabling match readonly
+    # mode.") to keep normal build lanes from regenerating signing by accident.
+    # But regenerating signing is this lane's entire job: with readonly on,
+    # match_nuke lists what it would remove and then refuses ("`fastlane match
+    # nuke` doesn't delete anything when running with --readonly enabled"), and
+    # the recreate can't mint a new cert either. Force write mode for certs only.
+    ENV["MATCH_READONLY"] = "false"
     # Reset distribution signing on BOTH the Developer Portal AND the match git
     # store, then recreate. A plain revoke-then-fetch is not re-runnable: it
     # deletes the portal cert but leaves the store pointing at it, so the next
