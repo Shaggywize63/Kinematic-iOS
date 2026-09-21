@@ -190,10 +190,20 @@ platform :ios do
   desc "Create/refresh signing assets in the match repo"
   lane :certs do
     setup_ci
-    # Clear orphaned distribution certs (see revoke_distribution_certs) so the
-    # create below is never blocked by Apple's 2-distribution-cert cap. This is
-    # a manual bootstrap lane, so revoke-then-create is exactly its job.
-    revoke_distribution_certs
+    # Reset distribution signing on BOTH the Developer Portal AND the match git
+    # store, then recreate. A plain revoke-then-fetch is not re-runnable: it
+    # deletes the portal cert but leaves the store pointing at it, so the next
+    # match(readonly:false) bails with "Certificate '…' (stored in your storage)
+    # is not available on the Developer Portal". `match nuke` clears both sides
+    # so the recreate is always clean. Distribution certs are account-wide and
+    # already-uploaded TestFlight/App Store builds stay valid.
+    match_nuke(
+      type: "distribution",
+      api_key: asc_api_key,
+      skip_confirmation: true,
+    )
+    # Mint a fresh distribution cert + App Store profiles for the app AND the
+    # widget extension, and persist them to the match store.
     match(
       type: "appstore",
       app_identifier: [APP_IDENTIFIER, WIDGET_IDENTIFIER],
