@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The widget extension shares the app's cached widget snapshots via
+	     this App Group. The host app writes the JSON payloads (lead-summary,
+	     field-force, CRM summary) into UserDefaults(suiteName:) for this same
+	     group; the widget's *Cache.read() helpers read them back. BOTH targets
+	     must declare the identical group id or the read silently returns nil. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.shaggywize63.kinematic</string>
+	</array>
+</dict>
+</plist>

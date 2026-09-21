@@ -122,6 +122,10 @@ final class CRMDashboardViewModel: ObservableObject {
             // the rep just saw on the in-app dashboard. Fire-and-forget;
             // failures are silent (widget keeps its previous payload).
             Task.detached { await CRMService.shared.refreshWidgetCache() }
+            // Also refresh the dedicated Leads + Field-Force home-screen
+            // widget caches. Fire-and-forget; each is best-effort/silent.
+            Task.detached { await CRMService.shared.refreshLeadWidgetCache() }
+            Task.detached { await CRMService.shared.refreshFieldForceWidgetCache() }
         } catch {
             errorMessage = error.localizedDescription
         }

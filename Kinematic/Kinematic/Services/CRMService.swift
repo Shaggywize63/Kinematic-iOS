@@ -599,6 +599,95 @@ final class CRMService {
         }
     }
 
+    // MARK: - Lead & Field-Force widget caches
+
+    private static let widgetAppGroup = "group.com.shaggywize63.kinematic"
+
+    private func writeWidgetPayload(_ payload: [String: Any], key: String) {
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let store = UserDefaults(suiteName: CRMService.widgetAppGroup) else { return }
+        store.set(data, forKey: key)
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
+    }
+
+    /// Wire-shape of `/api/v1/crm/widgets/lead-summary`.
+    private struct CRMLeadWidgetSummary: Codable {
+        struct Recent: Codable { let id: String?; let name: String?; let status: String? }
+        let new_count: Int?
+        let open_count: Int?
+        let followups_due_today: Int?
+        let recent: [Recent]?
+    }
+
+    /// Refresh the "Leads" widget's App Group cache. Best-effort; silent on
+    /// failure so the widget keeps its previous snapshot.
+    func refreshLeadWidgetCache() async {
+        guard !Session.sharedToken.isEmpty else { return }
+        do {
+            let s: CRMLeadWidgetSummary = try await get("/api/v1/crm/widgets/lead-summary")
+            let recent = (s.recent ?? []).prefix(5).map { r -> [String: Any] in
+                ["id": r.id ?? "", "name": r.name ?? "Lead", "status": r.status ?? ""]
+            }
+            writeWidgetPayload([
+                "new_count":            s.new_count ?? 0,
+                "open_count":           s.open_count ?? 0,
+                "followups_due_today":  s.followups_due_today ?? 0,
+                "recent":               Array(recent),
+                "refreshed_at":         Date().timeIntervalSince1970,
+            ], key: "kinematic_widget_lead_v1")
+        } catch {
+            // Best-effort.
+        }
+    }
+
+    private struct MobileHomePayload: Codable {
+        struct Today: Codable { let status: String?; let checkin_at: String?; let working_minutes: Int? }
+        struct Outlet: Codable { let status: String? }
+        struct Plan: Codable { let outlets: [Outlet]? }
+        let today: Today?
+        let routePlan: [Plan]?
+    }
+    private struct MiscDashboardSummary: Codable {
+        let executives_checked_in: Int?
+        let executives_active: Int?
+        let total_tff: Int?
+        let active_sos_alerts: Int?
+    }
+
+    /// Refresh the "Field Force" widget cache. Fetches the FE "my day" view
+    /// (mobile-home) for every user and additionally the manager team snapshot
+    /// (misc/dashboard-summary) — the latter is role-gated, so a 403 for a
+    /// plain FE is caught and the widget simply stays in FE mode. Best-effort.
+    func refreshFieldForceWidgetCache() async {
+        guard !Session.sharedToken.isEmpty else { return }
+        var payload: [String: Any] = ["is_manager": false, "refreshed_at": Date().timeIntervalSince1970]
+
+        // FE "my day"
+        if let home: MobileHomePayload = try? await get("/api/v1/analytics/mobile-home") {
+            let outlets = home.routePlan?.first?.outlets ?? []
+            let visited = outlets.filter { ["visited", "completed", "done"].contains(($0.status ?? "").lowercased()) }.count
+            let checkedIn = (home.today?.checkin_at?.isEmpty == false)
+                || (home.today?.status ?? "").lowercased().contains("check")
+            payload["checked_in"]      = checkedIn
+            payload["working_minutes"] = home.today?.working_minutes ?? 0
+            payload["visited"]         = visited
+            payload["planned"]         = outlets.count
+        }
+
+        // Manager team snapshot (role-gated — ignored for plain FEs).
+        if let team: MiscDashboardSummary = try? await get("/api/v1/misc/dashboard-summary") {
+            payload["is_manager"]      = true
+            payload["team_checked_in"] = team.executives_checked_in ?? 0
+            payload["team_active"]     = team.executives_active ?? 0
+            payload["team_tff"]        = team.total_tff ?? 0
+            payload["sos_alerts"]      = team.active_sos_alerts ?? 0
+        }
+
+        writeWidgetPayload(payload, key: "kinematic_widget_ff_v1")
+    }
+
     func dashboardSummary(from: String? = nil, to: String? = nil) async throws -> CRMAnalyticsSummary {
         var q: [String: String] = [:]
         if let from { q["from"] = from }

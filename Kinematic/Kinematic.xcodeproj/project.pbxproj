@@ -17,6 +17,7 @@
 		AB0000000000000000000026 /* LeadsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000016 /* LeadsViewModelTests.swift */; };
 		AB0000000000000000000027 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000017 /* TestSupport.swift */; };
 		AB0000000000000000000028 /* WhatsAppHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000018 /* WhatsAppHelperTests.swift */; };
+		D1D1D1D1D1D1D1D1D1D1000C /* KinematicWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,6 +28,13 @@
 			remoteGlobalIDString = 8E6066E42F84E703009FFCFF;
 			remoteInfo = Kinematic;
 		};
+		D1D1D1D1D1D1D1D1D1D1000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8E6066DD2F84E703009FFCFF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D1D1D1D1D1D1D1D1D1D10002;
+			remoteInfo = KinematicWidgetExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -36,6 +44,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				D1D1D1D1D1D1D1D1D1D1000C /* KinematicWidgetExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -58,10 +67,12 @@
 		AB0000000000000000000016 /* LeadsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsViewModelTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000017 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		AB0000000000000000000018 /* WhatsAppHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsAppHelperTests.swift; sourceTree = "<group>"; };
+		D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KinematicWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		8E6066E72F84E703009FFCFF /* Kinematic */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Kinematic; sourceTree = "<group>"; };
+		D1D1D1D1D1D1D1D1D1D10001 /* KinematicWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; path = KinematicWidget; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -73,6 +84,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AB0000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1D1D1D1D1D1D1D1D1D10008 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -95,6 +113,7 @@
 			isa = PBXGroup;
 			children = (
 				8E6066E72F84E703009FFCFF /* Kinematic */,
+				D1D1D1D1D1D1D1D1D1D10001 /* KinematicWidget */,
 				AB000000000000000000002F /* KinematicTests */,
 				8E096DC42F94AFE0003D8F01 /* Frameworks */,
 				8E6066E62F84E703009FFCFF /* Products */,
@@ -108,6 +127,7 @@
 			children = (
 				8E6066E52F84E703009FFCFF /* Kinematic.app */,
 				AB0000000000000000000002 /* KinematicTests.xctest */,
+				D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -151,6 +171,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				D1D1D1D1D1D1D1D1D1D1000A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8E6066E72F84E703009FFCFF /* Kinematic */,
@@ -182,6 +203,28 @@
 			productReference = AB0000000000000000000002 /* KinematicTests.xctest */;
 			productType = "com.apple.product-type.unit-test-bundle";
 		};
+		D1D1D1D1D1D1D1D1D1D10002 /* KinematicWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1D1D1D1D1D1D1D1D1D10004 /* Build configuration list for PBXNativeTarget "KinematicWidgetExtension" */;
+			buildPhases = (
+				D1D1D1D1D1D1D1D1D1D10007 /* Sources */,
+				D1D1D1D1D1D1D1D1D1D10008 /* Frameworks */,
+				D1D1D1D1D1D1D1D1D1D10009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				D1D1D1D1D1D1D1D1D1D10001 /* KinematicWidget */,
+			);
+			name = KinematicWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = KinematicWidgetExtension;
+			productReference = D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -198,6 +241,9 @@
 					AB0000000000000000000003 = {
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = 8E6066E42F84E703009FFCFF;
+					};
+					D1D1D1D1D1D1D1D1D1D10002 = {
+						CreatedOnToolsVersion = 26.4;
 					};
 				};
 			};
@@ -217,6 +263,7 @@
 			targets = (
 				8E6066E42F84E703009FFCFF /* Kinematic */,
 				AB0000000000000000000003 /* KinematicTests */,
+				D1D1D1D1D1D1D1D1D1D10002 /* KinematicWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -230,6 +277,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AB0000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1D1D1D1D1D1D1D1D1D10009 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -263,6 +317,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1D1D1D1D1D1D1D1D1D10007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -270,6 +331,11 @@
 			isa = PBXTargetDependency;
 			target = 8E6066E42F84E703009FFCFF /* Kinematic */;
 			targetProxy = AB0000000000000000000008 /* PBXContainerItemProxy */;
+		};
+		D1D1D1D1D1D1D1D1D1D1000A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D1D1D1D1D1D1D1D1D1D10002 /* KinematicWidgetExtension */;
+			targetProxy = D1D1D1D1D1D1D1D1D1D1000B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -522,6 +588,71 @@
 			};
 			name = Release;
 		};
+		D1D1D1D1D1D1D1D1D1D10005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = KinematicWidget/KinematicWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 256;
+				DEVELOPMENT_TEAM = WQ25J762R4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KinematicWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shaggywize63.kinematic.KinematicWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D1D1D1D1D1D1D1D1D1D10006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = KinematicWidget/KinematicWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 256;
+				DEVELOPMENT_TEAM = WQ25J762R4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KinematicWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shaggywize63.kinematic.KinematicWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -548,6 +679,15 @@
 			buildConfigurations = (
 				AB0000000000000000000009 /* Debug */,
 				AB000000000000000000000A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D1D1D1D1D1D1D1D1D1D10004 /* Build configuration list for PBXNativeTarget "KinematicWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1D1D1D1D1D1D1D1D1D10005 /* Debug */,
+				D1D1D1D1D1D1D1D1D1D10006 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
