@@ -63,7 +63,9 @@ public enum KinematicSharedCache {
 
     /// Read the cached snapshot. Returns `nil` when nothing has been
     /// written yet — the timeline provider falls back to a placeholder.
-    public static func read() -> KinematicEntry? {
+    /// Internal (not public): `KinematicEntry` is an internal type and the
+    /// whole widget lives in one target, so no cross-module access is needed.
+    static func read() -> KinematicEntry? {
         guard let data = store?.data(forKey: key),
               let raw = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else { return nil }
