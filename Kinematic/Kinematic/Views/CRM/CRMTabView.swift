@@ -33,9 +33,24 @@ struct CRMTabView: View {
     // so the Leads screen (anchors + overlay) and the guided-tour hub (replay)
     // both reach it.
     @StateObject private var spotlight = SpotlightModel()
+    // Home-screen widget taps route here (leads / new-lead / lead / my-day
+    // / checkin / team) → select the matching bottom tab.
+    @ObservedObject private var widgetLink = WidgetDeepLink.shared
 
     private var canShowKiniFab: Bool {
         Session.currentUser?.hasCrm ?? false
+    }
+
+    /// Map a widget route to a CRM tab. Home=0, Dashboard=1, Leads=2,
+    /// Deals=3, More=4. Clears the pending route after applying.
+    private func applyWidgetRoute(_ route: WidgetRoute?) {
+        guard let route else { return }
+        switch route {
+        case .leads, .newLead, .lead:  selectedTab = 2
+        case .myDay, .checkIn:          selectedTab = 0
+        case .team:                     selectedTab = 1
+        }
+        widgetLink.pendingRoute = nil
     }
 
     var body: some View {
@@ -118,6 +133,10 @@ struct CRMTabView: View {
                 spotlight.start(SpotlightStep.leadManagement)
             }
         }
+        // Consume any widget route that arrived before this shell mounted,
+        // then react to taps while it's on screen.
+        .onAppear { applyWidgetRoute(widgetLink.pendingRoute) }
+        .onChange(of: widgetLink.pendingRoute) { _, route in applyWidgetRoute(route) }
     }
 }
 

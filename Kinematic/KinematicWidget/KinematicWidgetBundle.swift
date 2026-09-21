@@ -19,6 +19,8 @@ import SwiftUI
 @main
 struct KinematicWidgetBundle: WidgetBundle {
     var body: some Widget {
-        KinematicWidget()
+        KinematicWidget()          // CRM summary (leads/deals/pipeline)
+        KinematicLeadWidget()      // Lead management
+        KinematicFieldForceWidget() // Field-force / my day / team
     }
 }

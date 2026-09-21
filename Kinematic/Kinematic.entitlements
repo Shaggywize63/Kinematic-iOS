@@ -20,5 +20,15 @@
 	     previously disabled). Enable Push on the App ID before building. -->
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- App Group shared with the KinematicWidget extension. After each CRM
+	     refresh the app writes small JSON snapshots (widget summary, lead
+	     summary, field-force) into UserDefaults(suiteName: this group); the
+	     widget reads them to render offline/instantly. Both targets MUST
+	     declare the same group id. REGISTER_APP_GROUPS=YES (build settings)
+	     provisions it under managed signing. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.shaggywize63.kinematic</string>
+	</array>
 </dict>
 </plist>

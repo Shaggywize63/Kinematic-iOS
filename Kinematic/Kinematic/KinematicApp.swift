@@ -3475,9 +3475,14 @@ struct KinematicApp: App {
                 // pull the params off and flip pendingReset, which the
                 // sheet below renders.
                 .onOpenURL { url in
-                    guard url.scheme?.lowercased() == "kinematic",
-                          (url.host ?? "").lowercased() == "reset-password"
-                    else { return }
+                    guard url.scheme?.lowercased() == "kinematic" else { return }
+                    // Home-screen widget taps (leads / new-lead / lead?id / my-day
+                    // / checkin / team) steer the CRM tab once inside the app.
+                    if WidgetRoute(url: url) != nil {
+                        WidgetDeepLink.shared.handle(url)
+                        return
+                    }
+                    guard (url.host ?? "").lowercased() == "reset-password" else { return }
                     let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
                     let q = comps?.queryItems ?? []
                     let email = q.first(where: { $0.name == "email" })?.value ?? ""
