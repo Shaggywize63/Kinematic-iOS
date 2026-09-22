@@ -101,6 +101,7 @@ struct KinematicLeadWidget: Widget {
         .configurationDisplayName("Kinematic Leads")
         .description("New leads, your open pipeline, follow-ups due today, and the latest leads.")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }
 
@@ -145,7 +146,7 @@ private struct LeadWidgetSmall: View {
                 .background(Color.white.opacity(0.18), in: Capsule())
             }
         }
-        .padding(14)
+        .padding(11)
         .widgetURL(URL(string: "kinematic://leads"))
     }
 }
@@ -191,7 +192,7 @@ private struct LeadWidgetMedium: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(11)
         .widgetURL(URL(string: "kinematic://leads"))
     }
 }

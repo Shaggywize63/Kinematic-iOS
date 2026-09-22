@@ -100,6 +100,7 @@ struct KinematicFieldForceWidget: Widget {
         .configurationDisplayName("Kinematic Field Force")
         .description("Your day at a glance — check-in, visits vs plan, working hours. Managers see the team snapshot.")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }
 
@@ -160,7 +161,7 @@ private struct FFMyDayView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(11)
         .widgetURL(URL(string: "kinematic://my-day"))
     }
 }
@@ -199,7 +200,7 @@ private struct FFTeamView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(11)
         .widgetURL(URL(string: "kinematic://team"))
     }
 }

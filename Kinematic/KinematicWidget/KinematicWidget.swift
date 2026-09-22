@@ -87,6 +87,10 @@ struct KinematicWidget: Widget {
         .configurationDisplayName("Kinematic CRM")
         .description("Leads, open deals, pipeline value, and the 7-day trend.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        // Drop the system's ~16pt default content margins — combined with our
+        // own padding they left a big empty band at the top. We inset the
+        // content ourselves instead.
+        .contentMarginsDisabled()
     }
 }
 
@@ -135,7 +139,7 @@ struct KinematicWidgetSmall: View {
                     .foregroundColor(.white)
             }
         }
-        .padding(14)
+        .padding(11)
     }
 }
 
@@ -161,7 +165,7 @@ struct KinematicWidgetMedium: View {
                 .frame(height: 28)
                 .padding(.top, 2)
         }
-        .padding(16)
+        .padding(12)
     }
 }
 
@@ -191,7 +195,7 @@ struct KinematicWidgetLarge: View {
                 ChipStat(label: "Won (30d)",   value: fmtCount(entry.wonDeals30d))
             }
         }
-        .padding(18)
+        .padding(14)
     }
 }
 
@@ -212,22 +216,23 @@ struct BrandGradient: View {
     }
 }
 
-/// Brand lockup: the REAL Kinematic mark (reverse artwork — white dots + red
-/// accent, made for dark surfaces) beside the wordmark. Rendered from the
-/// bundled PNG asset `KinematicMarkReverse`, never hand-drawn.
-/// `widgetAccentedRenderingMode(.fullColor)` keeps the mark in brand colour
-/// even when the home screen is in a Tinted / Clear appearance, so the logo
-/// still reads while the numbers take the system tint.
+/// Brand lockup: the REAL Kinematic mark (from the bundled PNG asset
+/// `KinematicMarkReverse`, never hand-drawn) beside the wordmark. Rendered as a
+/// TEMPLATE tinted solid white — the mark's own red dot was invisible against
+/// the red top of the brand gradient, so we recolour the whole mark to a single
+/// high-contrast white silhouette (its 1-big-2-small dot geometry is preserved).
+/// As a template it also picks up the system tint cleanly in Tinted / Clear.
 struct BrandPill: View {
     /// When true, show only the mark (used where header width is tight).
     var markOnly: Bool = false
     var body: some View {
         HStack(spacing: 6) {
             Image("KinematicMarkReverse")
+                .renderingMode(.template)
                 .resizable()
-                .widgetAccentedRenderingMode(.fullColor)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 18, height: 18)
+                .foregroundStyle(.white)
             if !markOnly {
                 Text("KINEMATIC")
                     .font(.system(size: 10, weight: .bold))
