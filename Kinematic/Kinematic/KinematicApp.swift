@@ -290,6 +290,15 @@ class KiniAppState: ObservableObject {
     func checkAuth() {
         self.isAuthenticated = Session.isAuthenticated
         self.mustChangePassword = Session.currentUser?.mustChangePassword ?? false
+        // Populate the home-screen widget caches the moment we're authenticated
+        // — this funnel covers login, password reset, and cold-launch restore
+        // (ContentView calls checkAuth() at startup). Without this the Leads /
+        // Field-Force / summary widgets show 0 until the user opens the CRM
+        // analytics dashboard (the only other place these caches are written),
+        // which a field executive may never do. Best-effort/silent.
+        if self.isAuthenticated {
+            Task.detached { await CRMService.shared.refreshHomeWidgets() }
+        }
     }
     
     func logout() {
@@ -3515,6 +3524,11 @@ struct KinematicApp: App {
                         // foreground/resume — the master switch can be toggled
                         // while we're backgrounded, where no delegate fires.
                         LocationTrackingService.shared.reportLocationStatus()
+                        // Repaint the home-screen widgets with fresh numbers on
+                        // every resume, independent of which screen is open, so
+                        // they never go stale (or sit at 0) between dashboard
+                        // visits. Best-effort/silent.
+                        Task { await CRMService.shared.refreshHomeWidgets() }
                     }
 
                     // Biometric App Lock lifecycle. Arm on real background;

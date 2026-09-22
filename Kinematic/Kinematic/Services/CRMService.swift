@@ -688,6 +688,23 @@ final class CRMService {
         writeWidgetPayload(payload, key: "kinematic_widget_ff_v1")
     }
 
+    /// Refresh EVERY home-screen widget cache (CRM summary, Leads, Field Force)
+    /// in one call. Previously these were only refreshed from the CRM analytics
+    /// dashboard's view model, so the widgets stayed on their empty/zero state
+    /// until the user happened to open that one screen — and a field executive
+    /// who never opens the manager dashboard would never see any values. Call
+    /// this from app lifecycle points (cold launch, login, foreground) so the
+    /// widgets populate regardless of which screen is open. Best-effort: each
+    /// writer self-guards on the auth token and is silent on failure. The three
+    /// fetches run concurrently.
+    func refreshHomeWidgets() async {
+        guard !Session.sharedToken.isEmpty else { return }
+        async let summary: Void = refreshWidgetCache()
+        async let leads: Void = refreshLeadWidgetCache()
+        async let fieldForce: Void = refreshFieldForceWidgetCache()
+        _ = await (summary, leads, fieldForce)
+    }
+
     func dashboardSummary(from: String? = nil, to: String? = nil) async throws -> CRMAnalyticsSummary {
         var q: [String: String] = [:]
         if let from { q["from"] = from }
