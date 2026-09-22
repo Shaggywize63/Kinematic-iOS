@@ -110,14 +110,13 @@ struct LeadWidgetView: View {
     @Environment(\.widgetFamily) var family
     let entry: LeadWidgetEntry
     var body: some View {
-        ZStack {
-            BrandGradient()
+        Group {
             switch family {
             case .systemSmall: LeadWidgetSmall(entry: entry)
             default:           LeadWidgetMedium(entry: entry)
             }
         }
-        .containerBackground(for: .widget) { BrandGradient() }
+        .kinematicWidgetChrome()
     }
 }
 
@@ -125,7 +124,7 @@ private struct LeadWidgetSmall: View {
     let entry: LeadWidgetEntry
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            BrandPill()
+            BrandPill(markOnly: true)
             Spacer(minLength: 2)
             Text("New leads")
                 .font(.system(size: 10, weight: .semibold))

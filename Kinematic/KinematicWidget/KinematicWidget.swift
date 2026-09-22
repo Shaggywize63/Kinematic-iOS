@@ -97,8 +97,7 @@ struct KinematicWidgetView: View {
     let entry: KinematicEntry
 
     var body: some View {
-        ZStack {
-            BrandGradient()
+        Group {
             switch family {
             case .systemSmall:  KinematicWidgetSmall(entry: entry)
             case .systemMedium: KinematicWidgetMedium(entry: entry)
@@ -106,7 +105,7 @@ struct KinematicWidgetView: View {
             default:            KinematicWidgetMedium(entry: entry)
             }
         }
-        .containerBackground(for: .widget) { BrandGradient() }
+        .kinematicWidgetChrome()
     }
 }
 
@@ -116,7 +115,7 @@ struct KinematicWidgetSmall: View {
     let entry: KinematicEntry
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            BrandPill()
+            BrandPill(markOnly: true)
             Spacer(minLength: 4)
             Text("Total Leads")
                 .font(.system(size: 10, weight: .semibold))
@@ -201,10 +200,11 @@ struct KinematicWidgetLarge: View {
 struct BrandGradient: View {
     var body: some View {
         LinearGradient(
-            gradient: Gradient(colors: [
-                Color(red: 224/255, green: 30/255, blue: 44/255),
-                Color(red: 122/255, green: 26/255, blue: 54/255),
-                Color(red: 15/255,  green: 23/255, blue: 42/255),
+            gradient: Gradient(stops: [
+                // Kinematic Red → deep maroon → Kinematic Ink navy (brand tokens).
+                .init(color: Color(red: 0xD0 / 255, green: 0x1E / 255, blue: 0x2C / 255), location: 0.0),
+                .init(color: Color(red: 0x6E / 255, green: 0x16 / 255, blue: 0x2E / 255), location: 0.45),
+                .init(color: Color(red: 0x0A / 255, green: 0x0E / 255, blue: 0x1A / 255), location: 1.0),
             ]),
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -212,13 +212,57 @@ struct BrandGradient: View {
     }
 }
 
+/// Brand lockup: the REAL Kinematic mark (reverse artwork — white dots + red
+/// accent, made for dark surfaces) beside the wordmark. Rendered from the
+/// bundled PNG asset `KinematicMarkReverse`, never hand-drawn.
+/// `widgetAccentedRenderingMode(.fullColor)` keeps the mark in brand colour
+/// even when the home screen is in a Tinted / Clear appearance, so the logo
+/// still reads while the numbers take the system tint.
 struct BrandPill: View {
+    /// When true, show only the mark (used where header width is tight).
+    var markOnly: Bool = false
     var body: some View {
-        Text("KINEMATIC")
-            .font(.system(size: 10, weight: .bold))
-            .tracking(2)
-            .foregroundColor(.white.opacity(0.9))
+        HStack(spacing: 6) {
+            Image("KinematicMarkReverse")
+                .resizable()
+                .widgetAccentedRenderingMode(.fullColor)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 18, height: 18)
+            if !markOnly {
+                Text("KINEMATIC")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
     }
+}
+
+/// Rendering-mode-aware widget background. In `.fullColor` (the normal home
+/// screen) it paints the brand gradient. In `.accented` / `.vibrant` — the
+/// home-screen "Tinted" and "Clear" appearances and the lock screen — it
+/// paints NOTHING and lets the system supply its monochrome material and tint
+/// the foreground. Painting our own coloured gradient there is exactly what
+/// hid the values: iOS flattens gradient + white text to a single tint with no
+/// contrast. A clear container lets the white numbers read on the material.
+struct WidgetChrome: ViewModifier {
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    func body(content: Content) -> some View {
+        content.containerBackground(for: .widget) {
+            if renderingMode == .fullColor {
+                BrandGradient()
+            } else {
+                Color.clear
+            }
+        }
+    }
+}
+
+extension View {
+    /// Brand widget background that adapts to Tinted / Clear / lock-screen modes.
+    func kinematicWidgetChrome() -> some View { modifier(WidgetChrome()) }
 }
 
 struct StatColumn: View {

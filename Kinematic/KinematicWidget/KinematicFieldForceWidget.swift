@@ -109,15 +109,14 @@ struct FieldForceWidgetView: View {
     @Environment(\.widgetFamily) var family
     let entry: FieldForceEntry
     var body: some View {
-        ZStack {
-            BrandGradient()
+        Group {
             if entry.isManager {
                 FFTeamView(entry: entry, compact: family == .systemSmall)
             } else {
                 FFMyDayView(entry: entry, compact: family == .systemSmall)
             }
         }
-        .containerBackground(for: .widget) { BrandGradient() }
+        .kinematicWidgetChrome()
     }
 }
 
@@ -127,7 +126,7 @@ private struct FFMyDayView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                BrandPill()
+                BrandPill(markOnly: compact)
                 Spacer()
                 if !compact {
                     Text(ffUpdated(entry.refreshedAt))
@@ -172,7 +171,7 @@ private struct FFTeamView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                BrandPill()
+                BrandPill(markOnly: compact)
                 Spacer()
                 if entry.sosAlerts > 0 {
                     Text("\(entry.sosAlerts) SOS")
