@@ -151,7 +151,20 @@ struct MainTabView: View {
             Tab("Home", systemImage: "house", value: 0) {
                 HomeView()
             }
-            if hasFieldForce {
+            if ClientFeatures.isByteBack {
+                // Route-less field-force shell: Home · Attendance · Activity · ➕.
+                // No Route tab; the ➕ tab opens the ad-hoc form picker so reps can
+                // fill a form anywhere without an assigned outlet.
+                Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
+                    AttendanceView()
+                }
+                Tab("Activity", systemImage: "square.grid.2x2", value: 2) {
+                    NavigationStack { ActivityFeedView() }
+                }
+                Tab("New", systemImage: "plus.circle.fill", value: 3) {
+                    AdHocFormsView()
+                }
+            } else if hasFieldForce {
                 Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
                     AttendanceView()
                 }

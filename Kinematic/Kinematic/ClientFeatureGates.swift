@@ -21,6 +21,15 @@ private let BMW_CLIENT_ID = "2ee5e03a-3a56-41c9-aaa0-16468920f871"
 /// the client id like the other tenant gates so the policy lives in one place.
 /// Mirrors Android's `Entitlements.isMoiSoi` (same client id).
 private let MOISOI_CLIENT_ID = "d0000000-0000-4000-a000-000000000002"
+/// ByteBack — a field-force-ONLY client under the Kinematic tenant. Their reps
+/// work ad-hoc (no route plan / outlet priorities / beat productivity / route
+/// deviation — none of those modules are granted), so their bottom nav is a
+/// slimmed field-force shell: Home · Attendance · Activity · ➕, where the ➕ tab
+/// opens an ad-hoc form picker (fill a form anywhere, no outlet required)
+/// instead of a Route tab. KINI never appears because they have no CRM package.
+/// Keyed off the client id like the other tenant gates. Mirrors Android's
+/// `Entitlements.isByteBack` (same client id).
+private let BYTEBACK_CLIENT_ID = "9c8d7e6f-5a4b-4c3d-8e1f-0a1b2c3d4e5f"
 
 enum ClientFeatures {
     /// True when the signed-in user belongs to a steel-dealer tenant — Tata
@@ -52,6 +61,14 @@ enum ClientFeatures {
     /// "Planogram" entry in the field-force side menu (storeless shelf capture).
     static var isMoiSoi: Bool {
         Session.currentUser?.clientId == MOISOI_CLIENT_ID
+    }
+
+    /// True when the signed-in user belongs to ByteBack. Drives the slimmed
+    /// field-force bottom nav (Home · Attendance · Activity · ➕) with no Route
+    /// tab; the ➕ tab opens the ad-hoc form picker. Mirrors Android's
+    /// `Entitlements.isByteBack`.
+    static var isByteBack: Bool {
+        Session.currentUser?.clientId == BYTEBACK_CLIENT_ID
     }
 
     /// True when the signed-in user is a Consumer Champion (Tata Tiscon's

@@ -2725,6 +2725,23 @@ class KinematicRepository {
         }
     }
 
+    /// Every published form template for the org (no activity filter). Backs the
+    /// ByteBack ad-hoc form picker (➕): reps pick any form and fill it without an
+    /// assigned outlet / activity. Returns [] on any failure so the picker can
+    /// render an empty state instead of crashing.
+    func getAllFormTemplates() async -> [FormTemplate] {
+        do {
+            let res: ApiResponse<[FormTemplate]>? = try await performRequest(
+                "/forms/templates",
+                queryItems: [URLQueryItem(name: "is_active", value: "true")]
+            )
+            return res?.data ?? []
+        } catch {
+            print("⚠️ FETCH_ALL_TEMPLATES_FAILED: \(error)")
+            return []
+        }
+    }
+
     func submitForm(request: FormSubmissionRequest) async -> FormSubmitOutcome {
         do {
             let body = try? JSONEncoder().encode(request)
