@@ -111,6 +111,11 @@ struct MainTabView: View {
     /// otherwise dropped them into the field-force shell before /auth/me
     /// re-hydrated entitlements — the exact bug BMW hit.
     private var crmOnlyMode: Bool {
+        // A FIELD-FORCE-ONLY client (e.g. ByteBack) is never CRM-only. Force the
+        // field-force shell even if the legacy per-device `crm_only_mode` toggle
+        // was left on from a prior CRM session on this device — otherwise a
+        // ByteBack rep lands in the CRM shell and hits "Module not enabled: crm".
+        if ClientFeatures.isByteBack { return false }
         if crmOnlyModeOverride { return true }
         if ClientFeatures.isCrmOnly { return true }   // pinned-client OR SKU-derived
         return Session.currentUser?.isCrmOnly ?? false
