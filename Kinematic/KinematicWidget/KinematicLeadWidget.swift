@@ -101,6 +101,7 @@ struct KinematicLeadWidget: Widget {
         .configurationDisplayName("Kinematic Leads")
         .description("New leads, your open pipeline, follow-ups due today, and the latest leads.")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }
 
@@ -110,14 +111,13 @@ struct LeadWidgetView: View {
     @Environment(\.widgetFamily) var family
     let entry: LeadWidgetEntry
     var body: some View {
-        ZStack {
-            BrandGradient()
+        Group {
             switch family {
             case .systemSmall: LeadWidgetSmall(entry: entry)
             default:           LeadWidgetMedium(entry: entry)
             }
         }
-        .containerBackground(for: .widget) { BrandGradient() }
+        .kinematicWidgetChrome()
     }
 }
 
@@ -125,7 +125,7 @@ private struct LeadWidgetSmall: View {
     let entry: LeadWidgetEntry
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            BrandPill()
+            BrandPill(markOnly: true)
             Spacer(minLength: 2)
             Text("New leads")
                 .font(.system(size: 10, weight: .semibold))
@@ -146,7 +146,7 @@ private struct LeadWidgetSmall: View {
                 .background(Color.white.opacity(0.18), in: Capsule())
             }
         }
-        .padding(14)
+        .padding(11)
         .widgetURL(URL(string: "kinematic://leads"))
     }
 }
@@ -192,7 +192,7 @@ private struct LeadWidgetMedium: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(11)
         .widgetURL(URL(string: "kinematic://leads"))
     }
 }
