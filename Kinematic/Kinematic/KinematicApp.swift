@@ -44,6 +44,10 @@ struct User: Codable, Identifiable {
     /// still on their initial/shared password after the backfill) must change
     /// it before the app is usable — see SetPasswordView.
     let mustChangePassword: Bool
+    /// Per-client app-UI customization (which side-menu items / bottom tabs /
+    /// CRM-More destinations are shown), set from Client Management and served
+    /// as `app_ui_config`. Nil = no overrides (use the app's built-in gates).
+    let appUiConfig: AppUiConfig?
 
     enum CodingKeys: String, CodingKey {
         case id, name, email, role, mobile, permissions
@@ -57,6 +61,7 @@ struct User: Codable, Identifiable {
         case orgRoleName = "org_role_name"
         case orgRoleDataScope = "org_role_data_scope"
         case mustChangePassword = "must_change_password"
+        case appUiConfig = "app_ui_config"
     }
 
     init(from decoder: Decoder) throws {
@@ -77,7 +82,18 @@ struct User: Codable, Identifiable {
         orgRoleName     = try c.decodeIfPresent(String.self, forKey: .orgRoleName)
         orgRoleDataScope = try c.decodeIfPresent(String.self, forKey: .orgRoleDataScope)
         mustChangePassword = (try? c.decode(Bool.self, forKey: .mustChangePassword)) ?? false
+        appUiConfig     = try? c.decode(AppUiConfig.self, forKey: .appUiConfig)
     }
+}
+
+/// Per-client app-UI visibility overrides (see User.appUiConfig). Each map is
+/// id -> visible; false force-hides the item, absent/true defers to the app's
+/// built-in gate.
+struct AppUiConfig: Codable {
+    let menu: [String: Bool]?
+    let tabs: [String: Bool]?
+    let crmMore: [String: Bool]?
+    enum CodingKeys: String, CodingKey { case menu, tabs; case crmMore = "crm_more" }
 }
 
 // MARK: - Entitlement helpers
@@ -95,6 +111,11 @@ extension User {
     var isCrmOnly: Bool {
         !isLegacySession && hasCrm && !hasFieldForce && !hasDistribution
     }
+    // Per-client app-UI customization — hide-only override: false = force
+    // hidden; absent/true = defer to the item's built-in gate.
+    func menuVisible(_ id: String) -> Bool { appUiConfig?.menu?[id] != false }
+    func tabVisible(_ id: String) -> Bool { appUiConfig?.tabs?[id] != false }
+    func crmMoreVisible(_ id: String) -> Bool { appUiConfig?.crmMore?[id] != false }
 }
 
 // --- APP STATE ---

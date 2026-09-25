@@ -160,21 +160,34 @@ struct MainTabView: View {
                 // Route-less field-force shell: Home · Attendance · Activity · ➕.
                 // No Route tab; the ➕ tab opens the ad-hoc form picker so reps can
                 // fill a form anywhere without an assigned outlet.
-                Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
-                    AttendanceView()
+                // Each tab is additionally gated by the per-client App
+                // Customization config (tabVisible) so admins can hide a tab
+                // from Client Management without a code change.
+                if ClientFeatures.tabVisible("attendance") {
+                    Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
+                        AttendanceView()
+                    }
                 }
-                Tab("Activity", systemImage: "square.grid.2x2", value: 2) {
-                    NavigationStack { ActivityFeedView() }
+                if ClientFeatures.tabVisible("activity") {
+                    Tab("Activity", systemImage: "square.grid.2x2", value: 2) {
+                        NavigationStack { ActivityFeedView() }
+                    }
                 }
-                Tab("New", systemImage: "plus.circle.fill", value: 3) {
-                    AdHocFormsView()
+                if ClientFeatures.tabVisible("new_form") {
+                    Tab("New", systemImage: "plus.circle.fill", value: 3) {
+                        AdHocFormsView()
+                    }
                 }
             } else if hasFieldForce {
-                Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
-                    AttendanceView()
+                if ClientFeatures.tabVisible("attendance") {
+                    Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
+                        AttendanceView()
+                    }
                 }
-                Tab("Route", systemImage: "map", value: 2) {
-                    RoutePlansView()
+                if ClientFeatures.tabVisible("route_plan") {
+                    Tab("Route", systemImage: "map", value: 2) {
+                        RoutePlansView()
+                    }
                 }
             }
         }

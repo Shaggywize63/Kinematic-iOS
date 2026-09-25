@@ -212,4 +212,11 @@ enum ClientFeatures {
     /// extra client gate also closes Android-parity edge cases where a legacy
     /// session's empty module list would otherwise read as full access.
     static var showsConversationIntel: Bool { hasConversationIntel && !isSrsTataSteel }
+
+    // MARK: - Per-client app-UI customization (Client Management → app_ui_config)
+    // Hide-only overrides: an id turned OFF force-hides the item; ON/absent
+    // defers to the item's built-in gate. Nil user (legacy/no session) = visible.
+    static func menuVisible(_ id: String) -> Bool { Session.currentUser?.menuVisible(id) ?? true }
+    static func tabVisible(_ id: String) -> Bool { Session.currentUser?.tabVisible(id) ?? true }
+    static func crmMoreVisible(_ id: String) -> Bool { Session.currentUser?.crmMoreVisible(id) ?? true }
 }

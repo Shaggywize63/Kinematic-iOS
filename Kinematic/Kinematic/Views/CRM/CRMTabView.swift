@@ -229,7 +229,7 @@ struct CRMMoreMenu: View {
             // workflow is lead/deal-centric — account management lives with
             // admins). Contacts is hidden for Consumer Champions only.
             Section("Records") {
-                if !ClientFeatures.isConsumerChampion && ClientFeatures.showsAccounts {
+                if !ClientFeatures.isConsumerChampion && ClientFeatures.showsAccounts && ClientFeatures.crmMoreVisible("accounts") {
                     NavigationLink {
                         AccountsListView()
                     } label: { MoreRow(icon: "building.2.fill", title: "Accounts", tint: Brand.red) }
@@ -240,13 +240,17 @@ struct CRMMoreMenu: View {
                 // Pipeline (kanban) — moved here from the bottom tab in
                 // favour of the higher-frequency Deals list. Same view,
                 // one tap deeper.
-                NavigationLink {
-                    DealKanbanView()
-                } label: { MoreRow(icon: "square.stack.3d.up.fill", title: "Pipeline", tint: Brand.red) }
-                NavigationLink {
-                    ProductsListView()
-                } label: { MoreRow(icon: "shippingbox.fill", title: "Products", tint: Brand.red) }
-                if ClientFeatures.showsCustomObjects {
+                if ClientFeatures.crmMoreVisible("pipeline") {
+                    NavigationLink {
+                        DealKanbanView()
+                    } label: { MoreRow(icon: "square.stack.3d.up.fill", title: "Pipeline", tint: Brand.red) }
+                }
+                if ClientFeatures.crmMoreVisible("products") {
+                    NavigationLink {
+                        ProductsListView()
+                    } label: { MoreRow(icon: "shippingbox.fill", title: "Products", tint: Brand.red) }
+                }
+                if ClientFeatures.showsCustomObjects && ClientFeatures.crmMoreVisible("custom_objects") {
                     NavigationLink {
                         CustomObjectsListView()
                     } label: { MoreRow(icon: "square.grid.2x2.fill", title: "Custom Objects", tint: Brand.red) }
@@ -255,17 +259,19 @@ struct CRMMoreMenu: View {
             // Field tools that ride on the rep's current location. Distinct
             // from "Records" because reps think of these as "where am I
             // going next?" — not a directory.
-            Section("Field") {
-                NavigationLink {
-                    NearbyLeadsView()
-                } label: { MoreRow(icon: "location.north.line.fill", title: "Nearest Leads", tint: Brand.red) }
+            if ClientFeatures.crmMoreVisible("nearest_leads") {
+                Section("Field") {
+                    NavigationLink {
+                        NearbyLeadsView()
+                    } label: { MoreRow(icon: "location.north.line.fill", title: "Nearest Leads", tint: Brand.red) }
+                }
             }
             // Workplace — leave balances / requests + attendance regularization.
             // Hidden for SRS TATA Steel AND for every CRM-only tenant (BMW, new
             // lean-CRM clients, the parent Kinematic tenant): the "People &
             // Support" surface was dropped from the CRM-only build. Only full
             // field-force tenants still see it here.
-            if ClientFeatures.showsLeave {
+            if ClientFeatures.showsLeave && ClientFeatures.crmMoreVisible("leave") {
                 Section("Workplace") {
                     NavigationLink {
                         LeaveHomeView()
@@ -275,7 +281,7 @@ struct CRMMoreMenu: View {
             // Field Expenses — module-gated (field_expenses), independent of
             // Leave, and shown on the CRM-only build. Rep files claims (mileage
             // auto-priced from GPS, receipts AI-OCR'd); managers approve.
-            if ClientFeatures.showsExpenses {
+            if ClientFeatures.showsExpenses && ClientFeatures.crmMoreVisible("expenses") {
                 Section("Expenses") {
                     NavigationLink {
                         ExpenseClaimsView()
@@ -290,15 +296,17 @@ struct CRMMoreMenu: View {
             // but Dashboard + Lead Analytics are manager-tier surfaces
             // and stay hidden for FE-tier nav clarity.
             Section("Insights") {
-                if !ClientFeatures.isConsumerChampion {
+                if !ClientFeatures.isConsumerChampion && ClientFeatures.crmMoreVisible("dashboard") {
                     NavigationLink {
                         CRMDashboardView()
                     } label: { MoreRow(icon: "chart.bar.fill", title: "Dashboard", tint: Brand.red) }
                 }
-                NavigationLink {
-                    CRMReportsHubView()
-                } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
-                if !ClientFeatures.isConsumerChampion {
+                if ClientFeatures.crmMoreVisible("reports") {
+                    NavigationLink {
+                        CRMReportsHubView()
+                    } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
+                }
+                if !ClientFeatures.isConsumerChampion && ClientFeatures.crmMoreVisible("lead_analytics") {
                     NavigationLink {
                         CustomLeadAnalyticsView()
                     } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: "Lead Analytics", tint: Brand.red) }
@@ -328,7 +336,7 @@ struct CRMMoreMenu: View {
                 themeRow("Light",  appTheme: .light,  icon: "sun.max.fill")
                 themeRow("Dark",   appTheme: .dark,   icon: "moon.stars.fill")
             }
-            if let onExit {
+            if let onExit, ClientFeatures.crmMoreVisible("switch_ff") {
                 Section {
                     Button(action: onExit) {
                         HStack {
