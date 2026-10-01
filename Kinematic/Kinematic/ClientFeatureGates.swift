@@ -233,4 +233,11 @@ enum ClientFeatures {
     static func menuVisible(_ id: String) -> Bool { Session.currentUser?.menuVisible(id) ?? true }
     static func tabVisible(_ id: String) -> Bool { Session.currentUser?.tabVisible(id) ?? true }
     static func crmMoreVisible(_ id: String) -> Bool { Session.currentUser?.crmMoreVisible(id) ?? true }
+    static func homeVisible(_ id: String) -> Bool { Session.currentUser?.homeVisible(id) ?? true }
+    static func settingsVisible(_ id: String) -> Bool { Session.currentUser?.settingsVisible(id) ?? true }
+    /// Admin-set custom name for a nav/home/settings item, or `def` if unset.
+    /// `section` is one of: tabs, menu, crm_more, home, settings.
+    static func labelFor(_ section: String, _ id: String, default def: String) -> String {
+        Session.currentUser?.label(section, id, default: def) ?? def
+    }
 }

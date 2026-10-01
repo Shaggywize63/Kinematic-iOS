@@ -93,7 +93,11 @@ struct AppUiConfig: Codable {
     let menu: [String: Bool]?
     let tabs: [String: Bool]?
     let crmMore: [String: Bool]?
-    enum CodingKeys: String, CodingKey { case menu, tabs; case crmMore = "crm_more" }
+    let home: [String: Bool]?
+    let settings: [String: Bool]?
+    /// section -> id -> custom display name (rename override).
+    let labels: [String: [String: String]]?
+    enum CodingKeys: String, CodingKey { case menu, tabs, home, settings, labels; case crmMore = "crm_more" }
 }
 
 // MARK: - Entitlement helpers
@@ -116,6 +120,16 @@ extension User {
     func menuVisible(_ id: String) -> Bool { appUiConfig?.menu?[id] != false }
     func tabVisible(_ id: String) -> Bool { appUiConfig?.tabs?[id] != false }
     func crmMoreVisible(_ id: String) -> Bool { appUiConfig?.crmMore?[id] != false }
+    func homeVisible(_ id: String) -> Bool { appUiConfig?.home?[id] != false }
+    func settingsVisible(_ id: String) -> Bool { appUiConfig?.settings?[id] != false }
+    /// Admin-set custom name for an item (section -> id), if non-empty; else `def`.
+    func label(_ section: String, _ id: String, default def: String) -> String {
+        if let v = appUiConfig?.labels?[section]?[id] {
+            let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty { return t }
+        }
+        return def
+    }
 }
 
 // --- APP STATE ---
