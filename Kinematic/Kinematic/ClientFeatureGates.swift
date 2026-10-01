@@ -127,6 +127,20 @@ enum ClientFeatures {
         Session.currentUser?.enabledModules.contains("field_expenses") == true
     }
 
+    /// Form Builder module (`form_builder`, package `field_force`) — the ad-hoc
+    /// forms capability. Drives the ad-hoc "New" (➕) bottom tab for ANY
+    /// field-force client that holds the module, not just the hardcoded ByteBack
+    /// tenant: the ➕ opens the ad-hoc form picker so a rep can fill a published
+    /// form without an assigned outlet/route. The form itself is authored in the
+    /// dashboard's Module Management.
+    ///
+    /// STRICT entitlement check (like `hasExpenses`): an empty legacy-session
+    /// module list must NOT surface the tab until /auth/me confirms the module.
+    /// Mirrors Android's `Entitlements.hasFormBuilder`.
+    static var hasFormBuilder: Bool {
+        Session.currentUser?.enabledModules.contains("form_builder") == true
+    }
+
     /// Supply Chain — Batch & Expiry module (distribution_batches, off by
     /// default). STRICT entitlement check (like `hasConversationIntel`): an empty
     /// legacy-session module list must NOT surface the FEFO batch / expiry

@@ -189,6 +189,16 @@ struct MainTabView: View {
                         RoutePlansView()
                     }
                 }
+                // Ad-hoc forms: any field-force client with the Form Builder
+                // module gets a "New" tab that opens the ad-hoc form picker (fill
+                // a published form with no assigned outlet) — the same entry point
+                // ByteBack uses, now generalised beyond that one tenant. Gated by
+                // tabVisible so an admin can still hide it per client.
+                if ClientFeatures.hasFormBuilder && ClientFeatures.tabVisible("new_form") {
+                    Tab("New", systemImage: "plus.circle.fill", value: 3) {
+                        AdHocFormsView()
+                    }
+                }
             }
         }
         .tabBarMinimizeOnScrollIfAvailable()
