@@ -164,28 +164,28 @@ struct MainTabView: View {
                 // Customization config (tabVisible) so admins can hide a tab
                 // from Client Management without a code change.
                 if ClientFeatures.tabVisible("attendance") {
-                    Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
+                    Tab(ClientFeatures.labelFor("tabs", "attendance", default: "Attendance"), systemImage: "person.text.rectangle", value: 1) {
                         AttendanceView()
                     }
                 }
                 if ClientFeatures.tabVisible("activity") {
-                    Tab("Activity", systemImage: "square.grid.2x2", value: 2) {
+                    Tab(ClientFeatures.labelFor("tabs", "activity", default: "Activity"), systemImage: "square.grid.2x2", value: 2) {
                         NavigationStack { ActivityFeedView() }
                     }
                 }
                 if ClientFeatures.tabVisible("new_form") {
-                    Tab("New", systemImage: "plus.circle.fill", value: 3) {
+                    Tab(ClientFeatures.labelFor("tabs", "new_form", default: "New"), systemImage: "plus.circle.fill", value: 3) {
                         AdHocFormsView()
                     }
                 }
             } else if hasFieldForce {
                 if ClientFeatures.tabVisible("attendance") {
-                    Tab("Attendance", systemImage: "person.text.rectangle", value: 1) {
+                    Tab(ClientFeatures.labelFor("tabs", "attendance", default: "Attendance"), systemImage: "person.text.rectangle", value: 1) {
                         AttendanceView()
                     }
                 }
                 if ClientFeatures.tabVisible("route_plan") {
-                    Tab("Route", systemImage: "map", value: 2) {
+                    Tab(ClientFeatures.labelFor("tabs", "route_plan", default: "Route"), systemImage: "map", value: 2) {
                         RoutePlansView()
                     }
                 }
@@ -195,7 +195,7 @@ struct MainTabView: View {
                 // ByteBack uses, now generalised beyond that one tenant. Gated by
                 // tabVisible so an admin can still hide it per client.
                 if ClientFeatures.hasFormBuilder && ClientFeatures.tabVisible("new_form") {
-                    Tab("New", systemImage: "plus.circle.fill", value: 3) {
+                    Tab(ClientFeatures.labelFor("tabs", "new_form", default: "New"), systemImage: "plus.circle.fill", value: 3) {
                         AdHocFormsView()
                     }
                 }
@@ -358,12 +358,21 @@ struct HomeView: View {
 
                     SelfieStatusCard(record: appState.today).padding(.horizontal, 20)
 
+                    // Home stat tiles — each is admin-manageable per client
+                    // (App Customization → Home: stores / visited / forms) and
+                    // relabelable. Hidden ids drop out; the rest keep their slot.
                     VStack(spacing: 12) {
                         HStack(spacing: 12) {
-                            StatTile(label: "Store Target", value: "\(vm.totalStoreCount)", icon: "storefront.fill", color: Brand.red)
-                            StatTile(label: "Visited", value: "\(vm.visitedStoreCount)", icon: "checkmark.seal.fill", color: .green)
+                            if ClientFeatures.homeVisible("stores") {
+                                StatTile(label: ClientFeatures.labelFor("home", "stores", default: "Store Target"), value: "\(vm.totalStoreCount)", icon: "storefront.fill", color: Brand.red)
+                            }
+                            if ClientFeatures.homeVisible("visited") {
+                                StatTile(label: ClientFeatures.labelFor("home", "visited", default: "Visited"), value: "\(vm.visitedStoreCount)", icon: "checkmark.seal.fill", color: .green)
+                            }
                         }
-                        StatTile(label: "Data Forms Submitted Today", value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: Brand.red)
+                        if ClientFeatures.homeVisible("forms") {
+                            StatTile(label: ClientFeatures.labelFor("home", "forms", default: "Data Forms Submitted Today"), value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: Brand.red)
+                        }
                     }
                     .padding(.horizontal, 20)
 
@@ -391,12 +400,15 @@ struct HomeView: View {
                         .padding(.horizontal, 20)
                     }
 
-                    VStack(alignment: .leading, spacing: 14) {
+                    // Home "Today's Route" preview — admin-manageable per client
+                    // (App Customization → Home: todays_route) and relabelable.
+                    if ClientFeatures.homeVisible("todays_route") {
+                      VStack(alignment: .leading, spacing: 14) {
                         HStack {
-                            Text("TODAY'S ROUTE").font(.system(size: 11, weight: .bold)).foregroundColor(.secondary).tracking(1)
+                            Text(ClientFeatures.labelFor("home", "todays_route", default: "TODAY'S ROUTE")).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary).tracking(1)
                             Spacer()
-                            Button(action: { 
-                                if appState.today?.checkinAt != nil { appState.selectedTab = 2 } 
+                            Button(action: {
+                                if appState.today?.checkinAt != nil { appState.selectedTab = 2 }
                             }) {
                                 Text("VIEW ALL").font(.system(size: 11, weight: .bold)).foregroundColor(appState.today?.checkinAt != nil ? .red : .gray)
                             }
@@ -419,10 +431,11 @@ struct HomeView: View {
                         } else {
                             Text("No stores assigned for today").font(.subheadline).foregroundColor(.secondary).padding(.vertical, 8)
                         }
+                      }
+                      .padding(20)
+                      .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
+                      .padding(.horizontal, 20)
                     }
-                    .padding(20)
-                    .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
-                    .padding(.horizontal, 20)
 
                     Spacer().frame(height: 110)
                 }

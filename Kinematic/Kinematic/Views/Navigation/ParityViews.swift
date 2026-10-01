@@ -577,13 +577,17 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // Each Settings section is admin-manageable per client (App
+                // Customization → Settings) and relabelable. Appearance / modules /
+                // security / about can be hidden; Account + Sign Out are essential.
                 // Appearance Section
+                if ClientFeatures.settingsVisible("appearance") {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("APPEARANCE")
+                    Text(ClientFeatures.labelFor("settings", "appearance", default: "APPEARANCE"))
                         .font(.system(size: 12, weight: .black))
                         .foregroundColor(.gray)
                         .padding(.horizontal)
-                    
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("App Theme")
                             .font(.headline)
@@ -591,7 +595,7 @@ struct SettingsView: View {
                         Text("Choose how the app looks")
                             .font(.caption)
                             .foregroundColor(.gray)
-                        
+
                         HStack(spacing: 10) {
                             ThemeToggleCard(title: "System", type: .system, current: appState.theme, icon: "circle.lefthalf.filled")
                             ThemeToggleCard(title: "Light", type: .light, current: appState.theme, icon: "sun.max.fill")
@@ -603,20 +607,27 @@ struct SettingsView: View {
                     .cornerRadius(24)
                     .padding(.horizontal)
                 }
+                }
 
-                // CRM-only Mode
+                // MODULES — CRM-only toggle + Face Enrollment, each independently
+                // manageable; the whole section hides when both are hidden.
+                let showCrmOnly = ClientFeatures.settingsVisible("crm_only_mode")
+                let showFaceEnroll = ClientFeatures.hasFaceAttendance && ClientFeatures.settingsVisible("face_enrollment")
+                if showCrmOnly || showFaceEnroll {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("MODULES")
                         .font(.system(size: 12, weight: .black))
                         .foregroundColor(.gray)
                         .padding(.horizontal)
 
-                    CRMOnlyToggleCard()
-                        .padding(.horizontal)
+                    if showCrmOnly {
+                        CRMOnlyToggleCard()
+                            .padding(.horizontal)
+                    }
 
                     // Face enrolment (module face_attendance) — supervised enroll /
                     // re-enroll on top of the silent auto-enrol at first check-in.
-                    if ClientFeatures.hasFaceAttendance {
+                    if showFaceEnroll {
                         NavigationLink(destination: FaceEnrollmentView()) {
                             HStack(spacing: 14) {
                                 Image(systemName: "faceid")
@@ -624,7 +635,7 @@ struct SettingsView: View {
                                     .foregroundColor(.red)
                                     .frame(width: 28)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Face Enrollment").font(.headline).foregroundColor(.white)
+                                    Text(ClientFeatures.labelFor("settings", "face_enrollment", default: "Face Enrollment")).font(.headline).foregroundColor(.white)
                                     Text("Register your face for attendance").font(.caption).foregroundColor(.gray)
                                 }
                                 Spacer()
@@ -638,8 +649,10 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                
+                }
+
                 // Security
+                if ClientFeatures.settingsVisible("app_lock") {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("SECURITY")
                         .font(.system(size: 12, weight: .black))
@@ -648,6 +661,7 @@ struct SettingsView: View {
 
                     AppLockToggleCard()
                         .padding(.horizontal)
+                }
                 }
 
                 // Account Summary
@@ -676,12 +690,13 @@ struct SettingsView: View {
                 }
                 
                 // About section
+                if ClientFeatures.settingsVisible("about") {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("ABOUT")
+                    Text(ClientFeatures.labelFor("settings", "about", default: "ABOUT"))
                         .font(.system(size: 12, weight: .black))
                         .foregroundColor(.gray)
                         .padding(.horizontal)
-                    
+
                     VStack(spacing: 0) {
                         AboutRow(label: "App Version", value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"))")
                         Divider().background(Color.white.opacity(0.1))
@@ -690,6 +705,7 @@ struct SettingsView: View {
                     .background(Color.white.opacity(0.03))
                     .cornerRadius(20)
                     .padding(.horizontal)
+                }
                 }
                 
                 Spacer(minLength: 40)

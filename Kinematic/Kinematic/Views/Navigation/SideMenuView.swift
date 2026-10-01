@@ -78,7 +78,7 @@ struct SideMenuView: View {
 
                     // ── CRM Module — only visible to clients who own the CRM SKU ──
                     if hasCrm && ClientFeatures.menuVisible("crm") {
-                        MenuButton(icon: "person.2.crop.square.stack.fill", title: "CRM", isSelected: false, color: Brand.red) {
+                        MenuButton(icon: "person.2.crop.square.stack.fill", title: ClientFeatures.labelFor("menu", "crm", default: "CRM"), isSelected: false, color: Brand.red) {
                             withAnimation { isOpen = false }
                             // Defer presentation until the menu close animation finishes
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -94,7 +94,7 @@ struct SideMenuView: View {
                     //    this entry; other clients capture planograms inside a
                     //    store visit.
                     if ClientFeatures.isMoiSoi && ClientFeatures.menuVisible("planogram") {
-                        MenuButton(icon: "camera.viewfinder", title: "Planogram", isSelected: false, color: Brand.red) {
+                        MenuButton(icon: "camera.viewfinder", title: ClientFeatures.labelFor("menu", "planogram", default: "Planogram"), isSelected: false, color: Brand.red) {
                             withAnimation { isOpen = false }
                             // Defer presentation until the menu close animation finishes.
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -108,7 +108,7 @@ struct SideMenuView: View {
                     //    via the same SecondaryRoute mechanism the other rows use;
                     //    SecondaryScreenHost re-checks the package gate.
                     if hasDistribution && ClientFeatures.menuVisible("my_orders") {
-                        MenuButton(icon: "cart.fill", title: "My Orders", isSelected: false, color: .indigo) {
+                        MenuButton(icon: "cart.fill", title: ClientFeatures.labelFor("menu", "my_orders", default: "My Orders"), isSelected: false, color: .indigo) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .orderHistory)
                         }
@@ -118,7 +118,7 @@ struct SideMenuView: View {
                     //    end-of-day reconcile. Ships OFF by default; only shown
                     //    when the client's enabled_modules includes the module.
                     if hasModule("distribution_van") && ClientFeatures.menuVisible("van_load") {
-                        MenuButton(icon: "truck.box.fill", title: "Van Load", isSelected: false, color: .indigo) {
+                        MenuButton(icon: "truck.box.fill", title: ClientFeatures.labelFor("menu", "van_load", default: "Van Load"), isSelected: false, color: .indigo) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .vanLoad)
                         }
@@ -127,7 +127,7 @@ struct SideMenuView: View {
                     // ── Distributor Stock (module distribution_stock) — read-only
                     //    per-SKU on-hand view. Same module-gated OFF-by-default rule.
                     if hasModule("distribution_stock") && ClientFeatures.menuVisible("distributor_stock") {
-                        MenuButton(icon: "archivebox.fill", title: "Distributor Stock", isSelected: false, color: .brown) {
+                        MenuButton(icon: "archivebox.fill", title: ClientFeatures.labelFor("menu", "distributor_stock", default: "Distributor Stock"), isSelected: false, color: .brown) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .distributorStock)
                         }
@@ -136,7 +136,7 @@ struct SideMenuView: View {
                     // ── Log Damage (module distribution_damage) — distributor
                     //    damaged / expiry register. Same module-gated OFF-by-default rule.
                     if hasModule("distribution_damage") && ClientFeatures.menuVisible("log_damage") {
-                        MenuButton(icon: "exclamationmark.triangle.fill", title: "Log Damage", isSelected: false, color: .orange) {
+                        MenuButton(icon: "exclamationmark.triangle.fill", title: ClientFeatures.labelFor("menu", "log_damage", default: "Log Damage"), isSelected: false, color: .orange) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .damageLog)
                         }
@@ -149,14 +149,14 @@ struct SideMenuView: View {
                     //    legacy-session module list must NOT surface this, so we
                     //    read enabled_modules directly. Off by default.
                     if ClientFeatures.hasDistributionBatches && ClientFeatures.menuVisible("stock_batches") {
-                        MenuButton(icon: "calendar.badge.exclamationmark", title: "Stock & Batches", isSelected: false, color: .purple) {
+                        MenuButton(icon: "calendar.badge.exclamationmark", title: ClientFeatures.labelFor("menu", "stock_batches", default: "Stock & Batches"), isSelected: false, color: .purple) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .stockBatches)
                         }
                     }
 
                     if ClientFeatures.menuVisible("profile") {
-                        MenuButton(icon: "person.fill", title: "My Profile", isSelected: false, color: .orange) {
+                        MenuButton(icon: "person.fill", title: ClientFeatures.labelFor("menu", "profile", default: "My Profile"), isSelected: false, color: .orange) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .profile)
                         }
@@ -166,21 +166,21 @@ struct SideMenuView: View {
                     // every client except SRS TATA Steel (slimmed build); the
                     // API/role decides what's actionable for the rest.
                     if ClientFeatures.showsLeave && ClientFeatures.menuVisible("leave") {
-                        MenuButton(icon: "calendar.badge.clock", title: "Leave", isSelected: false, color: .teal) {
+                        MenuButton(icon: "calendar.badge.clock", title: ClientFeatures.labelFor("menu", "leave", default: "Leave"), isSelected: false, color: .teal) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .leave)
                         }
                     }
 
                 if hasModule("broadcast") && ClientFeatures.menuVisible("broadcast") {
-                    MenuButton(icon: "megaphone.fill", title: "Broadcasts", isSelected: false, color: .red) {
+                    MenuButton(icon: "megaphone.fill", title: ClientFeatures.labelFor("menu", "broadcast", default: "Broadcasts"), isSelected: false, color: .red) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .broadcast)
                     }
                 }
 
                 if ClientFeatures.menuVisible("notifications") {
-                    MenuButton(icon: "bell.fill", title: "Notifications", isSelected: false, color: Brand.red) {
+                    MenuButton(icon: "bell.fill", title: ClientFeatures.labelFor("menu", "notifications", default: "Notifications"), isSelected: false, color: Brand.red) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .notifications)
                     }
@@ -188,28 +188,28 @@ struct SideMenuView: View {
 
                 if hasFieldForce {
                     if ClientFeatures.menuVisible("leaderboard") {
-                        MenuButton(icon: "trophy.fill", title: "Leaderboard", isSelected: false, color: .yellow) {
+                        MenuButton(icon: "trophy.fill", title: ClientFeatures.labelFor("menu", "leaderboard", default: "Leaderboard"), isSelected: false, color: .yellow) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .leaderboard)
                         }
                     }
 
                     if ClientFeatures.menuVisible("activity_feed") {
-                        MenuButton(icon: "doc.text.fill", title: "Activity Feed", isSelected: false, color: Brand.red) {
+                        MenuButton(icon: "doc.text.fill", title: ClientFeatures.labelFor("menu", "activity_feed", default: "Activity Feed"), isSelected: false, color: Brand.red) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .activity)
                         }
                     }
 
                     if ClientFeatures.menuVisible("log_visit") {
-                        MenuButton(icon: "list.bullet.rectangle", title: "Visit Log", isSelected: false, color: .green) {
+                        MenuButton(icon: "list.bullet.rectangle", title: ClientFeatures.labelFor("menu", "log_visit", default: "Visit Log"), isSelected: false, color: .green) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .visitlog)
                         }
                     }
 
                     if ClientFeatures.menuVisible("stock") {
-                        MenuButton(icon: "shippingbox.fill", title: "Stock", isSelected: false, color: .brown) {
+                        MenuButton(icon: "shippingbox.fill", title: ClientFeatures.labelFor("menu", "stock", default: "Stock"), isSelected: false, color: .brown) {
                             withAnimation { isOpen = false }
                             appState.activeSecondaryRoute = ModalRoute(route: .stock)
                         }
@@ -217,21 +217,21 @@ struct SideMenuView: View {
                 }
 
                 if hasModule("grievances") && ClientFeatures.menuVisible("grievance") {
-                    MenuButton(icon: "exclamationmark.bubble.fill", title: "Grievance", isSelected: false, color: Brand.red) {
+                    MenuButton(icon: "exclamationmark.bubble.fill", title: ClientFeatures.labelFor("menu", "grievance", default: "Grievance"), isSelected: false, color: Brand.red) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .grievance)
                     }
                 }
 
                 if ClientFeatures.menuVisible("learning_hub") {
-                    MenuButton(icon: "sparkles", title: "Learning Hub", isSelected: false, color: Brand.red) {
+                    MenuButton(icon: "sparkles", title: ClientFeatures.labelFor("menu", "learning_hub", default: "Learning Hub"), isSelected: false, color: Brand.red) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .learning)
                     }
                 }
 
                 if ClientFeatures.menuVisible("emergency_sos") {
-                    MenuButton(icon: "exclamationmark.octagon.fill", title: "Emergency SOS", isSelected: false, color: .red) {
+                    MenuButton(icon: "exclamationmark.octagon.fill", title: ClientFeatures.labelFor("menu", "emergency_sos", default: "Emergency SOS"), isSelected: false, color: .red) {
                         withAnimation { isOpen = false }
                         appState.activeSecondaryRoute = ModalRoute(route: .sos)
                     }

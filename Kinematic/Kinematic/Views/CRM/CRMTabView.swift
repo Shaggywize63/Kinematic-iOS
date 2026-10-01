@@ -232,7 +232,7 @@ struct CRMMoreMenu: View {
                 if !ClientFeatures.isConsumerChampion && ClientFeatures.showsAccounts && ClientFeatures.crmMoreVisible("accounts") {
                     NavigationLink {
                         AccountsListView()
-                    } label: { MoreRow(icon: "building.2.fill", title: "Accounts", tint: Brand.red) }
+                    } label: { MoreRow(icon: "building.2.fill", title: ClientFeatures.labelFor("crm_more", "accounts", default: "Accounts"), tint: Brand.red) }
                 }
                 // Contacts hidden from mobile entirely — Tata's intake
                 // flow doesn't surface contacts; reinstate this row if a
@@ -243,17 +243,17 @@ struct CRMMoreMenu: View {
                 if ClientFeatures.crmMoreVisible("pipeline") {
                     NavigationLink {
                         DealKanbanView()
-                    } label: { MoreRow(icon: "square.stack.3d.up.fill", title: "Pipeline", tint: Brand.red) }
+                    } label: { MoreRow(icon: "square.stack.3d.up.fill", title: ClientFeatures.labelFor("crm_more", "pipeline", default: "Pipeline"), tint: Brand.red) }
                 }
                 if ClientFeatures.crmMoreVisible("products") {
                     NavigationLink {
                         ProductsListView()
-                    } label: { MoreRow(icon: "shippingbox.fill", title: "Products", tint: Brand.red) }
+                    } label: { MoreRow(icon: "shippingbox.fill", title: ClientFeatures.labelFor("crm_more", "products", default: "Products"), tint: Brand.red) }
                 }
                 if ClientFeatures.showsCustomObjects && ClientFeatures.crmMoreVisible("custom_objects") {
                     NavigationLink {
                         CustomObjectsListView()
-                    } label: { MoreRow(icon: "square.grid.2x2.fill", title: "Custom Objects", tint: Brand.red) }
+                    } label: { MoreRow(icon: "square.grid.2x2.fill", title: ClientFeatures.labelFor("crm_more", "custom_objects", default: "Custom Objects"), tint: Brand.red) }
                 }
             }
             // Field tools that ride on the rep's current location. Distinct
@@ -263,7 +263,7 @@ struct CRMMoreMenu: View {
                 Section("Field") {
                     NavigationLink {
                         NearbyLeadsView()
-                    } label: { MoreRow(icon: "location.north.line.fill", title: "Nearest Leads", tint: Brand.red) }
+                    } label: { MoreRow(icon: "location.north.line.fill", title: ClientFeatures.labelFor("crm_more", "nearest_leads", default: "Nearest Leads"), tint: Brand.red) }
                 }
             }
             // Workplace — leave balances / requests + attendance regularization.
@@ -275,7 +275,7 @@ struct CRMMoreMenu: View {
                 Section("Workplace") {
                     NavigationLink {
                         LeaveHomeView()
-                    } label: { MoreRow(icon: "calendar.badge.clock", title: "Leave", tint: Brand.red) }
+                    } label: { MoreRow(icon: "calendar.badge.clock", title: ClientFeatures.labelFor("crm_more", "leave", default: "Leave"), tint: Brand.red) }
                 }
             }
             // Field Expenses — module-gated (field_expenses), independent of
@@ -285,7 +285,7 @@ struct CRMMoreMenu: View {
                 Section("Expenses") {
                     NavigationLink {
                         ExpenseClaimsView()
-                    } label: { MoreRow(icon: "doc.text.magnifyingglass", title: "Expense Claims", tint: Brand.red) }
+                    } label: { MoreRow(icon: "doc.text.magnifyingglass", title: ClientFeatures.labelFor("crm_more", "expenses", default: "Expense Claims"), tint: Brand.red) }
                     NavigationLink {
                         ExpenseApprovalsView()
                     } label: { MoreRow(icon: "checkmark.seal", title: "Expense Approvals", tint: Brand.red) }
@@ -299,17 +299,17 @@ struct CRMMoreMenu: View {
                 if !ClientFeatures.isConsumerChampion && ClientFeatures.crmMoreVisible("dashboard") {
                     NavigationLink {
                         CRMDashboardView()
-                    } label: { MoreRow(icon: "chart.bar.fill", title: "Dashboard", tint: Brand.red) }
+                    } label: { MoreRow(icon: "chart.bar.fill", title: ClientFeatures.labelFor("crm_more", "dashboard", default: "Dashboard"), tint: Brand.red) }
                 }
                 if ClientFeatures.crmMoreVisible("reports") {
                     NavigationLink {
                         CRMReportsHubView()
-                    } label: { MoreRow(icon: "chart.pie.fill", title: "Reports", tint: Brand.red) }
+                    } label: { MoreRow(icon: "chart.pie.fill", title: ClientFeatures.labelFor("crm_more", "reports", default: "Reports"), tint: Brand.red) }
                 }
                 if !ClientFeatures.isConsumerChampion && ClientFeatures.crmMoreVisible("lead_analytics") {
                     NavigationLink {
                         CustomLeadAnalyticsView()
-                    } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: "Lead Analytics", tint: Brand.red) }
+                    } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: ClientFeatures.labelFor("crm_more", "lead_analytics", default: "Lead Analytics"), tint: Brand.red) }
                 }
             }
             // Targets removed from mobile entirely — the manager-tier
@@ -340,7 +340,7 @@ struct CRMMoreMenu: View {
                 Section {
                     Button(action: onExit) {
                         HStack {
-                            MoreRow(icon: "arrow.uturn.left", title: "Switch to Field Force", tint: .red)
+                            MoreRow(icon: "arrow.uturn.left", title: ClientFeatures.labelFor("crm_more", "switch_ff", default: "Switch to Field Force"), tint: .red)
                             Spacer()
                         }
                     }
