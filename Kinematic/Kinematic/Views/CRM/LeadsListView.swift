@@ -27,8 +27,16 @@ struct LeadsListView: View {
     /// Tracks whether the view has appeared before, so the re-appear
     /// refresh doesn't double up with the initial `.task` fetch.
     @State private var hasAppearedOnce = false
+    /// Tenant's custom lead-status set (for the filter chips). Falls back to
+    /// the hardcoded defaults below when no custom set is configured.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
-    let statusOptions = ["all", "new", "contacted", "qualified", "unqualified", "converted"]
+    /// "all" sentinel prepended to the resolved statuses. Chips send
+    /// `.value` to `vm.statusFilter` and display `.label`.
+    private var statusOptions: [LeadStatusOption] {
+        [LeadStatusOption(value: "all", label: "All", color: nil, isWon: false, isLost: false)]
+            + fieldOverrides.statusOptions(default: ["new", "contacted", "qualified", "unqualified", "converted"])
+    }
 
     // (label, sort key, ascending). "recent" = backend default order.
     private let sortOptions: [(String, String, Bool)] = [
@@ -144,16 +152,16 @@ struct LeadsListView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(statusOptions, id: \.self) { s in
+                    ForEach(statusOptions) { opt in
                         Button {
-                            vm.statusFilter = s
+                            vm.statusFilter = opt.value
                             Task { await vm.refresh() }
                         } label: {
-                            Text(s.uppercased())
+                            Text(opt.label.uppercased())
                                 .font(.system(size: 11, weight: .bold))
                                 .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(vm.statusFilter == s ? Brand.red : Color(uiColor: .secondarySystemBackground))
-                                .foregroundColor(vm.statusFilter == s ? .white : .secondary)
+                                .background(vm.statusFilter == opt.value ? Brand.red : Color(uiColor: .secondarySystemBackground))
+                                .foregroundColor(vm.statusFilter == opt.value ? .white : .secondary)
                                 .cornerRadius(8)
                         }
                     }
@@ -314,6 +322,10 @@ struct LeadsListView: View {
             // network might already be back from a previous offline burst.
             queue.drain()
             await vm.refresh()
+            // Load the tenant's custom lead statuses for the filter chips.
+            // Chips show the hardcoded defaults until this resolves, then
+            // re-render via the published `leadStatuses`.
+            await fieldOverrides.load()
         }
         .onReceive(NotificationCenter.default.publisher(for: .kmLeadSavedOffline)) { _ in
             withAnimation { offlineToast = true }

@@ -223,6 +223,62 @@ final class CRMService {
         try? await get("/api/v1/crm/settings")
     }
 
+    // MARK: Marketing Visits (ad-hoc GPS Start → End tied to a lead)
+    // Rajkamal's ad-hoc field visit. A visit is a crm_activities row carrying
+    // metadata.kind='marketing_visit'; the backend returns raw JSON (NOT the
+    // {success,data} envelope) from these routes, which `perform` / the active
+    // decode below both tolerate (envelope-first, then raw).
+
+    /// Start a visit. Provide EITHER `leadId` (existing lead) OR `lead` (a
+    /// new-lead body in the same shape the lead-create form posts, incl.
+    /// `custom_fields`). Returns the created visit + its lead.
+    func startVisit(leadId: String?, lead: [String: Any]?, latitude: Double?, longitude: Double?, purpose: String?) async throws -> MarketingVisitResult {
+        var body: [String: Any] = [:]
+        if let leadId, !leadId.isEmpty { body["lead_id"] = leadId }
+        if let lead, !lead.isEmpty { body["lead"] = lead }
+        if let latitude { body["latitude"] = latitude }
+        if let longitude { body["longitude"] = longitude }
+        if let purpose, !purpose.isEmpty { body["purpose"] = purpose }
+        return try await postJSON("/api/v1/crm/marketing-visits/start", body: body)
+    }
+
+    /// End an in-progress visit. Optionally records end GPS, free-text
+    /// outcome/notes, moves the lead's status, and sets a next follow-up.
+    func endVisit(id: String, latitude: Double?, longitude: Double?, outcome: String?, notes: String?, nextStatus: String?, nextFollowupAt: String?) async throws -> MarketingVisitResult {
+        var body: [String: Any] = [:]
+        if let latitude { body["latitude"] = latitude }
+        if let longitude { body["longitude"] = longitude }
+        if let outcome, !outcome.isEmpty { body["outcome"] = outcome }
+        if let notes, !notes.isEmpty { body["notes"] = notes }
+        if let nextStatus, !nextStatus.isEmpty { body["next_status"] = nextStatus }
+        if let nextFollowupAt, !nextFollowupAt.isEmpty { body["next_followup_at"] = nextFollowupAt }
+        return try await postJSON("/api/v1/crm/marketing-visits/\(id)/end", body: body)
+    }
+
+    /// The signed-in rep's marketing visits (newest first). `status` filters
+    /// to "planned" (in progress) or "completed" when set.
+    func listMarketingVisits(mine: Bool = true, status: String? = nil) async throws -> [MarketingVisit] {
+        var q: [String: String] = [:]
+        if mine { q["mine"] = "true" }
+        if let status, !status.isEmpty { q["status"] = status }
+        return try await get("/api/v1/crm/marketing-visits", query: q)
+    }
+
+    /// The rep's currently-open visit, or nil. The endpoint returns the visit
+    /// object OR a literal `null`, so we decode by hand (envelope-first, then
+    /// raw) and map an un-decodable/null body to nil rather than throwing.
+    func activeVisit() async throws -> MarketingVisit? {
+        let req = try makeRequest(path: "/api/v1/crm/marketing-visits/active", method: "GET", body: nil)
+        let data = try await fetchData(req)
+        if let env = try? decoder.decode(APIEnvelope<MarketingVisit>.self, from: data), let v = env.data {
+            return v
+        }
+        if let v = try? decoder.decode(MarketingVisit.self, from: data) {
+            return v
+        }
+        return nil
+    }
+
     // MARK: Contacts
     func listContacts(search: String? = nil) async throws -> [Contact] {
         var q: [String: String] = [:]

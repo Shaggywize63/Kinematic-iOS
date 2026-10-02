@@ -277,9 +277,18 @@ struct LeadEditView: View {
                 // actually drops them from the form.
                 Section("Lifecycle & Assignment") {
                     if !fieldOverrides.isHidden("status", isB2C: isB2C) {
+                        // Resolve the tenant's custom set (or the hardcoded
+                        // defaults). If the lead's stored status isn't in the
+                        // resolved set, append it so the picker can still show
+                        // (and preserve) the existing value instead of
+                        // silently snapping to the first option.
+                        let resolvedStatuses = fieldOverrides.statusOptions(default: ["new", "working", "qualified", "unqualified", "converted", "lost"])
+                        let statusChoices: [LeadStatusOption] = (!status.isEmpty && !resolvedStatuses.contains(where: { $0.value == status }))
+                            ? resolvedStatuses + [LeadStatusOption(value: status, label: status.capitalized, color: nil, isWon: false, isLost: false)]
+                            : resolvedStatuses
                         Picker(fieldOverrides.labelFor("status", defaultLabel: "Status", isB2C: isB2C), selection: $status) {
-                            ForEach(["new", "working", "qualified", "unqualified", "converted", "lost"], id: \.self) {
-                                Text($0.capitalized).tag($0)
+                            ForEach(statusChoices) { opt in
+                                Text(opt.label).tag(opt.value)
                             }
                         }
                     }

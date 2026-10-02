@@ -338,8 +338,8 @@ struct LeadCreateView: View {
                     // override helper like every other row.
                     if !fieldOverrides.isHidden("status", isB2C: isB2C) {
                         Picker(fieldOverrides.labelFor("status", defaultLabel: "Status", isB2C: isB2C), selection: $status) {
-                            ForEach(["new", "working", "qualified", "unqualified", "converted", "lost"], id: \.self) {
-                                Text($0.capitalized).tag($0)
+                            ForEach(fieldOverrides.statusOptions(default: ["new", "working", "qualified", "unqualified", "converted", "lost"])) { opt in
+                                Text(opt.label).tag(opt.value)
                             }
                         }
                     }

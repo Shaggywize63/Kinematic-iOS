@@ -439,15 +439,23 @@ struct LeadDetailView: View {
                 if isTerminal {
                     chip
                 } else {
+                    // Custom set → drop terminal (won/lost) states, which keep
+                    // their dedicated Convert / Mark-Lost flows. No custom set →
+                    // settableStatuses is already the curated non-terminal list
+                    // (and intentionally includes "unqualified"), so use it
+                    // as-is to preserve today's inline menu exactly.
+                    let settableOptions: [LeadStatusOption] = fieldOverrides.leadStatuses.isEmpty
+                        ? fieldOverrides.statusOptions(default: LeadDetailViewModel.settableStatuses)
+                        : fieldOverrides.statusOptions(default: LeadDetailViewModel.settableStatuses).filter { !$0.isWon && !$0.isLost }
                     Menu {
-                        ForEach(LeadDetailViewModel.settableStatuses, id: \.self) { opt in
+                        ForEach(settableOptions) { opt in
                             Button {
-                                Task { await vm.setStatus(opt) }
+                                Task { await vm.setStatus(opt.value) }
                             } label: {
-                                if opt == lower {
-                                    Label(opt.capitalized, systemImage: "checkmark")
+                                if opt.value == lower {
+                                    Label(opt.label, systemImage: "checkmark")
                                 } else {
-                                    Text(opt.capitalized)
+                                    Text(opt.label)
                                 }
                             }
                         }
@@ -1551,7 +1559,16 @@ struct LeadDetailView: View {
             .cornerRadius(4)
     }
 
+    /// The admin-configured hex colour for a custom status value, if any.
+    /// Nil when the tenant has no custom set or the status isn't in it, so
+    /// the chip falls back to the built-in switch below.
+    private func customStatusColor(for status: String) -> Color? {
+        guard let hex = fieldOverrides.leadStatuses.first(where: { $0.value == status.lowercased() })?.color else { return nil }
+        return Color(hex: hex)
+    }
+
     private func statusBackground(for status: String) -> Color {
+        if let c = customStatusColor(for: status) { return c.opacity(0.15) }
         switch status.lowercased() {
         case "converted": return Brand.red
         case "qualified", "working", "new": return Brand.red.opacity(0.15)
@@ -1561,6 +1578,7 @@ struct LeadDetailView: View {
     }
 
     private func statusForeground(for status: String) -> Color {
+        if let c = customStatusColor(for: status) { return c }
         switch status.lowercased() {
         case "converted": return .white
         case "unqualified", "lost": return .secondary
