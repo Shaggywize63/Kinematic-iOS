@@ -30,6 +30,13 @@ private let MOISOI_CLIENT_ID = "d0000000-0000-4000-a000-000000000002"
 /// Keyed off the client id like the other tenant gates. Mirrors Android's
 /// `Entitlements.isByteBack` (same client id).
 private let BYTEBACK_CLIENT_ID = "9c8d7e6f-5a4b-4c3d-8e1f-0a1b2c3d4e5f"
+/// Rajkamal — a HYBRID tenant (field-force + CRM modules). They get the
+/// ad-hoc "Marketing Visit" flow: a GPS Start → End activity tied to a lead
+/// (create a new customer on the spot or pick an existing lead), with an
+/// End step that can move the lead's status and set a follow-up. Surfaced on
+/// both the field-force Home and the CRM More menu, gated off this client id
+/// like the other tenant gates so no other tenant ever sees it.
+private let RAJKAMAL_CLIENT_ID = "0490f34d-d9a3-4f39-99e2-8f3adba8c583"
 
 enum ClientFeatures {
     /// True when the signed-in user belongs to a steel-dealer tenant — Tata
@@ -69,6 +76,13 @@ enum ClientFeatures {
     /// `Entitlements.isByteBack`.
     static var isByteBack: Bool {
         Session.currentUser?.clientId == BYTEBACK_CLIENT_ID
+    }
+
+    /// True when the signed-in user belongs to Rajkamal. Surfaces the ad-hoc
+    /// "Marketing Visit" (GPS Start → End tied to a lead) entry points on the
+    /// field-force Home and the CRM More menu. No other tenant sees them.
+    static var isRajkamal: Bool {
+        Session.currentUser?.clientId == RAJKAMAL_CLIENT_ID
     }
 
     /// True when the signed-in user is a Consumer Champion (Tata Tiscon's

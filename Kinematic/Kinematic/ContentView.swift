@@ -318,7 +318,11 @@ struct TabBtn: View {
 struct HomeView: View {
     @EnvironmentObject var appState: KiniAppState
     @StateObject var vm = HomeViewModel()
-    
+    /// Rajkamal-only: presents the ad-hoc Marketing Visit flow (GPS Start →
+    /// End tied to a lead) as a full-screen cover. Gated on
+    /// `ClientFeatures.isRajkamal` so no other tenant sees the card.
+    @State private var showMarketingVisit = false
+
     var body: some View {
         ZStack {
             ScrollView {
@@ -357,6 +361,42 @@ struct HomeView: View {
                     .padding(.horizontal, 20)
 
                     SelfieStatusCard(record: appState.today).padding(.horizontal, 20)
+
+                    // Marketing Visit (Rajkamal) — prominent entry into the
+                    // ad-hoc GPS Start → End visit flow. Rajkamal is a hybrid
+                    // (field-force + CRM) tenant running this field-force shell,
+                    // so the card lives on Home. Gated strictly on the client id.
+                    if ClientFeatures.isRajkamal && ClientFeatures.homeVisible("marketing_visit") {
+                        Button {
+                            showMarketingVisit = true
+                        } label: {
+                            HStack(spacing: 14) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Brand.red.opacity(0.15))
+                                        .frame(width: 46, height: 46)
+                                    Image(systemName: "figure.walk.motion")
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundColor(Brand.red)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(ClientFeatures.labelFor("home", "marketing_visit", default: "Marketing Visit"))
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundColor(Color(uiColor: .label))
+                                    Text("Start a GPS visit for a customer")
+                                        .font(.caption).foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(18)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 20)
+                    }
 
                     // Home stat tiles — each is admin-manageable per client
                     // (App Customization → Home: stores / visited / forms) and
@@ -443,6 +483,14 @@ struct HomeView: View {
             .refreshable { await vm.refresh() }
         }
         .onAppear { Task { await vm.refresh() } }
+        // Rajkamal ad-hoc Marketing Visit flow. Presented full-screen with its
+        // own NavigationStack so MarketingVisitView (which carries no nav chrome
+        // of its own) gets a title bar + the "Done" closer.
+        .fullScreenCover(isPresented: $showMarketingVisit) {
+            NavigationStack {
+                MarketingVisitView(onClose: { showMarketingVisit = false })
+            }
+        }
     }
 }
 

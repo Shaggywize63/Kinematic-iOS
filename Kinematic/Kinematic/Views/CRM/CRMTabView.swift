@@ -256,6 +256,16 @@ struct CRMMoreMenu: View {
                     } label: { MoreRow(icon: "square.grid.2x2.fill", title: ClientFeatures.labelFor("crm_more", "custom_objects", default: "Custom Objects"), tint: Brand.red) }
                 }
             }
+            // Marketing Visit (Rajkamal) — ad-hoc GPS Start → End tied to a
+            // lead. Gated strictly on the client id so no other tenant sees it;
+            // admins can still hide/relabel it via App Customization.
+            if ClientFeatures.isRajkamal && ClientFeatures.crmMoreVisible("marketing_visit") {
+                Section("Field Visits") {
+                    NavigationLink {
+                        MarketingVisitView()
+                    } label: { MoreRow(icon: "figure.walk.motion", title: ClientFeatures.labelFor("crm_more", "marketing_visit", default: "Marketing Visit"), tint: Brand.red) }
+                }
+            }
             // Field tools that ride on the rep's current location. Distinct
             // from "Records" because reps think of these as "where am I
             // going next?" — not a directory.
