@@ -366,6 +366,10 @@ struct LeadEditView: View {
             .navigationTitle("Edit Lead")
             .navigationBarTitleDisplayMode(.inline)
             .task { await loadPickerOptions() }
+            // Scope the custom-field section to the current lead segment (B2C
+            // farmer vs B2B distributor). initial:true seeds it; it re-filters
+            // if the rep flips the type picker.
+            .onChange(of: isB2C, initial: true) { customFields.segmentIsB2c = isB2C }
             .onAppear {
                 // Tata Tiscon is consumer-only — lock the toggle even if a
                 // legacy record was somehow saved with is_b2c=false.

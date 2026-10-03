@@ -15,6 +15,24 @@ final class CustomFieldsModel: ObservableObject {
     // any def has fieldType == "lookup". One entry per row holds the id
     // (used in `text` as the stored value) and a human label for display.
     @Published var lookupOptions: [String: [(id: String, label: String)]] = [:]
+    // Lead segment the form is currently showing: true = B2C (e.g. farmer),
+    // false = B2B (e.g. distributor/retailer), nil = no B2C/B2B split (set by
+    // the lead form; left nil for contact/account/deal forms). Drives
+    // `visibleDefs` so a field scoped via `appliesTo` shows only on its branch.
+    @Published var segmentIsB2c: Bool? = nil
+
+    /// Defs actually shown/enforced/submitted: `defs` narrowed to the current
+    /// lead segment. A field with appliesTo "both"/nil always shows; one
+    /// scoped to "b2c"/"b2b" shows only on the matching branch. When
+    /// `segmentIsB2c` is nil (non-lead forms) no segment filtering happens.
+    var visibleDefs: [CRMCustomFieldDef] {
+        guard let b2c = segmentIsB2c else { return defs }
+        let scope = b2c ? "b2c" : "b2b"
+        return defs.filter { d in
+            let a = d.appliesTo ?? "both"
+            return a == "both" || a == scope
+        }
+    }
 
     func load(entity: String) async {
         let all = await CRMService.shared.listCustomFields()
@@ -99,7 +117,7 @@ final class CustomFieldsModel: ObservableObject {
     /// required-but-invisible. Formula fields are exempt (server-computed);
     /// a boolean toggle always carries a value.
     var missingRequiredLabels: [String] {
-        defs.filter { $0.required == true && $0.fieldType != "formula" && $0.fieldType != "boolean" }
+        visibleDefs.filter { $0.required == true && $0.fieldType != "formula" && $0.fieldType != "boolean" }
             .filter { d in
                 switch d.fieldType {
                 case "multiselect":
@@ -117,7 +135,7 @@ final class CustomFieldsModel: ObservableObject {
     /// so writing a stale client value would only race the server.
     var jsonValues: [String: Any] {
         var out: [String: Any] = [:]
-        for d in defs {
+        for d in visibleDefs {
             switch d.fieldType {
             case "boolean":
                 if let b = bool[d.fieldKey] { out[d.fieldKey] = b }
@@ -141,9 +159,9 @@ struct CustomFieldsSection: View {
     @ObservedObject var model: CustomFieldsModel
 
     var body: some View {
-        if !model.defs.isEmpty {
+        if !model.visibleDefs.isEmpty {
             Section("Additional details") {
-                ForEach(model.defs) { d in
+                ForEach(model.visibleDefs) { d in
                     row(d)
                 }
             }
