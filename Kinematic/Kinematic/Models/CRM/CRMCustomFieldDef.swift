@@ -24,6 +24,10 @@ struct CRMCustomFieldDef: Codable, Identifiable, Hashable {
     // 'is_active', op: 'eq', value: true }]`) that narrow the search.
     // Encoded as JSON in the /lookup/search ?filter= query string.
     let lookupFilter: [LookupFilterClause]?
+    // Lead-segment scope: "both" (default; also nil when the backend row has
+    // no column), "b2c", or "b2b". A field scoped to one branch shows only on
+    // that branch of the lead form. Only meaningful for entityType == "lead".
+    let appliesTo: String?
 
     /// Label for form rows — appends the same " *" marker built-in
     /// required fields use when the admin marked this field mandatory.
@@ -43,6 +47,7 @@ struct CRMCustomFieldDef: Codable, Identifiable, Hashable {
         case orgRoleIds = "org_role_ids"
         case targetTable = "target_table"
         case lookupFilter = "lookup_filter"
+        case appliesTo = "applies_to"
     }
 }
 

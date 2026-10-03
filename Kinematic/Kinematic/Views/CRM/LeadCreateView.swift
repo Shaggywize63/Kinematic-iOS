@@ -685,6 +685,10 @@ struct LeadCreateView: View {
             .navigationTitle("New Lead")
             .task { target = await CRMService.shared.myTarget() }
             .task { await customFields.load(entity: "lead") }
+            // Keep the custom-field section scoped to the current lead segment
+            // (B2C farmer vs B2B distributor). initial:true seeds it on open;
+            // it re-filters whenever the rep flips the business-type picker.
+            .onChange(of: isB2C, initial: true) { customFields.segmentIsB2c = isB2C }
             .task { await productLines.load() }
             .task { await fieldOverrides.load() }
             .task { sources = await CRMService.shared.listLeadSources() }
