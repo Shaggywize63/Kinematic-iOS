@@ -116,6 +116,7 @@ struct AdHocFormFillView: View {
     @State private var cachedImages: [String: [UIImage]] = [:]
     @State private var isSubmitting = false
     @State private var missingRequiredLabels: [String] = []
+    @State private var invalidPhoneLabels: [String] = []
     @State private var locationGate: LocationGatePrompt? = nil
     @State private var didSubmit = false
 
@@ -221,6 +222,19 @@ struct AdHocFormFillView: View {
                 }
                 .padding(.horizontal, 20).padding(.top, 8)
             }
+            if !invalidPhoneLabels.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill").foregroundColor(.red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enter a 10-digit mobile number")
+                            .font(.caption.weight(.bold)).foregroundColor(.red)
+                        Text(invalidPhoneLabels.joined(separator: " • "))
+                            .font(.caption2).foregroundColor(.secondary).lineLimit(3)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 20).padding(.top, 8)
+            }
             Button(action: { submit() }) {
                 HStack(spacing: 8) {
                     if isSubmitting { ProgressView().tint(.white).scaleEffect(0.85) }
@@ -251,10 +265,25 @@ struct AdHocFormFillView: View {
         let unmet = unmetRequiredFields
         if !unmet.isEmpty {
             missingRequiredLabels = unmet.map { $0.label }
+            invalidPhoneLabels = []
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return
         }
         missingRequiredLabels = []
+
+        // Phone fields must be exactly 10 digits (matches the input cap and the
+        // backend guard). Validate only filled values — required-ness is above.
+        let badPhones = (template.fields ?? []).filter { field in
+            field.fieldType.lowercased() == "phone"
+                && !(responses[field.id] ?? "").isEmpty
+                && (responses[field.id] ?? "").filter { $0.isNumber }.count != 10
+        }
+        if !badPhones.isEmpty {
+            invalidPhoneLabels = badPhones.map { $0.label }
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        invalidPhoneLabels = []
 
         // Geo-stamped submission: refuse to send a location-less row when
         // location is off. Block, prompt, and report (parity with the outlet form).

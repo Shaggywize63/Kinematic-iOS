@@ -463,7 +463,7 @@ struct FieldCard: View {
         case "number":
             StyledTextField(value: $value, placeholder: field.placeholder ?? "0", keyboardType: .numberPad)
         case "phone":
-            StyledTextField(value: $value, placeholder: field.placeholder ?? "Phone number", keyboardType: .phonePad)
+            StyledTextField(value: $value, placeholder: field.placeholder ?? "10-digit mobile number", keyboardType: .phonePad, maxDigits: 10)
         case "email":
             StyledTextField(value: $value, placeholder: field.placeholder ?? "Email address", keyboardType: .emailAddress)
         case "date":
@@ -480,9 +480,20 @@ struct StyledTextField: View {
     @Binding var value: String
     var placeholder: String = "Enter response"
     var keyboardType: UIKeyboardType = .default
+    // When set (phone fields), keep digits only and cap the count so an 11th
+    // digit can never be entered — matches the lead/user 10-digit mobile rule.
+    var maxDigits: Int? = nil
+
+    private var boundValue: Binding<String> {
+        guard let maxDigits else { return $value }
+        return Binding(
+            get: { value },
+            set: { newVal in value = String(newVal.filter { $0.isNumber }.prefix(maxDigits)) }
+        )
+    }
 
     var body: some View {
-        TextField(placeholder, text: $value)
+        TextField(placeholder, text: boundValue)
             .keyboardType(keyboardType)
             .textInputAutocapitalization(keyboardType == .emailAddress ? .never : .sentences)
             .padding(.horizontal, 14)
