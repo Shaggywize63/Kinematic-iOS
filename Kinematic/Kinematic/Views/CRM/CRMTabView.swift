@@ -296,9 +296,12 @@ struct CRMMoreMenu: View {
                     NavigationLink {
                         ExpenseClaimsView()
                     } label: { MoreRow(icon: "doc.text.magnifyingglass", title: ClientFeatures.labelFor("crm_more", "expenses", default: "Expense Claims"), tint: Brand.red) }
-                    NavigationLink {
-                        ExpenseApprovalsView()
-                    } label: { MoreRow(icon: "checkmark.seal", title: "Expense Approvals", tint: Brand.red) }
+                    // Only people who can approve see it (an unknown role keeps it — the API is the authority).
+                    if ExpenseLogic.canApprove(role: Session.currentUser?.role, dataScope: Session.currentUser?.orgRoleDataScope) {
+                        NavigationLink {
+                            ExpenseApprovalsView()
+                        } label: { MoreRow(icon: "checkmark.seal", title: "Expense Approvals", tint: Brand.red) }
+                    }
                 }
             }
             // Insights section is split for Consumer Champion reps —

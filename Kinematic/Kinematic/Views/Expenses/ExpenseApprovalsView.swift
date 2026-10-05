@@ -1,25 +1,36 @@
 import SwiftUI
 
-/// Manager approvals for expense claims — pending claims routed up the reporting
-/// line, with Approve / Reject (+ optional note). High-value claims escalate to
-/// the next manager on approval (server-side). Mirrors LeaveApprovalsView.
+/// Manager approvals for expense claims — what is waiting on you. Tap a claim to review it line by line
+/// (with its receipts); or approve it in one tap, or reject it with the remark the claimant will see.
+/// Rejecting always needs a remark. A claim the policy flagged as a serious breach can't be approved from
+/// the queue — open it and review the flagged lines. High-value claims escalate to the next manager on
+/// approval (server-side). Mirrors LeaveApprovalsView.
 struct ExpenseApprovalsView: View {
     @StateObject private var vm = ExpensesViewModel()
-    @State private var rejectTarget: String?
-    @State private var rejectNote = ""
+    @State private var rejectTarget: ExpenseClaim?
+    @State private var openClaimId: String?
 
     var body: some View {
         Group {
             if !vm.didLoad {
                 ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let err = vm.loadError, vm.pending.isEmpty {
+                ContentUnavailableView {
+                    Label("Couldn't load the queue", systemImage: "exclamationmark.triangle")
+                } description: { Text(err) } actions: {
+                    Button("Try again") { Task { await vm.loadPending() } }
+                }
             } else if vm.pending.isEmpty {
-                ContentUnavailableView("Nothing awaiting approval", systemImage: "checkmark.seal",
+                ContentUnavailableView("Nothing is waiting for you", systemImage: "checkmark.seal",
                                        description: Text("Claims routed to you will appear here."))
             } else {
                 List {
-                    if let err = vm.errorMsg { Section { Text(err).font(.caption).foregroundColor(.red) } }
                     Section("Awaiting your approval") {
-                        ForEach(vm.pending) { claim in row(claim) }
+                        ForEach(vm.pending) { claim in
+                            row(claim)
+                                .contentShape(Rectangle())
+                                .onTapGesture { openClaimId = claim.id }
+                        }
                     }
                 }
             }
@@ -28,37 +39,42 @@ struct ExpenseApprovalsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { if !vm.didLoad { await vm.loadPending() } }
         .refreshable { await vm.loadPending() }
-        .alert("Reject claim", isPresented: Binding(get: { rejectTarget != nil }, set: { if !$0 { rejectTarget = nil } })) {
-            TextField("Note (optional)", text: $rejectNote)
-            Button("Reject", role: .destructive) {
-                if let id = rejectTarget {
-                    let note = rejectNote.isEmpty ? nil : rejectNote
-                    Task { await vm.decide(id: id, decision: "rejected", note: note) }
-                }
-                rejectNote = ""; rejectTarget = nil
+        .background(
+            NavigationLink(isActive: Binding(get: { openClaimId != nil }, set: { if !$0 { openClaimId = nil; Task { await vm.loadPending() } } })) {
+                if let id = openClaimId { ExpenseClaimDetailView(claimId: id, listVM: vm) }
+            } label: { EmptyView() }
+        )
+        .sheet(item: $rejectTarget) { claim in
+            ExpenseRemarkSheet(title: "Reject this claim",
+                               message: "\(claim.user_name ?? "The claimant") will see this remark in their app and can fix the claim and resubmit it.",
+                               confirmLabel: "Reject") { remark in
+                Task { await vm.decide(id: claim.id, decision: "rejected", note: remark) }
             }
-            Button("Cancel", role: .cancel) { rejectTarget = nil }
         }
+        .alert("Expense approvals", isPresented: Binding(get: { vm.notice != nil }, set: { if !$0 { vm.notice = nil } })) {
+            Button("OK", role: .cancel) { vm.notice = nil }
+        } message: { Text(vm.notice ?? "") }
     }
 
     private func row(_ claim: ExpenseClaim) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(claim.user_name ?? "Team member").font(.subheadline).bold()
-            Text(rowSubtitle(claim)).font(.caption).foregroundColor(.secondary)
-            if let s = claim.ai_summary, !s.isEmpty { Text("🧠 \(s)").font(.caption2).foregroundColor(.secondary) }
-            if let flags = claim.ai_flags, !flags.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(flags.prefix(4)) { f in
-                        Text(f.code.replacingOccurrences(of: "_", with: " "))
-                            .font(.caption2).bold()
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .overlay(Capsule().stroke(flagColor(f.severity), lineWidth: 1))
-                            .foregroundColor(flagColor(f.severity))
-                    }
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(claim.user_name ?? "Team member").font(.subheadline).bold()
+                    Text(rowSubtitle(claim)).font(.caption).foregroundColor(.secondary)
                 }
+                Spacer()
+                Text(expenseMoney(claim.total_amount, claim.currency)).font(.subheadline).bold()
+            }
+            if let s = claim.ai_summary, !s.isEmpty { Text(s).font(.caption).foregroundColor(.secondary) }
+            if let flags = claim.ai_flags, !flags.isEmpty {
+                ExpenseFindingsList(flags: Array(flags.prefix(3)))
+            } else {
+                Text("Within policy").font(.caption2).bold().padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.green.opacity(0.15)).foregroundColor(.green).clipShape(Capsule())
             }
             if let km = claim.distance_km {
-                Text("Mileage claimed \(fmtKm(km)) km" + (claim.gps_derived_km.map { " · GPS \(fmtKm($0)) km" } ?? ""))
+                Text("Mileage claimed \(ExpenseLogic.trimNumber(km)) km" + (claim.gps_derived_km.map { " · GPS \(ExpenseLogic.trimNumber($0)) km" } ?? ""))
                     .font(.caption2).foregroundColor(.secondary)
             }
             HStack {
@@ -66,10 +82,15 @@ struct ExpenseApprovalsView: View {
                 if vm.busyIds.contains(claim.id) {
                     ProgressView()
                 } else {
-                    Button("Reject", role: .destructive) { rejectTarget = claim.id }
+                    Button("Reject", role: .destructive) { rejectTarget = claim }
                         .buttonStyle(.bordered).controlSize(.small)
-                    Button("Approve") { Task { await vm.decide(id: claim.id, decision: "approved", note: nil) } }
-                        .buttonStyle(.borderedProminent).controlSize(.small).tint(.green)
+                    if ExpenseLogic.canQuickApprove(claim) {
+                        Button("Approve") { Task { await vm.decide(id: claim.id, decision: "approved", note: nil) } }
+                            .buttonStyle(.borderedProminent).controlSize(.small).tint(.green)
+                    } else {
+                        Button("Review") { openClaimId = claim.id }
+                            .buttonStyle(.borderedProminent).controlSize(.small)
+                    }
                 }
             }
         }
@@ -77,14 +98,9 @@ struct ExpenseApprovalsView: View {
     }
 
     private func rowSubtitle(_ claim: ExpenseClaim) -> String {
-        var s = expenseMoney(claim.total_amount, claim.currency) + " · "
-        s += claim.claim_no ?? String((claim.submitted_at ?? "").prefix(10))
+        var s = (claim.title ?? claim.claim_no ?? "Expense claim") + " · " + String((claim.submitted_at ?? "").prefix(10))
         let level = claim.current_level ?? 1
         if level > 1 { s += " · level \(level)" }
         return s
     }
-    private func flagColor(_ severity: String?) -> Color {
-        switch severity { case "high": return .red; case "warn": return .orange; default: return .blue }
-    }
-    private func fmtKm(_ v: Double) -> String { v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v) }
 }

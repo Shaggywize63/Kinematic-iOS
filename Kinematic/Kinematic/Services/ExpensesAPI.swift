@@ -2,6 +2,10 @@
 // Travel Claims). Mirrors DistributionAPI: dedicated client, snake_case
 // decoding, structured errors, Idempotency-Key on creates. Client scoping is by
 // the authenticated user (JWT), so no X-Client-Id header is needed here.
+//
+// Failures never hide: a non-2xx response throws an ExpensesAPIError carrying the
+// server's own message (written for the user, e.g. "Add a remark explaining why
+// this claim is rejected."), and callers show it.
 
 import Foundation
 
@@ -11,7 +15,7 @@ enum ExpensesAPIError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .http(let s, let m): return m ?? "Request failed (\(s))"
+        case .http(let s, let m): return ExpenseErrors.message(serverMessage: m, status: s)
         case .noResponse:         return "No response"
         }
     }
@@ -21,7 +25,7 @@ struct ExpensesAPI {
     static let shared = ExpensesAPI()
     private let baseURL = "https://api.kinematicapp.com/api/v1"
 
-    private func request(_ path: String, method: String = "GET", body: Encodable? = nil, idempotencyKey: String? = nil) async throws -> Data {
+    private func makeRequest(_ path: String, method: String) throws -> URLRequest {
         guard let url = URL(string: "\(baseURL)\(path)") else { throw ExpensesAPIError.noResponse }
         var req = URLRequest(url: url)
         req.httpMethod = method
@@ -29,19 +33,26 @@ struct ExpensesAPI {
         req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
         if let proj = Session.project, !proj.isEmpty { req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
         if let orgId = Session.currentUser?.orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
+        return req
+    }
+
+    private func send(_ req: URLRequest) async throws -> Data {
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if !(200..<300).contains(status) {
+            throw ExpensesAPIError.http(status, ExpenseErrors.serverMessage(in: data))
+        }
+        return data
+    }
+
+    private func request(_ path: String, method: String = "GET", body: Encodable? = nil, idempotencyKey: String? = nil) async throws -> Data {
+        var req = try makeRequest(path, method: method)
         if let key = idempotencyKey { req.setValue(key, forHTTPHeaderField: "Idempotency-Key") }
         if let body = body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONEncoder().encode(ExpenseAnyEncodable(body))
         }
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if !(200..<300).contains(status) {
-            let serverMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
-            throw ExpensesAPIError.http(status, serverMsg)
-        }
-        return data
+        return try await send(req)
     }
 
     private struct Envelope<U: Decodable>: Decodable { let success: Bool; let data: U }
@@ -68,31 +79,57 @@ struct ExpensesAPI {
     func createClaim(_ input: ExpenseClaimInput) async throws -> ExpenseClaim {
         try decode(try await request("/expenses/claims", method: "POST", body: input, idempotencyKey: UUID().uuidString))
     }
+    /// Edit a claim's title/lines before it is approved — a draft, a submitted
+    /// claim, or a rejected one being fixed for resubmission.
+    func updateClaim(id: String, _ input: ExpenseClaimInput) async throws -> ExpenseClaim {
+        try decode(try await request("/expenses/claims/\(id)", method: "PATCH", body: input))
+    }
+    /// Submit a draft, or resubmit a rejected claim. A "block" policy answers 422.
     func submit(id: String) async throws -> ExpenseClaim {
-        try decode(try await request("/expenses/claims/\(id)/submit", method: "POST", body: EmptyBody(), idempotencyKey: "submit-\(id)"))
+        try decode(try await request("/expenses/claims/\(id)/submit", method: "POST", body: EmptyBody(), idempotencyKey: "submit-\(id)-\(UUID().uuidString)"))
     }
     func cancel(id: String) async throws {
         _ = try await request("/expenses/claims/\(id)/cancel", method: "PATCH", body: EmptyBody())
     }
+    /// Dry-run the policy against unsaved lines so problems show before submitting.
+    func check(items: [ExpenseClaimItemInput], claimId: String?) async throws -> ExpenseClaimCheck {
+        try decode(try await request("/expenses/claims/check", method: "POST", body: ExpenseClaimCheckInput(items: items, claim_id: claimId)))
+    }
 
-    // ── AI: mileage + receipt OCR ─────────────────────────────────────────────
+    // ── Receipts + mileage ────────────────────────────────────────────────────
+    /// Upload a receipt photo/PDF (multipart field "file", 10 MB max). Returns the
+    /// stored reference to put on the line, a link to show it, and the OCR read.
+    func uploadReceipt(data: Data, filename: String, mime: String) async throws -> ExpenseUploadedReceipt {
+        var req = try makeRequest("/expenses/receipts", method: "POST")
+        req.timeoutInterval = 60
+        let boundary = "kinematic-\(UUID().uuidString)"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        func add(_ s: String) { body.append(Data(s.utf8)) }
+        add("--\(boundary)\r\n")
+        add("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
+        add("Content-Type: \(mime)\r\n\r\n")
+        body.append(data)
+        add("\r\n--\(boundary)--\r\n")
+        req.httpBody = body
+        return try decode(try await send(req))
+    }
+
     func mileage(fromISO: String, toISO: String) async throws -> ExpenseMileageResult {
         let f = fromISO.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed) ?? fromISO
         let t = toISO.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed) ?? toISO
         return try decode(try await request("/expenses/mileage?from=\(f)&to=\(t)"))
-    }
-    func scanReceipt(imageBase64: String, mediaType: String) async throws -> ExpenseReceiptFields {
-        struct Body: Encodable { let image: String; let media_type: String }
-        return try decode(try await request("/expenses/scan-receipt", method: "POST", body: Body(image: imageBase64, media_type: mediaType)))
     }
 
     // ── Approver ──────────────────────────────────────────────────────────────
     func pendingClaims() async throws -> [ExpenseClaim] {
         try decode(try await request("/expenses/claims/pending"))
     }
-    func decide(id: String, decision: String, note: String?) async throws {
-        struct Body: Encodable { let decision: String; let note: String? }
-        _ = try await request("/expenses/claims/\(id)/decision", method: "PATCH", body: Body(decision: decision, note: note))
+    /// Approve or reject, optionally line by line. Rejecting needs a remark.
+    @discardableResult
+    func decide(id: String, decision: String, note: String?, items: [ExpenseLineDecisionInput]? = nil) async throws -> ExpenseDecisionResult {
+        try decode(try await request("/expenses/claims/\(id)/decision", method: "PATCH",
+                                     body: ExpenseDecisionInput(decision: decision, note: note, items: items)))
     }
 }
 
