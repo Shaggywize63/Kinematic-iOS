@@ -69,9 +69,15 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         // Deep-link: the daily briefing carries data.kind == "crm_home", so a
         // tap opens the lead-management Home (mission control). Every other
         // notification opens the in-app notification centre, as before.
-        let route: SecondaryRoute = (data["kind"] == "crm_home") ? .crmHome : .notifications
+        //
+        // An expense alert (to review / approved / rejected with a remark / reimbursed) carries
+        // data.claim_id, so a tap opens that claim — where the approver's remark is shown.
+        let claimId = data["claim_id"] ?? ""
+        let isExpense = (data["kind"] ?? "").hasPrefix("expense") && !claimId.isEmpty && ClientFeatures.showsExpenses
+        let route: SecondaryRoute = isExpense ? .expenses : ((data["kind"] == "crm_home") ? .crmHome : .notifications)
         DispatchQueue.main.async {
             KiniAppState.shared.pendingPushData = data
+            if isExpense { KiniAppState.shared.pendingExpenseClaimId = claimId }
             KiniAppState.shared.activeSecondaryRoute = ModalRoute(route: route)
         }
         completionHandler()

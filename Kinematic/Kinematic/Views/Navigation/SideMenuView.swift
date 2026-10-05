@@ -172,6 +172,16 @@ struct SideMenuView: View {
                         }
                     }
 
+                    // Expense claims (module `field_expenses`, off by default). STRICT entitlement:
+                    // only clients explicitly granted the module see it. This is the path for
+                    // field-force tenants, which have no CRM "More" tab; CRM tenants also have it there.
+                    if ClientFeatures.showsExpenses && ClientFeatures.menuVisible("expenses") {
+                        MenuButton(icon: "receipt", title: ClientFeatures.labelFor("menu", "expenses", default: "Expenses"), isSelected: false, color: .green) {
+                            withAnimation { isOpen = false }
+                            appState.activeSecondaryRoute = ModalRoute(route: .expenses)
+                        }
+                    }
+
                 if hasModule("broadcast") && ClientFeatures.menuVisible("broadcast") {
                     MenuButton(icon: "megaphone.fill", title: ClientFeatures.labelFor("menu", "broadcast", default: "Broadcasts"), isSelected: false, color: .red) {
                         withAnimation { isOpen = false }

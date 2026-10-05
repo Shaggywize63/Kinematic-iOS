@@ -3,7 +3,7 @@ import UIKit
 // Combine is not re-exported by SwiftUI on the Xcode 26 toolchain.
 import Combine
 
-// MARK: - View model (shared by claims + approvals views)
+// MARK: - View model (shared by the claims, detail, editor and approvals screens)
 
 @MainActor
 final class ExpensesViewModel: ObservableObject {
@@ -11,346 +11,289 @@ final class ExpensesViewModel: ObservableObject {
     @Published var claims: [ExpenseClaim] = []
     @Published var pending: [ExpenseClaim] = []
     @Published var didLoad = false
-    @Published var submitting = false
     @Published var busyIds: Set<String> = []
-    @Published var errorMsg: String?
+    /// Set when a list could not be loaded (shown instead of an empty list).
+    @Published var loadError: String?
+    /// One-off message, success or failure.
+    @Published var notice: String?
 
     private let api = ExpensesAPI.shared
 
-    // ── Claims ──────────────────────────────────────────────────────────────
+    // ── My claims ────────────────────────────────────────────────────────────
     func loadClaims() async {
-        errorMsg = nil
+        loadError = nil
         if policy == nil { policy = try? await api.policy() }
         do { claims = try await api.myClaims() }
-        catch { errorMsg = error.localizedDescription }
+        catch { loadError = error.localizedDescription }
         didLoad = true
     }
 
-    func createClaim(title: String?, items: [ExpenseClaimItemInput]) async -> Bool {
-        submitting = true; errorMsg = nil
-        defer { submitting = false }
-        do { _ = try await api.createClaim(ExpenseClaimInput(title: title, items: items)); await loadClaims(); return true }
-        catch { errorMsg = error.localizedDescription; return false }
-    }
+    func loadPolicy() async { if policy == nil { policy = try? await api.policy() } }
+
+    func claim(id: String) async throws -> ExpenseClaim { try await api.claim(id: id) }
 
     func submit(id: String) async {
         busyIds.insert(id); defer { busyIds.remove(id) }
-        do { _ = try await api.submit(id: id); await loadClaims() }
-        catch { errorMsg = error.localizedDescription }
+        do { _ = try await api.submit(id: id); notice = "Submitted for approval"; await loadClaims() }
+        catch { notice = error.localizedDescription }
     }
 
-    func cancel(id: String) async {
+    func cancel(id: String) async -> Bool {
         busyIds.insert(id); defer { busyIds.remove(id) }
-        do { try await api.cancel(id: id); await loadClaims() }
-        catch { errorMsg = error.localizedDescription }
+        do { try await api.cancel(id: id); await loadClaims(); return true }
+        catch { notice = error.localizedDescription; return false }
     }
 
-    func scanReceipt(base64: String, mediaType: String) async -> ExpenseReceiptFields? {
-        do { return try await api.scanReceipt(imageBase64: base64, mediaType: mediaType) }
-        catch { errorMsg = "Couldn't read the receipt."; return nil }
+    // ── Editor ───────────────────────────────────────────────────────────────
+    struct SaveOutcome { let savedId: String?; let submitted: Bool; let error: String? }
+
+    /// Save the lines as a new draft (`claimId` nil) or onto an existing claim, and optionally submit it.
+    /// If saving works but submitting is refused (a "block" policy, say), the outcome still carries the
+    /// saved id so the editor keeps working on that claim instead of creating a duplicate.
+    func save(claimId: String?, title: String?, items: [ExpenseClaimItemInput], submit: Bool) async -> SaveOutcome {
+        let input = ExpenseClaimInput(title: title, items: items)
+        var id = claimId
+        do {
+            if let existing = claimId { _ = try await api.updateClaim(id: existing, input) }
+            else { id = try await api.createClaim(input).id }
+        } catch { return SaveOutcome(savedId: claimId, submitted: false, error: error.localizedDescription) }
+        guard submit, let savedId = id else { return SaveOutcome(savedId: id, submitted: false, error: nil) }
+        do { _ = try await api.submit(id: savedId); return SaveOutcome(savedId: savedId, submitted: true, error: nil) }
+        catch { return SaveOutcome(savedId: savedId, submitted: false, error: error.localizedDescription) }
     }
 
-    func mileage(fromISO: String, toISO: String) async -> ExpenseMileageResult? {
-        do { return try await api.mileage(fromISO: fromISO, toISO: toISO) }
-        catch { errorMsg = "Couldn't compute mileage."; return nil }
+    func uploadReceipt(data: Data, filename: String, mime: String) async -> (ExpenseUploadedReceipt?, String?) {
+        do { return (try await api.uploadReceipt(data: data, filename: filename, mime: mime), nil) }
+        catch { return (nil, error.localizedDescription) }
     }
 
-    // ── Approvals ───────────────────────────────────────────────────────────
+    /// Ask the server what the policy thinks of these unsaved lines. Best effort: a failure just means no warnings.
+    func check(items: [ExpenseClaimItemInput], claimId: String?) async -> ExpenseClaimCheck? {
+        try? await api.check(items: items, claimId: claimId)
+    }
+
+    func mileage(fromISO: String, toISO: String) async -> (ExpenseMileageResult?, String?) {
+        do { return (try await api.mileage(fromISO: fromISO, toISO: toISO), nil) }
+        catch { return (nil, error.localizedDescription) }
+    }
+
+    // ── Approvals ────────────────────────────────────────────────────────────
     func loadPending() async {
-        errorMsg = nil
+        loadError = nil
         do { pending = try await api.pendingClaims() }
-        catch { errorMsg = error.localizedDescription }
+        catch { loadError = error.localizedDescription }
         didLoad = true
     }
 
-    func decide(id: String, decision: String, note: String?) async {
+    /// Approve (optionally line by line) or reject with the remark the server requires.
+    /// Returns the result, or nil with `notice` set to the server's message.
+    @discardableResult
+    func decide(id: String, decision: String, note: String?, items: [ExpenseLineDecisionInput]? = nil) async -> ExpenseDecisionResult? {
         busyIds.insert(id); defer { busyIds.remove(id) }
         do {
-            try await api.decide(id: id, decision: decision, note: note)
-            pending.removeAll { $0.id == id }   // optimistic
-        } catch { errorMsg = error.localizedDescription }
+            let r = try await api.decide(id: id, decision: decision, note: note, items: items)
+            pending.removeAll { $0.id == id }
+            if decision == "rejected" { notice = "Rejected — your remark has been sent to the claimant" }
+            else if r.escalated == true { notice = "Approved — sent to the next manager for sign-off" }
+            else if (r.rejected_lines ?? 0) > 0 { notice = "Partly approved" }
+            else { notice = "Claim approved" }
+            return r
+        } catch { notice = error.localizedDescription; return nil }
     }
 }
-
-// Shared formatting helpers.
-func expenseMoney(_ v: Double, _ currency: String) -> String {
-    let n = (v == v.rounded()) ? String(Int(v)) : String(format: "%.2f", v)
-    return currency == "INR" ? "₹\(n)" : "\(currency) \(n)"
-}
-func expenseStatusColor(_ status: String?) -> Color {
-    switch (status ?? "draft").lowercased() {
-    case "approved": return .green
-    case "submitted": return .orange
-    case "rejected": return .red
-    case "reimbursed": return .blue
-    default: return .gray
-    }
-}
-let expenseCategories = ExpenseCategory.allCases.map { $0.rawValue }
-let expenseDayFmt: DateFormatter = {
-    let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = TimeZone(secondsFromGMT: 0); f.dateFormat = "yyyy-MM-dd"; return f
-}()
 
 // MARK: - Claims list
 
 struct ExpenseClaimsView: View {
+    private enum Filter: String, CaseIterable, Identifiable {
+        case all = "All", needsYou = "Needs you", waiting = "Awaiting approval", approved = "Approved", paid = "Reimbursed"
+        var id: String { rawValue }
+        func matches(_ c: ExpenseClaim) -> Bool {
+            let s = (c.status ?? "draft").lowercased()
+            switch self {
+            case .all:      return s != "cancelled"
+            case .needsYou: return s == "rejected" || s == "draft"
+            case .waiting:  return s == "submitted"
+            case .approved: return s == "approved"
+            case .paid:     return s == "reimbursed"
+            }
+        }
+    }
+
     @StateObject private var vm = ExpensesViewModel()
+    @ObservedObject private var appState = KiniAppState.shared
     @State private var showCreate = false
+    @State private var filter: Filter = .all
+    /// The claim to open (from a tapped row, "Fix and resubmit", or an expense push).
+    @State private var openClaimId: String?
+    @State private var openInEditor = false
+
+    private var shown: [ExpenseClaim] { vm.claims.filter { filter.matches($0) } }
+    private var canApprove: Bool {
+        ExpenseLogic.canApprove(role: Session.currentUser?.role, dataScope: Session.currentUser?.orgRoleDataScope)
+    }
 
     var body: some View {
         Group {
             if !vm.didLoad {
                 ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let err = vm.loadError, vm.claims.isEmpty {
+                ContentUnavailableView {
+                    Label("Couldn't load your claims", systemImage: "exclamationmark.triangle")
+                } description: { Text(err) } actions: {
+                    Button("Try again") { Task { await vm.loadClaims() } }
+                }
             } else {
                 List {
-                    if let err = vm.errorMsg {
-                        Section { Text(err).font(.caption).foregroundColor(.red) }
+                    Section { summary }
+                    Section {
+                        Picker("Show", selection: $filter) { ForEach(Filter.allCases) { Text($0.rawValue).tag($0) } }
+                            .pickerStyle(.menu)
                     }
-                    if vm.claims.isEmpty {
-                        Section { Text("No claims yet. Tap + to file one.").font(.caption).foregroundColor(.secondary) }
+                    if shown.isEmpty {
+                        Section {
+                            Text(vm.claims.isEmpty ? "No claims yet. Tap + to add your expenses with a photo of each receipt." : "Nothing in this view.")
+                                .font(.subheadline).foregroundColor(.secondary)
+                        }
                     } else {
-                        Section("My Claims") {
-                            ForEach(vm.claims) { claim in ClaimRow(claim: claim, vm: vm) }
+                        Section("My claims") {
+                            ForEach(shown) { claim in
+                                // The row opens the claim; the bordered buttons inside it act on their own.
+                                ClaimRow(claim: claim, busy: vm.busyIds.contains(claim.id),
+                                         onFix: { openClaimId = claim.id; openInEditor = true },
+                                         onSubmit: { Task { await vm.submit(id: claim.id) } })
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { openClaimId = claim.id; openInEditor = false }
+                            }
                         }
                     }
                 }
+                .refreshable { await vm.loadClaims() }
             }
         }
         .navigationTitle("Expenses")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button { showCreate = true } label: { Image(systemName: "plus") } } }
-        .task { if !vm.didLoad { await vm.loadClaims() } }
-        .sheet(isPresented: $showCreate) { NewClaimSheet(vm: vm) }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                HStack {
+                    if canApprove {
+                        NavigationLink { ExpenseApprovalsView() } label: { Image(systemName: "checkmark.seal") }
+                            .accessibilityLabel("Approvals")
+                    }
+                    Button { showCreate = true } label: { Image(systemName: "plus") }.accessibilityLabel("New claim")
+                }
+            }
+        }
+        .background(
+            NavigationLink(isActive: Binding(get: { openClaimId != nil }, set: { if !$0 { openClaimId = nil } })) {
+                if let id = openClaimId { ExpenseClaimDetailView(claimId: id, startEditing: openInEditor, listVM: vm) }
+            } label: { EmptyView() }
+        )
+        .task {
+            if !vm.didLoad { await vm.loadClaims() }
+            consumePushTarget()
+        }
+        .onChange(of: appState.pendingExpenseClaimId) { _, _ in consumePushTarget() }
+        .sheet(isPresented: $showCreate) {
+            ExpenseClaimEditorView(vm: vm, claim: nil) { id, _ in
+                showCreate = false
+                openInEditor = false
+                openClaimId = id          // land on the claim so the person sees it was recorded
+                Task { await vm.loadClaims() }
+            }
+        }
+        .alert("Expenses", isPresented: Binding(get: { vm.notice != nil }, set: { if !$0 { vm.notice = nil } })) {
+            Button("OK", role: .cancel) { vm.notice = nil }
+        } message: { Text(vm.notice ?? "") }
+    }
+
+    /// A tapped expense push opens its claim.
+    private func consumePushTarget() {
+        guard let id = appState.pendingExpenseClaimId, !id.isEmpty else { return }
+        appState.pendingExpenseClaimId = nil
+        openInEditor = false
+        openClaimId = id
+    }
+
+    private var summary: some View {
+        let live = vm.claims.filter { ($0.status ?? "") != "cancelled" }
+        let currency = live.first?.currency ?? "INR"
+        let waiting = live.filter { $0.status == "submitted" }
+        let toPay = live.filter { $0.status == "approved" }
+        let rejected = live.filter { $0.status == "rejected" }.count
+        return HStack(alignment: .top) {
+            summaryCell("Awaiting", expenseMoney(waiting.reduce(0) { $0 + ExpenseLogic.payable($1) }, currency), waiting.isEmpty ? .primary : .orange)
+            Spacer()
+            summaryCell("To be paid", expenseMoney(toPay.reduce(0) { $0 + ExpenseLogic.payable($1) }, currency), toPay.isEmpty ? .primary : .green)
+            Spacer()
+            summaryCell("Sent back", String(rejected), rejected == 0 ? .primary : .red)
+        }
+    }
+
+    private func summaryCell(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption2).foregroundColor(.secondary)
+            Text(value).font(.headline).foregroundColor(color)
+        }
     }
 }
 
 private struct ClaimRow: View {
     let claim: ExpenseClaim
-    @ObservedObject var vm: ExpensesViewModel
+    let busy: Bool
+    let onFix: () -> Void
+    let onSubmit: () -> Void
 
     var body: some View {
         let status = (claim.status ?? "draft").lowercased()
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(claim.title ?? claim.claim_no ?? "Expense claim").font(.subheadline).bold()
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(claim.title ?? claim.claim_no ?? "Expense claim").font(.subheadline).bold()
+                    Text(subtitle(status)).font(.caption).foregroundColor(.secondary)
+                }
                 Spacer()
-                Text(claim.statusLabel).font(.caption2).bold()
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(expenseStatusColor(claim.status).opacity(0.15))
-                    .foregroundColor(expenseStatusColor(claim.status)).clipShape(Capsule())
-            }
-            Text(subtitleText(status)).font(.caption).foregroundColor(.secondary)
-            if let s = claim.ai_summary, !s.isEmpty {
-                Text("🧠 \(s)").font(.caption2).foregroundColor(.secondary)
-            }
-            if let flags = claim.ai_flags, !flags.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(flags.prefix(4)) { f in
-                        Text(f.code.replacingOccurrences(of: "_", with: " "))
-                            .font(.caption2).bold()
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .overlay(Capsule().stroke(flagColor(f.severity), lineWidth: 1))
-                            .foregroundColor(flagColor(f.severity))
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(expenseMoney(ExpenseLogic.payable(claim), claim.currency)).font(.subheadline).bold()
+                    if ExpenseLogic.isPartlyApproved(claim) {
+                        Text(expenseMoney(claim.total_amount, claim.currency)).font(.caption2).strikethrough().foregroundColor(.secondary)
                     }
                 }
             }
-            if status == "rejected", let note = claim.review_note, !note.isEmpty {
-                Text("Rejected: \(note)").font(.caption2).foregroundColor(.red)
+            HStack(spacing: 6) {
+                ExpenseStatusChip(claim: claim)
+                if status == "submitted", let n = claim.ai_flags?.count, n > 0 {
+                    Text("\(n) flagged").font(.caption2).bold().padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.15)).foregroundColor(.orange).clipShape(Capsule())
+                }
             }
-            if status == "draft" || status == "submitted" {
+            if status == "rejected" {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Rejected" + (claim.reviewer_name.map { " by \($0)" } ?? "")).font(.caption).bold().foregroundColor(.red)
+                    Text((claim.review_note ?? "").isEmpty ? "No remark was left." : (claim.review_note ?? "")).font(.subheadline)
+                }
+                .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.red.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            if ExpenseLogic.isPartlyApproved(claim) {
+                Text("Some lines were rejected — open the claim to see why.").font(.caption).foregroundColor(.orange)
+            }
+            if status == "rejected" {
+                Button("Fix and resubmit", action: onFix).buttonStyle(.borderedProminent).controlSize(.small)
+            } else if status == "draft" {
                 HStack {
-                    Spacer()
-                    if status == "draft" {
-                        Button("Submit") { Task { await vm.submit(id: claim.id) } }
-                            .buttonStyle(.borderedProminent).controlSize(.small)
-                            .disabled(vm.busyIds.contains(claim.id))
-                    }
-                    Button(status == "draft" ? "Cancel" : "Withdraw", role: .destructive) {
-                        Task { await vm.cancel(id: claim.id) }
-                    }
-                    .buttonStyle(.bordered).controlSize(.small)
-                    .disabled(vm.busyIds.contains(claim.id))
+                    Button("Submit", action: onSubmit).buttonStyle(.borderedProminent).controlSize(.small).disabled(busy)
+                    Button("Edit", action: onFix).buttonStyle(.bordered).controlSize(.small).disabled(busy)
                 }
             }
         }
         .padding(.vertical, 2)
     }
 
-    private func subtitleText(_ status: String) -> String {
-        var s = expenseMoney(claim.total_amount, claim.currency)
-        if status == "submitted", let ap = claim.approver_name {
-            s += " · with \(ap) (L\(claim.current_level ?? 1))"
-        }
+    private func subtitle(_ status: String) -> String {
+        var s = status == "draft" ? "Started " : "Submitted "
+        s += String((status == "draft" ? claim.created_at : (claim.submitted_at ?? claim.created_at))?.prefix(10) ?? "—")
+        if status == "submitted", let ap = claim.approver_name { s += " · with \(ap)" }
         return s
-    }
-    private func flagColor(_ severity: String?) -> Color {
-        switch severity { case "high": return .red; case "warn": return .orange; default: return .blue }
-    }
-}
-
-// MARK: - New claim sheet
-
-private struct ClaimLineDraft: Identifiable {
-    let id = UUID()
-    var category: String = "food"
-    var itemDate: Date = Date()
-    var amount: String = ""
-    var merchant: String = ""
-    var desc: String = ""
-    var fromLocation: String = ""
-    var toLocation: String = ""
-    var distanceKm: String = ""
-    var scanning = false
-    var suggesting = false
-}
-
-private struct NewClaimSheet: View {
-    @ObservedObject var vm: ExpensesViewModel
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var title = ""
-    @State private var lines: [ClaimLineDraft] = [ClaimLineDraft()]
-    @State private var pickedImage: UIImage?
-    @State private var showPicker = false
-    @State private var scanIndex: Int?
-
-    private var currency: String { vm.policy?.currency ?? "INR" }
-    private var total: Double { lines.reduce(0) { $0 + (Double($1.amount) ?? 0) } }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                if let err = vm.errorMsg { Section { Text(err).font(.caption).foregroundColor(.red) } }
-                Section { TextField("Title (optional)", text: $title) }
-                if let p = vm.policy {
-                    Section {
-                        Text(policyHint(p)).font(.caption2).foregroundColor(.secondary)
-                    }
-                }
-                ForEach($lines) { $line in
-                    Section {
-                        Picker("Category", selection: $line.category) {
-                            ForEach(expenseCategories, id: \.self) { Text($0.capitalized).tag($0) }
-                        }
-                        DatePicker("Date", selection: $line.itemDate, displayedComponents: .date)
-                        if line.category == "mileage" {
-                            TextField("From", text: $line.fromLocation)
-                            TextField("To", text: $line.toLocation)
-                            HStack {
-                                TextField("Distance km", text: $line.distanceKm).keyboardType(.decimalPad)
-                                Button { suggestMileage(for: line.id) } label: {
-                                    if line.suggesting { ProgressView() } else { Label("GPS", systemImage: "location.fill") }
-                                }.buttonStyle(.bordered).controlSize(.small).disabled(line.suggesting)
-                            }
-                            TextField("Amount", text: $line.amount).keyboardType(.decimalPad)
-                        } else {
-                            TextField("Merchant", text: $line.merchant)
-                            HStack {
-                                TextField("Amount", text: $line.amount).keyboardType(.decimalPad)
-                                Button { scanReceipt(for: line.id) } label: {
-                                    if line.scanning { ProgressView() } else { Label("Scan", systemImage: "doc.viewfinder") }
-                                }.buttonStyle(.bordered).controlSize(.small).disabled(line.scanning)
-                            }
-                            TextField("Description (optional)", text: $line.desc)
-                        }
-                        if lines.count > 1 {
-                            Button("Remove line", role: .destructive) { lines.removeAll { $0.id == line.id } }
-                        }
-                    }
-                }
-                Section {
-                    Button { lines.append(ClaimLineDraft()) } label: { Label("Add line", systemImage: "plus") }
-                    HStack { Text("Total").bold(); Spacer(); Text(expenseMoney(total, currency)).bold() }
-                }
-                Section {
-                    Button(vm.submitting ? "Saving…" : "Create draft") { Task { await create() } }
-                        .disabled(vm.submitting || !hasValidLine)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .navigationTitle("New Claim")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button("Close") { dismiss() } } }
-            .sheet(isPresented: $showPicker, onDismiss: handlePicked) {
-                ImagePicker(image: $pickedImage, sourceType: .camera, cameraDevice: .rear)
-            }
-        }
-    }
-
-    private var hasValidLine: Bool {
-        lines.contains { (Double($0.amount) ?? 0) > 0 || ($0.category == "mileage" && (Double($0.distanceKm) ?? 0) > 0) }
-    }
-
-    private func policyHint(_ p: ExpensePolicy) -> String {
-        var s = "Mileage \(expenseMoney(p.mileage_rate, currency))/km · receipt required over \(expenseMoney(p.require_receipt_over, currency))"
-        if let esc = p.escalate_over { s += " · escalates over \(expenseMoney(esc, currency))" }
-        return s
-    }
-
-    private func create() async {
-        let items: [ExpenseClaimItemInput] = lines.compactMap { l in
-            let amt = Double(l.amount) ?? 0
-            let dist = Double(l.distanceKm)
-            if amt <= 0 && !(l.category == "mileage" && (dist ?? 0) > 0) { return nil }
-            return ExpenseClaimItemInput(
-                category: l.category,
-                item_date: expenseDayFmt.string(from: l.itemDate),
-                description: l.desc.isEmpty ? nil : l.desc,
-                amount: amt,
-                distance_km: l.category == "mileage" ? dist : nil,
-                from_location: l.fromLocation.isEmpty ? nil : l.fromLocation,
-                to_location: l.toLocation.isEmpty ? nil : l.toLocation,
-                merchant: l.merchant.isEmpty ? nil : l.merchant,
-                receipt_url: nil
-            )
-        }
-        guard !items.isEmpty else { return }
-        if await vm.createClaim(title: title.isEmpty ? nil : title, items: items) { dismiss() }
-    }
-
-    // ── receipt scan ──
-    private func scanReceipt(for id: UUID) {
-        guard let idx = lines.firstIndex(where: { $0.id == id }) else { return }
-        scanIndex = idx
-        lines[idx].scanning = true
-        showPicker = true
-    }
-
-    private func handlePicked() {
-        guard let idx = scanIndex else { return }
-        guard let image = pickedImage else { if lines.indices.contains(idx) { lines[idx].scanning = false }; return }
-        pickedImage = nil
-        Task {
-            guard let data = KinematicRepository.compressForUpload(image, maxDim: 1024, targetKB: 1500), !data.isEmpty else {
-                if lines.indices.contains(idx) { lines[idx].scanning = false }; return
-            }
-            let fields = await vm.scanReceipt(base64: data.base64EncodedString(), mediaType: "image/jpeg")
-            guard lines.indices.contains(idx) else { return }
-            lines[idx].scanning = false
-            if let f = fields {
-                if let a = f.amount { lines[idx].amount = (a == a.rounded()) ? String(Int(a)) : String(format: "%.2f", a) }
-                if let m = f.merchant, !m.isEmpty { lines[idx].merchant = m }
-                if let c = f.category, expenseCategories.contains(c) { lines[idx].category = c }
-                if let d = f.txn_date, let parsed = expenseDayFmt.date(from: String(d.prefix(10))) { lines[idx].itemDate = parsed }
-            }
-        }
-    }
-
-    // ── GPS mileage ──
-    private func suggestMileage(for id: UUID) {
-        guard let idx = lines.firstIndex(where: { $0.id == id }) else { return }
-        lines[idx].suggesting = true
-        let day = expenseDayFmt.string(from: lines[idx].itemDate)
-        Task {
-            let m = await vm.mileage(fromISO: "\(day)T00:00:00.000Z", toISO: "\(day)T23:59:59.999Z")
-            guard lines.indices.contains(idx) else { return }
-            lines[idx].suggesting = false
-            if let m = m {
-                lines[idx].distanceKm = (m.distance_km == m.distance_km.rounded()) ? String(Int(m.distance_km)) : String(format: "%.1f", m.distance_km)
-                lines[idx].amount = (m.suggested_amount == m.suggested_amount.rounded()) ? String(Int(m.suggested_amount)) : String(format: "%.2f", m.suggested_amount)
-                if lines[idx].desc.isEmpty { lines[idx].desc = "Auto: \(lines[idx].distanceKm) km from GPS trail" }
-            }
-        }
     }
 }

@@ -139,6 +139,9 @@ enum SecondaryRoute: String, Identifiable {
     // CRM lead-management Home (mission control) — universal; opened when a
     // daily-briefing notification is tapped (data.kind == "crm_home").
     case crmHome
+    // Expense claims (module `field_expenses`) — reachable from the side menu for field-force tenants
+    // and opened when an expense push is tapped.
+    case expenses
     // Leave management + attendance regularization (universal — available to
     // every client, gated only by the API/role, not by a package SKU).
     case leave
@@ -163,6 +166,7 @@ enum SecondaryRoute: String, Identifiable {
     var strictModule: String? {
         switch self {
         case .stockBatches: return "distribution_batches"
+        case .expenses:     return "field_expenses"
         default:            return nil
         }
     }
@@ -186,7 +190,7 @@ enum SecondaryRoute: String, Identifiable {
     var requiredPackage: String? {
         switch self {
         // Universal — every client gets these
-        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome:
+        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .expenses:
             return nil
         // Field Force
         case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:
@@ -264,6 +268,8 @@ class KiniAppState: ObservableObject {
     /// Last tapped push notification's data dict (type / lead_id / deal_id /
     /// task_id). Set by PushAppDelegate on tap; kept for deeper deep-linking.
     @Published var pendingPushData: [String: String]? = nil
+    /// An expense claim to open — set when an expense push is tapped (to review / approved / rejected with a remark / reimbursed).
+    @Published var pendingExpenseClaimId: String? = nil
     /// Set true when the API starts returning 401s. UI can read this to
     /// surface a non-destructive "session expired, please sign in" prompt
     /// without wiping the user's local check-in state.

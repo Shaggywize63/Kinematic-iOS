@@ -15,6 +15,7 @@ network-free coverage of the model/logic layer.
 | `WhatsAppHelperTests.swift` | `sanitize` / `waLink` / `canOpen` edge cases |
 | `CRMClientScopeTests.swift` | UUID round-trip through `UserDefaults.standard`, legacy-string rejection |
 | `LeadsViewModelTests.swift` | `activeFilterCount`, `resetFilters`, `hasMore`, `CreateOutcome` (pure logic only) |
+| `ExpenseLogicTests.swift` | Expense rules: line validation, receipt scan fill + removal, the rejection-remark rule, partial-approval maths, claim history, approver gating, and decoding the server's claim / check / upload JSON |
 | `TestSupport.swift` | Shared `Lead` fixtures |
 
 ## Running

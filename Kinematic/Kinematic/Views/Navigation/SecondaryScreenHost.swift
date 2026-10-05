@@ -65,6 +65,8 @@ struct SecondaryScreenHost: View {
                             ActivityFeedView()
                         case .leave:
                             LeaveHomeView()
+                        case .expenses:
+                            ExpenseClaimsView()
                         case .camera:
                             EmptyView() // Handled above
                         case .orderHistory:
