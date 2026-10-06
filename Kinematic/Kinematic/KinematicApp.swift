@@ -3281,10 +3281,16 @@ class KinematicRepository {
     // MARK: History (Android parity — GET /attendance/history)
     func getAttendanceHistory(page: Int = 1, limit: Int = 30) async -> [AttendanceRecord] {
         do {
-            let res: ApiResponse<[AttendanceRecord]>? = try await performRequest(
+            // The payload is an object (`items` / `data` + pagination), not a bare
+            // array — AttendanceHistoryPayload reads every shape the server has used.
+            let res: ApiResponse<AttendanceHistoryPayload>? = try await performRequest(
                 "/attendance/history?page=\(page)&limit=\(limit)")
-            return res?.data ?? []
-        } catch { return [] }
+            return res?.data?.records ?? []
+        } catch {
+            // Don't fail silently: an empty list here used to hide a decode error for months.
+            print("❌ ATTENDANCE_HISTORY_ERROR: \(error)")
+            return []
+        }
     }
 
     func logSecurityViolation(type: String, action: String, lat: Double?, lng: Double?) async {
