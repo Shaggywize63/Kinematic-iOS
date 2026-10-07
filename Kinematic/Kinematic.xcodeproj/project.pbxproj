@@ -19,6 +19,7 @@
 		AB0000000000000000000028 /* WhatsAppHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000018 /* WhatsAppHelperTests.swift */; };
 		AB0000000000000000000029 /* ExpenseLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000019 /* ExpenseLogicTests.swift */; };
 		AB000000000000000000002A /* AttendanceHistoryPayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001A /* AttendanceHistoryPayloadTests.swift */; };
+		AB000000000000000000002B /* NotificationRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001B /* NotificationRouteTests.swift */; };
 		D1D1D1D1D1D1D1D1D1D1000C /* KinematicWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -71,6 +72,7 @@
 		AB0000000000000000000018 /* WhatsAppHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsAppHelperTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000019 /* ExpenseLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseLogicTests.swift; sourceTree = "<group>"; };
 		AB000000000000000000001A /* AttendanceHistoryPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceHistoryPayloadTests.swift; sourceTree = "<group>"; };
+		AB000000000000000000001B /* NotificationRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRouteTests.swift; sourceTree = "<group>"; };
 		D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KinematicWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -170,6 +172,7 @@
 				AB0000000000000000000018 /* WhatsAppHelperTests.swift */,
 				AB0000000000000000000019 /* ExpenseLogicTests.swift */,
 				AB000000000000000000001A /* AttendanceHistoryPayloadTests.swift */,
+				AB000000000000000000001B /* NotificationRouteTests.swift */,
 			);
 			path = KinematicTests;
 			sourceTree = "<group>";
@@ -334,6 +337,7 @@
 				AB0000000000000000000028 /* WhatsAppHelperTests.swift in Sources */,
 				AB0000000000000000000029 /* ExpenseLogicTests.swift in Sources */,
 				AB000000000000000000002A /* AttendanceHistoryPayloadTests.swift in Sources */,
+				AB000000000000000000002B /* NotificationRouteTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -493,7 +497,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shaggywize63.kinematic;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -530,7 +534,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shaggywize63.kinematic;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -624,7 +628,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.1.4;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shaggywize63.kinematic.KinematicWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -657,7 +661,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.3;
+				MARKETING_VERSION = 1.1.4;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shaggywize63.kinematic.KinematicWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -142,6 +142,9 @@ enum SecondaryRoute: String, Identifiable {
     // Expense claims (module `field_expenses`) — reachable from the side menu for field-force tenants
     // and opened when an expense push is tapped.
     case expenses
+    // Whatever screen a tapped notification points at (lead, deal, leave approvals, chat thread, …).
+    // The screen itself rides on ModalRoute.target — see NotificationRoute.
+    case notificationTarget
     // Leave management + attendance regularization (universal — available to
     // every client, gated only by the API/role, not by a package SKU).
     case leave
@@ -190,7 +193,7 @@ enum SecondaryRoute: String, Identifiable {
     var requiredPackage: String? {
         switch self {
         // Universal — every client gets these
-        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .expenses:
+        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .expenses, .notificationTarget:
             return nil
         // Field Force
         case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:
@@ -226,6 +229,8 @@ enum SecondaryRoute: String, Identifiable {
 struct ModalRoute: Identifiable {
     let id = UUID()
     let route: SecondaryRoute
+    /// For `.notificationTarget`: the screen to show.
+    var target: NotificationTarget? = nil
 }
 
 enum AppTheme: String, CaseIterable, Identifiable {
@@ -270,6 +275,36 @@ class KiniAppState: ObservableObject {
     @Published var pendingPushData: [String: String]? = nil
     /// An expense claim to open — set when an expense push is tapped (to review / approved / rejected with a remark / reimbursed).
     @Published var pendingExpenseClaimId: String? = nil
+    /// A notification's screen waiting for the app to be ready — set by a tap that arrives
+    /// before sign-in has finished (cold start from a push). Opened by `openPendingNotificationTarget()`.
+    @Published var pendingNotificationTarget: NotificationTarget? = nil
+
+    /// Open the screen a notification points at. Which target a payload maps to is decided in
+    /// `NotificationRoute`; both a tapped push and a row in the in-app list come through here.
+    func open(_ target: NotificationTarget) {
+        // Not signed in yet (or still owing a password change): hold it until the app is ready.
+        guard Session.isAuthenticated, !mustChangePassword else {
+            pendingNotificationTarget = target
+            return
+        }
+        switch target {
+        case .checkIn:
+            // Attendance is a tab in the field-force shell, not a sheet.
+            activeSecondaryRoute = nil
+            selectedTab = 1
+        case .notificationList:
+            activeSecondaryRoute = ModalRoute(route: .notifications)
+        default:
+            activeSecondaryRoute = ModalRoute(route: .notificationTarget, target: target)
+        }
+    }
+
+    /// Open a notification screen held back by `open(_:)`, once the user is signed in.
+    func openPendingNotificationTarget() {
+        guard let target = pendingNotificationTarget, Session.isAuthenticated, !mustChangePassword else { return }
+        pendingNotificationTarget = nil
+        open(target)
+    }
     /// Set true when the API starts returning 401s. UI can read this to
     /// surface a non-destructive "session expired, please sign in" prompt
     /// without wiping the user's local check-in state.

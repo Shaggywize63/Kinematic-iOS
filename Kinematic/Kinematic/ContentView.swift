@@ -92,6 +92,8 @@ struct ContentView: View {
             // that we have an auth token to attach to the upload. Idempotent,
             // and inert on free-Apple-ID dev builds (see PushNotificationManager).
             PushNotificationManager.requestAuthorizationAndRegister()
+            // A push tapped before sign-in finished (cold start) opens its screen now.
+            await MainActor.run { appState.openPendingNotificationTarget() }
         }
     }
 }
