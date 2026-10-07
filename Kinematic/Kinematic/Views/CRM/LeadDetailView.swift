@@ -372,7 +372,8 @@ struct LeadDetailView: View {
             HStack {
                 Text(lead.displayName).font(.system(size: 22, weight: .black))
                 Spacer()
-                badge(lead.isB2c == true ? "B2C" : "B2B")
+                // The client's own name for the lead type ("Dealer" / "Farmers"); B2B / B2C otherwise.
+                badge(fieldOverrides.leadForm.segmentName(isB2C: lead.isB2c == true))
                 ScoreBadge(score: lead.score ?? 0)
             }
             if lead.isB2c != true, let c = lead.company, !c.isEmpty {

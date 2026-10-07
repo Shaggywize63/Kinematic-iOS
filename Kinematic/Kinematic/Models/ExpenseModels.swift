@@ -24,8 +24,19 @@ struct ExpenseCategoryRule: Codable, Equatable {
     let receipt_required_over: Double?
 }
 
+/// One vehicle type a policy pays for, with its cost per km (travel allowance by vehicle).
+struct ExpenseVehicleRate: Codable, Equatable, Identifiable {
+    let id: String
+    let label: String
+    let rate_per_km: Double
+}
+
 struct ExpensePolicyRules: Codable, Equatable {
     let mileage_rate: Double?
+    /// When present, mileage is priced by vehicle from the odometer readings (computed by the server).
+    let vehicle_rates: [ExpenseVehicleRate]?
+    /// With vehicle rates: a photo of the odometer before and after is mandatory (default true).
+    let odometer_photos_required: Bool?
     let receipt_required_over: Double?
     let max_claim_amount: Double?
     let submit_within_days: Int?
@@ -78,6 +89,14 @@ struct ExpenseClaimItem: Codable, Identifiable {
     let receipt_url: String?
     /// Short-lived viewable link for `receipt_url`, signed by the server on every read.
     let receipt_signed_url: String?
+    // Travel allowance by vehicle (policies with vehicle rates).
+    let vehicle_type: String?
+    let odometer_start: Double?
+    let odometer_end: Double?
+    let odometer_start_photo_url: String?
+    let odometer_end_photo_url: String?
+    let odometer_start_photo_signed_url: String?
+    let odometer_end_photo_signed_url: String?
     let flagged: Bool?
     let flag_reason: String?
     /// "approved" | "rejected" once an approver has decided this line.
@@ -207,6 +226,13 @@ struct ExpenseClaimItemInput: Encodable, Equatable {
     let receipt_url: String?
     /// What OCR read off the receipt, kept on the line for the approver's audit.
     let ai_extracted: ExpenseReceiptFields?
+    // Travel allowance by vehicle: the server works the distance and amount out from the readings.
+    // nil is omitted (keep what is on file); "" clears a photo.
+    let vehicle_type: String?
+    let odometer_start: Double?
+    let odometer_end: Double?
+    let odometer_start_photo_url: String?
+    let odometer_end_photo_url: String?
 }
 
 struct ExpenseClaimInput: Encodable {

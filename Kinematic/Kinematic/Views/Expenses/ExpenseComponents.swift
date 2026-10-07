@@ -262,6 +262,8 @@ struct ExpenseLineView: View {
                         Text(item.item_date ?? "").font(.caption).foregroundColor(.secondary)
                     }
                     if !detail.isEmpty { Text(detail).font(.subheadline).foregroundColor(.secondary) }
+                    // Travel allowance by vehicle: which vehicle, and the odometer readings the amount came from.
+                    if let o = item.odometerSummary() { Text(o).font(.subheadline).foregroundColor(.secondary) }
                 }
                 Spacer()
                 Text(expenseMoney(item.amount, currency)).font(.subheadline).bold()
@@ -285,8 +287,23 @@ struct ExpenseLineView: View {
             } else if item.category != "mileage" {
                 Text("No receipt").font(.caption).foregroundColor(.secondary)
             }
+            // The approver's evidence for the readings: a photo of the odometer before and after the trip.
+            if !(item.odometer_start_photo_url ?? "").isEmpty || !(item.odometer_end_photo_url ?? "").isEmpty {
+                HStack(spacing: 14) {
+                    odometerPhoto("Odometer before", stored: item.odometer_start_photo_url, signed: item.odometer_start_photo_signed_url)
+                    odometerPhoto("Odometer after", stored: item.odometer_end_photo_url, signed: item.odometer_end_photo_signed_url)
+                }
+            }
         }
         .padding(.vertical, 2)
+    }
+
+    @ViewBuilder private func odometerPhoto(_ label: String, stored: String?, signed: String?) -> some View {
+        if !(stored ?? "").isEmpty {
+            Button { if let u = signed { onViewReceipt(u) } } label: {
+                HStack(spacing: 8) { ReceiptThumbnail(url: signed); Text(label).font(.caption).foregroundColor(.accentColor) }
+            }.buttonStyle(.plain)
+        }
     }
 
     private func tag(_ text: String, _ color: Color) -> some View {

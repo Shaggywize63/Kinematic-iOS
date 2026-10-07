@@ -75,6 +75,9 @@ final class LeadFieldOverridesModel: ObservableObject {
     /// Empty when the tenant has no custom set configured — callers then
     /// fall back to their existing hardcoded arrays via `statusOptions`.
     @Published private(set) var leadStatuses: [LeadStatusOption] = []
+    /// Tenant's lead-form presentation (`config.lead_form`): lead-type names ("Dealer" / "Farmers"),
+    /// address on B2B, schedule-visit. Defaults are the legacy behaviour, so a tenant without it is unchanged.
+    @Published private(set) var leadForm = LeadFormConfig()
     /// True once the /api/v1/crm/settings request has completed (success
     /// or empty). The lead form defers rendering admin-gated rows until
     /// this flips so it doesn't race the network and briefly show fields
@@ -97,6 +100,8 @@ final class LeadFieldOverridesModel: ObservableObject {
         guard let raw = await CRMService.shared.getCRMSettings() else { return }
         if let bt = raw.business_type { businessType = bt }
         guard case let .object(cfg)? = raw.config else { return }
+        // Sibling key of `field_overrides`; parsed first so it applies even when no overrides are configured.
+        leadForm = LeadFormConfig.parse(cfg)
         // Custom lead statuses — sibling key of `field_overrides`. Parsed
         // independently so a tenant can configure one without the other;
         // stays empty (→ hardcoded fallback) when the key is absent/empty.
@@ -126,8 +131,9 @@ final class LeadFieldOverridesModel: ObservableObject {
     /// unit tests can exercise the merge/lookup logic deterministically.
     /// Production code paths are unchanged — `load()` still performs the
     /// real network fetch and calls the same `buildMerged`.
-    func ingest(rawOverrides: [String: FieldOverride], businessType bt: String? = nil) {
+    func ingest(rawOverrides: [String: FieldOverride], businessType bt: String? = nil, leadForm form: LeadFormConfig? = nil) {
         if let bt { businessType = bt }
+        if let form { leadForm = form }
         overrides = rawOverrides
         b2cMerged = buildMerged(for: true, from: rawOverrides)
         b2bMerged = buildMerged(for: false, from: rawOverrides)
@@ -189,6 +195,12 @@ final class LeadFieldOverridesModel: ObservableObject {
     }
     func requiredFor(_ key: String, defaultRequired: Bool, isB2C: Bool) -> Bool {
         lookup(key, isB2C: isB2C)?.required ?? defaultRequired
+    }
+    /// True only when an admin EXPLICITLY marked the field required (persisted `required: true`), as
+    /// opposed to it merely defaulting to required. The create form enforces required-ness only for
+    /// these, so a tenant that never configured it keeps the behaviour it had.
+    func explicitlyRequired(_ key: String, isB2C: Bool) -> Bool {
+        lookup(key, isB2C: isB2C)?.required == true
     }
 
     // ── Custom lead statuses ───────────────────────────────────────

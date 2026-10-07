@@ -117,8 +117,9 @@ struct LeadEditView: View {
                 if settingsLoaded && !isTata {
                     Section {
                         Picker("Type", selection: $isB2C) {
-                            Text("Business (B2B)").tag(false)
-                            Text("Consumer (B2C)").tag(true)
+                            // The client's own names ("Dealer" / "Farmers") when it set them; the original wording otherwise.
+                            Text(fieldOverrides.leadForm.hasCustomName(isB2C: false) ? fieldOverrides.leadForm.segmentName(isB2C: false) : "Business (B2B)").tag(false)
+                            Text(fieldOverrides.leadForm.hasCustomName(isB2C: true) ? fieldOverrides.leadForm.segmentName(isB2C: true) : "Consumer (B2C)").tag(true)
                         }
                         .pickerStyle(.segmented)
                     }
