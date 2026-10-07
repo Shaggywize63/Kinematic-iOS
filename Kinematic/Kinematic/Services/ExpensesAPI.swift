@@ -99,8 +99,9 @@ struct ExpensesAPI {
     // ── Receipts + mileage ────────────────────────────────────────────────────
     /// Upload a receipt photo/PDF (multipart field "file", 10 MB max). Returns the
     /// stored reference to put on the line, a link to show it, and the OCR read.
-    func uploadReceipt(data: Data, filename: String, mime: String) async throws -> ExpenseUploadedReceipt {
-        var req = try makeRequest("/expenses/receipts", method: "POST")
+    /// `scan: false` stores the file without the OCR read (e.g. an odometer photo is not a receipt).
+    func uploadReceipt(data: Data, filename: String, mime: String, scan: Bool = true) async throws -> ExpenseUploadedReceipt {
+        var req = try makeRequest(scan ? "/expenses/receipts" : "/expenses/receipts?scan=0", method: "POST")
         req.timeoutInterval = 60
         let boundary = "kinematic-\(UUID().uuidString)"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")

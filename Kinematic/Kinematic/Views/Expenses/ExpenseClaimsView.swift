@@ -62,8 +62,8 @@ final class ExpensesViewModel: ObservableObject {
         catch { return SaveOutcome(savedId: savedId, submitted: false, error: error.localizedDescription) }
     }
 
-    func uploadReceipt(data: Data, filename: String, mime: String) async -> (ExpenseUploadedReceipt?, String?) {
-        do { return (try await api.uploadReceipt(data: data, filename: filename, mime: mime), nil) }
+    func uploadReceipt(data: Data, filename: String, mime: String, scan: Bool = true) async -> (ExpenseUploadedReceipt?, String?) {
+        do { return (try await api.uploadReceipt(data: data, filename: filename, mime: mime, scan: scan), nil) }
         catch { return (nil, error.localizedDescription) }
     }
 

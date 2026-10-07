@@ -58,14 +58,36 @@ struct CustomFieldsDetailCard: View {
                     }
                 } else {
                     ForEach(rows, id: \.key) { row in
-                        HStack(alignment: .top) {
-                            Text(row.label)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(row.display)
-                                .font(.subheadline)
-                                .multilineTextAlignment(.trailing)
+                        if row.isImage, let url = URL(string: row.display) {
+                            // A photo field (Shop Image, Farmer photo): show the picture, not its URL.
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(row.label)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().scaledToFill()
+                                    case .failure:
+                                        Image(systemName: "photo").foregroundColor(.secondary)
+                                    default:
+                                        ProgressView()
+                                    }
+                                }
+                                .frame(width: 140, height: 140)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            HStack(alignment: .top) {
+                                Text(row.label)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(row.display)
+                                    .font(.subheadline)
+                                    .multilineTextAlignment(.trailing)
+                            }
                         }
                     }
                 }
@@ -119,6 +141,8 @@ struct CustomFieldsDetailCard: View {
         let key: String
         let label: String
         let display: String
+        /// `display` is the URL of a photo field.
+        var isImage: Bool = false
     }
 
     /// Walk the loaded defs and pull a display string for each one that
@@ -144,7 +168,8 @@ struct CustomFieldsDetailCard: View {
                 display = formatValue(any, type: d.fieldType)
             }
             guard let display, !display.isEmpty else { continue }
-            out.append(Row(key: d.fieldKey, label: d.label, display: display))
+            out.append(Row(key: d.fieldKey, label: d.label, display: display,
+                           isImage: d.fieldType == "image" && display.hasPrefix("http")))
         }
         return out
     }

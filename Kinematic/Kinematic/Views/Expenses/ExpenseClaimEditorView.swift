@@ -30,13 +30,25 @@ struct ExpenseClaimEditorView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var cameraImage: UIImage?
     @State private var viewing: ReceiptRef?
+    /// Set while the next picked photo is an odometer photo (not a receipt): which line, and which reading.
+    @State private var odoTarget: OdoTarget?
+
+    private struct OdoTarget { let lineId: UUID; let start: Bool }
+
+    /// What the live policy check depends on — the lines AND whether mileage is priced by vehicle.
+    private struct CheckKey: Equatable { let fields: [ExpenseLineFields]; let byVehicle: Bool }
 
     private struct EditorLine: Identifiable {
         let id = UUID()
         var f: ExpenseLineFields
         /// A link to show the attached receipt right now.
         var receiptView: String?
+        /// Links to show the odometer photos right now (travel allowance by vehicle).
+        var odoStartView: String?
+        var odoEndView: String?
         var uploading = false
+        /// "start" or "end" while that odometer photo is uploading.
+        var odoUploading: String?
         var suggesting = false
         var scanNote: String?
     }
@@ -57,7 +69,8 @@ struct ExpenseClaimEditorView: View {
         for item in claim?.items ?? [] {
             var f = item.toFields()
             if f.itemDate.isEmpty { f.itemDate = Self.today() }
-            seeded.append(EditorLine(f: f, receiptView: item.receipt_signed_url))
+            seeded.append(EditorLine(f: f, receiptView: item.receipt_signed_url,
+                                     odoStartView: item.odometer_start_photo_signed_url, odoEndView: item.odometer_end_photo_signed_url))
         }
         if seeded.isEmpty { seeded = [EditorLine(f: ExpenseLineFields(itemDate: Self.today()))] }
         _lines = State(initialValue: seeded)
@@ -66,10 +79,15 @@ struct ExpenseClaimEditorView: View {
     private var status: String { (claim?.status ?? "draft").lowercased() }
     private var currency: String { vm.policy?.currency ?? claim?.currency ?? "INR" }
     private var rate: Double { vm.policy?.rules?.mileage_rate ?? vm.policy?.mileage_rate ?? 0 }
-    private var total: Double { lines.reduce(0) { $0 + $1.f.effectiveAmount(mileageRate: rate) } }
+    /// Where the policy pays mileage by vehicle, a mileage line takes the vehicle + odometer readings instead of a
+    /// typed distance; the server works the distance and amount out.
+    private var vehicles: [ExpenseVehicleRate] { vm.policy?.rules?.vehicle_rates ?? [] }
+    private var byVehicle: Bool { !vehicles.isEmpty }
+    private var photosRequired: Bool { vm.policy?.rules?.odometer_photos_required != false }
+    private var total: Double { lines.reduce(0) { $0 + $1.f.effectiveAmount(mileageRate: rate, vehicles: vehicles) } }
     private var filled: [EditorLine] { lines.filter { $0.f.isFilled } }
     /// The lines that went into the policy check, in order — findings are indexed by position among them.
-    private var checked: [EditorLine] { lines.filter { $0.f.isFilled && $0.f.isValid } }
+    private var checked: [EditorLine] { lines.filter { $0.f.isFilled && $0.f.canSave(byVehicle: byVehicle) } }
     private var checkedFields: [ExpenseLineFields] { checked.map { $0.f } }
     private var blocking: Bool { check?.blocking == true }
 
@@ -105,7 +123,7 @@ struct ExpenseClaimEditorView: View {
             .navigationTitle(claim == nil ? "New claim" : (status == "rejected" ? "Fix and resubmit" : "Edit claim"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(saving) } }
-            .task(id: checkedFields) { await runCheck() }
+            .task(id: CheckKey(fields: checkedFields, byVehicle: byVehicle)) { await runCheck() }
             .sheet(isPresented: $showCamera, onDismiss: handleCamera) {
                 ImagePicker(image: $cameraImage, sourceType: .camera, cameraDevice: .rear)
             }
@@ -143,7 +161,19 @@ struct ExpenseClaimEditorView: View {
             }
             DatePicker("Date", selection: dateBinding(line), in: ...Date(), displayedComponents: .date)
 
-            if mileage {
+            if mileage && byVehicle {
+                // Travel allowance by vehicle: pick the vehicle, enter the odometer before / after (with a photo of
+                // each). The distance and amount are worked out from the readings, here and again by the server.
+                TextField("From", text: line.f.fromLocation)
+                TextField("To", text: line.f.toLocation)
+                Picker("Vehicle *", selection: line.f.vehicleType) {
+                    Text("Choose a vehicle…").tag("")
+                    ForEach(vehicles) { v in Text("\(v.label) · \(expenseMoney(v.rate_per_km, currency))/km").tag(v.id) }
+                }
+                odometerRow(line, start: true)
+                odometerRow(line, start: false)
+                odometerSummaryRow(l)
+            } else if mileage {
                 TextField("From", text: line.f.fromLocation)
                 TextField("To", text: line.f.toLocation)
                 HStack {
@@ -200,9 +230,76 @@ struct ExpenseClaimEditorView: View {
         }
     }
 
+    /// One odometer reading and the photo that backs it.
+    @ViewBuilder private func odometerRow(_ line: Binding<EditorLine>, start: Bool) -> some View {
+        let l = line.wrappedValue
+        let title = start ? "Odometer before the trip" : "Odometer after the trip"
+        let photo = start ? l.f.odoStartPhoto : l.f.odoEndPhoto
+        let view = start ? l.odoStartView : l.odoEndView
+        let uploading = l.odoUploading == (start ? "start" : "end")
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("\(title) (km) *", text: start ? line.f.odometerStart : line.f.odometerEnd)
+                .keyboardType(.decimalPad)
+            if uploading {
+                HStack { ProgressView(); Text("Uploading the photo…").font(.subheadline) }
+            } else if !photo.isEmpty {
+                HStack(spacing: 10) {
+                    Button { if let v = view { viewing = ReceiptRef(url: v) } } label: { ReceiptThumbnail(url: view) }
+                        .buttonStyle(.plain)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Photo attached").font(.subheadline).bold()
+                        Text("Tap the preview to view it").font(.caption).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    odometerPhotoMenu(l.id, start: start, label: "Replace")
+                    Button {
+                        if start { line.wrappedValue.f.odoStartPhoto = ""; line.wrappedValue.odoStartView = nil }
+                        else { line.wrappedValue.f.odoEndPhoto = ""; line.wrappedValue.odoEndView = nil }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                    }.buttonStyle(.borderless).accessibilityLabel("Remove photo")
+                }
+            } else {
+                odometerPhotoMenu(l.id, start: start, label: photosRequired ? "Add odometer photo" : "Add odometer photo (optional)")
+            }
+        }
+    }
+
+    private func odometerPhotoMenu(_ id: UUID, start: Bool, label: String) -> some View {
+        Menu {
+            Button { beginOdometer(id, start: start); showCamera = true } label: { Label("Take a photo", systemImage: "camera") }
+            Button { beginOdometer(id, start: start); showLibrary = true } label: { Label("Choose a photo", systemImage: "photo.on.rectangle") }
+        } label: {
+            Label(label, systemImage: "camera")
+        }
+    }
+
+    /// Distance and amount from the readings, or what is wrong with them.
+    @ViewBuilder private func odometerSummaryRow(_ l: EditorLine) -> some View {
+        if let problem = l.f.odometerOrderProblem {
+            Text(problem).font(.footnote).bold().foregroundColor(.red)
+        } else {
+            let km = l.f.odometerKm
+            let chosen = ExpenseLogic.vehicleRate(l.f.vehicleType, in: vehicles)
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Distance").font(.caption).foregroundColor(.secondary)
+                    Text(km.map { "\(ExpenseLogic.trimNumber($0)) km" } ?? "—").bold()
+                }
+                Spacer()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Amount").font(.caption).foregroundColor(.secondary)
+                    Text(km != nil && chosen != nil ? expenseMoney(l.f.effectiveAmount(mileageRate: 0, vehicles: vehicles), currency) : "—").bold()
+                }
+            }
+            Text("Worked out from the readings — distance × the vehicle's rate.").font(.caption).foregroundColor(.secondary)
+        }
+    }
+
     private func policySummary(_ p: ExpensePolicy) -> some View {
         let rules = p.rules
-        var parts = ["Mileage \(expenseMoney(rules?.mileage_rate ?? p.mileage_rate, currency))/km",
+        let travel = (rules?.vehicle_rates ?? []).map { "\($0.label) \(expenseMoney($0.rate_per_km, currency))/km" }
+        var parts = [travel.isEmpty ? "Mileage \(expenseMoney(rules?.mileage_rate ?? p.mileage_rate, currency))/km" : "Travel " + travel.joined(separator: ", "),
                      "receipt needed over \(expenseMoney(rules?.receipt_required_over ?? p.require_receipt_over, currency))"]
         let auto = rules?.auto_approve_under ?? p.auto_approve_under ?? 0
         if auto > 0 { parts.append("auto-approved up to \(expenseMoney(auto, currency))") }
@@ -252,7 +349,7 @@ struct ExpenseClaimEditorView: View {
         if fields.isEmpty { check = nil; return }
         try? await Task.sleep(nanoseconds: 650_000_000)   // debounce while typing
         if Task.isCancelled { return }
-        let r = await vm.check(items: fields.map { $0.toInput() }, claimId: savedId)
+        let r = await vm.check(items: fields.map { $0.toInput(byVehicle: byVehicle) }, claimId: savedId)
         if !Task.isCancelled { check = r }
     }
 
@@ -262,6 +359,14 @@ struct ExpenseClaimEditorView: View {
     /// so cancelling a picker leaves the line as it was.
     private func begin(_ id: UUID) {
         attachId = id
+        odoTarget = nil
+        errorText = nil
+    }
+
+    /// Same, for an odometer photo: the next picked photo goes to that reading, never through the receipt OCR.
+    private func beginOdometer(_ id: UUID, start: Bool) {
+        attachId = id
+        odoTarget = OdoTarget(lineId: id, start: start)
         errorText = nil
     }
 
@@ -270,7 +375,10 @@ struct ExpenseClaimEditorView: View {
     }
 
     private func markNotUploading() {
-        if let id = attachId, let i = lines.firstIndex(where: { $0.id == id }) { lines[i].uploading = false }
+        if let id = attachId, let i = lines.firstIndex(where: { $0.id == id }) {
+            lines[i].uploading = false
+            lines[i].odoUploading = nil
+        }
     }
 
     private func handleCamera() {
@@ -281,11 +389,34 @@ struct ExpenseClaimEditorView: View {
 
     /// Shrink the photo (a 6 MB phone shot uploads as a few hundred KB) and send it.
     private func attach(image: UIImage) async {
+        if let target = odoTarget {
+            odoTarget = nil
+            await attachOdometer(image: image, target: target)
+            return
+        }
         markUploading()
         guard let data = KinematicRepository.compressForUpload(image, maxDim: 1800, targetKB: 1500), !data.isEmpty else {
             markNotUploading(); errorText = "Couldn't read that photo."; return
         }
         await upload(data: data, filename: "receipt.jpg", mime: "image/jpeg")
+    }
+
+    /// An odometer photo: shrunk and stored like a receipt, but not read as one.
+    private func attachOdometer(image: UIImage, target: OdoTarget) async {
+        guard let i = lines.firstIndex(where: { $0.id == target.lineId }) else { return }
+        lines[i].odoUploading = target.start ? "start" : "end"
+        guard let data = KinematicRepository.compressForUpload(image, maxDim: 1800, targetKB: 1500), !data.isEmpty else {
+            lines[i].odoUploading = nil; errorText = "Couldn't read that photo."; return
+        }
+        if data.count > 10 * 1024 * 1024 {
+            lines[i].odoUploading = nil; errorText = "That photo is larger than 10 MB."; return
+        }
+        let (result, error) = await vm.uploadReceipt(data: data, filename: "odometer.jpg", mime: "image/jpeg", scan: false)
+        guard let j = lines.firstIndex(where: { $0.id == target.lineId }) else { return }
+        lines[j].odoUploading = nil
+        guard let r = result else { errorText = error ?? "Couldn't upload the photo."; return }
+        if target.start { lines[j].f.odoStartPhoto = r.url; lines[j].odoStartView = r.signed_url }
+        else { lines[j].f.odoEndPhoto = r.url; lines[j].odoEndView = r.signed_url }
     }
 
     private func upload(data: Data, filename: String, mime: String) async {
@@ -329,15 +460,23 @@ struct ExpenseClaimEditorView: View {
 
     private func save(submit: Bool) async {
         guard !filled.isEmpty else { errorText = "Add at least one expense."; return }
-        if let bad = lines.firstIndex(where: { $0.f.isFilled && !$0.f.isValid }) {
-            errorText = "Expense \(bad + 1) needs an amount\(lines[bad].f.category == "mileage" ? " or a distance" : "")."; return
+        if let bad = lines.firstIndex(where: { $0.f.isFilled && !$0.f.canSave(byVehicle: byVehicle) }) {
+            if byVehicle && lines[bad].f.category == "mileage" {
+                errorText = "Expense \(bad + 1) needs a vehicle and the odometer readings."
+            } else {
+                errorText = "Expense \(bad + 1) needs an amount\(lines[bad].f.category == "mileage" ? " or a distance" : "")."
+            }
+            return
         }
-        if lines.contains(where: { $0.uploading }) { errorText = "Wait for the receipt to finish uploading."; return }
+        if let wrong = lines.firstIndex(where: { byVehicle && $0.f.category == "mileage" && $0.f.odometerOrderProblem != nil }) {
+            errorText = "Expense \(wrong + 1): \(lines[wrong].f.odometerOrderProblem ?? "")"; return
+        }
+        if lines.contains(where: { $0.uploading || $0.odoUploading != nil }) { errorText = "Wait for the upload to finish."; return }
         errorText = nil
         saving = true
         defer { saving = false }
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let out = await vm.save(claimId: savedId, title: t.isEmpty ? nil : t, items: filled.map { $0.f.toInput() }, submit: submit)
+        let out = await vm.save(claimId: savedId, title: t.isEmpty ? nil : t, items: filled.map { $0.f.toInput(byVehicle: byVehicle) }, submit: submit)
         if let id = out.savedId { savedId = id }
         if let e = out.error { errorText = e; return }
         if let id = out.savedId { onDone(id, out.submitted); dismiss() }

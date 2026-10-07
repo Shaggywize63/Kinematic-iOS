@@ -92,6 +92,10 @@ struct LeadCreateView: View {
     /// otherwise every Tata Champion would be bounced into the compose
     /// screen on every lead save, even when they didn't visit.
     @State private var logAsSiteVisit = false
+    // Schedule visit (clients that enabled it for this lead type, e.g. a Dealer): the server adds a planned
+    // meeting for the lead's owner and the activity reminder notifies ~30 min before. Create-only.
+    @State private var hasVisit = false
+    @State private var visitDate = Date().addingTimeInterval(3600)
 
     // Save flow state — surfaced so we can show a spinner on the toolbar
     // button and keep the sheet open if the server rejects the body.
@@ -195,14 +199,23 @@ struct LeadCreateView: View {
         Double(latitude.trimmingCharacters(in: .whitespaces)) != nil &&
         Double(longitude.trimmingCharacters(in: .whitespaces)) != nil
     }
-    /// Sticky-bottom Create button gate. Same single hard rule as the
-    /// toolbar Save: last_name required unless the admin flipped it
-    /// optional via field overrides.
-    private var saveCtaEnabled: Bool {
-        if saving { return false }
-        let req = fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
-        if req && lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
-        return true
+    /// Sticky-bottom Create button gate. Always tappable while not saving: what is wrong is explained by
+    /// `firstProblem()` in the "Save failed" alert. It used to stay disabled while a required-by-default Last
+    /// name was blank — even when the admin had hidden that field, leaving nothing to fill in.
+    private var saveCtaEnabled: Bool { !saving }
+
+    /// The visit the rep scheduled with this lead, if any (and only where the client offers it).
+    private var visitAt: Date? {
+        (hasVisit && fieldOverrides.leadForm.offersScheduleVisit(isB2C: isB2C)) ? visitDate : nil
+    }
+
+    /// What blocks Create right now (hidden Last name never blocks; mobile is exactly 10 digits; Shop Name /
+    /// Location when the admin made them required), or nil. Pure rules live in `LeadCreateRules`.
+    private func firstProblem() -> String? {
+        LeadCreateRules.firstProblem(
+            overrides: fieldOverrides, isB2C: isB2C, firstName: firstName, lastName: lastName, phone: phone,
+            company: company, addressLine1: addressLine1, visitAt: visitAt, now: Date()
+        )
     }
 
     var body: some View {
@@ -279,8 +292,8 @@ struct LeadCreateView: View {
                 if settingsLoaded && businessType?.lowercased() == "both" {
                     Section {
                         Picker("Lead type", selection: $isB2C) {
-                            Text("B2B (Business)").tag(false)
-                            Text("B2C (Consumer)").tag(true)
+                            Text(fieldOverrides.leadForm.segmentPickerLabel(isB2C: false)).tag(false)
+                            Text(fieldOverrides.leadForm.segmentPickerLabel(isB2C: true)).tag(true)
                         }.pickerStyle(.segmented)
                     }
                 }
@@ -397,6 +410,11 @@ struct LeadCreateView: View {
                             )
                         }
                     }
+                    // A Dealer's Location (address search + fields) — only for clients that turned it on
+                    // (`lead_form.address_on_b2b`). Deferred until the settings have loaded.
+                    if fieldOverrides.didLoad && fieldOverrides.leadForm.showsAddress(isB2C: false) {
+                        addressSection
+                    }
                 } else {
                     // Business Details on a B2C lead — only when an admin
                     // explicitly un-hid company/title/industry (persisted
@@ -467,52 +485,7 @@ struct LeadCreateView: View {
                             }
                         }
                     }
-                    Section("Address") {
-                        AddressSearchField(addressLine1: $addressLine1, city: $city, state: $state, postalCode: $postalCode)
-                        if !fieldOverrides.isHidden("address_line1", isB2C: true) {
-                            labelledField(
-                                label: fieldOverrides.labelFor("address_line1", defaultLabel: "Address line 1", isB2C: true),
-                                required: fieldOverrides.requiredFor("address_line1", defaultRequired: false, isB2C: true),
-                                text: $addressLine1,
-                            )
-                        }
-                        if !fieldOverrides.isHidden("address_line2", isB2C: true) {
-                            labelledField(
-                                label: fieldOverrides.labelFor("address_line2", defaultLabel: "Address line 2", isB2C: true),
-                                required: false,
-                                text: $addressLine2,
-                            )
-                        }
-                        if !fieldOverrides.isHidden("city", isB2C: true) {
-                            labelledField(
-                                label: fieldOverrides.labelFor("city", defaultLabel: "City", isB2C: true),
-                                required: fieldOverrides.requiredFor("city", defaultRequired: false, isB2C: true),
-                                text: $city,
-                            )
-                        }
-                        if !fieldOverrides.isHidden("state", isB2C: true) {
-                            labelledField(
-                                label: fieldOverrides.labelFor("state", defaultLabel: "State", isB2C: true),
-                                required: fieldOverrides.requiredFor("state", defaultRequired: false, isB2C: true),
-                                text: $state,
-                            )
-                        }
-                        if !fieldOverrides.isHidden("postal_code", isB2C: true) {
-                            labelledField(
-                                label: fieldOverrides.labelFor("postal_code", defaultLabel: "Postal code", isB2C: true),
-                                required: fieldOverrides.requiredFor("postal_code", defaultRequired: false, isB2C: true),
-                                text: $postalCode,
-                                keyboard: .numberPad,
-                            )
-                        }
-                        if !fieldOverrides.isHidden("country", isB2C: true) {
-                            labelledField(
-                                label: fieldOverrides.labelFor("country", defaultLabel: "Country", isB2C: true),
-                                required: false,
-                                text: $country,
-                            )
-                        }
-                    }
+                    addressSection
                     // Consent toggles only render when the admin hasn't
                     // hidden BOTH. We drop the header too — an empty
                     // "Consent" section reads as a bug, not a feature.
@@ -540,6 +513,21 @@ struct LeadCreateView: View {
 
                 // Admin-defined custom fields for this user's hierarchy role.
                 CustomFieldsSection(model: customFields)
+
+                // Schedule visit — only for the lead types the client enabled it for (e.g. a Dealer). The visit
+                // is created with the lead and the owner is reminded ~30 minutes before.
+                if fieldOverrides.didLoad && fieldOverrides.leadForm.offersScheduleVisit(isB2C: isB2C) {
+                    Section {
+                        Toggle("Schedule a visit", isOn: $hasVisit.animation())
+                        if hasVisit {
+                            DatePicker("Visit date & time", selection: $visitDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                        }
+                    } header: {
+                        Text("Schedule visit")
+                    } footer: {
+                        Text("Adds the visit to Activities and reminds the owner 30 minutes before.")
+                    }
+                }
 
                 // Multi-row product picker — drives custom_fields.product_lines
                 // and mirrors row 0 onto the legacy product_interested /
@@ -648,6 +636,11 @@ struct LeadCreateView: View {
                                 saveError = "Please fill: \(missingCustom.joined(separator: ", "))"
                                 return
                             }
+                            if let problem = firstProblem() {
+                                saving = false
+                                saveError = problem
+                                return
+                            }
                             let body = buildBody()
                             guard !body.isEmpty else {
                                 saving = false
@@ -748,6 +741,11 @@ struct LeadCreateView: View {
                                 saveError = "Please fill: \(missingCustom.joined(separator: ", "))"
                                 return
                             }
+                            if let problem = firstProblem() {
+                                saving = false
+                                saveError = problem
+                                return
+                            }
                             let body = buildBody()
                             // Empty body means the require-gate caught a
                             // bad state (e.g. last_name required + blank);
@@ -769,15 +767,9 @@ struct LeadCreateView: View {
                     } label: {
                         if saving { ProgressView() } else { Text("Save") }
                     }
-                    // Save is gated on whatever the admin marked required.
-                    // Default: last_name is required (matches leadCreateSchema)
-                    // — override flips the gate off when an admin sets
-                    // last_name optional via field overrides.
-                    .disabled(
-                        saving ||
-                        (fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
-                         && lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    )
+                    // Tappable while not saving: `firstProblem()` explains what is missing (a hidden Last name
+                    // no longer leaves Save dead with nothing to fill in).
+                    .disabled(saving)
                 }
             }
             .alert("Save failed",
@@ -791,6 +783,58 @@ struct LeadCreateView: View {
             // whole screen while active.
             .overlay { voiceOverlay }
             .onDisappear { voice.stop() }
+        }
+    }
+
+    /// Address search + address lines + city / state / postal code / country. B2C always had it; B2B gets it when
+    /// the client turned it on (`lead_form.address_on_b2b` — e.g. a Dealer's Location).
+    @ViewBuilder
+    private var addressSection: some View {
+        Section("Address") {
+            AddressSearchField(addressLine1: $addressLine1, city: $city, state: $state, postalCode: $postalCode)
+            if !fieldOverrides.isHidden("address_line1", isB2C: isB2C) {
+                labelledField(
+                    label: fieldOverrides.labelFor("address_line1", defaultLabel: "Address line 1", isB2C: isB2C),
+                    required: fieldOverrides.requiredFor("address_line1", defaultRequired: false, isB2C: isB2C),
+                    text: $addressLine1,
+                )
+            }
+            if !fieldOverrides.isHidden("address_line2", isB2C: isB2C) {
+                labelledField(
+                    label: fieldOverrides.labelFor("address_line2", defaultLabel: "Address line 2", isB2C: isB2C),
+                    required: false,
+                    text: $addressLine2,
+                )
+            }
+            if !fieldOverrides.isHidden("city", isB2C: isB2C) {
+                labelledField(
+                    label: fieldOverrides.labelFor("city", defaultLabel: "City", isB2C: isB2C),
+                    required: fieldOverrides.requiredFor("city", defaultRequired: false, isB2C: isB2C),
+                    text: $city,
+                )
+            }
+            if !fieldOverrides.isHidden("state", isB2C: isB2C) {
+                labelledField(
+                    label: fieldOverrides.labelFor("state", defaultLabel: "State", isB2C: isB2C),
+                    required: fieldOverrides.requiredFor("state", defaultRequired: false, isB2C: isB2C),
+                    text: $state,
+                )
+            }
+            if !fieldOverrides.isHidden("postal_code", isB2C: isB2C) {
+                labelledField(
+                    label: fieldOverrides.labelFor("postal_code", defaultLabel: "Postal code", isB2C: isB2C),
+                    required: fieldOverrides.requiredFor("postal_code", defaultRequired: false, isB2C: isB2C),
+                    text: $postalCode,
+                    keyboard: .numberPad,
+                )
+            }
+            if !fieldOverrides.isHidden("country", isB2C: isB2C) {
+                labelledField(
+                    label: fieldOverrides.labelFor("country", defaultLabel: "Country", isB2C: isB2C),
+                    required: false,
+                    text: $country,
+                )
+            }
         }
     }
 
@@ -1100,7 +1144,9 @@ struct LeadCreateView: View {
         // last_name defaults to required (matches leadCreateSchema).
         // Admin override can flip it optional — keep the empty-body guard
         // in line with whatever requirement the form rendered.
-        let lastNameRequired = fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
+        // A hidden Last name is never required (there is no field to fill in).
+        let lastNameRequired = !fieldOverrides.isHidden("last_name", isB2C: isB2C)
+            && fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
         let trimmedLast = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
         if lastNameRequired && trimmedLast.isEmpty { return [:] }
 
@@ -1140,6 +1186,16 @@ struct LeadCreateView: View {
             if !fieldOverrides.isHidden("company",  isB2C: false) { put("company",  company,  into: &body) }
             if !fieldOverrides.isHidden("title",    isB2C: false) { put("title",    title,    into: &body) }
             if !fieldOverrides.isHidden("industry", isB2C: false) { put("industry", industry, into: &body) }
+            // The address block shows on B2B when the client turned it on (`lead_form.address_on_b2b`) — it
+            // used to be dropped for every B2B lead. Hidden built-ins are not sent.
+            if fieldOverrides.leadForm.addressOnB2b {
+                if !fieldOverrides.isHidden("address_line1", isB2C: false) { put("address_line1", addressLine1, into: &body) }
+                if !fieldOverrides.isHidden("address_line2", isB2C: false) { put("address_line2", addressLine2, into: &body) }
+                if !fieldOverrides.isHidden("city",          isB2C: false) { put("city",          city,         into: &body) }
+                if !fieldOverrides.isHidden("state",         isB2C: false) { put("state",         state,        into: &body) }
+                if !fieldOverrides.isHidden("postal_code",   isB2C: false) { put("postal_code",   postalCode,   into: &body) }
+                if !fieldOverrides.isHidden("country",       isB2C: false) { put("country",       country,      into: &body) }
+            }
         } else {
             // Business fields persist on B2C only when an admin has
             // explicitly un-hidden them (so the value the rep typed saves).
@@ -1179,6 +1235,19 @@ struct LeadCreateView: View {
         var cf = customFields.jsonValues
         for (k, v) in productLines.jsonValues { cf[k] = v }
         if !cf.isEmpty { body["custom_fields"] = cf }
+        // Schedule visit: the server adds a planned meeting for the lead's owner (same request, so it is
+        // created even for a lead queued offline) and the activity reminder fires ~30 min before. The subject
+        // comes from the Description field when the client has one ("Dealer Visit — Shop").
+        if let v = visitAt {
+            var visit: [String: Any] = ["due_at": ScheduleVisitRules.iso(v)]
+            let who = company.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? [firstName, lastName].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " ")
+                : company
+            if let subject = ScheduleVisitRules.subject(description: customFields.text["visit_description"], who: who) {
+                visit["subject"] = subject
+            }
+            body["schedule_visit"] = visit
+        }
         // Steel-dealer site-visit affordance — backend reads this flag,
         // strips it before persisting the lead, and atomically spawns a
         // completed `site_visit` activity tied to the new lead. Guard mirrors

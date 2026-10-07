@@ -20,6 +20,9 @@ final class CustomFieldsModel: ObservableObject {
     // the lead form; left nil for contact/account/deal forms). Drives
     // `visibleDefs` so a field scoped via `appliesTo` shows only on its branch.
     @Published var segmentIsB2c: Bool? = nil
+    /// Active product names for "options from Products" dropdowns (names only — never prices). Loaded in
+    /// `load(entity:)` only when a def asks for them, so a form without such a field makes no extra call.
+    @Published var productNames: [String] = []
 
     /// Defs actually shown/enforced/submitted: `defs` narrowed to the current
     /// lead segment. A field with appliesTo "both"/nil always shows; one
@@ -58,6 +61,11 @@ final class CustomFieldsModel: ObservableObject {
                 return roles.contains(rid)
             }
             .sorted { ($0.position ?? 0) < ($1.position ?? 0) }
+        // "Options from Products" selects: fetch the active product names once.
+        if defs.contains(where: { $0.fieldType == "select" && CustomFieldOptions.isProductSource($0.options) }),
+           let products = try? await CRMService.shared.listProducts() {
+            productNames = CustomFieldOptions.productNames(products.map { (name: $0.name, isActive: $0.isActive != false) })
+        }
         // Fetch lookup target rows so each lookup field renders as a Picker
         // instead of a free-text input. Uses the generic /lookup/search
         // endpoint so any admin-configured target_table works (not just
@@ -175,12 +183,23 @@ struct CustomFieldsSection: View {
             Toggle(d.formLabel, isOn: Binding(
                 get: { model.bool[d.fieldKey] ?? false },
                 set: { model.bool[d.fieldKey] = $0 }))
+        case "select" where CustomFieldOptions.isSearchable(d.options):
+            // Long lists (crops) and product names get a type-ahead picker; the reserved option tokens
+            // are never shown as choices.
+            let fromProducts = CustomFieldOptions.isProductSource(d.options)
+            SearchableOptionRow(
+                label: d.formLabel,
+                value: model.text[d.fieldKey] ?? "",
+                options: fromProducts ? model.productNames : CustomFieldOptions.visible(d.options),
+                emptyHint: fromProducts ? "No products added yet." : "No options configured.",
+                onPick: { model.text[d.fieldKey] = $0 }
+            )
         case "select", "radio":
             Picker(d.formLabel, selection: Binding(
                 get: { model.text[d.fieldKey] ?? "" },
                 set: { model.text[d.fieldKey] = $0 })) {
                     Text("—").tag("")
-                    ForEach(d.options ?? [], id: \.self) { Text($0).tag($0) }
+                    ForEach(CustomFieldOptions.visible(d.options), id: \.self) { Text($0).tag($0) }
                 }
         case "lookup":
             // Live-search picker — the picker sheet calls /lookup/search
@@ -207,7 +226,7 @@ struct CustomFieldsSection: View {
         case "multiselect":
             VStack(alignment: .leading, spacing: 6) {
                 Text(d.formLabel).font(.caption).foregroundColor(.secondary)
-                ForEach(d.options ?? [], id: \.self) { opt in
+                ForEach(CustomFieldOptions.visible(d.options), id: \.self) { opt in
                     Toggle(opt, isOn: Binding(
                         get: { model.multi[d.fieldKey]?.contains(opt) ?? false },
                         set: { on in
@@ -307,6 +326,132 @@ struct CustomFieldsSection: View {
         case "email": return .emailAddress
         case "url": return .URL
         default: return .default
+        }
+    }
+}
+
+// MARK: - Searchable option picker
+
+/// One row of the form: shows the current pick (or "—") and opens a search sheet on tap. For long lists
+/// (crops) and for product names, where a plain Picker is unusable. A stored value that is no longer in
+/// `options` (a product renamed later) still shows, so editing a record never silently blanks it.
+private struct SearchableOptionRow: View {
+    let label: String
+    let value: String
+    let options: [String]
+    let emptyHint: String
+    /// Called with the picked option, or "" to clear.
+    let onPick: (String) -> Void
+
+    @State private var sheetOpen = false
+
+    var body: some View {
+        Button {
+            sheetOpen = true
+        } label: {
+            HStack {
+                Text(label)
+                    .foregroundColor(.primary)
+                Spacer()
+                Text(value.isEmpty ? "—" : value)
+                    .foregroundColor(value.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .sheet(isPresented: $sheetOpen) {
+            SearchableOptionSheet(
+                title: label,
+                options: options,
+                selected: value,
+                emptyHint: emptyHint,
+                onPick: { opt in
+                    onPick(opt)
+                    sheetOpen = false
+                },
+                onClear: {
+                    onPick("")
+                    sheetOpen = false
+                }
+            )
+        }
+    }
+}
+
+/// Bottom sheet listing the options with a search box that narrows them as the rep types.
+private struct SearchableOptionSheet: View {
+    let title: String
+    let options: [String]
+    let selected: String
+    let emptyHint: String
+    let onPick: (String) -> Void
+    let onClear: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var query: String = ""
+
+    private var filtered: [String] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return q.isEmpty ? options : options.filter { $0.lowercased().contains(q) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                    TextField("Search…", text: $query)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+                    if !query.isEmpty {
+                        Button {
+                            query = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                Divider()
+                if filtered.isEmpty {
+                    Spacer()
+                    Text(options.isEmpty ? emptyHint : "No matches for \"\(query)\".")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                } else {
+                    List {
+                        ForEach(filtered, id: \.self) { opt in
+                            Button {
+                                onPick(opt)
+                            } label: {
+                                HStack {
+                                    Text(opt).foregroundColor(.primary)
+                                    Spacer()
+                                    if opt == selected {
+                                        Image(systemName: "checkmark").foregroundColor(.accentColor)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Clear", role: .destructive) { onClear() }
+                        .disabled(selected.isEmpty)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
         }
     }
 }

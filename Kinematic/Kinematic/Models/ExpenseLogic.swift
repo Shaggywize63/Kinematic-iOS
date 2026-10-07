@@ -67,6 +67,10 @@ enum ExpenseLogic {
         case "over_claim_limit":        return "Over claim maximum"
         case "late_submission":         return "Submitted late"
         case "future_date":             return "Future date"
+        case "vehicle_missing":         return "Pick a vehicle"
+        case "odometer_missing":        return "Odometer reading needed"
+        case "odometer_invalid":        return "Odometer reading wrong"
+        case "odometer_photo_missing":  return "Odometer photo needed"
         default:
             let s = code.replacingOccurrences(of: "_", with: " ")
             return s.prefix(1).uppercased() + s.dropFirst()
@@ -108,6 +112,19 @@ enum ExpenseLogic {
         return currency == "INR" ? "₹\(n)" : "\(currency) \(n)"
     }
 
+    /// The vehicle a line was priced with, if the policy still lists it.
+    static func vehicleRate(_ id: String?, in vehicles: [ExpenseVehicleRate]?) -> ExpenseVehicleRate? {
+        guard let id = id, !id.isEmpty else { return nil }
+        return (vehicles ?? []).first { $0.id == id }
+    }
+
+    /// The policy's own label when the vehicle is still listed, else "two_wheeler" → "Two wheeler".
+    static func vehicleName(_ id: String?, in vehicles: [ExpenseVehicleRate]?) -> String {
+        if let v = vehicleRate(id, in: vehicles), !v.label.trimmingCharacters(in: .whitespaces).isEmpty { return v.label }
+        let t = (id ?? "").replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespaces)
+        return t.prefix(1).uppercased() + t.dropFirst()
+    }
+
     /// "120", "99.5" — no trailing zeros, for putting a number back into a text field.
     static func trimNumber(_ v: Double) -> String {
         if v == v.rounded() { return String(Int(v)) }
@@ -137,49 +154,99 @@ struct ExpenseLineFields: Equatable {
     var hadReceipt: Bool = false
     /// What OCR read from a receipt attached in this session.
     var ocr: ExpenseReceiptFields? = nil
+    // Travel allowance by vehicle — the vehicle id and the odometer readings before / after, each with the
+    // stored reference of its photo. Distance and amount come from these.
+    var vehicleType: String = ""
+    var odometerStart: String = ""
+    var odometerEnd: String = ""
+    var odoStartPhoto: String = ""
+    var odoEndPhoto: String = ""
+    /// The line already had that photo when the editor opened (so removing it must be sent as "").
+    var hadOdoStartPhoto: Bool = false
+    var hadOdoEndPhoto: Bool = false
 
     private static func positive(_ s: String) -> Double? {
         guard let v = Double(s.trimmingCharacters(in: .whitespaces)), v > 0 else { return nil }
         return v
     }
 
+    /// An odometer reading: any number from 0 up (a new bike can read 0).
+    private static func reading(_ s: String) -> Double? {
+        guard let v = Double(s.trimmingCharacters(in: .whitespaces)), v >= 0, v.isFinite else { return nil }
+        return v
+    }
+
+    /// Km travelled, or nil until both readings are in and in order.
+    var odometerKm: Double? {
+        guard let start = Self.reading(odometerStart), let end = Self.reading(odometerEnd), end >= start else { return nil }
+        return ((end - start) * 100).rounded() / 100
+    }
+
+    /// What is wrong with the pair of readings right now, or nil (an incomplete pair is not an error yet).
+    var odometerOrderProblem: String? {
+        guard let start = Self.reading(odometerStart), let end = Self.reading(odometerEnd) else { return nil }
+        return end < start ? "The reading after the trip is lower than the reading before it." : nil
+    }
+
     /// Anything typed or attached — an untouched blank line is simply dropped on save.
     var isFilled: Bool {
         !amount.isEmpty || !distanceKm.isEmpty || !merchant.isEmpty || !description.isEmpty ||
-            !receiptUrl.isEmpty || !fromLocation.isEmpty || !toLocation.isEmpty
+            !receiptUrl.isEmpty || !fromLocation.isEmpty || !toLocation.isEmpty ||
+            !vehicleType.isEmpty || !odometerStart.isEmpty || !odometerEnd.isEmpty ||
+            !odoStartPhoto.isEmpty || !odoEndPhoto.isEmpty
     }
 
     /// A filled line can be saved when it has an amount (or, for mileage, a distance).
-    var isValid: Bool {
-        if category == "mileage" { return Self.positive(amount) != nil || Self.positive(distanceKm) != nil }
+    var isValid: Bool { canSave(byVehicle: false) }
+
+    /// Where the policy pays mileage by vehicle (`byVehicle`) a draft only needs something to go on — the
+    /// vehicle or a reading; the rest is enforced when the claim is submitted and shown live by the policy check.
+    func canSave(byVehicle: Bool) -> Bool {
+        if category == "mileage" {
+            if byVehicle { return !vehicleType.isEmpty || Self.reading(odometerStart) != nil || Self.reading(odometerEnd) != nil }
+            return Self.positive(amount) != nil || Self.positive(distanceKm) != nil
+        }
         return Self.positive(amount) != nil
     }
 
-    /// The line's amount for the on-screen total; mileage with only a distance is priced at the policy rate.
-    func effectiveAmount(mileageRate: Double) -> Double {
+    /// The line's amount for the on-screen total. Mileage with only a distance is priced at the policy rate;
+    /// by vehicle it is the odometer distance × that vehicle's rate (`vehicles` non-empty).
+    func effectiveAmount(mileageRate: Double, vehicles: [ExpenseVehicleRate]? = nil) -> Double {
+        if category == "mileage", let vs = vehicles, !vs.isEmpty {
+            guard let km = odometerKm, let rate = ExpenseLogic.vehicleRate(vehicleType, in: vs)?.rate_per_km else { return 0 }
+            return (km * rate * 100).rounded() / 100
+        }
         if let a = Self.positive(amount) { return a }
         if category == "mileage", let km = Self.positive(distanceKm) { return (km * mileageRate * 100).rounded() / 100 }
         return 0
     }
 
-    func toInput() -> ExpenseClaimItemInput {
+    func toInput(byVehicle: Bool = false) -> ExpenseClaimItemInput {
         let mileage = category == "mileage"
+        let vehicleLine = mileage && byVehicle
         func nonEmpty(_ s: String) -> String? { let t = s.trimmingCharacters(in: .whitespaces); return t.isEmpty ? nil : t }
         // A receipt that is attached is sent; one that was removed is cleared with "" (nil is omitted,
-        // and an omitted receipt means "keep what is on file").
-        let receipt: String? = !receiptUrl.isEmpty ? receiptUrl : (hadReceipt ? "" : nil)
+        // and an omitted receipt means "keep what is on file"). Odometer photos follow the same rule.
+        func photo(_ url: String, had: Bool) -> String? { !url.isEmpty ? url : (had ? "" : nil) }
+        let receipt: String? = photo(receiptUrl, had: hadReceipt)
         return ExpenseClaimItemInput(
             id: id,
             category: category,
             item_date: itemDate.isEmpty ? nil : itemDate,
             description: nonEmpty(description),
-            amount: Self.positive(amount),
-            distance_km: mileage ? Self.positive(distanceKm) : nil,
+            // By vehicle the server works the distance and amount out from the readings; never send them.
+            amount: vehicleLine ? nil : Self.positive(amount),
+            distance_km: (mileage && !vehicleLine) ? Self.positive(distanceKm) : nil,
             from_location: mileage ? nonEmpty(fromLocation) : nil,
             to_location: mileage ? nonEmpty(toLocation) : nil,
             merchant: mileage ? nil : nonEmpty(merchant),
             receipt_url: receipt,
-            ai_extracted: ocr
+            ai_extracted: ocr,
+            vehicle_type: vehicleLine ? nonEmpty(vehicleType) : nil,
+            odometer_start: vehicleLine ? Self.reading(odometerStart) : nil,
+            odometer_end: vehicleLine ? Self.reading(odometerEnd) : nil,
+            odometer_start_photo_url: vehicleLine ? photo(odoStartPhoto, had: hadOdoStartPhoto) : nil,
+            odometer_end_photo_url: vehicleLine ? photo(odoEndPhoto, had: hadOdoEndPhoto) : nil
         )
     }
 
@@ -211,7 +278,28 @@ extension ExpenseClaimItem {
         f.distanceKm = distance_km.map { ExpenseLogic.trimNumber($0) } ?? ""
         f.receiptUrl = receipt_url ?? ""
         f.hadReceipt = !(receipt_url ?? "").isEmpty
+        f.vehicleType = vehicle_type ?? ""
+        f.odometerStart = odometer_start.map { ExpenseLogic.trimNumber($0) } ?? ""
+        f.odometerEnd = odometer_end.map { ExpenseLogic.trimNumber($0) } ?? ""
+        f.odoStartPhoto = odometer_start_photo_url ?? ""
+        f.odoEndPhoto = odometer_end_photo_url ?? ""
+        f.hadOdoStartPhoto = !(odometer_start_photo_url ?? "").isEmpty
+        f.hadOdoEndPhoto = !(odometer_end_photo_url ?? "").isEmpty
         return f
+    }
+
+    /// "Two-wheeler · Odometer 12340 → 12392", for read-only views; nil when the line carries no odometer data.
+    func odometerSummary(vehicles: [ExpenseVehicleRate]? = nil) -> String? {
+        guard category == "mileage",
+              !(vehicle_type ?? "").isEmpty || odometer_start != nil || odometer_end != nil else { return nil }
+        var parts: [String] = []
+        if let v = vehicle_type, !v.isEmpty { parts.append(ExpenseLogic.vehicleName(v, in: vehicles)) }
+        if odometer_start != nil || odometer_end != nil {
+            let a = odometer_start.map { ExpenseLogic.trimNumber($0) } ?? "—"
+            let b = odometer_end.map { ExpenseLogic.trimNumber($0) } ?? "—"
+            parts.append("Odometer \(a) → \(b)")
+        }
+        return parts.joined(separator: " · ")
     }
 }
 
