@@ -56,29 +56,18 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         completionHandler([.banner, .sound, .badge])
     }
 
-    /// Tap: stash the payload on KiniAppState (so a future build can deep-link
-    /// straight to the lead/deal) and open the in-app notification centre.
+    /// Tap: open the exact screen the notification is about. `NotificationRoute` maps the
+    /// payload's `kind` + entity ids to a screen (lead, deal, expense claim, leave, chat
+    /// thread, SOS, …) — the same table the in-app list uses. A push with no screen of its
+    /// own opens the in-app notification list, as every push did before.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        let info = response.notification.request.content.userInfo
-        var data: [String: String] = [:]
-        for (k, v) in info {
-            if let key = k as? String, key != "aps" { data[key] = String(describing: v) }
-        }
-        // Deep-link: the daily briefing carries data.kind == "crm_home", so a
-        // tap opens the lead-management Home (mission control). Every other
-        // notification opens the in-app notification centre, as before.
-        //
-        // An expense alert (to review / approved / rejected with a remark / reimbursed) carries
-        // data.claim_id, so a tap opens that claim — where the approver's remark is shown.
-        let claimId = data["claim_id"] ?? ""
-        let isExpense = (data["kind"] ?? "").hasPrefix("expense") && !claimId.isEmpty && ClientFeatures.showsExpenses
-        let route: SecondaryRoute = isExpense ? .expenses : ((data["kind"] == "crm_home") ? .crmHome : .notifications)
+        let data = NotificationRoute.payload(fromUserInfo: response.notification.request.content.userInfo)
+        let target = NotificationRoute.forPush(data) ?? .notificationList
         DispatchQueue.main.async {
             KiniAppState.shared.pendingPushData = data
-            if isExpense { KiniAppState.shared.pendingExpenseClaimId = claimId }
-            KiniAppState.shared.activeSecondaryRoute = ModalRoute(route: route)
+            KiniAppState.shared.open(target)
         }
         completionHandler()
     }

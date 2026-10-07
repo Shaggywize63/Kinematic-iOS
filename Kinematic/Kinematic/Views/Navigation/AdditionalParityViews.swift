@@ -163,9 +163,11 @@ struct AppNotification: Identifiable {
     let id: String
     let title: String
     let body: String
-    let is_read: Bool
+    var is_read: Bool
     let created_at: String?
     let type: String?
+    /// The row's `data` as a flat payload (`kind`, `lead_id`, …) — what `NotificationRoute` routes on.
+    var payload: [String: String] = [:]
 }
 
 @MainActor
@@ -221,7 +223,8 @@ class NotificationsViewModel: ObservableObject {
                     body:  (r["body"]  as? String) ?? "",
                     is_read: (r["is_read"] as? Bool) ?? false,
                     created_at: r["created_at"] as? String,
-                    type:       r["type"] as? String
+                    type:       r["type"] as? String,
+                    payload:    NotificationRoute.payload(fromJSON: (r["data"] as? [String: Any]) ?? [:])
                 )
             }
         } catch {
@@ -233,6 +236,13 @@ class NotificationsViewModel: ObservableObject {
         struct Body: Encodable { let all: Bool = true }
         _ = await ParityAPI.request(path: "/notifications/read", method: "PATCH", body: Body(), as: [String: String].self)
         await load()
+    }
+
+    /// Mark one notification read (optimistic) — called when a row is opened.
+    func markRead(id: String) async {
+        guard let i = items.firstIndex(where: { $0.id == id }), !items[i].is_read else { return }
+        items[i].is_read = true
+        _ = await ParityAPI.request(path: "/notifications/\(id)/read", method: "PATCH", as: [String: String].self)
     }
 
     func clearAll() async {
@@ -250,7 +260,35 @@ class NotificationsViewModel: ObservableObject {
 
 struct NotificationsView: View {
     @StateObject var vm = NotificationsViewModel()
+    @EnvironmentObject var appState: KiniAppState
     @State private var showClearConfirm = false
+
+    /// A row opens the same screen a tap on its push would (see `NotificationRoute`). A kind
+    /// with no screen of its own stays a plain row.
+    @ViewBuilder
+    private func rowView(_ n: AppNotification) -> some View {
+        if let target = NotificationRoute.resolve(n.payload) {
+            if target == .checkIn {
+                // Attendance is a tab, not a pushed screen: close this list and select it.
+                Button {
+                    Task { await vm.markRead(id: n.id) }
+                    appState.open(.checkIn)
+                } label: {
+                    NotificationRow(n: n)
+                }
+                .buttonStyle(.plain)
+            } else {
+                NavigationLink {
+                    NotificationDestinationView(target: target)
+                        .onAppear { Task { await vm.markRead(id: n.id) } }
+                } label: {
+                    NotificationRow(n: n)
+                }
+            }
+        } else {
+            NotificationRow(n: n)
+        }
+    }
     var body: some View {
         Group {
             if vm.isLoading && vm.items.isEmpty {
@@ -273,7 +311,7 @@ struct NotificationsView: View {
             } else {
                 List {
                     ForEach(vm.items) { n in
-                        NotificationRow(n: n)
+                        rowView(n)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     Task { await vm.deleteOne(id: n.id) }
