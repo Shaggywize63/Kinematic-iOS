@@ -2931,7 +2931,11 @@ class KinematicRepository {
         }
         let body = try? JSONEncoder().encode(Body(avatar_url: avatarUrl, name: name))
         do {
-            let res: ApiResponse<User>? = try await performRequest(
+            // Only `success` matters here. The reply is just the few columns
+            // that were selected back, so decode it leniently rather than as a
+            // full `User` (a missing field there would turn a saved change into
+            // a reported failure).
+            let res: ApiResponse<AnyCodableValue>? = try await performRequest(
                 "/auth/me",
                 method: "PATCH",
                 body: body
@@ -2943,17 +2947,62 @@ class KinematicRepository {
         }
     }
 
+    /// Remove the profile picture. `patchMyProfile(avatarUrl: nil)` can't do
+    /// this — the synthesized encoder OMITS nil optionals, so no key reaches the
+    /// server. Backend `updateMe` clears `avatar_url` only when the key is
+    /// present with an explicit JSON null (an empty string is ignored), so build
+    /// the body by hand.
+    func clearMyAvatar() async -> Bool {
+        guard !Session.sharedToken.isEmpty else { return false }
+        let payload: [String: Any] = ["avatar_url": NSNull()]
+        let body = try? JSONSerialization.data(withJSONObject: payload)
+        do {
+            let res: ApiResponse<AnyCodableValue>? = try await performRequest(
+                "/auth/me",
+                method: "PATCH",
+                body: body
+            )
+            return res?.success ?? false
+        } catch {
+            print("🚩 clearMyAvatar failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     /// Authenticated password change — powers the forced "set a new password
     /// on first login" screen. On success the backend clears
     /// must_change_password; the caller should refreshMe() to pick that up.
+    /// Sends ONLY `new_password`: the server accepts that solely while the
+    /// account is flagged must_change_password. A voluntary change from
+    /// Settings goes through `changePassword(current:new:)` instead.
     func changePassword(newPassword: String) async -> (Bool, String?) {
+        await postChangePassword(currentPassword: nil, newPassword: newPassword)
+    }
+
+    /// Voluntary password change (Settings → Change password). Sends
+    /// `current_password` too; the server verifies it before touching anything.
+    /// On failure the second tuple element is the server's own human-readable
+    /// reason (wrong current password, same password, policy rejection, too
+    /// many attempts) — show it as-is.
+    func changePassword(current: String, new newPassword: String) async -> (Bool, String?) {
+        guard !current.isEmpty else { return (false, "Enter your current password.") }
+        return await postChangePassword(currentPassword: current, newPassword: newPassword)
+    }
+
+    /// Shared POST /auth/change-password for both flows above. `currentPassword`
+    /// nil = the forced first-login body (`new_password` only). Failures are
+    /// HTTP 400 `{success:false, error:"…", code:"…"}` (429 TOO_MANY_REQUESTS
+    /// when retried too often); performRequest decodes those into the envelope,
+    /// so `res.error` carries the text the user should see.
+    private func postChangePassword(currentPassword: String?, newPassword: String) async -> (Bool, String?) {
         guard !Session.sharedToken.isEmpty else { return (false, "You're not signed in.") }
-        guard newPassword.count >= 6 else { return (false, "Password must be at least 6 characters.") }
-        struct Body: Encodable { let new_password: String }
+        if let problem = PasswordPolicy.newPasswordProblem(newPassword) { return (false, problem) }
         // Codable (not just Decodable): performRequest/ApiResponse are generic
         // over `T: Codable`, so the envelope's payload type must encode too.
         struct OK: Codable { let ok: Bool? }
-        let body = try? JSONEncoder().encode(Body(new_password: newPassword))
+        var payload: [String: String] = ["new_password": newPassword]
+        if let currentPassword = currentPassword { payload["current_password"] = currentPassword }
+        let body = try? JSONEncoder().encode(payload)
         do {
             let res: ApiResponse<OK>? = try await performRequest(
                 "/auth/change-password",
@@ -2961,9 +3010,14 @@ class KinematicRepository {
                 body: body
             )
             if res?.success == true { return (true, nil) }
+            if let message = res?.error, !message.isEmpty { return (false, message) }
             return (false, "Couldn't update your password. Try again.")
+        } catch let urlError as URLError {
+            return (false, urlError.localizedDescription)
         } catch {
-            return (false, error.localizedDescription)
+            // A body that isn't the usual envelope (e.g. a request-validation
+            // reply whose `details` is an array) — don't surface a DecodingError.
+            return (false, "Couldn't update your password. Try again.")
         }
     }
 

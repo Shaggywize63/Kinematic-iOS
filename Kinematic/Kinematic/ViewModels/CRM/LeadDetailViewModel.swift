@@ -355,6 +355,23 @@ final class LeadDetailViewModel: ObservableObject {
         successMessage = nil
     }
 
+    // MARK: - Activity completion (Mark complete / Reopen on the timeline)
+
+    /// "Mark complete" (`completed == true`) / "Reopen" (`false`) from an
+    /// activity card in the lead's timeline. PATCHes status + completed_at, then
+    /// flips that row in place from the response (the list keeps the row's
+    /// lead / contact / deal names, which the PATCH response doesn't carry). On
+    /// failure the row is left as it was and the server's message goes to
+    /// `errorMessage`, which the screen already shows in its "Error" alert.
+    func setActivityCompleted(_ activity: Activity, completed: Bool) async {
+        do {
+            let updated = try await api.setActivityCompleted(id: activity.id, completed: completed)
+            activities.applyCompletion(updated)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Activity logging (from "+ Log" + tap-to-call)
 
     /// ID of the activity created by the most recent tap-to-call. When the

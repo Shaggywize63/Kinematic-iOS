@@ -13,6 +13,8 @@ struct AccountDetailView: View {
     /// Set after a tap-to-call POSTs the minimal call row. Composer save
     /// PATCHes this id; cancel leaves the minimal record on the timeline.
     @State private var pendingCallActivityId: String?
+    /// Server message from a failed Mark complete / Reopen; drives the alert.
+    @State private var completionError: String?
 
     private let api = CRMService.shared
 
@@ -57,6 +59,7 @@ struct AccountDetailView: View {
         }
         .task { await loadRelations() }
         .refreshable { await loadRelations() }
+        .activityCompletionAlert($completionError)
         // Tell KINI which record is on screen so the chat answers in context.
         .onAppear {
             KiniContextHolder.shared.set(
@@ -133,7 +136,12 @@ struct AccountDetailView: View {
             if activities.isEmpty {
                 emptyRow("No activity logged", icon: "clock")
             } else {
-                ForEach(activities.prefix(10)) { a in ActivityTimelineItem(activity: a) }
+                ForEach(activities.prefix(10)) { a in
+                    ActivityTimelineItem(
+                        activity: a,
+                        onSetComplete: { act, done in await setActivityCompleted(act, completed: done) }
+                    )
+                }
             }
         }
     }
@@ -257,6 +265,20 @@ struct AccountDetailView: View {
         if !customFields.isEmpty { body["custom_fields"] = customFields }
         if let created = try? await api.createActivity(body) {
             activities.insert(created, at: 0)
+        }
+    }
+
+    /// "Mark complete" (`completed == true`) / "Reopen" (`false`) from an
+    /// activity card. PATCHes status + completed_at, then flips that row in
+    /// place from the response (keeping its lead / contact / deal names, which
+    /// the PATCH response doesn't carry). On failure the row is left as it was
+    /// and the server's message is shown in an alert.
+    private func setActivityCompleted(_ activity: Activity, completed: Bool) async {
+        do {
+            let updated = try await api.setActivityCompleted(id: activity.id, completed: completed)
+            activities.applyCompletion(updated)
+        } catch {
+            completionError = error.localizedDescription
         }
     }
 

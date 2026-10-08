@@ -22,6 +22,8 @@
 		AB000000000000000000002B /* NotificationRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001B /* NotificationRouteTests.swift */; };
 		AB000000000000000000002C /* LeadFormConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001C /* LeadFormConfigTests.swift */; };
 		AB000000000000000000002D /* ExpenseVehicleLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001D /* ExpenseVehicleLogicTests.swift */; };
+		AB000000000000000000002E /* ChangePasswordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001E /* ChangePasswordTests.swift */; };
+		AB0000000000000000000030 /* ActivityCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001F /* ActivityCompletionTests.swift */; };
 		D1D1D1D1D1D1D1D1D1D1000C /* KinematicWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -77,6 +79,8 @@
 		AB000000000000000000001B /* NotificationRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRouteTests.swift; sourceTree = "<group>"; };
 		AB000000000000000000001C /* LeadFormConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadFormConfigTests.swift; sourceTree = "<group>"; };
 		AB000000000000000000001D /* ExpenseVehicleLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseVehicleLogicTests.swift; sourceTree = "<group>"; };
+		AB000000000000000000001E /* ChangePasswordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangePasswordTests.swift; sourceTree = "<group>"; };
+		AB000000000000000000001F /* ActivityCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCompletionTests.swift; sourceTree = "<group>"; };
 		D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KinematicWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -179,6 +183,8 @@
 				AB000000000000000000001B /* NotificationRouteTests.swift */,
 				AB000000000000000000001C /* LeadFormConfigTests.swift */,
 				AB000000000000000000001D /* ExpenseVehicleLogicTests.swift */,
+				AB000000000000000000001E /* ChangePasswordTests.swift */,
+				AB000000000000000000001F /* ActivityCompletionTests.swift */,
 			);
 			path = KinematicTests;
 			sourceTree = "<group>";
@@ -346,6 +352,8 @@
 				AB000000000000000000002B /* NotificationRouteTests.swift in Sources */,
 				AB000000000000000000002C /* LeadFormConfigTests.swift in Sources */,
 				AB000000000000000000002D /* ExpenseVehicleLogicTests.swift in Sources */,
+				AB000000000000000000002E /* ChangePasswordTests.swift in Sources */,
+				AB0000000000000000000030 /* ActivityCompletionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

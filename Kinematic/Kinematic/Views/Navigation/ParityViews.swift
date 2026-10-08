@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Combine
 
 struct BroadcastHubView: View {
     @StateObject var vm = BroadcastHubViewModel()
@@ -340,6 +341,7 @@ struct ProfileView: View {
     @State private var uploading = false
     @State private var avatarOverride: String?   // optimistic URL until refreshMe lands
     @State private var uploadError: String?
+    @State private var showRemoveConfirm = false
 
     var body: some View {
         ScrollView {
@@ -347,6 +349,7 @@ struct ProfileView: View {
                 mainCard
                 weeklySummary
                 accountDetails
+                securityLinks
             }
             .padding(.top, 20)
         }
@@ -356,15 +359,29 @@ struct ProfileView: View {
             guard let newItem else { return }
             Task { await handlePick(item: newItem) }
         }
-        .alert("Upload failed",
+        .alert("Profile photo",
                isPresented: .init(get: { uploadError != nil },
                                   set: { if !$0 { uploadError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(uploadError ?? "") }
+        .confirmationDialog("Remove your profile photo?",
+                            isPresented: $showRemoveConfirm,
+                            titleVisibility: .visible) {
+            Button("Remove photo", role: .destructive) {
+                Task { await removePhoto() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
     }
     
     private var avatarUrlString: String? {
         avatarOverride ?? user?.avatarUrl
+    }
+
+    /// True when there is a photo to show (and therefore to remove). An empty
+    /// `avatarOverride` means "removed in this session".
+    private var hasPhoto: Bool {
+        !(avatarUrlString ?? "").isEmpty
     }
 
     private var mainCard: some View {
@@ -414,6 +431,17 @@ struct ProfileView: View {
                     .foregroundColor(.green)
                     .cornerRadius(20)
                     .padding(.top, 4)
+            }
+
+            if hasPhoto {
+                Button {
+                    showRemoveConfirm = true
+                } label: {
+                    Text("Remove photo")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.red)
+                }
+                .disabled(uploading)
             }
         }
         .frame(maxWidth: .infinity)
@@ -481,9 +509,13 @@ struct ProfileView: View {
         }
         uploading = true
         defer { uploading = false }
-        // KinematicRepository routes to /upload/<type>. We use the profile
-        // bucket so the URL is publicly reachable through the same Storage
-        // policy as activity / lead photos.
+        // uploadImage talks to URLSession directly, so unlike every other call it
+        // gets no silent 401 refresh-and-replay. A cheap authenticated GET first
+        // lets an expired access token be refreshed before the upload goes out.
+        await KinematicRepository.shared.refreshMe()
+        // KinematicRepository routes to /upload/<type>. The profile photo lands
+        // in the private avatars bucket; the stored URL is signed on display by
+        // SignedAsyncImage (GET /media/sign), exactly like the CRM More avatar.
         guard let url = await KinematicRepository.shared.uploadImage(image: image, type: "profile_photo"),
               !url.isEmpty else {
             uploadError = "Upload failed. Try again on a stronger network."
@@ -497,6 +529,31 @@ struct ProfileView: View {
         avatarOverride = url
         await KinematicRepository.shared.refreshMe()
         user = Session.currentUser
+        notifyAvatarChanged()
+    }
+
+    /// PATCH avatar_url null → refreshMe, mirroring the upload path. The
+    /// override is set to "" (not nil) so the initials show immediately even if
+    /// the refresh below can't reach the server.
+    private func removePhoto() async {
+        uploading = true
+        defer { uploading = false }
+        guard await KinematicRepository.shared.clearMyAvatar() else {
+            uploadError = "Couldn't remove your photo. Try again."
+            return
+        }
+        avatarOverride = ""
+        await KinematicRepository.shared.refreshMe()
+        user = Session.currentUser
+        notifyAvatarChanged()
+    }
+
+    /// `Session.currentUser` is plain UserDefaults — nothing observes it — so
+    /// other screens that draw the avatar (the CRM More tab row) only pick up
+    /// the change when something they observe publishes. Poke `KiniAppState`,
+    /// which they do observe, so they re-read it.
+    private func notifyAvatarChanged() {
+        appState.objectWillChange.send()
     }
 
     private var weeklySummary: some View {
@@ -524,6 +581,48 @@ struct ProfileView: View {
         }
         .background(Color.white.opacity(0.03))
         .cornerRadius(20)
+        .padding(.horizontal)
+    }
+
+    private var securityLinks: some View {
+        NavigationLink(destination: ChangePasswordView()) {
+            AccountLinkRow(icon: "key.fill",
+                           title: "Change password",
+                           subtitle: "Update the password you sign in with")
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 24)
+    }
+}
+
+/// Tappable card row (icon · title · subtitle · chevron) used as the label of
+/// the Account NavigationLinks on the Settings and Profile screens.
+struct AccountLinkRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(Brand.red)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(Color(uiColor: .label))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").foregroundColor(.gray).font(.caption)
+        }
+        .padding(16)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(20)
+        .contentShape(RoundedRectangle(cornerRadius: 20))
         .padding(.horizontal)
     }
 }
@@ -687,6 +786,23 @@ struct SettingsView: View {
                     .background(Color.white.opacity(0.03))
                     .cornerRadius(20)
                     .padding(.horizontal)
+
+                    // Profile photo + voluntary password change. Always present
+                    // (Account is one of the essential, non-hideable sections) so
+                    // every user can reach them whatever the side menu hides.
+                    NavigationLink(destination: ProfileView()) {
+                        AccountLinkRow(icon: "person.crop.circle.fill",
+                                       title: "Profile & photo",
+                                       subtitle: "Update your profile picture")
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink(destination: ChangePasswordView()) {
+                        AccountLinkRow(icon: "key.fill",
+                                       title: "Change password",
+                                       subtitle: "Update the password you sign in with")
+                    }
+                    .buttonStyle(.plain)
                 }
                 
                 // About section

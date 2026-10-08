@@ -188,12 +188,21 @@ struct CRMMoreMenu: View {
 
     var body: some View {
         List {
-            // Profile sits at the top so the user has a one-tap way into
-            // their account from the CRM module without having to bounce
-            // through the side menu (which CRM-only deployments don't show).
+            // Account sits at the top so the user has a one-tap way into
+            // their profile (photo) and password from the CRM module without
+            // having to bounce through the side menu (which CRM-only
+            // deployments don't show).
+            //
+            // Both rows are PUSHED onto this tab's NavigationStack rather than
+            // opened through `appState.activeSecondaryRoute`: that cover hangs
+            // off ContentView, and when this shell is itself a fullScreenCover
+            // (full-access clients: side menu → CRM) a second cover can't be
+            // presented on top of it (the same limitation StoreVisitView
+            // documents), so the Profile row couldn't open there. A push works
+            // in every shell. The NavigationLink supplies its own chevron.
             Section {
-                Button {
-                    appState.activeSecondaryRoute = ModalRoute(route: .profile)
+                NavigationLink {
+                    ProfileView()
                 } label: {
                     HStack(spacing: 12) {
                         profileAvatar
@@ -205,11 +214,11 @@ struct CRMMoreMenu: View {
                                     .replacingOccurrences(of: "_", with: " ").capitalized)
                                 .font(.caption).foregroundColor(.secondary)
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundColor(.secondary)
                     }
                 }
-                .foregroundColor(.primary)
+                NavigationLink {
+                    ChangePasswordView()
+                } label: { MoreRow(icon: "key.fill", title: "Change password", tint: Brand.red) }
             }
 
             // Activities — the rep's scheduled calls / meetings / tasks.

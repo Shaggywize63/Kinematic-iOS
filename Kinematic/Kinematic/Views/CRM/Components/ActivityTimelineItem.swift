@@ -10,6 +10,13 @@ private struct ShareImageItem: Identifiable { let id = UUID(); let image: UIImag
 /// shape (status, type, when, owner) on every row.
 struct ActivityTimelineItem: View {
     let activity: Activity
+    /// Optional "Mark complete" / "Reopen" handler: `(activity, completed)`,
+    /// where `completed` is the state to move to. When nil (every existing call
+    /// site) the card renders exactly as before; when set, a compact action
+    /// button appears at the bottom of the card (nothing for cancelled
+    /// activities). The host performs the PATCH and updates its list; the button
+    /// shows its own spinner until this returns.
+    var onSetComplete: ((Activity, Bool) async -> Void)? = nil
     @Environment(\.openURL) private var openURL
 
     @State private var shareBusy = false
@@ -149,6 +156,16 @@ struct ActivityTimelineItem: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(Brand.red)
                         .lineLimit(1)
+                }
+                .padding(.leading, 50)
+            }
+
+            // ── Completion action: Mark complete / Reopen ───────────────
+            // Only when the host opted in; hidden for cancelled activities.
+            if let handler = onSetComplete,
+               let kind = ActivityCompletion.action(for: activity) {
+                ActivityCompletionButton(kind: kind) {
+                    await handler(activity, kind.targetCompleted)
                 }
                 .padding(.leading, 50)
             }

@@ -1506,7 +1506,10 @@ struct LeadDetailView: View {
                 Text("No activity logged.").font(.caption).foregroundColor(.secondary)
             } else {
                 ForEach(vm.activities) { a in
-                    ActivityTimelineItem(activity: a)
+                    ActivityTimelineItem(
+                        activity: a,
+                        onSetComplete: { act, done in await vm.setActivityCompleted(act, completed: done) }
+                    )
                 }
             }
         }

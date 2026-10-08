@@ -20,6 +20,14 @@ struct MyDayView: View {
     @State private var briefing: String?
     @State private var briefingLoading = true
 
+    /// Activity id → completed, for rows the rep has just marked complete (true)
+    /// or reopened (false) on this screen. The my-day feed only lists open
+    /// activities, so a row stays on screen (flipped to Completed with a Reopen
+    /// button) until the next refresh drops it; cleared on every load.
+    @State private var completionOverrides: [String: Bool] = [:]
+    /// Server message from a failed Mark complete / Reopen; drives the alert.
+    @State private var completionError: String?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -42,7 +50,7 @@ struct MyDayView: View {
                             icon: "sun.max.fill",
                             tint: Brand.info
                         ) {
-                            ForEach(today) { MyDayActivityRow(activity: $0, tint: Brand.info) }
+                            ForEach(today) { activityRow($0, tint: Brand.info) }
                         }
                     }
 
@@ -52,12 +60,16 @@ struct MyDayView: View {
                             icon: "exclamationmark.triangle.fill",
                             tint: Brand.red
                         ) {
-                            ForEach(overdue) { MyDayActivityRow(activity: $0, tint: Brand.red) }
+                            ForEach(overdue) { activityRow($0, tint: Brand.red) }
                         }
                     }
 
                     if let upcoming = payload?.upcoming, !upcoming.isEmpty {
-                        UpcomingSection(activities: upcoming)
+                        UpcomingSection(
+                            activities: upcoming,
+                            completionAction: { completionAction(for: $0) },
+                            onSetComplete: { act, done in await setActivityCompleted(act, completed: done) }
+                        )
                     }
 
                     if let leads = payload?.leads, !leads.isEmpty {
@@ -81,6 +93,39 @@ struct MyDayView: View {
         .task {
             guard !didLoad else { return }
             await load()
+        }
+        .activityCompletionAlert($completionError)
+    }
+
+    // MARK: - Activity rows + completion
+
+    /// One agenda row with its Mark complete / Reopen action wired to this screen.
+    private func activityRow(_ a: MyDayActivity, tint: Color) -> some View {
+        MyDayActivityRow(
+            activity: a,
+            tint: tint,
+            completionAction: completionAction(for: a),
+            onSetComplete: { act, done in await setActivityCompleted(act, completed: done) }
+        )
+    }
+
+    /// What the row offers: a just-made change on this screen wins, otherwise
+    /// it follows the row's server status (nil for cancelled).
+    private func completionAction(for a: MyDayActivity) -> ActivityCompletion.Action? {
+        if let done = completionOverrides[a.id] { return done ? .reopen : .markComplete }
+        return ActivityCompletion.action(status: a.status, completedAt: nil)
+    }
+
+    /// PATCH status + completed_at; on success flip the row in place (no
+    /// refetch — a refetch would drop a completed row and lose its Reopen
+    /// button). On failure the row is left as it was and the server's message is
+    /// shown in an alert.
+    private func setActivityCompleted(_ a: MyDayActivity, completed: Bool) async {
+        do {
+            _ = try await CRMService.shared.setActivityCompleted(id: a.id, completed: completed)
+            completionOverrides[a.id] = completed
+        } catch {
+            completionError = error.localizedDescription
         }
     }
 
@@ -245,6 +290,7 @@ struct MyDayView: View {
         let result = await myDay
         await MainActor.run {
             self.payload = result
+            self.completionOverrides = [:]
             self.isLoading = false
             self.didLoad = true
         }
@@ -261,6 +307,9 @@ struct MyDayView: View {
 
 private struct UpcomingSection: View {
     let activities: [MyDayActivity]
+    /// Per-row Mark complete / Reopen wiring, supplied by `MyDayView`.
+    let completionAction: (MyDayActivity) -> ActivityCompletion.Action?
+    let onSetComplete: (MyDayActivity, Bool) async -> Void
     @State private var expanded = false
 
     var body: some View {
@@ -288,7 +337,14 @@ private struct UpcomingSection: View {
 
             if expanded {
                 VStack(spacing: 8) {
-                    ForEach(activities) { MyDayActivityRow(activity: $0, tint: Brand.caution) }
+                    ForEach(activities) {
+                        MyDayActivityRow(
+                            activity: $0,
+                            tint: Brand.caution,
+                            completionAction: completionAction($0),
+                            onSetComplete: onSetComplete
+                        )
+                    }
                 }
             }
         }
@@ -300,6 +356,11 @@ private struct UpcomingSection: View {
 private struct MyDayActivityRow: View {
     let activity: MyDayActivity
     let tint: Color
+    /// What the Mark complete / Reopen button offers (nil = no button, e.g.
+    /// cancelled). `.reopen` also means the row is currently completed.
+    var completionAction: ActivityCompletion.Action? = nil
+    /// `(activity, completed)` — the state to move to. Nil hides the button.
+    var onSetComplete: ((MyDayActivity, Bool) async -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -324,6 +385,9 @@ private struct MyDayActivityRow: View {
                     if let priority = activity.priority, !priority.isEmpty {
                         Chip(text: priority.capitalized, tint: priorityTint)
                     }
+                    if completionAction == .reopen {
+                        Chip(text: "Completed", tint: Brand.success)
+                    }
                     Spacer(minLength: 0)
                     if let due = dueLabel {
                         HStack(spacing: 3) {
@@ -333,6 +397,12 @@ private struct MyDayActivityRow: View {
                                 .font(.caption.weight(.medium))
                         }
                         .foregroundColor(.secondary)
+                    }
+                }
+
+                if let handler = onSetComplete, let kind = completionAction {
+                    ActivityCompletionButton(kind: kind) {
+                        await handler(activity, kind.targetCompleted)
                     }
                 }
             }

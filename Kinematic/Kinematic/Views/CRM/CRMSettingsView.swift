@@ -13,6 +13,12 @@ struct CRMSettingsView: View {
 
     var body: some View {
         List {
+            // Profile photo + voluntary password change (parity with the
+            // field-force SettingsView's Account section).
+            Section("Account") {
+                NavigationLink("Profile & photo") { ProfileView() }
+                NavigationLink("Change password") { ChangePasswordView() }
+            }
             Section("Appearance") {
                 themeRow("System", appTheme: .system, icon: "circle.lefthalf.filled")
                 themeRow("Light",  appTheme: .light,  icon: "sun.max.fill")

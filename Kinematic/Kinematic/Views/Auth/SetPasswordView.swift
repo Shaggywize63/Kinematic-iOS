@@ -44,9 +44,9 @@ struct SetPasswordView: View {
                         HStack {
                             Group {
                                 if showPassword {
-                                    TextField("Min 6 characters", text: $newPassword)
+                                    TextField(PasswordPolicy.placeholder, text: $newPassword)
                                 } else {
-                                    SecureField("Min 6 characters", text: $newPassword)
+                                    SecureField(PasswordPolicy.placeholder, text: $newPassword)
                                 }
                             }
                             .textInputAutocapitalization(.never)
@@ -60,6 +60,10 @@ struct SetPasswordView: View {
                         .padding(14)
                         .background(RoundedRectangle(cornerRadius: 12).fill(Brand.stone))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.rule, lineWidth: 1))
+                        // The server's rules, so a rejected password isn't a mystery.
+                        Text(PasswordPolicy.hint)
+                            .font(Brand.Body.regular(12))
+                            .foregroundColor(.secondary)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -128,8 +132,8 @@ struct SetPasswordView: View {
     }
 
     private func submit() async {
-        guard newPassword.count >= 6 else {
-            errorMessage = "Password must be at least 6 characters."
+        if let problem = PasswordPolicy.newPasswordProblem(newPassword) {
+            errorMessage = problem
             return
         }
         guard newPassword == confirmPassword else {
