@@ -16,6 +16,7 @@ network-free coverage of the model/logic layer.
 | `CRMClientScopeTests.swift` | UUID round-trip through `UserDefaults.standard`, legacy-string rejection |
 | `LeadsViewModelTests.swift` | `activeFilterCount`, `resetFilters`, `hasMore`, `CreateOutcome` (pure logic only) |
 | `ExpenseLogicTests.swift` | Expense rules: line validation, receipt scan fill + removal, the rejection-remark rule, partial-approval maths, claim history, approver gating, and decoding the server's claim / check / upload JSON |
+| `ChangePasswordTests.swift` | `PasswordPolicy`: the 10-character minimum (not 6), current-password-required, new-differs-from-current, confirmation match, UTF-16 length counting |
 | `TestSupport.swift` | Shared `Lead` fixtures |
 
 ## Running
