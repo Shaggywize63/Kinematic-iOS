@@ -132,7 +132,8 @@ enum NotificationRoute {
 
         case "crm_home": return .crmHome
         case "kini_cold_deals": return .deals
-        case "kini_no_checkin": return .checkIn
+        // The 10-hour "don't forget to check out" reminder lands on the same attendance screen.
+        case "kini_no_checkin", "checkout_reminder": return .checkIn
         case "low_stock", "stock_expiry": return .stock
 
         default:
