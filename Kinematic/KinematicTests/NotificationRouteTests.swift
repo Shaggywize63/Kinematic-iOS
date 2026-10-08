@@ -78,6 +78,7 @@ final class NotificationRouteTests: XCTestCase {
         XCTAssertEqual(route(["kind": "missed_visits", "plan_id": "P1"]), .routePlans)
         XCTAssertEqual(route(["kind": "sos", "sos_id": "S1"]), .sos)
         XCTAssertEqual(route(["kind": "kini_no_checkin"]), .checkIn)
+        XCTAssertEqual(route(["kind": "checkout_reminder", "attendance_id": "A1"]), .checkIn)
         XCTAssertEqual(route(["kind": "kini_cold_deals", "count": "3"]), .deals)
     }
 
