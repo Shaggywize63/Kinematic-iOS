@@ -402,6 +402,19 @@ final class CRMService {
     func updateActivity(id: String, body: [String: Any]) async throws -> Activity {
         try await sendJSON("/api/v1/crm/activities/\(id)", method: "PATCH", body: body)
     }
+    /// "Mark complete" / "Reopen" on an activity card. Complete sends
+    /// `status=completed` + `completed_at=<now>`; reopen sends `status=open` +
+    /// an explicit `completed_at: null` (see `ActivityCompletion.body`) — the
+    /// body goes through `sendJSON`'s `JSONSerialization`, so the `NSNull`
+    /// reaches the server as a real JSON null. The backend enforces row access
+    /// (assignee / owner / manager); its message is thrown as
+    /// `CRMServiceError.server` so callers can show `error.localizedDescription`.
+    /// The PATCH response is not enriched with lead/contact/deal names — merge it
+    /// with `Activity.applyingCompletion(from:)` / `[Activity].applyCompletion(_:)`
+    /// rather than swapping the row.
+    func setActivityCompleted(id: String, completed: Bool) async throws -> Activity {
+        try await updateActivity(id: id, body: ActivityCompletion.body(completed: completed, now: Date()))
+    }
     /// Soft-delete an activity. Used by the long-press → Delete flow
     /// on the activities timeline. Backend handles the deleted_at
     /// stamp; we just need to remove the row from the local cache

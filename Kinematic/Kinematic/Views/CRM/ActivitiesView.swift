@@ -157,6 +157,7 @@ struct ActivitiesView: View {
                 ActivityCalendar(
                     month: $calendarMonth,
                     activities: vm.filtered,
+                    onSetComplete: { act, done in await vm.setCompleted(act, completed: done) }
                 )
                 .padding(.horizontal)
                 .padding(.top, 6)
@@ -227,6 +228,8 @@ struct ActivitiesView: View {
         } message: {
             Text(deletingActivity?.subject ?? "This activity will be removed from the timeline.")
         }
+        // Mark complete / Reopen failure — shows the server's message.
+        .activityCompletionAlert($vm.completionError)
         .sheet(isPresented: $showDateSheet) {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Activity date") {
                 Task { await vm.refresh() }
@@ -246,10 +249,15 @@ struct ActivitiesView: View {
     /// The row itself stays read-only at-a-glance; tap opens the
     /// compose view pre-filled for editing, long-press surfaces a
     /// Delete action behind a confirmation alert so a misfire on a
-    /// crowded screen can't silently remove a logged call.
+    /// crowded screen can't silently remove a logged call. The card's own
+    /// Mark complete / Reopen button is a real Button, so tapping it does not
+    /// also open the editor via the row's tap gesture.
     @ViewBuilder
     private func activityRow(_ a: Activity) -> some View {
-        ActivityTimelineItem(activity: a)
+        ActivityTimelineItem(
+            activity: a,
+            onSetComplete: { act, done in await vm.setCompleted(act, completed: done) }
+        )
             .contentShape(Rectangle())
             .onTapGesture { editingActivity = a }
             .contextMenu {
@@ -273,6 +281,8 @@ struct ActivitiesView: View {
 struct ActivityCalendar: View {
     @Binding var month: Date
     let activities: [Activity]
+    /// Forwarded to each day card's activity row (Mark complete / Reopen).
+    var onSetComplete: ((Activity, Bool) async -> Void)? = nil
 
     private var cal: Calendar { Calendar(identifier: .gregorian) }
 
@@ -361,7 +371,7 @@ struct ActivityCalendar: View {
                 ScrollView {
                     VStack(spacing: 10) {
                         ForEach(populated, id: \.0) { day, list in
-                            DayCard(day: day, activities: list)
+                            DayCard(day: day, activities: list, onSetComplete: onSetComplete)
                         }
                     }
                     .padding(.bottom, 24)
@@ -383,6 +393,7 @@ struct ActivityCalendar: View {
 private struct DayCard: View {
     let day: Date
     let activities: [Activity]
+    var onSetComplete: ((Activity, Bool) async -> Void)? = nil
 
     private var cal: Calendar { Calendar(identifier: .gregorian) }
     private var isToday: Bool { cal.isDateInToday(day) }
@@ -411,7 +422,7 @@ private struct DayCard: View {
             }
 
             ForEach(activities) { a in
-                ActivityTimelineItem(activity: a)
+                ActivityTimelineItem(activity: a, onSetComplete: onSetComplete)
             }
         }
         .padding(12)

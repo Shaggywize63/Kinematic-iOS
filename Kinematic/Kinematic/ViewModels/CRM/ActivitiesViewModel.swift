@@ -15,6 +15,11 @@ final class ActivitiesViewModel: ObservableObject {
     @Published var leadFilterLabel: String? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// Set when a Mark complete / Reopen PATCH fails (the server's own message,
+    /// e.g. the caller may not edit that activity). Shown by an alert in
+    /// `ActivitiesView`; kept separate from `errorMessage`, which that screen
+    /// does not surface.
+    @Published var completionError: String?
 
     private let api = CRMService.shared
     private let location = CRMLocationStore.shared
@@ -178,6 +183,21 @@ final class ActivitiesViewModel: ObservableObject {
             }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// "Mark complete" (`completed == true`) / "Reopen" (`false`) from the
+    /// activity card. PATCHes status + completed_at, then flips that row's
+    /// completion state in place from the response — the list keeps the row's
+    /// lead / contact / deal names, which the PATCH response doesn't carry — so
+    /// the card updates without a refetch. On failure the row is left as it was
+    /// and the server's message is surfaced via `completionError`.
+    func setCompleted(_ activity: Activity, completed: Bool) async {
+        do {
+            let updated = try await api.setActivityCompleted(id: activity.id, completed: completed)
+            activities.applyCompletion(updated)
+        } catch {
+            completionError = error.localizedDescription
         }
     }
 
