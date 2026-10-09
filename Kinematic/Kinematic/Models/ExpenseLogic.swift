@@ -88,6 +88,29 @@ enum ExpenseLogic {
     /// Mileage is priced by vehicle from odometer readings.
     static func paysByVehicle(_ rules: ExpensePolicyRules?) -> Bool { !(rules?.vehicle_rates ?? []).isEmpty }
 
+    /// The vehicles the Vehicle picker offers: those of the policy that governs the signed-in person, nothing else.
+    /// GET /expenses/policy already answers with that person's own policy (the one naming them, else their role's,
+    /// else everyone's), so its `vehicle_rates` ARE their vehicles; no built-in or other policy's list is mixed in.
+    /// In the policy's order; a blank or repeated id is dropped (it could not be told apart in the picker).
+    static func policyVehicles(_ rules: ExpensePolicyRules?) -> [ExpenseVehicleRate] {
+        var seen = Set<String>()
+        var out: [ExpenseVehicleRate] = []
+        for v in rules?.vehicle_rates ?? [] {
+            let id = v.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            if id.isEmpty || seen.contains(v.id) { continue }
+            seen.insert(v.id)
+            out.append(v)
+        }
+        return out
+    }
+
+    /// The vehicle a mileage line starts with: the policy's ONLY vehicle. Nil when the policy lists none or
+    /// several — then the person chooses. (The server also falls back to a sole vehicle when a line has none.)
+    static func soleVehicleId(_ vehicles: [ExpenseVehicleRate]?) -> String? {
+        guard let list = vehicles, list.count == 1 else { return nil }
+        return list[0].id
+    }
+
     /// Claims the owner may still change: before approval, or being fixed after a rejection.
     static func isEditable(_ status: String?) -> Bool {
         ["draft", "submitted", "rejected"].contains((status ?? "draft").lowercased())
@@ -307,6 +330,31 @@ struct ExpenseLineFields: Equatable {
             !receiptUrl.isEmpty || !fromLocation.isEmpty || !toLocation.isEmpty ||
             !vehicleType.isEmpty || !odometerStart.isEmpty || !odometerEnd.isEmpty ||
             !odoStartPhoto.isEmpty || !odoEndPhoto.isEmpty
+    }
+
+    /// A mileage line that has no vehicle yet — the one the policy's only vehicle is pre-selected on.
+    var lacksVehicle: Bool {
+        category == "mileage" && vehicleType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// This line with the policy's only vehicle (`sole`, see `ExpenseLogic.soleVehicleId`) pre-selected. Only a
+    /// mileage line with no vehicle takes it — a vehicle the line already has is never replaced, and other
+    /// categories are left alone. Nil / blank `sole` (no policy yet, none or several vehicles) changes nothing.
+    func withSoleVehicle(_ sole: String?) -> ExpenseLineFields {
+        guard let sole = sole, !sole.isEmpty, lacksVehicle else { return self }
+        var out = self
+        out.vehicleType = sole
+        return out
+    }
+
+    /// `isFilled`, except that on a NEW line (not yet saved on the claim) the pre-selected sole vehicle alone is
+    /// not something the person entered: an untouched form still says "Add at least one expense", is dropped on
+    /// save and is not sent to the live policy check. A saved line always counts what it has.
+    func isFilledIgnoring(soleVehicle sole: String?) -> Bool {
+        guard id == nil, let sole = sole, !sole.isEmpty, vehicleType == sole else { return isFilled }
+        var rest = self
+        rest.vehicleType = ""
+        return rest.isFilled
     }
 
     /// A filled line can be saved when it has an amount (or, for mileage, a distance).

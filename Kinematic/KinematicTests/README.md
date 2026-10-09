@@ -23,6 +23,7 @@ network-free coverage of the model/logic layer.
 | `ChangePasswordTests.swift` | `PasswordPolicy`: the 10-character minimum (not 6), current-password-required, new-differs-from-current, confirmation match, UTF-16 length counting |
 | `ActivityCompletionTests.swift` | `ActivityCompletion`: the Mark complete / Reopen PATCH body (status + ISO-8601 `completed_at`, vs. status `open` + an explicit JSON `null`), which rows offer which action (nothing for cancelled), and merging the server's PATCH response into the list without losing the lead / contact / deal names it doesn't carry |
 | `LeadOwnerRulesTests.swift` | `lead_form.owner_assignment == "admin_only"`: parsing the flag (only the exact value restricts), who counts as an admin (admin / super_admin / main_admin / org_admin / sub_admin / client, but never a data scope of "own"), that a client without the flag is unchanged, that a non-admin's owner controls wait for the settings to load, and the model's `mayChooseLeadOwner` / `leadOwnerLocked` with the owner field override left alone |
+| `ExpenseSoleVehicleTests.swift` | The expense Vehicle picker lists only the governing policy's vehicles (blank / repeated ids dropped); a policy with exactly one vehicle pre-selects it on mileage lines (also when the policy arrives late) without replacing a chosen vehicle, 2+ vehicles give no default, and an untouched line holding only the default is still treated as blank |
 | `TestSupport.swift` | Shared `Lead` fixtures |
 
 ## Running
