@@ -1017,6 +1017,9 @@ final class CRMService {
         guard let url = components?.url else { throw CRMServiceError.server("Bad URL") }
         var req = URLRequest(url: url)
         req.httpMethod = method
+        // Always ask the server. The shared URL cache keys an entry by URL alone (not by who is signed in), so a
+        // stored or revalidated entry — the settings, the lists — must never answer for the current person.
+        req.cachePolicy = .reloadIgnoringLocalCacheData
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let orgId { req.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }

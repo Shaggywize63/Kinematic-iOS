@@ -126,6 +126,54 @@ enum LeadOwnerRules {
         if isAdmin(role: role, dataScope: dataScope) { return true }
         return didLoad && !ownerAdminOnly
     }
+
+    /// Whether the client reserves owner assignment for admins, once the settings load has finished — fail closed.
+    ///
+    /// - `loaded`: the flag the settings reply carried (`false` when the reply had no `owner_assignment`), or nil when
+    ///   the load FAILED: the request errored, the reply could not be read, or it had no `config` object at all.
+    /// - `cached`: the value this user last loaded successfully for this client (see `OwnerAssignmentCache`), if any.
+    ///
+    /// A load that succeeded decides by itself, exactly as it always did (no flag = the picker as before). A load that
+    /// failed must never turn the restriction off just because nothing came back: it keeps the last-known value, and
+    /// with none the restriction is ON for a non-admin (their picker stays hidden). An admin is never restricted by a
+    /// failure — `isAdmin` already wins in `isLocked` / `mayChooseOwner`, this just keeps the flag honest for them.
+    static func effectiveAdminOnly(loaded: Bool?, cached: Bool?, isAdmin: Bool) -> Bool {
+        if let loaded { return loaded }
+        if let cached { return cached }
+        return !isAdmin
+    }
+}
+
+// MARK: - Last-known owner-assignment setting
+
+/// The `owner_assignment` value a user last loaded SUCCESSFULLY for a client, remembered so a later failed settings
+/// load (offline, timeout, 5xx, an unreadable reply) keeps the restriction the client really has instead of
+/// forgetting it. Keyed by user id + client, so one person's value never serves another, and wiped at sign-out
+/// (`SessionCleanup`). Pure Foundation; the `UserDefaults` is a parameter so tests use their own suite.
+enum OwnerAssignmentCache {
+    /// Every key starts with this — `SessionCleanup` removes all of them at sign-out.
+    static let keyPrefix = "lead_owner_admin_only."
+
+    /// "lead_owner_admin_only.<user id>.<client id>"; nil without a user id (nothing to key it by).
+    /// A user with no client of their own passes the client they picked, else "-".
+    static func key(userId: String?, clientId: String?) -> String? {
+        let u = (userId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if u.isEmpty { return nil }
+        let c = (clientId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return keyPrefix + u + "." + (c.isEmpty ? "-" : c)
+    }
+
+    /// The remembered value; nil when there is none (never loaded, or wiped at sign-out).
+    static func read(key: String?, in defaults: UserDefaults = .standard) -> Bool? {
+        guard let key else { return nil }
+        return defaults.object(forKey: key) as? Bool
+    }
+
+    /// Remember a value from a successful load.
+    static func write(_ value: Bool, key: String?, in defaults: UserDefaults = .standard) {
+        guard let key else { return }
+        defaults.set(value, forKey: key)
+    }
 }
 
 // MARK: - Custom-field option tokens

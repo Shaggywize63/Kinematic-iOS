@@ -27,13 +27,20 @@ final class ExpensesViewModel: ObservableObject {
     // ── My claims ────────────────────────────────────────────────────────────
     func loadClaims() async {
         loadError = nil
-        if policy == nil { policy = try? await api.policy() }
+        // The policy is asked for every time, alongside the claims — not only the first time. This model lives as
+        // long as the Expenses tab does (the whole app session), and the policy it holds decides which vehicles the
+        // editor offers, so one fetched before the server's policy was changed must not stay on screen.
+        async let fetchedPolicy = try? api.policy()
         do { claims = try await api.myClaims() }
         catch { loadError = error.localizedDescription }
+        policy = ExpenseLogic.policyAfterRefresh(current: policy, fetched: await fetchedPolicy)
         didLoad = true
     }
 
-    func loadPolicy() async { if policy == nil { policy = try? await api.policy() } }
+    /// Ask the server for the policy again (kept as it was if that fails). Screens call it when they open.
+    func loadPolicy() async {
+        policy = ExpenseLogic.policyAfterRefresh(current: policy, fetched: try? await api.policy())
+    }
 
     /// Fetch the odometer history. Without `force` it is fetched once and reused (the editor's "last reading" hint);
     /// the history screen forces a fresh copy. A failure is kept in `odometerError` and never blocks the editor.

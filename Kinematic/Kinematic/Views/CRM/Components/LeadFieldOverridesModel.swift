@@ -93,15 +93,43 @@ final class LeadFieldOverridesModel: ObservableObject {
     /// Pull the per-tenant overrides + business_type once. Routes through
     /// CRMService.getCRMSettings() so we reuse the project's auth +
     /// transport instead of poking at private state on the service.
-    func load() async {
+    ///
+    /// `fetch` and `defaults` are test seams (production passes neither): the settings request, and where the
+    /// last-known owner-assignment value is remembered.
+    func load(
+        using fetch: () async -> CRMService.CRMSettingsRaw? = { await CRMService.shared.getCRMSettings() },
+        defaults: UserDefaults = .standard
+    ) async {
+        // Start from scratch: nothing from an earlier load (or an earlier user of this object) may linger. `didLoad`
+        // goes back to false with it, so a non-admin's owner controls wait for this load like they wait for the first.
+        leadForm = LeadFormConfig()
+        didLoad = false
+        // Who is asking, fixed BEFORE the request: the answer belongs to this user and client, even if the session
+        // changes while it is in flight.
+        let me = Session.currentUser
+        let cacheKey = OwnerAssignmentCache.key(userId: me?.id, clientId: me?.clientId ?? CRMClientScope.selectedClientId())
+        let isAdmin = LeadOwnerRules.isAdmin(role: me?.role, dataScope: me?.orgRoleDataScope)
+        // The `owner_assignment` flag this load carried; stays nil when the load fails (see below).
+        var loadedAdminOnly: Bool? = nil
         // Always flip didLoad=true at the end so the form un-blocks
         // even if the tenant has no overrides configured.
-        defer { didLoad = true }
-        guard let raw = await CRMService.shared.getCRMSettings() else { return }
+        defer {
+            // Fail closed: a load that failed (no reply, or a reply without the config object) keeps the value this
+            // user last loaded successfully, and with none a non-admin is treated as restricted. A load that
+            // succeeded decides by itself — and is remembered for next time.
+            if let loadedAdminOnly { OwnerAssignmentCache.write(loadedAdminOnly, key: cacheKey, in: defaults) }
+            leadForm.ownerAdminOnly = LeadOwnerRules.effectiveAdminOnly(
+                loaded: loadedAdminOnly,
+                cached: OwnerAssignmentCache.read(key: cacheKey, in: defaults),
+                isAdmin: isAdmin)
+            didLoad = true
+        }
+        guard let raw = await fetch() else { return }
         if let bt = raw.business_type { businessType = bt }
         guard case let .object(cfg)? = raw.config else { return }
         // Sibling key of `field_overrides`; parsed first so it applies even when no overrides are configured.
         leadForm = LeadFormConfig.parse(cfg)
+        loadedAdminOnly = leadForm.ownerAdminOnly
         // Custom lead statuses — sibling key of `field_overrides`. Parsed
         // independently so a tenant can configure one without the other;
         // stays empty (→ hardcoded fallback) when the key is absent/empty.

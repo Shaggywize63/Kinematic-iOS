@@ -363,7 +363,7 @@ class KiniAppState: ObservableObject {
         self.theme = AppTheme(rawValue: savedTheme) ?? .system
         
         // --- PERFORMANCE: Immediate Cache Restoration ---
-        if let cachedHome = KinematicRepository.shared.loadCached(MobileHomeResponse.self, forKey: "cached_mobile_home_payload") {
+        if let cachedHome = KinematicRepository.shared.loadCached(MobileHomeResponse.self, forKey: SessionCleanup.mobileHomeCacheKey) {
             self.today = cachedHome.today
             self.summary = cachedHome.summary
             self.quote = cachedHome.quote
@@ -387,6 +387,8 @@ class KiniAppState: ObservableObject {
     
     func logout() {
         Session.logout()
+        // Session.logout() removed the persisted location pick; this empties the live store the filter bar reads.
+        CRMLocationStore.shared.clear()
         OutletCache.shared.invalidateAll()
         self.isAuthenticated = false
         self.selectedTab = 0
@@ -1940,6 +1942,11 @@ class Session: ObservableObject {
         project = nil
         currentUser = nil
         isDemoMode = false
+        // Everything else that is this person's: the picked client, the location filter, the cached Home / Route
+        // payloads, the remembered owner-assignment setting — and the shared URL cache, whose entries are keyed by
+        // URL, not by who asked. The next sign-in on this phone starts from nothing of theirs.
+        SessionCleanup.clearPersistedUserState()
+        SessionCleanup.clearTransientCaches()
     }
 }
 
@@ -2101,8 +2108,9 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
 class KinematicRepository {
     static let shared = KinematicRepository()
     private let baseURL = "https://api.kinematicapp.com/api/v1"
-    private let cachedMobileHomeKey = "cached_mobile_home_payload"
-    private let cachedRoutePlanKey = "cached_route_plan_payload"
+    // Single source of truth for the key names: SessionCleanup wipes both at sign-out.
+    private let cachedMobileHomeKey = SessionCleanup.mobileHomeCacheKey
+    private let cachedRoutePlanKey = SessionCleanup.routePlanCacheKey
     
     func logVisit(outletId: String, lat: Double, lng: Double) async -> String? {
         let payload: [String: Any] = [
