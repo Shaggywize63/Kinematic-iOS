@@ -489,8 +489,10 @@ struct LeadCreateView: View {
                     // Consent toggles only render when the admin hasn't
                     // hidden BOTH. We drop the header too — an empty
                     // "Consent" section reads as a bug, not a feature.
-                    let showMarketing = !fieldOverrides.isHidden("marketing_consent", isB2C: true)
-                    let showWhatsapp  = !fieldOverrides.isHidden("whatsapp_consent", isB2C: true)
+                    // Deferred until the override map has loaded, like the rows above, so a toggle the admin
+                    // hid never flashes while /crm/settings is in flight.
+                    let showMarketing = fieldOverrides.didLoad && !fieldOverrides.isHidden("marketing_consent", isB2C: true)
+                    let showWhatsapp  = fieldOverrides.didLoad && !fieldOverrides.isHidden("whatsapp_consent", isB2C: true)
                     if showMarketing || showWhatsapp {
                         Section("Consent") {
                             if showMarketing {
@@ -503,12 +505,15 @@ struct LeadCreateView: View {
                     }
                 }
 
-                // DPDP §5/§6 — at-collection notice + primary consent (B2B + B2C).
-                Section("Data Collection & Consent") {
-                    Text("We collect this person’s name, contact details and the information entered here to create and manage their record and to contact them, as described in our Privacy Notice. They may access, correct or erase their data, or raise a grievance, at any time.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Toggle("The individual has been shown this notice and consents to the collection and processing of their personal data.", isOn: $dataConsent)
+                // DPDP §5/§6 — at-collection notice + primary consent (B2B + B2C). A built-in field like any other:
+                // the admin can hide or relabel it (`data_consent`), so it waits for the overrides to load.
+                if fieldOverrides.didLoad && !fieldOverrides.isHidden("data_consent", isB2C: isB2C) {
+                    Section(fieldOverrides.labelFor("data_consent", defaultLabel: "Data Collection & Consent", isB2C: isB2C)) {
+                        Text("We collect this person’s name, contact details and the information entered here to create and manage their record and to contact them, as described in our Privacy Notice. They may access, correct or erase their data, or raise a grievance, at any time.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Toggle("The individual has been shown this notice and consents to the collection and processing of their personal data.", isOn: $dataConsent)
+                    }
                 }
 
                 // Admin-defined custom fields for this user's hierarchy role.
@@ -1256,13 +1261,17 @@ struct LeadCreateView: View {
         if ClientFeatures.isTataTiscon && logAsSiteVisit {
             body["_auto_log_site_visit"] = true
         }
-        // DPDP §6 — capture consent at collection. Always recorded in the
-        // crm_consents ledger; the backend enforces any per-tenant hard gate.
-        body["_consent"] = [
-            "consented": dataConsent,
-            "method": "in_app",
-            "notice_version": "2026-07-22",
-        ]
+        // DPDP §6 — capture consent at collection. Recorded in the crm_consents
+        // ledger; the backend enforces any per-tenant hard gate. Not sent when the
+        // admin hid the Data Collection & Consent block (`data_consent`) — there is
+        // no toggle on screen, so there is nothing for the rep to have consented to.
+        if !fieldOverrides.isHidden("data_consent", isB2C: isB2C) {
+            body["_consent"] = [
+                "consented": dataConsent,
+                "method": "in_app",
+                "notice_version": "2026-07-22",
+            ]
+        }
         return body
     }
 }

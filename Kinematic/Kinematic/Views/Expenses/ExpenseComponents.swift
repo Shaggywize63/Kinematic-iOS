@@ -205,10 +205,12 @@ struct ExpenseRejectionBanner: View {
 
 struct ExpenseTimelineView: View {
     let claim: ExpenseClaim
+    /// The policy's `category_labels`, so a renamed category reads the same in the history.
+    var categoryLabels: [String: String]? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(expenseTimeline(claim).enumerated()), id: \.offset) { _, step in
+            ForEach(Array(expenseTimeline(claim, categoryLabels: categoryLabels).enumerated()), id: \.offset) { _, step in
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: icon(step.tone)).foregroundColor(color(step.tone)).frame(width: 18).padding(.top, 1)
                     VStack(alignment: .leading, spacing: 3) {
@@ -241,14 +243,18 @@ struct ExpenseTimelineView: View {
 struct ExpenseLineView: View {
     let item: ExpenseClaimItem
     let currency: String
+    /// The policy's `category_labels` (e.g. mileage → "Travel"); nil shows the built-in names.
+    var categoryLabels: [String: String]? = nil
     var onViewReceipt: (String) -> Void
 
     private var rejected: Bool { item.decision == "rejected" }
     private var detail: String {
         if item.category == "mileage" {
-            var s = "\(item.from_location ?? "—") → \(item.to_location ?? "—")"
-            if let km = item.distance_km { s += " · \(ExpenseLogic.trimNumber(km)) km" }
-            return s
+            // The route only when at least one end was recorded; a line without one prints no "— → —".
+            var parts: [String] = []
+            if let route = item.routeText { parts.append(route) }
+            if let km = item.distance_km { parts.append("\(ExpenseLogic.trimNumber(km)) km") }
+            return parts.joined(separator: " · ")
         }
         return [item.merchant, item.description].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
@@ -258,7 +264,7 @@ struct ExpenseLineView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(ExpenseLogic.categoryLabel(item.category)).font(.subheadline).bold()
+                        Text(ExpenseLogic.categoryLabel(item.category, labels: categoryLabels)).font(.subheadline).bold()
                         Text(item.item_date ?? "").font(.caption).foregroundColor(.secondary)
                     }
                     if !detail.isEmpty { Text(detail).font(.subheadline).foregroundColor(.secondary) }

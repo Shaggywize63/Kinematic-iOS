@@ -16,6 +16,11 @@ final class ExpensesViewModel: ObservableObject {
     @Published var loadError: String?
     /// One-off message, success or failure.
     @Published var notice: String?
+    /// The person's own odometer readings, newest first (policies that pay mileage by vehicle).
+    @Published var odometerHistory: [ExpenseOdometerEntry] = []
+    /// True once the history has been fetched successfully (a failed fetch leaves it false so the next try retries).
+    @Published var odometerLoaded = false
+    @Published var odometerError: String?
 
     private let api = ExpensesAPI.shared
 
@@ -29,6 +34,19 @@ final class ExpensesViewModel: ObservableObject {
     }
 
     func loadPolicy() async { if policy == nil { policy = try? await api.policy() } }
+
+    /// Fetch the odometer history. Without `force` it is fetched once and reused (the editor's "last reading" hint);
+    /// the history screen forces a fresh copy. A failure is kept in `odometerError` and never blocks the editor.
+    func loadOdometerHistory(force: Bool = false) async {
+        if odometerLoaded && !force { return }
+        do {
+            odometerHistory = try await api.odometerHistory()
+            odometerError = nil
+            odometerLoaded = true
+        } catch {
+            odometerError = error.localizedDescription
+        }
+    }
 
     func claim(id: String) async throws -> ExpenseClaim { try await api.claim(id: id) }
 
@@ -57,12 +75,13 @@ final class ExpensesViewModel: ObservableObject {
             if let existing = claimId { _ = try await api.updateClaim(id: existing, input) }
             else { id = try await api.createClaim(input).id }
         } catch { return SaveOutcome(savedId: claimId, submitted: false, error: error.localizedDescription) }
+        odometerLoaded = false     // the lines just saved change the history (and the "last reading")
         guard submit, let savedId = id else { return SaveOutcome(savedId: id, submitted: false, error: nil) }
         do { _ = try await api.submit(id: savedId); return SaveOutcome(savedId: savedId, submitted: true, error: nil) }
         catch { return SaveOutcome(savedId: savedId, submitted: false, error: error.localizedDescription) }
     }
 
-    func uploadReceipt(data: Data, filename: String, mime: String, scan: Bool = true) async -> (ExpenseUploadedReceipt?, String?) {
+    func uploadReceipt(data: Data, filename: String, mime: String, scan: ExpenseUploadScan = .receipt) async -> (ExpenseUploadedReceipt?, String?) {
         do { return (try await api.uploadReceipt(data: data, filename: filename, mime: mime, scan: scan), nil) }
         catch { return (nil, error.localizedDescription) }
     }
@@ -176,6 +195,11 @@ struct ExpenseClaimsView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack {
+                    // Odometer history: only where the policy pays mileage by vehicle from odometer readings.
+                    if ExpenseLogic.paysByVehicle(vm.policy?.rules) {
+                        NavigationLink { OdometerHistoryView(vm: vm) } label: { Image(systemName: "speedometer") }
+                            .accessibilityLabel("Odometer history")
+                    }
                     if canApprove {
                         NavigationLink { ExpenseApprovalsView() } label: { Image(systemName: "checkmark.seal") }
                             .accessibilityLabel("Approvals")

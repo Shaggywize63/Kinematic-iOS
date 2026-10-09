@@ -129,4 +129,43 @@ final class LeadFieldOverridesModelTests: XCTestCase {
         let m = seededModel()
         XCTAssertEqual(m.businessType, "both")
     }
+
+    // MARK: - data_consent (the DPDP "Data Collection & Consent" block)
+
+    func testNoOverrideMeansTheConsentBlockStaysVisible() {
+        // Today's behaviour: absent = shown, so Tata, ByteBack, EFocus and the rest are unchanged.
+        let m = seededModel()
+        XCTAssertFalse(m.isHidden("data_consent", isB2C: true))
+        XCTAssertFalse(m.isHidden("data_consent", isB2C: false))
+        XCTAssertEqual(m.labelFor("data_consent", defaultLabel: "Data Collection & Consent", isB2C: false), "Data Collection & Consent")
+    }
+
+    func testTheConsentBlockCanBeHiddenForBothLeadTypesOrOne() {
+        let both = LeadFieldOverridesModel()
+        both.ingest(rawOverrides: ["lead.data_consent": FO(label: nil, required: nil, hidden: true)])
+        XCTAssertTrue(both.isHidden("data_consent", isB2C: true))
+        XCTAssertTrue(both.isHidden("data_consent", isB2C: false))
+
+        let dealersOnly = LeadFieldOverridesModel()
+        dealersOnly.ingest(rawOverrides: ["lead.data_consent@b2b": FO(label: nil, required: nil, hidden: true)])
+        XCTAssertTrue(dealersOnly.isHidden("data_consent", isB2C: false))
+        XCTAssertFalse(dealersOnly.isHidden("data_consent", isB2C: true))
+    }
+
+    func testTheConsentBlockCanBeRelabelled() {
+        let m = LeadFieldOverridesModel()
+        m.ingest(rawOverrides: ["lead.data_consent@b2c": FO(label: "Farmer consent", required: nil, hidden: nil)])
+        XCTAssertEqual(m.labelFor("data_consent", defaultLabel: "Data Collection & Consent", isB2C: true), "Farmer consent")
+        XCTAssertEqual(m.labelFor("data_consent", defaultLabel: "Data Collection & Consent", isB2C: false), "Data Collection & Consent")
+    }
+
+    func testTheOverridesAreNotReadyUntilTheyHaveLoaded() {
+        // The forms wait for this before showing an admin-gated row; before it, nothing reads as hidden.
+        let m = LeadFieldOverridesModel()
+        XCTAssertFalse(m.didLoad)
+        XCTAssertFalse(m.isHidden("data_consent", isB2C: true))
+        m.ingest(rawOverrides: ["lead.data_consent": FO(label: nil, required: nil, hidden: true)])
+        XCTAssertTrue(m.didLoad)
+        XCTAssertTrue(m.isHidden("data_consent", isB2C: true))
+    }
 }

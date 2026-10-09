@@ -51,6 +51,35 @@ final class LeadFormConfigTests: XCTestCase {
         XCTAssertTrue(cfg.hasCustomName(isB2C: false))
     }
 
+    // MARK: - the dashboard's "Total leads" split
+
+    func testTheTotalLeadsSplitUsesTheClientsNamesInThePlural() {
+        let cfg = LeadFormConfig.parse(agrisynx())
+        // Dealer → Dealers; Farmers already ends in "s". B2B first.
+        XCTAssertEqual(cfg.leadsSplitText(b2b: 12, b2c: 30), "Dealers 12 · Farmers 30")
+        XCTAssertEqual(cfg.leadsSplitText(b2b: 0, b2c: 0), "Dealers 0 · Farmers 0")
+    }
+
+    func testThePluralIsNaive() {
+        XCTAssertEqual(LeadFormConfig.plural("Dealer"), "Dealers")
+        XCTAssertEqual(LeadFormConfig.plural("Farmers"), "Farmers")
+        XCTAssertEqual(LeadFormConfig.plural("Business"), "Business")
+        XCTAssertEqual(LeadFormConfig.plural("Retailer "), "Retailers")
+        XCTAssertEqual(LeadFormConfig.plural("B2C"), "B2Cs")
+        XCTAssertEqual(LeadFormConfig.plural(""), "")
+    }
+
+    func testAClientThatNeverNamedItsLeadTypesGetsNoSplit() {
+        // Nothing new on the dashboard for a client without `segment_labels`, even if the summary carried a split.
+        XCTAssertNil(LeadFormConfig().leadsSplitText(b2b: 12, b2c: 30))
+        XCTAssertNil(LeadFormConfig.parse(["lead_form": .object(["address_on_b2b": .bool(true)])]).leadsSplitText(b2b: 1, b2c: 2))
+    }
+
+    func testAClientThatNamedOnlyOneLeadTypeStillGetsTheSplit() {
+        let cfg = LeadFormConfig.parse(["lead_form": .object(["segment_labels": .object(["b2b": .string("Dealer")])])])
+        XCTAssertEqual(cfg.leadsSplitText(b2b: 4, b2c: 9), "Dealers 4 · B2Cs 9")
+    }
+
     func testAddressOnB2BAndScheduleVisitFollowTheConfig() {
         let cfg = LeadFormConfig.parse(agrisynx())
         XCTAssertTrue(cfg.showsAddress(isB2C: false))

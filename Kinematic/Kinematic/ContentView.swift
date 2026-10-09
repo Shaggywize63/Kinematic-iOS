@@ -201,6 +201,15 @@ struct MainTabView: View {
                         AdHocFormsView()
                     }
                 }
+                // Expenses: opt-in per client (Expenses module AND app_ui_config tabs.expenses == true). It sits in
+                // the last slot — where "New" is, and takes its place when the client hides "New"
+                // (tabs.new_form == false) — so the bar keeps its tab count. Value 4 never collides with the
+                // fixed values above (nothing selects a tab by number beyond 0...2).
+                if ClientFeatures.showsExpensesTab {
+                    Tab(ClientFeatures.labelFor("tabs", "expenses", default: "Expenses"), systemImage: "receipt", value: 4) {
+                        NavigationStack { ExpenseClaimsView() }
+                    }
+                }
             }
         }
         .tabBarMinimizeOnScrollIfAvailable()

@@ -419,18 +419,32 @@ class AttendanceViewModel: ObservableObject {
             }
         }
         
+        // GPS-integrity signals from the exact captured fix (all field-force
+        // tenants). A mocked fix is already blocked by checkSecurity above, so
+        // on a successful check-in is_mock is normally false; accuracy always
+        // rides along for the dashboard trust view.
+        let isMock = SecurityCheck.isMockLocation(loc)
+        let locationAccuracyM: Double? = loc.horizontalAccuracy >= 0 ? loc.horizontalAccuracy : nil
+
         // Persist the intent to disk BEFORE the network call, with a stable
         // Idempotency-Key. If the network is up, we sync inline and mark
-        // synced. If it fails, the row stays queued for a foreground/
-        // reachability flush — the user keeps the green "checked in" state
-        // (already optimistic) and never has to retry.
+        // synced. If the failure is only that we couldn't get through (no
+        // network, timeout, server busy), the row stays queued for a
+        // foreground/reachability flush — the user keeps the green "checked in"
+        // state (already optimistic) and never has to retry. If the server
+        // REFUSES the punch, the row is dropped and the optimistic state is
+        // rolled back (see the failure branch below).
         let pending = await AttendanceCache.shared.enqueue(
             kind: isCheckIn ? "checkin" : "checkout",
             lat: loc.coordinate.latitude,
             lng: loc.coordinate.longitude,
             selfieUrl: selfieUrl,
-            battery: batteryLevel >= 0 ? batteryLevel : nil
+            battery: batteryLevel >= 0 ? batteryLevel : nil,
+            isMock: isMock,
+            locationAccuracyM: locationAccuracyM
         )
+        // This call owns the row until it ends; the background flush leaves it alone meanwhile.
+        await AttendanceCache.shared.beginInline(pending.id)
 
         // ── Face-recognition attendance (module face_attendance) ──────────────
         // On-device 1:1 match of the captured selfie against the enrolled
@@ -456,15 +470,12 @@ class AttendanceViewModel: ObservableObject {
                 }
             }
         }
+        if faceScore != nil || faceVerified != nil || faceModelId != nil {
+            // Keep the match on the queued row too, so a replay carries it.
+            await AttendanceCache.shared.annotateFace(pending.id, score: faceScore, verified: faceVerified, modelId: faceModelId)
+        }
 
-        // GPS-integrity signals from the exact captured fix (all field-force
-        // tenants). A mocked fix is already blocked by checkSecurity above, so
-        // on a successful check-in is_mock is normally false; accuracy always
-        // rides along for the dashboard trust view.
-        let isMock = SecurityCheck.isMockLocation(loc)
-        let locationAccuracyM: Double? = loc.horizontalAccuracy >= 0 ? loc.horizontalAccuracy : nil
-
-        let (success, err, record) = await KinematicRepository.shared.markAttendance(
+        let result = await KinematicRepository.shared.markAttendance(
             isCheckIn: isCheckIn,
             lat: loc.coordinate.latitude,
             lng: loc.coordinate.longitude,
@@ -477,16 +488,24 @@ class AttendanceViewModel: ObservableObject {
             locationAccuracyM: locationAccuracyM,
             idempotencyKey: pending.idempotencyKey
         )
+        let success = result.success
+        let record = result.record
 
         // Server backstop: a strict tenant rejected this punch because it
         // arrived without a live fix (details.code == "LOCATION_REQUIRED").
-        let locationRequired = (err == "LOCATION_REQUIRED")
+        let locationRequired = (result.failure == .locationRequired)
+        // Only a failure to get through (no network, timeout, 408/429/5xx) is worth keeping queued.
+        let queuedForRetry = (result.failure == .transient)
 
         if success {
             await AttendanceCache.shared.markSynced(pending.id)
+        } else if queuedForRetry {
+            await AttendanceCache.shared.recordError(pending.id, error: result.message ?? "unknown")
         } else {
-            await AttendanceCache.shared.recordError(pending.id, error: err ?? "unknown")
+            // Refused (or the sign-in expired): replaying it can only fail again — drop it from the queue.
+            await AttendanceCache.shared.markRejected(pending.id, error: result.message ?? "unknown")
         }
+        await AttendanceCache.shared.endInline(pending.id)
 
         await MainActor.run {
             if success {
@@ -539,12 +558,12 @@ class AttendanceViewModel: ObservableObject {
                 message = ""
                 KiniAppState.shared.locationGatePrompt = LocationGatePrompt(verb: isCheckIn ? "check in" : "check out")
                 LocationTrackingService.shared.reportLocationStatus()
-            } else {
-                // Don't rollback — the row is queued; the user's intent is
-                // captured and we'll sync on next foreground/reachability.
-                // Just surface a soft toast and clear the local lock.
+            } else if queuedForRetry {
+                // Genuinely couldn't get through (no network / timeout / server busy). Don't roll back — the row
+                // is queued; the user's intent is captured and we'll sync on the next foreground / when the
+                // network returns. Just surface a soft toast and clear the local lock.
                 isLoading = false
-                message = "Saved offline — will sync when network is available"
+                message = AttendanceSyncPolicy.savedOfflineMessage(httpStatus: result.httpStatus)
                 self.selfie = nil
                 self.lastAttendanceActionTime = Date()
                 if isCheckIn {
@@ -552,6 +571,16 @@ class AttendanceViewModel: ObservableObject {
                     checkinLocationStamp = stamp
                     UserDefaults.standard.set(stamp, forKey: "checkin_location_stamp")
                 }
+            } else {
+                // The server (or an expired sign-in) refused this punch. It is NOT saved, so don't say it is:
+                // undo the optimistic check-in / check-out and show the real reason. The force-refresh below
+                // reconciles with server ground truth.
+                self.today = previousToday
+                KiniAppState.shared.today = previousToday
+                isLoading = false
+                self.selfie = nil
+                self.lastAttendanceActionTime = nil
+                message = result.message ?? "Couldn't record your attendance. Please try again."
             }
         }
         

@@ -123,6 +123,42 @@ final class ExpenseVehicleLogicTests: XCTestCase {
         XCTAssertEqual(sent.id, "l1")
     }
 
+    func testTheVehicleFlowSendsFromAndToUnlessThePolicyTurnsTheRouteOff() {
+        var f = trip()
+        f.fromLocation = " Nashik "; f.toLocation = "Pune"
+        let withRoute = f.toInput(byVehicle: true)
+        XCTAssertEqual(withRoute.from_location, "Nashik")
+        XCTAssertEqual(withRoute.to_location, "Pune")
+        // Route off: nothing about the route is sent; the readings and photos are untouched.
+        f.odoStartPhoto = "https://x/a.jpg"
+        let off = f.toInput(byVehicle: true, routeFields: false)
+        XCTAssertNil(off.from_location)
+        XCTAssertNil(off.to_location)
+        XCTAssertEqual(off.vehicle_type, "two_wheeler")
+        XCTAssertEqual(off.odometer_start, 12340)
+        XCTAssertEqual(off.odometer_end, 12392)
+        XCTAssertEqual(off.odometer_start_photo_url, "https://x/a.jpg")
+    }
+
+    func testOnlyAPolicyWithVehicleRatesIsPaidByVehicle() throws {
+        func rules(_ json: String) throws -> ExpensePolicyRules { try JSONDecoder().decode(ExpensePolicyRules.self, from: Data(json.utf8)) }
+        XCTAssertTrue(ExpenseLogic.paysByVehicle(try rules(#"{"vehicle_rates":[{"id":"car","label":"Car","rate_per_km":9}]}"#)))
+        XCTAssertFalse(ExpenseLogic.paysByVehicle(try rules(#"{"vehicle_rates":[]}"#)))
+        XCTAssertFalse(ExpenseLogic.paysByVehicle(try rules(#"{"mileage_rate":12}"#)))
+        XCTAssertFalse(ExpenseLogic.paysByVehicle(nil))
+    }
+
+    func testACameraPhotoReadByTheServerFillsTheReadingBeforeThePairIsComplete() {
+        var f = ExpenseLineFields()
+        f.category = "mileage"; f.vehicleType = "two_wheeler"
+        XCTAssertEqual(f.applyOdometerScan(ExpenseOdometerScan(reading: 12340, confidence: "high"), start: true), .read)
+        XCTAssertNil(f.odometerKm)      // still waiting for the after-trip photo
+        XCTAssertEqual(f.applyOdometerScan(ExpenseOdometerScan(reading: 12392, confidence: "medium"), start: false), .read)
+        XCTAssertEqual(f.odometerKm, 52)
+        XCTAssertEqual(f.effectiveAmount(mileageRate: 12, vehicles: vehicles), 208)
+        XCTAssertEqual(f.toInput(byVehicle: true).odometer_end, 12392)
+    }
+
     func testARemovedOdometerPhotoIsClearedWithAnEmptyStringOneNeverAddedIsOmitted() {
         var f = trip()
         f.odoStartPhoto = ""; f.hadOdoStartPhoto = true

@@ -18,6 +18,9 @@ struct CRMAnalyticsSummary: Codable, Hashable {
     /// Sum of `custom_fields.estimated_amount` across the rep's leads
     /// in scope. Powers the Champion "Total Estimates Raised" tile.
     let estimatesRaised: Double?
+    /// TOTAL leads per lead type. Sent only for a client that named its lead types
+    /// (`config.lead_form.segment_labels`); nil for everyone else, which keeps the dashboard as it was.
+    let leadsBySegment: LeadsBySegment?
 
     // Keys must match the backend `dashboardSummary()` payload exactly. The
     // previous mapping (open_pipeline_value, win_rate, …) was stale and decoded
@@ -35,8 +38,48 @@ struct CRMAnalyticsSummary: Codable, Hashable {
         case averageDealSize = "avg_deal_size"
         case activitiesToday = "activities_7d"
         case estimatesRaised = "estimates_raised"
+        case leadsBySegment = "leads_by_segment"
         // Backend does not emit a tasks_due figure; leave nil → tile shows 0.
         case tasksDue = "tasks_due"
+    }
+
+    // Spelled out (instead of synthesized) for one reason: `leads_by_segment` is an optional extra, so a
+    // malformed value must cost the dashboard that tile only — never every other number on the screen.
+    // Every other field decodes exactly as the synthesized code did.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        totalLeads = try c.decodeIfPresent(Int.self, forKey: .totalLeads)
+        newLeadsThisWeek = try c.decodeIfPresent(Int.self, forKey: .newLeadsThisWeek)
+        openDeals = try c.decodeIfPresent(Int.self, forKey: .openDeals)
+        openPipelineValue = try c.decodeIfPresent(Double.self, forKey: .openPipelineValue)
+        openDealVolume = try c.decodeIfPresent(Double.self, forKey: .openDealVolume)
+        dealsWonThisMonth = try c.decodeIfPresent(Int.self, forKey: .dealsWonThisMonth)
+        revenueWonThisMonth = try c.decodeIfPresent(Double.self, forKey: .revenueWonThisMonth)
+        winRate = try c.decodeIfPresent(Double.self, forKey: .winRate)
+        averageDealSize = try c.decodeIfPresent(Double.self, forKey: .averageDealSize)
+        activitiesToday = try c.decodeIfPresent(Int.self, forKey: .activitiesToday)
+        tasksDue = try c.decodeIfPresent(Int.self, forKey: .tasksDue)
+        estimatesRaised = try c.decodeIfPresent(Double.self, forKey: .estimatesRaised)
+        leadsBySegment = (try? c.decodeIfPresent(LeadsBySegment.self, forKey: .leadsBySegment)) ?? nil
+    }
+}
+
+/// Total leads split by lead type — `{ "b2b": 12, "b2c": 30 }`. A missing count reads as 0.
+struct LeadsBySegment: Codable, Hashable {
+    let b2b: Int
+    let b2c: Int
+
+    init(b2b: Int, b2c: Int) {
+        self.b2b = b2b
+        self.b2c = b2c
+    }
+
+    private enum CodingKeys: String, CodingKey { case b2b, b2c }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        b2b = try c.decodeIfPresent(Int.self, forKey: .b2b) ?? 0
+        b2c = try c.decodeIfPresent(Int.self, forKey: .b2c) ?? 0
     }
 }
 

@@ -35,7 +35,58 @@ enum ExpenseErrors {
 enum ExpenseLogic {
     static let categories = ExpenseCategory.allCases.map { $0.rawValue }
 
-    static func categoryLabel(_ c: String) -> String { c == "misc" ? "Other" : c.capitalized }
+    /// The one place a category's name is worked out: the policy's own name for it (`category_labels`,
+    /// e.g. "mileage" → "Travel") when it has one, else the built-in name. Every screen goes through here.
+    static func categoryLabel(_ c: String, labels: [String: String]? = nil) -> String {
+        customLabel(c, labels: labels) ?? (c == "misc" ? "Other" : c.capitalized)
+    }
+
+    /// The policy's own name for a category, or nil when it set none (a blank name counts as none).
+    static func customLabel(_ c: String, labels: [String: String]?) -> String? {
+        guard let l = labels?[c]?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty else { return nil }
+        return l
+    }
+
+    // MARK: Policy switches (all optional on the wire; absent = the behaviour before they existed)
+
+    /// The categories the policy lets a line use (a category the policy does not mention is allowed).
+    static func enabledCategories(_ rules: ExpensePolicyRules?) -> [String] {
+        categories.filter { rules?.categories?[$0]?.enabled != false }
+    }
+
+    /// Single-category mode: exactly one category is enabled. Nil for a policy that leaves several (or none) on,
+    /// and for no policy at all.
+    static func singleCategory(_ rules: ExpensePolicyRules?) -> String? {
+        let enabled = enabledCategories(rules)
+        return enabled.count == 1 ? enabled[0] : nil
+    }
+
+    /// What a new line starts as: the only enabled category in single-category mode, else "food" as always.
+    static func defaultCategory(_ rules: ExpensePolicyRules?) -> String { singleCategory(rules) ?? "food" }
+
+    /// The categories a line may be switched to — the enabled ones, plus the line's current category so an
+    /// older claim that uses a now-disabled category still renders (and can be moved off it).
+    static func allowedCategories(_ rules: ExpensePolicyRules?, current: String) -> [String] {
+        categories.filter { $0 == current || rules?.categories?[$0]?.enabled != false }
+    }
+
+    /// The category picker is hidden in single-category mode — unless the line is an older one on another
+    /// category, which still needs a way to be moved to the allowed one.
+    static func showsCategoryPicker(_ rules: ExpensePolicyRules?, current: String) -> Bool {
+        singleCategory(rules) == nil || allowedCategories(rules, current: current).count > 1
+    }
+
+    /// From / To on mileage lines (default on).
+    static func showsRoute(_ rules: ExpensePolicyRules?) -> Bool { rules?.route_fields != false }
+
+    /// A claim of exactly one line: no "Add another expense" (default off).
+    static func isSingleLine(_ rules: ExpensePolicyRules?) -> Bool { rules?.single_line == true }
+
+    /// Odometer photos only from the camera, and the reading is read from the photo (default off).
+    static func odometerCameraOnly(_ rules: ExpensePolicyRules?) -> Bool { rules?.odometer_camera_only == true }
+
+    /// Mileage is priced by vehicle from odometer readings.
+    static func paysByVehicle(_ rules: ExpensePolicyRules?) -> Bool { !(rules?.vehicle_rates ?? []).isEmpty }
 
     /// Claims the owner may still change: before approval, or being fixed after a rejection.
     static func isEditable(_ status: String?) -> Bool {
@@ -133,6 +184,68 @@ enum ExpenseLogic {
         if s.hasSuffix(".") { s.removeLast() }
         return s
     }
+
+    // MARK: Odometer history
+
+    private static let dayIn: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+    private static let dayOut: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0); f.dateFormat = "d MMM yyyy"; return f
+    }()
+
+    /// "2026-10-05" (or a full timestamp) → "5 Oct 2026". Anything that is not a date is shown as typed (first 10 characters).
+    static func shortDate(_ iso: String?) -> String? {
+        guard let iso = iso, iso.count >= 10 else { return nil }
+        let day = String(iso.prefix(10))
+        guard let d = dayIn.date(from: day) else { return day }
+        return dayOut.string(from: d)
+    }
+
+    /// The newest odometer reading the person has on file — the end reading of the newest line, else its start.
+    /// `history` is newest first (as the server sends it). Lines of `claimId` — the claim being edited — are
+    /// skipped, so a draft does not offer its own reading back as "last".
+    static func lastReading(in history: [ExpenseOdometerEntry], excludingClaim claimId: String? = nil) -> ExpenseLastReading? {
+        for e in history {
+            if let cid = claimId, !cid.isEmpty, e.claim_id == cid { continue }
+            if let km = e.odometer_end ?? e.odometer_start { return ExpenseLastReading(km: km, date: e.item_date) }
+        }
+        return nil
+    }
+
+    /// "Last reading: 12392 km (5 Oct 2026)".
+    static func lastReadingText(_ r: ExpenseLastReading) -> String {
+        var s = "Last reading: \(trimNumber(r.km)) km"
+        if let d = shortDate(r.date) { s += " (\(d))" }
+        return s
+    }
+}
+
+/// The newest odometer reading on file, for the hint under the "before" field.
+struct ExpenseLastReading: Equatable {
+    let km: Double
+    let date: String?
+}
+
+extension ExpenseOdometerEntry {
+    /// The vehicle's name: the policy label the server sent, else "two_wheeler" → "Two wheeler"; "" when unknown.
+    var vehicleText: String {
+        let l = (vehicle_label ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return l.isEmpty ? ExpenseLogic.vehicleName(vehicle_type, in: nil) : l
+    }
+
+    /// "12340 → 12392" (a missing end shows "—"); nil when the line has no readings.
+    var readingsText: String? {
+        guard odometer_start != nil || odometer_end != nil else { return nil }
+        let a = odometer_start.map { ExpenseLogic.trimNumber($0) } ?? "—"
+        let b = odometer_end.map { ExpenseLogic.trimNumber($0) } ?? "—"
+        return "\(a) → \(b)"
+    }
+
+    /// The claim's status as a label, "Draft" when the server sent none.
+    var statusText: String { (claim_status ?? "draft").capitalized }
 }
 
 // MARK: - Editing a claim
@@ -221,7 +334,9 @@ struct ExpenseLineFields: Equatable {
         return 0
     }
 
-    func toInput(byVehicle: Bool = false) -> ExpenseClaimItemInput {
+    /// `routeFields` false (the policy turned From / To off): the route is never sent. Like any nil it is
+    /// omitted, so a route already on file is left alone.
+    func toInput(byVehicle: Bool = false, routeFields: Bool = true) -> ExpenseClaimItemInput {
         let mileage = category == "mileage"
         let vehicleLine = mileage && byVehicle
         func nonEmpty(_ s: String) -> String? { let t = s.trimmingCharacters(in: .whitespaces); return t.isEmpty ? nil : t }
@@ -237,8 +352,8 @@ struct ExpenseLineFields: Equatable {
             // By vehicle the server works the distance and amount out from the readings; never send them.
             amount: vehicleLine ? nil : Self.positive(amount),
             distance_km: (mileage && !vehicleLine) ? Self.positive(distanceKm) : nil,
-            from_location: mileage ? nonEmpty(fromLocation) : nil,
-            to_location: mileage ? nonEmpty(toLocation) : nil,
+            from_location: (mileage && routeFields) ? nonEmpty(fromLocation) : nil,
+            to_location: (mileage && routeFields) ? nonEmpty(toLocation) : nil,
             merchant: mileage ? nil : nonEmpty(merchant),
             receipt_url: receipt,
             ai_extracted: ocr,
@@ -251,7 +366,9 @@ struct ExpenseLineFields: Equatable {
     }
 
     /// Fill what the receipt scan found into a line, never overwriting what the person already typed.
-    func withScan(_ scan: ExpenseReceiptFields?, receiptUrl url: String) -> ExpenseLineFields {
+    /// `allowedCategories` (single-category mode) keeps the scan from moving the line to a category the
+    /// policy does not allow; nil keeps the original rule (any known category).
+    func withScan(_ scan: ExpenseReceiptFields?, receiptUrl url: String, allowedCategories: [String]? = nil) -> ExpenseLineFields {
         var out = self
         let fresh = amount.isEmpty && merchant.isEmpty
         out.receiptUrl = url
@@ -259,8 +376,32 @@ struct ExpenseLineFields: Equatable {
         if amount.isEmpty, let a = scan?.amount { out.amount = ExpenseLogic.trimNumber(a) }
         if merchant.isEmpty, let m = scan?.merchant, !m.isEmpty { out.merchant = m }
         if fresh, let d = scan?.txn_date, !d.isEmpty { out.itemDate = String(d.prefix(10)) }
-        if fresh, category != "mileage", let c = scan?.category, ExpenseLogic.categories.contains(c) { out.category = c }
+        if fresh, category != "mileage", let c = scan?.category, (allowedCategories ?? ExpenseLogic.categories).contains(c) { out.category = c }
         return out
+    }
+
+    /// Put the reading the server read off an odometer photo into the Before (`start`) or After slot,
+    /// replacing what was there; the person can still edit it. A photo that could not be read leaves the
+    /// slot as it was. Returns what to tell the person.
+    mutating func applyOdometerScan(_ scan: ExpenseOdometerScan?, start: Bool) -> OdometerScanNote {
+        guard let km = scan?.reading, km.isFinite, km >= 0 else { return .unreadable }
+        if start { odometerStart = ExpenseLogic.trimNumber(km) } else { odometerEnd = ExpenseLogic.trimNumber(km) }
+        return .read
+    }
+}
+
+/// What to tell the person after an odometer photo went through the reader.
+enum OdometerScanNote: Equatable {
+    /// The number was read and is now in the field.
+    case read
+    /// It could not be read; the photo is attached all the same.
+    case unreadable
+
+    var text: String {
+        switch self {
+        case .read:       return "Read from the photo — please check"
+        case .unreadable: return "Couldn't read the number — please enter it"
+        }
     }
 }
 
@@ -286,6 +427,15 @@ extension ExpenseClaimItem {
         f.hadOdoStartPhoto = !(odometer_start_photo_url ?? "").isEmpty
         f.hadOdoEndPhoto = !(odometer_end_photo_url ?? "").isEmpty
         return f
+    }
+
+    /// "Pune → Nashik" for read-only views (a missing end shows "—"); nil when neither end was recorded, so a
+    /// line without a route prints no route at all.
+    var routeText: String? {
+        let from = (from_location ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let to = (to_location ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if from.isEmpty && to.isEmpty { return nil }
+        return "\(from.isEmpty ? "—" : from) → \(to.isEmpty ? "—" : to)"
     }
 
     /// "Two-wheeler · Odometer 12340 → 12392", for read-only views; nil when the line carries no odometer data.
@@ -357,7 +507,8 @@ struct ExpenseTimelineStep: Equatable {
 }
 
 /// The claim's story: created, each submission, each decision with its remark, reimbursement.
-func expenseTimeline(_ c: ExpenseClaim) -> [ExpenseTimelineStep] {
+/// `categoryLabels` is the policy's `category_labels`, so a renamed category reads the same here as everywhere else.
+func expenseTimeline(_ c: ExpenseClaim, categoryLabels: [String: String]? = nil) -> [ExpenseTimelineStep] {
     var out = [ExpenseTimelineStep(title: "Claim created", date: c.created_at.map { String($0.prefix(10)) })]
     let approvals = c.approvals ?? []
     var rounds: [Int] = []
@@ -366,7 +517,7 @@ func expenseTimeline(_ c: ExpenseClaim) -> [ExpenseTimelineStep] {
     var last = 0
 
     func lineText(_ d: ExpenseItemDecision) -> String {
-        var s = "\(ExpenseLogic.categoryLabel(d.category ?? "misc")) · \(ExpenseLogic.money(d.amount ?? 0, c.currency))"
+        var s = "\(ExpenseLogic.categoryLabel(d.category ?? "misc", labels: categoryLabels)) · \(ExpenseLogic.money(d.amount ?? 0, c.currency))"
         if let n = d.note, !n.isEmpty { s += " — \(n)" }
         return s
     }

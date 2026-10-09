@@ -110,12 +110,15 @@ struct ContactCreateView: View {
                             }
                         }
                     }
-                    // DPDP §5/§6 — at-collection notice + primary consent.
-                    Section("Data Collection & Consent") {
-                        Text("We collect this person’s name, contact details and the information entered here to create and manage their record and to contact them, as described in our Privacy Notice. They may access, correct or erase their data, or raise a grievance, at any time.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Toggle("The individual has been shown this notice and consents to the collection and processing of their personal data.", isOn: $dataConsent)
+                    // DPDP §5/§6 — at-collection notice + primary consent. Gated like every other built-in field:
+                    // the admin can hide or relabel it (`contact.data_consent`), so it waits for the overrides.
+                    if fieldOverrides.didLoad && !fieldOverrides.isHidden(entity: "contact", "data_consent", isB2C: isB2C) {
+                        Section(fieldOverrides.labelFor(entity: "contact", "data_consent", "Data Collection & Consent", isB2C: isB2C)) {
+                            Text("We collect this person’s name, contact details and the information entered here to create and manage their record and to contact them, as described in our Privacy Notice. They may access, correct or erase their data, or raise a grievance, at any time.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Toggle("The individual has been shown this notice and consents to the collection and processing of their personal data.", isOn: $dataConsent)
+                        }
                     }
                 }
             }
@@ -164,12 +167,15 @@ struct ContactCreateView: View {
             body["marketing_consent"] = marketingConsent
             body["whatsapp_consent"]  = whatsappConsent
         }
-        // DPDP §6 — capture consent at collection (recorded in crm_consents).
-        body["_consent"] = [
-            "consented": dataConsent,
-            "method": "in_app",
-            "notice_version": "2026-07-22",
-        ]
+        // DPDP §6 — capture consent at collection (recorded in crm_consents). Not sent when the admin hid the
+        // block (`contact.data_consent`): there is no toggle on screen to have consented with.
+        if !fieldOverrides.isHidden(entity: "contact", "data_consent", isB2C: isB2C) {
+            body["_consent"] = [
+                "consented": dataConsent,
+                "method": "in_app",
+                "notice_version": "2026-07-22",
+            ]
+        }
         return body
     }
 }

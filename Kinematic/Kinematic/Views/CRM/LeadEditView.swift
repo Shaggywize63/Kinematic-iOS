@@ -517,8 +517,9 @@ struct LeadEditView: View {
             body["date_of_birth"] = dateOfBirth.isEmpty ? NSNull() : dateOfBirth
             body["gender"]        = gender.isEmpty ? NSNull() : gender
             body["preferred_contact_method"] = preferredContactMethod.isEmpty ? NSNull() : preferredContactMethod
-            body["marketing_consent"] = marketingConsent
-            body["whatsapp_consent"]  = whatsappConsent
+            // The toggles are only on screen when the admin hasn't hidden them; a hidden one is not sent.
+            if !fieldOverrides.isHidden("marketing_consent", isB2C: true) { body["marketing_consent"] = marketingConsent }
+            if !fieldOverrides.isHidden("whatsapp_consent",  isB2C: true) { body["whatsapp_consent"]  = whatsappConsent }
         }
         do {
             let updated = try await CRMService.shared.patchLead(id: lead.id, body: body)

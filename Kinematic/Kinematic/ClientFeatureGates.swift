@@ -235,6 +235,17 @@ enum ClientFeatures {
     /// `!isCrmOnly`. Strict module check keeps it hidden for tenants without it.
     static var showsExpenses: Bool { hasExpenses && !isSrsTataSteel }
 
+    /// The "Expenses" bottom tab of the field-force shell: opt-in per client — it needs the Expenses module AND
+    /// `app_ui_config.tabs.expenses == true`. Everyone else keeps the tab bar exactly as it was.
+    static var showsExpensesTab: Bool {
+        expensesTabShown(showsExpenses: showsExpenses, config: Session.currentUser?.appUiConfig)
+    }
+
+    /// Pure rule behind `showsExpensesTab` (unit-tested without a session).
+    static func expensesTabShown(showsExpenses: Bool, config: AppUiConfig?) -> Bool {
+        showsExpenses && (config?.tabExplicitlyOn("expenses") ?? false)
+    }
+
     /// Conversation Intelligence surfaces require BOTH the module SKU to be on
     /// AND the tenant to not be SRS TATA Steel (who have it switched off). The
     /// extra client gate also closes Android-parity edge cases where a legacy
@@ -246,6 +257,8 @@ enum ClientFeatures {
     // defers to the item's built-in gate. Nil user (legacy/no session) = visible.
     static func menuVisible(_ id: String) -> Bool { Session.currentUser?.menuVisible(id) ?? true }
     static func tabVisible(_ id: String) -> Bool { Session.currentUser?.tabVisible(id) ?? true }
+    /// Opt-in tab: on only when the client's config says `tabs[id] == true` (absent / false = off; no user = off).
+    static func tabExplicitlyOn(_ id: String) -> Bool { Session.currentUser?.tabExplicitlyOn(id) ?? false }
     static func crmMoreVisible(_ id: String) -> Bool { Session.currentUser?.crmMoreVisible(id) ?? true }
     static func homeVisible(_ id: String) -> Bool { Session.currentUser?.homeVisible(id) ?? true }
     static func settingsVisible(_ id: String) -> Bool { Session.currentUser?.settingsVisible(id) ?? true }
