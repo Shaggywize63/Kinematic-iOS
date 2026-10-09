@@ -45,6 +45,16 @@ struct ExpensePolicyRules: Codable, Equatable {
     /// "flag" lets a breach through to the approver; "block" stops submission.
     let enforcement: String?
     let categories: [String: ExpenseCategoryRule]?
+    // Per-client presentation switches. Every one is optional and absent means "as before", so a policy
+    // that does not send them behaves exactly as it always has.
+    /// Display-name overrides for the categories, e.g. ["mileage": "Travel"]. Used wherever a category name is shown.
+    let category_labels: [String: String]?
+    /// false: no From / To on mileage lines (default true).
+    let route_fields: Bool?
+    /// true: a claim is one line — no "Add another expense" (default false).
+    let single_line: Bool?
+    /// true: an odometer photo can only be taken with the camera (no photo library), and the reading is read from it.
+    let odometer_camera_only: Bool?
 }
 
 /// The policy that governs the signed-in user. The scalar fields are the
@@ -180,6 +190,35 @@ struct ExpenseReceiptFields: Codable, Equatable {
     let category: String?
 }
 
+/// What the server read off an odometer photo (`POST /expenses/receipts?scan=odometer`).
+/// `reading` is nil when the number could not be read; `confidence` is "high" | "medium" | "low".
+struct ExpenseOdometerScan: Decodable, Equatable {
+    let reading: Double?
+    let confidence: String?
+
+    private enum CodingKeys: String, CodingKey { case reading, confidence }
+
+    init(reading: Double?, confidence: String? = nil) {
+        self.reading = reading
+        self.confidence = confidence
+    }
+
+    // Lenient on purpose: a reading that arrives as a string ("12340") still counts, and anything odd
+    // becomes "could not read" — it must never fail the upload that has already stored the photo.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let d = try? c.decodeIfPresent(Double.self, forKey: .reading) {
+            reading = d
+        } else if let s = try? c.decodeIfPresent(String.self, forKey: .reading),
+                  let d = Double(s.trimmingCharacters(in: .whitespaces)) {
+            reading = d
+        } else {
+            reading = nil
+        }
+        confidence = (try? c.decodeIfPresent(String.self, forKey: .confidence)) ?? nil
+    }
+}
+
 /// POST /expenses/receipts result: the stored object, a link to show it now, and the OCR read.
 struct ExpenseUploadedReceipt: Decodable {
     let url: String
@@ -188,6 +227,61 @@ struct ExpenseUploadedReceipt: Decodable {
     let size: Int?
     let signed_url: String?
     let scan: ExpenseReceiptFields?
+    /// Only on an upload made with `?scan=odometer`.
+    let odometer: ExpenseOdometerScan?
+
+    private enum CodingKeys: String, CodingKey { case url, path, content_type, size, signed_url, scan, odometer }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        url = try c.decode(String.self, forKey: .url)
+        path = try c.decodeIfPresent(String.self, forKey: .path)
+        content_type = try c.decodeIfPresent(String.self, forKey: .content_type)
+        size = try c.decodeIfPresent(Int.self, forKey: .size)
+        signed_url = try c.decodeIfPresent(String.self, forKey: .signed_url)
+        scan = try c.decodeIfPresent(ExpenseReceiptFields.self, forKey: .scan)
+        // An odometer block the app cannot make sense of is "no reading", never a failed upload.
+        odometer = (try? c.decodeIfPresent(ExpenseOdometerScan.self, forKey: .odometer)) ?? nil
+    }
+}
+
+/// Which read the server should do on an uploaded photo.
+enum ExpenseUploadScan: Equatable {
+    /// Read it as a receipt (merchant, date, amount) — the default.
+    case receipt
+    /// Just store it (`?scan=0`) — e.g. an odometer photo on a policy that does not read the number.
+    case storeOnly
+    /// Read the odometer number (`?scan=odometer`).
+    case odometer
+
+    /// The request path for the upload.
+    var path: String {
+        switch self {
+        case .receipt:  return "/expenses/receipts"
+        case .storeOnly: return "/expenses/receipts?scan=0"
+        case .odometer: return "/expenses/receipts?scan=odometer"
+        }
+    }
+}
+
+/// One odometer line from `GET /expenses/odometer-history` — the caller's own readings, newest first.
+struct ExpenseOdometerEntry: Decodable, Identifiable, Equatable {
+    let id: String
+    let claim_id: String?
+    let claim_no: String?
+    let claim_status: String?
+    let user_id: String?
+    let user_name: String?
+    let item_date: String?
+    let vehicle_type: String?
+    let vehicle_label: String?
+    let odometer_start: Double?
+    let odometer_end: Double?
+    let distance_km: Double?
+    let amount: Double?
+    let start_photo_url: String?
+    let end_photo_url: String?
+    let created_at: String?
 }
 
 /// POST /expenses/claims/check result — what the policy says about unsaved lines.

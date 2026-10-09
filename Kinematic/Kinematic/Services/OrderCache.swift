@@ -3,8 +3,9 @@
 // Mirrors the Android Room queue: every queued order/payment/return is given a
 // stable Idempotency-Key at confirm time and persisted to a JSON file in the
 // app's Documents directory. Flush runs on app foreground / network change.
-// The queue is keyed by user (last 24 chars of the access token) so a re-login
-// under a different account never flushes the previous user's pending writes.
+// The queue is keyed by user (the stable user id — see QueueOwnership; it used to be the last 24 chars of the
+// access token, which every silent refresh changes) so a re-login under a different account never flushes the
+// previous user's pending writes.
 
 import Foundation
 import Combine
@@ -12,7 +13,8 @@ import Combine
 struct PendingOrder: Codable, Identifiable {
     let id: UUID
     let idempotencyKey: String
-    let userKey: String
+    /// Who queued it: "u:<user id>" — or, on rows queued by older builds, a token suffix (see QueueOwnership).
+    var userKey: String
     let outletId: String
     let outletName: String?
     let visitId: String?
@@ -27,7 +29,8 @@ struct PendingOrder: Codable, Identifiable {
 struct PendingPayment: Codable, Identifiable {
     let id: UUID
     let idempotencyKey: String
-    let userKey: String
+    /// Who queued it: "u:<user id>" — or, on rows queued by older builds, a token suffix (see QueueOwnership).
+    var userKey: String
     let input: PaymentInput
     let createdAt: Date
     var attempt: Int
@@ -38,13 +41,18 @@ struct PendingPayment: Codable, Identifiable {
 struct PendingReturn: Codable, Identifiable {
     let id: UUID
     let idempotencyKey: String
-    let userKey: String
+    /// Who queued it: "u:<user id>" — or, on rows queued by older builds, a token suffix (see QueueOwnership).
+    var userKey: String
     let input: ReturnInput
     let createdAt: Date
     var attempt: Int
     var lastError: String?
     var isSynced: Bool
 }
+
+extension PendingOrder: QueueOwned {}
+extension PendingPayment: QueueOwned {}
+extension PendingReturn: QueueOwned {}
 
 @MainActor
 final class OrderCache: ObservableObject {
@@ -82,10 +90,24 @@ final class OrderCache: ObservableObject {
         queue.async { try? data.write(to: url, options: .atomic) }
     }
 
-    static func userKey() -> String { String(Session.sharedToken.suffix(24)) }
+    /// The key new rows are written with: the stable user id (see QueueOwnership).
+    static func userKey() -> String { QueueOwnership.keyForNewRow(QueueOwnership.currentIdentity()) }
+
+    /// Move rows queued by older builds (keyed by an access-token suffix that has since rotated) onto the
+    /// stable user key, wherever it is provable they are the signed-in user's. Nothing is removed. Idempotent.
+    /// Called when a row is added and before the queue is read for sending — never from a view update.
+    func adoptLegacyRows() {
+        let who = QueueOwnership.currentIdentity()
+        // Work on copies and only assign when something moved, so a no-op never notifies observers.
+        var o = orders, p = payments, r = returns
+        if QueueOwnership.migrate(&o, identity: who) > 0 { orders = o; persistOrders() }
+        if QueueOwnership.migrate(&p, identity: who) > 0 { payments = p; persistPayments() }
+        if QueueOwnership.migrate(&r, identity: who) > 0 { returns = r; persistReturns() }
+    }
 
     // ── Queue ────────────────────────────────────────────────────────
     func enqueueOrder(input: OrderInput, clientTotal: Double, outletName: String?, visitId: String?) -> PendingOrder {
+        adoptLegacyRows()
         let row = PendingOrder(
             id: UUID(),
             idempotencyKey: "ord-" + UUID().uuidString,
@@ -106,6 +128,7 @@ final class OrderCache: ObservableObject {
     }
 
     func enqueuePayment(_ input: PaymentInput) -> PendingPayment {
+        adoptLegacyRows()
         let row = PendingPayment(id: UUID(), idempotencyKey: "pay-" + UUID().uuidString, userKey: Self.userKey(), input: input, createdAt: Date(), attempt: 0, lastError: nil, isSynced: false)
         payments.insert(row, at: 0)
         persistPayments()
@@ -113,6 +136,7 @@ final class OrderCache: ObservableObject {
     }
 
     func enqueueReturn(_ input: ReturnInput) -> PendingReturn {
+        adoptLegacyRows()
         let row = PendingReturn(id: UUID(), idempotencyKey: "ret-" + UUID().uuidString, userKey: Self.userKey(), input: input, createdAt: Date(), attempt: 0, lastError: nil, isSynced: false)
         returns.insert(row, at: 0)
         persistReturns()
@@ -159,11 +183,11 @@ final class OrderCache: ObservableObject {
     /// Pending rows scoped to the *current* user — never returns rows belonging
     /// to a previously logged-in user (safety against cross-user leak on logout).
     func pendingForCurrentUser() -> (orders: [PendingOrder], payments: [PendingPayment], returns: [PendingReturn]) {
-        let key = Self.userKey()
+        let who = QueueOwnership.currentIdentity()
         return (
-            orders.filter { !$0.isSynced && $0.userKey == key },
-            payments.filter { !$0.isSynced && $0.userKey == key },
-            returns.filter { !$0.isSynced && $0.userKey == key }
+            orders.filter { !$0.isSynced && QueueOwnership.owns(rowKey: $0.userKey, createdAt: $0.createdAt, identity: who) },
+            payments.filter { !$0.isSynced && QueueOwnership.owns(rowKey: $0.userKey, createdAt: $0.createdAt, identity: who) },
+            returns.filter { !$0.isSynced && QueueOwnership.owns(rowKey: $0.userKey, createdAt: $0.createdAt, identity: who) }
         )
     }
 

@@ -3,6 +3,10 @@ import Charts
 
 struct CRMDashboardView: View {
     @StateObject var vm = CRMDashboardViewModel()
+    /// The client's lead-form settings (`config.lead_form`) — here only for the names of its lead types, which
+    /// label the "Total leads" split. Loaded when the summary actually carries that split (see `.task` below),
+    /// so a client without it makes no extra request.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     var body: some View {
         ScrollView {
@@ -50,6 +54,7 @@ struct CRMDashboardView: View {
                 if ClientFeatures.isConsumerChampion, let t = vm.target, t.hasTarget { targetTicker(t) }
 
                 kpiGrid
+                leadsBySegmentTile
                 DashboardLeadsMapCard()
                 funnelCard
                 winRateCard
@@ -92,6 +97,10 @@ struct CRMDashboardView: View {
             await vm.refresh()
         }
         .task { await vm.loadClientsIfNeeded() }
+        // Only a summary with a per-lead-type split needs the lead-form names to label it.
+        .task(id: vm.summary?.leadsBySegment) {
+            if vm.summary?.leadsBySegment != nil, !fieldOverrides.didLoad { await fieldOverrides.load() }
+        }
         .overlay {
             if vm.isLoading && vm.summary == nil {
                 ProgressView().scaleEffect(1.3)
@@ -181,36 +190,80 @@ struct CRMDashboardView: View {
         // are by nature point-in-time and don't take a window suffix —
         // their values genuinely don't change with the date filter.
         let rangeSuffix = vm.range.label.lowercased()
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
-            // Headline leads tile now reads the *windowed* count
-            // (`new_leads_30d`, despite the legacy name) so the rep
-            // sees today's / yesterday's / this-month's new leads as
-            // they switch the preset. Previously this tile pulled
-            // `total_leads` (lifetime) and stayed at the same number
-            // for every preset — the symptom the user reported.
+        // Open Volume is a steel-dealer (tonnage) tile; a client can hide it from Client Management
+        // (app_ui_config home.open_volume == false). Absent = shown, as always.
+        let showVolume = ClientFeatures.homeVisible("open_volume")
+
+        // Headline leads tile now reads the *windowed* count
+        // (`new_leads_30d`, despite the legacy name) so the rep
+        // sees today's / yesterday's / this-month's new leads as
+        // they switch the preset. Previously this tile pulled
+        // `total_leads` (lifetime) and stayed at the same number
+        // for every preset — the symptom the user reported.
+        let leadsTile = NavigationLink(destination: LeadsListView()) {
+            kpiTile("Leads — \(rangeSuffix)", value: "\(s?.newLeadsThisWeek ?? 0)", icon: "person.2.fill", color: Brand.red)
+        }.buttonStyle(.plain)
+        let openDealsTile = NavigationLink(destination: DealsListView()) {
+            kpiTile("Open Deals", value: "\(s?.openDeals ?? 0)", icon: "square.stack.3d.up.fill", color: Brand.red)
+        }.buttonStyle(.plain)
+        let pipelineTile = NavigationLink(destination: DealKanbanView()) {
+            kpiTile("Pipeline", value: CurrencyFormatter.formatINRCompact(s?.openPipelineValue ?? 0), icon: "indianrupeesign.circle.fill", color: Brand.red)
+        }.buttonStyle(.plain)
+        let winRateTile = NavigationLink(destination: DealsListView()) {
+            kpiTile("Win Rate", value: "\(Int((s?.winRate ?? 0) * 100))%", icon: "trophy.fill", color: Brand.red)
+        }.buttonStyle(.plain)
+        let wonTile = NavigationLink(destination: DealsListView()) {
+            kpiTile("Won — \(rangeSuffix)", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: Brand.red)
+        }.buttonStyle(.plain)
+        let volumeTile = NavigationLink(destination: DealKanbanView()) {
+            kpiTile("Open Volume", value: formattedVolumeMT(s?.openDealVolume), icon: "shippingbox.fill", color: Brand.red)
+        }.buttonStyle(.plain)
+        let avgDealTile = NavigationLink(destination: DealsListView()) {
+            kpiTile("Avg Deal", value: CurrencyFormatter.formatINRCompact(s?.averageDealSize ?? 0), icon: "chart.bar.fill", color: Brand.red)
+        }.buttonStyle(.plain)
+        let activitiesTile = NavigationLink(destination: ActivitiesView()) {
+            kpiTile("Activities — \(rangeSuffix)", value: "\(s?.activitiesToday ?? 0)", icon: "bolt.fill", color: Brand.red)
+        }.buttonStyle(.plain)
+
+        return Group {
+            if showVolume {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
+                    leadsTile
+                    openDealsTile
+                    pipelineTile
+                    winRateTile
+                    wonTile
+                    volumeTile
+                    avgDealTile
+                    activitiesTile
+                }
+            } else {
+                // Without Open Volume the grid would end on a lone tile, so Pipeline takes the full width
+                // of its own row and the rest keep two to a row.
+                VStack(spacing: 12) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
+                        leadsTile
+                        openDealsTile
+                    }
+                    pipelineTile
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
+                        winRateTile
+                        wonTile
+                        avgDealTile
+                        activitiesTile
+                    }
+                }
+            }
+        }
+    }
+
+    /// "Total leads — Dealers 12 · Farmers 30": the all-time leads per lead type, for a client that named
+    /// its lead types. Nothing at all when the summary carries no split (every other client).
+    @ViewBuilder private var leadsBySegmentTile: some View {
+        if let split = vm.summary?.leadsBySegment, fieldOverrides.didLoad,
+           let text = fieldOverrides.leadForm.leadsSplitText(b2b: split.b2b, b2c: split.b2c) {
             NavigationLink(destination: LeadsListView()) {
-                kpiTile("Leads — \(rangeSuffix)", value: "\(s?.newLeadsThisWeek ?? 0)", icon: "person.2.fill", color: Brand.red)
-            }.buttonStyle(.plain)
-            NavigationLink(destination: DealsListView()) {
-                kpiTile("Open Deals", value: "\(s?.openDeals ?? 0)", icon: "square.stack.3d.up.fill", color: Brand.red)
-            }.buttonStyle(.plain)
-            NavigationLink(destination: DealKanbanView()) {
-                kpiTile("Pipeline", value: CurrencyFormatter.formatINRCompact(s?.openPipelineValue ?? 0), icon: "indianrupeesign.circle.fill", color: Brand.red)
-            }.buttonStyle(.plain)
-            NavigationLink(destination: DealsListView()) {
-                kpiTile("Win Rate", value: "\(Int((s?.winRate ?? 0) * 100))%", icon: "trophy.fill", color: Brand.red)
-            }.buttonStyle(.plain)
-            NavigationLink(destination: DealsListView()) {
-                kpiTile("Won — \(rangeSuffix)", value: "\(s?.dealsWonThisMonth ?? 0)", icon: "checkmark.seal.fill", color: Brand.red)
-            }.buttonStyle(.plain)
-            NavigationLink(destination: DealKanbanView()) {
-                kpiTile("Open Volume", value: formattedVolumeMT(s?.openDealVolume), icon: "shippingbox.fill", color: Brand.red)
-            }.buttonStyle(.plain)
-            NavigationLink(destination: DealsListView()) {
-                kpiTile("Avg Deal", value: CurrencyFormatter.formatINRCompact(s?.averageDealSize ?? 0), icon: "chart.bar.fill", color: Brand.red)
-            }.buttonStyle(.plain)
-            NavigationLink(destination: ActivitiesView()) {
-                kpiTile("Activities — \(rangeSuffix)", value: "\(s?.activitiesToday ?? 0)", icon: "bolt.fill", color: Brand.red)
+                kpiTile("Total leads", value: text, icon: "person.3.fill", color: Brand.red)
             }.buttonStyle(.plain)
         }
     }

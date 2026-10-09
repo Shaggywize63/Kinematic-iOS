@@ -10,6 +10,9 @@ struct ExpenseApprovalsView: View {
     @State private var rejectTarget: ExpenseClaim?
     @State private var openClaimId: String?
 
+    /// The policy's own name for mileage (e.g. "Travel"); the built-in name otherwise.
+    private var mileageName: String { ExpenseLogic.categoryLabel("mileage", labels: vm.policy?.rules?.category_labels) }
+
     var body: some View {
         Group {
             if !vm.didLoad {
@@ -37,7 +40,8 @@ struct ExpenseApprovalsView: View {
         }
         .navigationTitle("Expense Approvals")
         .navigationBarTitleDisplayMode(.inline)
-        .task { if !vm.didLoad { await vm.loadPending() } }
+        // The queue first; the policy (only for its category names) follows without holding the list up.
+        .task { if !vm.didLoad { await vm.loadPending() }; await vm.loadPolicy() }
         .refreshable { await vm.loadPending() }
         .background(
             NavigationLink(isActive: Binding(get: { openClaimId != nil }, set: { if !$0 { openClaimId = nil; Task { await vm.loadPending() } } })) {
@@ -74,7 +78,7 @@ struct ExpenseApprovalsView: View {
                     .background(Color.green.opacity(0.15)).foregroundColor(.green).clipShape(Capsule())
             }
             if let km = claim.distance_km {
-                Text("Mileage claimed \(ExpenseLogic.trimNumber(km)) km" + (claim.gps_derived_km.map { " · GPS \(ExpenseLogic.trimNumber($0)) km" } ?? ""))
+                Text("\(mileageName) claimed \(ExpenseLogic.trimNumber(km)) km" + (claim.gps_derived_km.map { " · GPS \(ExpenseLogic.trimNumber($0)) km" } ?? ""))
                     .font(.caption2).foregroundColor(.secondary)
             }
             HStack {

@@ -201,6 +201,15 @@ struct MainTabView: View {
                         AdHocFormsView()
                     }
                 }
+                // Expenses: opt-in per client (Expenses module AND app_ui_config tabs.expenses == true). It sits in
+                // the last slot — where "New" is, and takes its place when the client hides "New"
+                // (tabs.new_form == false) — so the bar keeps its tab count. Value 4 never collides with the
+                // fixed values above (nothing selects a tab by number beyond 0...2).
+                if ClientFeatures.showsExpensesTab {
+                    Tab(ClientFeatures.labelFor("tabs", "expenses", default: "Expenses"), systemImage: "receipt", value: 4) {
+                        NavigationStack { ExpenseClaimsView() }
+                    }
+                }
             }
         }
         .tabBarMinimizeOnScrollIfAvailable()
@@ -320,6 +329,9 @@ struct TabBtn: View {
 struct HomeView: View {
     @EnvironmentObject var appState: KiniAppState
     @StateObject var vm = HomeViewModel()
+    /// This month's sales / collection targets (opt-in per client: the card below the tiles only appears for a
+    /// client that configured rupee targets — see RupeeTargets).
+    @StateObject private var targets = MyTargetsViewModel()
     /// Rajkamal-only: presents the ad-hoc Marketing Visit flow (GPS Start →
     /// End tied to a lead) as a full-screen cover. Gated on
     /// `ClientFeatures.isRajkamal` so no other tenant sees the card.
@@ -418,6 +430,10 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, 20)
 
+                    // My targets — below the tiles; draws nothing at all unless the client has rupee targets.
+                    MyTargetsCard(model: targets, title: ClientFeatures.labelFor("home", "my_targets", default: "My targets"),
+                                  horizontalPadding: 20)
+
                     SessionCard(record: appState.today).padding(.horizontal, 20)
 
                     if vm.showSubmissionSuccess {
@@ -482,9 +498,16 @@ struct HomeView: View {
                     Spacer().frame(height: 110)
                 }
             }
-            .refreshable { await vm.refresh() }
+            .refreshable {
+                async let t: Void = targets.loadIfEnabled()
+                await vm.refresh()
+                await t
+            }
         }
-        .onAppear { Task { await vm.refresh() } }
+        .onAppear {
+            Task { await vm.refresh() }
+            Task { await targets.loadIfEnabled() }
+        }
         // Rajkamal ad-hoc Marketing Visit flow. Presented full-screen with its
         // own NavigationStack so MarketingVisitView (which carries no nav chrome
         // of its own) gets a title bar + the "Done" closer.

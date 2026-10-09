@@ -984,11 +984,14 @@ struct LeadDetailView: View {
         // field is hidden in the web console, the corresponding row
         // on mobile drops too. Without this, hidden DOB / Gender /
         // Preferred Channel were still visible on every lead detail.
-        let showDOB = !fieldOverrides.isHidden("date_of_birth", isB2C: true)
-        let showGender = !fieldOverrides.isHidden("gender", isB2C: true)
-        let showChannel = !fieldOverrides.isHidden("preferred_contact_method", isB2C: true)
-        let showMarketing = !fieldOverrides.isHidden("marketing_consent", isB2C: true)
-        let showWhatsapp = !fieldOverrides.isHidden("whatsapp_consent", isB2C: true)
+        // Held back until the overrides have loaded: before that nothing reads as hidden, so every
+        // row — including the consent ones — would flash for a client that hid them.
+        let loaded = fieldOverrides.didLoad
+        let showDOB = loaded && !fieldOverrides.isHidden("date_of_birth", isB2C: true)
+        let showGender = loaded && !fieldOverrides.isHidden("gender", isB2C: true)
+        let showChannel = loaded && !fieldOverrides.isHidden("preferred_contact_method", isB2C: true)
+        let showMarketing = loaded && !fieldOverrides.isHidden("marketing_consent", isB2C: true)
+        let showWhatsapp = loaded && !fieldOverrides.isHidden("whatsapp_consent", isB2C: true)
         let anyRow = showDOB || showGender || showChannel || showMarketing || showWhatsapp
         return Group {
             if anyRow {

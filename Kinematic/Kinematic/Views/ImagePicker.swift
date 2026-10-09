@@ -7,6 +7,13 @@ struct ImagePicker: UIViewControllerRepresentable {
     
     var sourceType: UIImagePickerController.SourceType = .camera
     var cameraDevice: UIImagePickerController.CameraDevice = .front
+    /// true (the default, and what every existing caller gets): a device without the requested source — the
+    /// simulator has no camera — falls back to the photo library. false: never open the library; the picker
+    /// closes itself instead. For photos that must come from the camera (e.g. a camera-only odometer photo).
+    var allowLibraryFallback: Bool = true
+
+    /// Whether this device has a camera to take a photo with.
+    static var isCameraAvailable: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
     
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
@@ -17,6 +24,11 @@ struct ImagePicker: UIViewControllerRepresentable {
             if sourceType == .camera {
                 picker.cameraDevice = cameraDevice
             }
+        } else if !allowLibraryFallback {
+            // No fallback allowed: close straight away rather than show a photo library.
+            print("🚨 IMAGE_PICKER: source unavailable and library fallback is off — dismissing.")
+            let close = dismiss
+            DispatchQueue.main.async { close() }
         } else if UIImagePickerController.isSourceTypeAvailable(.photoLibrary) {
             picker.sourceType = .photoLibrary
             print("📸 IMAGE_PICKER: Falling back to .photoLibrary")

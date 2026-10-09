@@ -43,6 +43,21 @@ struct LeadFormConfig: Equatable {
     /// Does the create form offer "Schedule visit" for this lead type?
     func offersScheduleVisit(isB2C: Bool) -> Bool { scheduleVisitSegments.contains(key(isB2C)) }
 
+    /// Naive plural of a lead-type name for the dashboard split: add "s" unless it already ends in one
+    /// ("Dealer" → "Dealers", "Farmers" → "Farmers").
+    static func plural(_ name: String) -> String {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if n.isEmpty || n.lowercased().hasSuffix("s") { return n }
+        return n + "s"
+    }
+
+    /// The dashboard's "Total leads" split — "Dealers 12 · Farmers 30" — or nil when this client never named
+    /// its lead types (then the dashboard shows nothing new). Names come from `segmentName`; B2B first.
+    func leadsSplitText(b2b: Int, b2c: Int) -> String? {
+        guard hasCustomName(isB2C: false) || hasCustomName(isB2C: true) else { return nil }
+        return "\(Self.plural(segmentName(isB2C: false))) \(b2b) · \(Self.plural(segmentName(isB2C: true))) \(b2c)"
+    }
+
     /// Pure parser for `config.lead_form`. Anything missing or mis-typed falls back to the legacy defaults.
     static func parse(_ config: [String: AnyJSON]?) -> LeadFormConfig {
         guard case let .object(raw)? = config?["lead_form"] else { return LeadFormConfig() }

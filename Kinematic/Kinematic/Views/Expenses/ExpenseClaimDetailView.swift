@@ -24,6 +24,8 @@ struct ExpenseClaimDetailView: View {
     private var status: String { (claim?.status ?? "").lowercased() }
     private var canApprove: Bool { ExpenseLogic.canApprove(role: me?.role, dataScope: me?.orgRoleDataScope) }
     private var reviewing: Bool { claim != nil && status == "submitted" && canApprove && !isMine && me != nil }
+    /// The policy's own names for the categories (e.g. mileage → "Travel"); nil = the built-in names.
+    private var categoryLabels: [String: String]? { listVM.policy?.rules?.category_labels }
 
     var body: some View {
         Group {
@@ -40,14 +42,14 @@ struct ExpenseClaimDetailView: View {
                     if isMine { Section { ownerActions(c) } }
 
                     if reviewing {
-                        ExpenseReviewSection(claim: c, busy: busy, onViewReceipt: { viewing = ReceiptRef(url: $0) }) { decision, note, items in
+                        ExpenseReviewSection(claim: c, busy: busy, categoryLabels: categoryLabels, onViewReceipt: { viewing = ReceiptRef(url: $0) }) { decision, note, items in
                             await decide(c, decision: decision, note: note, items: items)
                         }
                     } else {
                         Section("Expenses") {
                             if (c.items ?? []).isEmpty { Text("This claim has no lines.").foregroundColor(.secondary) }
                             ForEach(c.items ?? []) { item in
-                                ExpenseLineView(item: item, currency: c.currency) { viewing = ReceiptRef(url: $0) }
+                                ExpenseLineView(item: item, currency: c.currency, categoryLabels: categoryLabels) { viewing = ReceiptRef(url: $0) }
                             }
                         }
                     }
@@ -59,7 +61,7 @@ struct ExpenseClaimDetailView: View {
                         }
                     }
                     Section("Details") { details(c) }
-                    Section("History") { ExpenseTimelineView(claim: c) }
+                    Section("History") { ExpenseTimelineView(claim: c, categoryLabels: categoryLabels) }
                 }
                 .refreshable { await load(silent: true) }
                 .overlay(alignment: .top) { if busy { ProgressView().padding(.top, 8) } }
@@ -142,7 +144,7 @@ struct ExpenseClaimDetailView: View {
             let level = c.current_level ?? 1
             rows.append(("With", level > 1 ? "\(w) (level \(level))" : w))
         }
-        if let km = c.distance_km { rows.append(("Mileage claimed", "\(ExpenseLogic.trimNumber(km)) km")) }
+        if let km = c.distance_km { rows.append(("\(ExpenseLogic.categoryLabel("mileage", labels: categoryLabels)) claimed", "\(ExpenseLogic.trimNumber(km)) km")) }
         if let km = c.gps_derived_km { rows.append(("GPS trail", "\(ExpenseLogic.trimNumber(km)) km")) }
         if let paid = c.reimbursed_at {
             let ref = (c.reimbursed_ref ?? "").isEmpty ? "" : " · \(c.reimbursed_ref ?? "")"
@@ -204,6 +206,7 @@ struct ExpenseClaimDetailView: View {
 private struct ExpenseReviewSection: View {
     let claim: ExpenseClaim
     let busy: Bool
+    let categoryLabels: [String: String]?
     let onViewReceipt: (String) -> Void
     let onDecide: (_ decision: String, _ note: String?, _ items: [ExpenseLineDecisionInput]?) async -> Void
 
@@ -212,9 +215,10 @@ private struct ExpenseReviewSection: View {
     @State private var showErrors = false
     @State private var rejecting = false
 
-    init(claim: ExpenseClaim, busy: Bool, onViewReceipt: @escaping (String) -> Void,
+    init(claim: ExpenseClaim, busy: Bool, categoryLabels: [String: String]?, onViewReceipt: @escaping (String) -> Void,
          onDecide: @escaping (_ decision: String, _ note: String?, _ items: [ExpenseLineDecisionInput]?) async -> Void) {
-        self.claim = claim; self.busy = busy; self.onViewReceipt = onViewReceipt; self.onDecide = onDecide
+        self.claim = claim; self.busy = busy; self.categoryLabels = categoryLabels
+        self.onViewReceipt = onViewReceipt; self.onDecide = onDecide
         _reviews = State(initialValue: (claim.items ?? []).map { ExpenseLineReview(id: $0.id) })
     }
 
@@ -229,7 +233,7 @@ private struct ExpenseReviewSection: View {
         Section("Review") {
             ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                 VStack(alignment: .leading, spacing: 8) {
-                    ExpenseLineView(item: item, currency: claim.currency, onViewReceipt: onViewReceipt)
+                    ExpenseLineView(item: item, currency: claim.currency, categoryLabels: categoryLabels, onViewReceipt: onViewReceipt)
                     if reviews.indices.contains(i) {
                         Picker("Decision", selection: Binding(get: { reviews[i].approved }, set: { reviews[i].approved = $0 })) {
                             Text("Approve").tag(true)

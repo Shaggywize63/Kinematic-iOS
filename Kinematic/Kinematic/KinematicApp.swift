@@ -98,6 +98,12 @@ struct AppUiConfig: Codable {
     /// section -> id -> custom display name (rename override).
     let labels: [String: [String: String]]?
     enum CodingKeys: String, CodingKey { case menu, tabs, home, settings, labels; case crmMore = "crm_more" }
+
+    /// The maps are free-form id -> Bool, so a key the app does not know yet (e.g. `tabs.expenses`) survives
+    /// decoding untouched and can be read later.
+    /// True only when the tab is switched ON explicitly (`true`). Absent and `false` both mean "not on" —
+    /// unlike `tabs[id] != false` (the hide-only check), which treats absent as visible.
+    func tabExplicitlyOn(_ id: String) -> Bool { tabs?[id] == true }
 }
 
 // MARK: - Entitlement helpers
@@ -119,6 +125,8 @@ extension User {
     // hidden; absent/true = defer to the item's built-in gate.
     func menuVisible(_ id: String) -> Bool { appUiConfig?.menu?[id] != false }
     func tabVisible(_ id: String) -> Bool { appUiConfig?.tabs?[id] != false }
+    /// Opt-in tabs: shown only when `tabs[id]` is explicitly `true` (absent / false = not shown).
+    func tabExplicitlyOn(_ id: String) -> Bool { appUiConfig?.tabExplicitlyOn(id) ?? false }
     func crmMoreVisible(_ id: String) -> Bool { appUiConfig?.crmMore?[id] != false }
     func homeVisible(_ id: String) -> Bool { appUiConfig?.home?[id] != false }
     func settingsVisible(_ id: String) -> Bool { appUiConfig?.settings?[id] != false }
@@ -529,6 +537,41 @@ struct ApiResponse<T: Codable>: Codable {
     let error: String?
     let message: String?
     let details: ApiErrorDetails?
+
+    private enum CodingKeys: String, CodingKey { case success, data, error, message, details }
+
+    // The backend ships `error` in two shapes — a plain string, or `{ code, message }` (see APIEnvelope). A
+    // `String?` here made the whole response fail to decode on the second shape, which callers then treated as
+    // a network failure: a refusal read as "couldn't reach the server". Accept both and keep the message text,
+    // so `res.error ?? res.message` consumers are unchanged. `message` and `details` are only ever extras, so a
+    // value of an unexpected type is dropped rather than failing the response.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        success = try c.decode(Bool.self, forKey: .success)
+        data = try c.decodeIfPresent(T.self, forKey: .data)
+        if let s = try? c.decodeIfPresent(String.self, forKey: .error) {
+            error = s
+        } else if let o = try? c.decodeIfPresent(ApiErrorObject.self, forKey: .error) {
+            error = o.message
+        } else {
+            error = nil
+        }
+        message = (try? c.decodeIfPresent(String.self, forKey: .message)) ?? nil
+        details = (try? c.decodeIfPresent(ApiErrorDetails.self, forKey: .details)) ?? nil
+    }
+
+    /// The `{ code, message }` shape of `error`.
+    private struct ApiErrorObject: Codable {
+        let code: String?
+        let message: String?
+    }
+}
+
+/// Hands the HTTP status of a response back to a caller of `KinematicRepository.performRequest`, which decodes
+/// the body and otherwise drops it. Callers that must tell "the server said no" from "the server is down" — and
+/// get a status even when the body is not JSON (a gateway's HTML error page) — pass one in.
+final class HTTPStatusBox {
+    var status: Int?
 }
 
 // MARK: - Daily AI briefing — GET /crm/ai/daily-briefing
@@ -1851,6 +1894,28 @@ class Session: ObservableObject {
         set { KeychainTokenStore.set(newValue ?? "", for: "active_session_id") }
     }
 
+    /// When the current login session began (nil = unknown). Written at login; cleared at logout. For a session
+    /// that began before this was recorded it is read once from the Keychain modification date of the
+    /// session-id item (which is only written at login) and kept. Offline queues use it to tell rows queued
+    /// during this login — which are certainly the current user's — from older ones (see QueueOwnership).
+    /// Every uncertain case answers nil, which only ever makes the queues more cautious.
+    static var sessionStartedAt: Date? {
+        get {
+            if let t = UserDefaults.standard.object(forKey: "session_started_at") as? Date { return t }
+            guard !sessionStartProbed, !sharedToken.isEmpty else { return nil }
+            sessionStartProbed = true
+            guard let t = KeychainTokenStore.modificationDate("active_session_id") else { return nil }
+            UserDefaults.standard.set(t, forKey: "session_started_at")
+            return t
+        }
+        set {
+            sessionStartProbed = false
+            if let v = newValue { UserDefaults.standard.set(v, forKey: "session_started_at") }
+            else { UserDefaults.standard.removeObject(forKey: "session_started_at") }
+        }
+    }
+    private static var sessionStartProbed = false
+
     /// Multi-project routing key resolved from the user's email at login
     /// (backend GET /auth/project-for-email), persisted so every request can
     /// echo it back as `X-Kinematic-Project`. Only a non-"default" project is
@@ -1871,6 +1936,7 @@ class Session: ObservableObject {
         sharedToken = ""
         refreshToken = ""
         sessionId = nil
+        sessionStartedAt = nil
         project = nil
         currentUser = nil
         isDemoMode = false
@@ -2643,6 +2709,8 @@ class KinematicRepository {
         body: Data? = nil,
         queryItems: [URLQueryItem]? = nil,
         idempotencyKey: String? = nil,
+        // Optional — receives the HTTP status of the response (see HTTPStatusBox).
+        statusBox: HTTPStatusBox? = nil,
         // Internal — set on the recursive retry after a silent refresh so
         // we never spin in an infinite refresh loop.
         _retryingAfterRefresh: Bool = false
@@ -2702,6 +2770,7 @@ class KinematicRepository {
         let (data, response) = try await URLSession.shared.data(for: req)
 
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        statusBox?.status = statusCode
         print("📡 API_END: Status \(statusCode) for \(path)")
 
 
@@ -2751,6 +2820,7 @@ class KinematicRepository {
                     return try await performRequest(
                         path, method: method, body: body,
                         queryItems: queryItems, idempotencyKey: idempotencyKey,
+                        statusBox: statusBox,
                         _retryingAfterRefresh: true
                     )
                 }
@@ -3082,6 +3152,7 @@ class KinematicRepository {
                         Session.sharedToken = t
                         Session.refreshToken = result.data?.refreshToken ?? ""
                         Session.sessionId = result.data?.sessionId
+                        Session.sessionStartedAt = Date()
                         Session.currentUser = result.data?.user
                         KiniAppState.shared.clearSessionKickedMsg()
                         KiniAppState.shared.checkAuth()
@@ -3180,6 +3251,7 @@ class KinematicRepository {
                         // X-Session-Id. Clear any leftover kicked-device
                         // toast from a previous forced logout.
                         Session.sessionId = result.data?.sessionId
+                        Session.sessionStartedAt = Date()
                         KiniAppState.shared.clearSessionKickedMsg()
                         Session.currentUser = result.data?.user
                         KiniAppState.shared.checkAuth()
@@ -3249,11 +3321,16 @@ class KinematicRepository {
         }
     }
     
+    /// Send one attendance punch. The result says whether it worked and, if not, WHY (see
+    /// `AttendanceSyncPolicy`): only a failure to get through to the server (no network, timeout, 408 / 429 /
+    /// 5xx) is `.transient` — worth queueing and retrying. A refusal from the server is `.rejected` and carries
+    /// its message. A 2xx the app could not read still counts as success: the server accepted the punch.
     func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil,
                         faceScore: Double? = nil, faceVerified: Bool? = nil, faceModelId: String? = nil,
                         isMock: Bool? = nil, locationAccuracyM: Double? = nil,
-                        idempotencyKey: String? = nil) async -> (Bool, String?, AttendanceRecord?) {
+                        idempotencyKey: String? = nil) async -> AttendanceSubmitResult {
         let endpoint = isCheckIn ? "/attendance/checkin" : "/attendance/checkout"
+        let status = HTTPStatusBox()
 
         do {
             var payload: [String: Any] = ["latitude": lat, "longitude": lng]
@@ -3274,18 +3351,28 @@ class KinematicRepository {
                 endpoint,
                 method: "POST",
                 body: body,
-                idempotencyKey: idempotencyKey
+                idempotencyKey: idempotencyKey,
+                statusBox: status
             )
-            if res?.success == true { return (true, nil, res?.data) }
+            if res?.success == true { return .ok(record: res?.data, httpStatus: status.status) }
             // Server backstop: a strict tenant rejects a location-less punch
-            // with details.code == "LOCATION_REQUIRED". Surface the raw code so
-            // the caller can show the same "turn on location" gate.
-            if res?.details?.code == "LOCATION_REQUIRED" {
-                return (false, "LOCATION_REQUIRED", nil)
-            }
-            return (false, res?.error ?? res?.message ?? "Failed to mark attendance", nil)
+            // with details.code == "LOCATION_REQUIRED". The caller shows the
+            // same "turn on location" gate.
+            let kind = AttendanceSyncPolicy.classify(urlErrorCode: nil, httpStatus: status.status, serverCode: res?.details?.code)
+            let message = AttendanceSyncPolicy.userMessage(
+                serverMessage: res?.error ?? res?.message, urlErrorCode: nil, httpStatus: status.status,
+                fallback: "Failed to mark attendance")
+            return .failed(kind, message: message, httpStatus: status.status)
         } catch {
-            return (false, error.localizedDescription, nil)
+            // The server did answer 2xx but the reply was not in a shape we read: it accepted the punch.
+            if AttendanceSyncPolicy.acceptedDespiteUnreadableReply(httpStatus: status.status) {
+                print("⚠️ ATTENDANCE_REPLY_UNREADABLE (accepted, HTTP \(status.status ?? 0)): \(error)")
+                return .ok(record: nil, httpStatus: status.status)
+            }
+            let code = (error as? URLError)?.code
+            let kind = AttendanceSyncPolicy.classify(urlErrorCode: code, httpStatus: status.status, serverCode: nil)
+            let message = AttendanceSyncPolicy.userMessage(for: error, httpStatus: status.status, fallback: "Failed to mark attendance")
+            return .failed(kind, message: message, httpStatus: status.status)
         }
     }
 
@@ -3350,21 +3437,27 @@ class KinematicRepository {
 
     // MARK: Breaks (Android parity — POST /attendance/break/start, /break/end)
     func startBreak() async -> (Bool, String?) {
-        do {
-            let res: ApiResponse<[String: String]>? = try await performRequest(
-                "/attendance/break/start", method: "POST", body: Data("{}".utf8))
-            if res?.success == true { return (true, nil) }
-            return (false, res?.error ?? res?.message ?? "Failed to start break")
-        } catch { return (false, error.localizedDescription) }
+        await breakCall("/attendance/break/start", fallback: "Failed to start break")
     }
 
     func endBreak() async -> (Bool, String?) {
+        await breakCall("/attendance/break/end", fallback: "Failed to end break")
+    }
+
+    /// One break call. A failure is reported in plain words (the server's own message, or "No internet
+    /// connection…"), never a raw system error; a 2xx whose reply the app can't read still counts as done.
+    private func breakCall(_ path: String, fallback: String) async -> (Bool, String?) {
+        let status = HTTPStatusBox()
         do {
             let res: ApiResponse<[String: String]>? = try await performRequest(
-                "/attendance/break/end", method: "POST", body: Data("{}".utf8))
+                path, method: "POST", body: Data("{}".utf8), statusBox: status)
             if res?.success == true { return (true, nil) }
-            return (false, res?.error ?? res?.message ?? "Failed to end break")
-        } catch { return (false, error.localizedDescription) }
+            return (false, AttendanceSyncPolicy.userMessage(
+                serverMessage: res?.error ?? res?.message, urlErrorCode: nil, httpStatus: status.status, fallback: fallback))
+        } catch {
+            if AttendanceSyncPolicy.acceptedDespiteUnreadableReply(httpStatus: status.status) { return (true, nil) }
+            return (false, AttendanceSyncPolicy.userMessage(for: error, httpStatus: status.status, fallback: fallback))
+        }
     }
 
     // MARK: History (Android parity — GET /attendance/history)

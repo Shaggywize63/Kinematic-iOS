@@ -101,8 +101,24 @@ final class ExpenseLogicTests: XCTestCase {
         var trip = ExpenseLineFields(); trip.category = "mileage"; trip.distanceKm = "10"; trip.fromLocation = "A"; trip.merchant = "ignored"
         let t = trip.toInput()
         XCTAssertEqual(t.distance_km, 10)
+        XCTAssertEqual(t.from_location, "A")   // the route is sent unless the policy turned it off
         XCTAssertNil(t.merchant)
         XCTAssertNil(t.amount)   // priced by the server at the policy rate
+    }
+
+    func testTheRouteIsLeftOutWhenThePolicyTurnsItOff() throws {
+        var trip = ExpenseLineFields()
+        trip.category = "mileage"; trip.distanceKm = "10"; trip.fromLocation = "Pune"; trip.toLocation = "Nashik"
+        let off = trip.toInput(routeFields: false)
+        XCTAssertNil(off.from_location)
+        XCTAssertNil(off.to_location)
+        XCTAssertEqual(off.distance_km, 10)   // everything else is unchanged
+        // nil is dropped from the wire body, which on an edit means "keep what is on file".
+        let json = try String(data: JSONEncoder().encode(off), encoding: .utf8) ?? ""
+        XCTAssertFalse(json.contains("from_location"))
+        XCTAssertFalse(json.contains("to_location"))
+        let on = try String(data: JSONEncoder().encode(trip.toInput()), encoding: .utf8) ?? ""
+        XCTAssertTrue(on.contains("\"from_location\":\"Pune\""))
     }
 
     // MARK: - Receipts
@@ -277,5 +293,217 @@ final class ExpenseLogicTests: XCTestCase {
         XCTAssertEqual(ExpenseErrors.message(serverMessage: nil, status: 403), "You don't have permission to do that.")
         XCTAssertTrue(ExpenseErrors.message(serverMessage: nil, status: 413).contains("10 MB"))
         XCTAssertEqual(ExpenseErrors.message(serverMessage: "  ", status: 400), "Request failed (400)")
+    }
+
+    // MARK: - Per-client policy switches (all optional: absent = today)
+
+    private func rules(_ json: String) throws -> ExpensePolicyRules {
+        try JSONDecoder().decode(ExpensePolicyRules.self, from: Data(json.utf8))
+    }
+
+    /// Every category switched off except `only`.
+    private func onlyOne(_ only: String) throws -> ExpensePolicyRules {
+        let cats = ExpenseLogic.categories
+            .map { "\"\($0)\":{\"enabled\":\($0 == only)}" }
+            .joined(separator: ",")
+        return try rules("{\"categories\":{\(cats)}}")
+    }
+
+    func testAPolicyWithoutTheNewSwitchesBehavesAsBefore() throws {
+        let plain = try rules(#"{"mileage_rate":12}"#)
+        XCTAssertNil(plain.category_labels)
+        XCTAssertNil(plain.route_fields)
+        XCTAssertNil(plain.single_line)
+        XCTAssertNil(plain.odometer_camera_only)
+        XCTAssertTrue(ExpenseLogic.showsRoute(plain))
+        XCTAssertFalse(ExpenseLogic.isSingleLine(plain))
+        XCTAssertFalse(ExpenseLogic.odometerCameraOnly(plain))
+        XCTAssertNil(ExpenseLogic.singleCategory(plain))
+        XCTAssertEqual(ExpenseLogic.defaultCategory(plain), "food")
+        // No policy at all is the same.
+        XCTAssertTrue(ExpenseLogic.showsRoute(nil))
+        XCTAssertFalse(ExpenseLogic.isSingleLine(nil))
+        XCTAssertFalse(ExpenseLogic.odometerCameraOnly(nil))
+        XCTAssertNil(ExpenseLogic.singleCategory(nil))
+        XCTAssertTrue(ExpenseLogic.showsCategoryPicker(nil, current: "food"))
+        XCTAssertEqual(ExpenseLogic.allowedCategories(nil, current: "food"), ExpenseLogic.categories)
+    }
+
+    func testTheNewSwitchesDecodeFromThePolicy() throws {
+        let r = try rules(#"{"category_labels":{"mileage":"Travel"},"route_fields":false,"single_line":true,"odometer_camera_only":true}"#)
+        XCTAssertEqual(r.category_labels, ["mileage": "Travel"])
+        XCTAssertFalse(ExpenseLogic.showsRoute(r))
+        XCTAssertTrue(ExpenseLogic.isSingleLine(r))
+        XCTAssertTrue(ExpenseLogic.odometerCameraOnly(r))
+    }
+
+    func testEveryCategoryNameGoesThroughTheLabelOverride() {
+        XCTAssertEqual(ExpenseLogic.categoryLabel("mileage"), "Mileage")
+        XCTAssertEqual(ExpenseLogic.categoryLabel("misc"), "Other")
+        XCTAssertEqual(ExpenseLogic.categoryLabel("mileage", labels: ["mileage": "Travel"]), "Travel")
+        // Other categories keep their names; a blank override counts as none.
+        XCTAssertEqual(ExpenseLogic.categoryLabel("food", labels: ["mileage": "Travel"]), "Food")
+        XCTAssertEqual(ExpenseLogic.categoryLabel("mileage", labels: ["mileage": "  "]), "Mileage")
+        XCTAssertNil(ExpenseLogic.customLabel("mileage", labels: ["mileage": " "]))
+        XCTAssertEqual(ExpenseLogic.customLabel("mileage", labels: ["mileage": " Travel "]), "Travel")
+    }
+
+    func testTheHistoryAndTheLineNamesUseTheRenamedCategory() throws {
+        let c = try decodeClaim("""
+        {"id":"c","status":"rejected","currency":"INR","total_amount":900,"submit_count":1,
+         "approvals":[{"id":"a1","level":1,"round":1,"status":"rejected","approver_name":"Meera","note":"No",
+           "item_decisions":[{"item_id":"i1","category":"mileage","amount":400,"decision":"rejected","note":"Too far"}]}]}
+        """)
+        let plain = expenseTimeline(c).last?.rejectedLines.first ?? ""
+        XCTAssertTrue(plain.hasPrefix("Mileage"), plain)
+        let renamed = expenseTimeline(c, categoryLabels: ["mileage": "Travel"]).last?.rejectedLines.first ?? ""
+        XCTAssertTrue(renamed.hasPrefix("Travel"), renamed)
+    }
+
+    func testSingleCategoryModeNeedsExactlyOneEnabledCategory() throws {
+        let travelOnly = try onlyOne("mileage")
+        XCTAssertEqual(ExpenseLogic.enabledCategories(travelOnly), ["mileage"])
+        XCTAssertEqual(ExpenseLogic.singleCategory(travelOnly), "mileage")
+        XCTAssertEqual(ExpenseLogic.defaultCategory(travelOnly), "mileage")
+
+        // Two on (or a category the policy never mentions) is not single-category mode.
+        let two = try rules(#"{"categories":{"food":{"enabled":false},"travel":{"enabled":false},"lodging":{"enabled":false},"fuel":{"enabled":false},"toll":{"enabled":false}}}"#)
+        XCTAssertEqual(ExpenseLogic.enabledCategories(two), ["mileage", "misc"])
+        XCTAssertNil(ExpenseLogic.singleCategory(two))
+        XCTAssertEqual(ExpenseLogic.defaultCategory(two), "food")
+        // Everything off is not "one category" either.
+        let none = try rules(#"{"categories":{"mileage":{"enabled":false},"travel":{"enabled":false},"food":{"enabled":false},"lodging":{"enabled":false},"fuel":{"enabled":false},"toll":{"enabled":false},"misc":{"enabled":false}}}"#)
+        XCTAssertNil(ExpenseLogic.singleCategory(none))
+    }
+
+    func testTheCategoryPickerIsHiddenOnlyWhereThereIsNothingToChoose() throws {
+        let travelOnly = try onlyOne("mileage")
+        XCTAssertFalse(ExpenseLogic.showsCategoryPicker(travelOnly, current: "mileage"))
+        XCTAssertEqual(ExpenseLogic.allowedCategories(travelOnly, current: "mileage"), ["mileage"])
+        // An older claim line on another category still renders, and can be moved to the allowed one.
+        XCTAssertTrue(ExpenseLogic.showsCategoryPicker(travelOnly, current: "food"))
+        XCTAssertEqual(ExpenseLogic.allowedCategories(travelOnly, current: "food"), ["mileage", "food"])
+        // A policy that leaves several on keeps the picker.
+        let several = try rules(#"{"categories":{"misc":{"enabled":false}}}"#)
+        XCTAssertTrue(ExpenseLogic.showsCategoryPicker(several, current: "food"))
+        XCTAssertFalse(ExpenseLogic.allowedCategories(several, current: "food").contains("misc"))
+    }
+
+    func testAReceiptScanCannotMoveALineOffTheOnlyAllowedCategory() {
+        let scan = ExpenseReceiptFields(merchant: "Hotel", txn_date: nil, amount: 900, currency: nil, tax_amount: nil, category: "lodging")
+        var line = ExpenseLineFields(); line.category = "food"
+        XCTAssertEqual(line.withScan(scan, receiptUrl: "u").category, "lodging")                              // as before
+        XCTAssertEqual(line.withScan(scan, receiptUrl: "u", allowedCategories: ["food"]).category, "food")   // single-category mode
+        XCTAssertEqual(line.withScan(scan, receiptUrl: "u", allowedCategories: ["food", "lodging"]).category, "lodging")
+    }
+
+    func testAMileageLineWithoutARouteReadsWithoutOne() throws {
+        func decodeItem(_ json: String) throws -> ExpenseClaimItem { try JSONDecoder().decode(ExpenseClaimItem.self, from: Data(json.utf8)) }
+        XCTAssertNil(try decodeItem(#"{"id":"a","category":"mileage","amount":0,"distance_km":10}"#).routeText)
+        XCTAssertNil(try decodeItem(#"{"id":"a","category":"mileage","amount":0,"from_location":"  ","to_location":""}"#).routeText)
+        XCTAssertEqual(try decodeItem(#"{"id":"a","category":"mileage","amount":0,"from_location":"Pune","to_location":"Nashik"}"#).routeText, "Pune → Nashik")
+        // One end is enough to print it; the missing end shows a dash.
+        XCTAssertEqual(try decodeItem(#"{"id":"a","category":"mileage","amount":0,"from_location":"Pune"}"#).routeText, "Pune → —")
+        XCTAssertEqual(try decodeItem(#"{"id":"a","category":"mileage","amount":0,"to_location":"Nashik"}"#).routeText, "— → Nashik")
+    }
+
+    // MARK: - Reading the odometer from the photo
+
+    func testAnOdometerScanDecodesAndNeverFailsTheUpload() throws {
+        func up(_ extra: String) throws -> ExpenseUploadedReceipt {
+            try JSONDecoder().decode(ExpenseUploadedReceipt.self, from: Data(#"{"url":"https://x/o.jpg","signed_url":"https://x/o.jpg?t=1"\#(extra)}"#.utf8))
+        }
+        let read = try up(#","odometer":{"reading":12340.5,"confidence":"high"}"#)
+        XCTAssertEqual(read.odometer?.reading, 12340.5)
+        XCTAssertEqual(read.odometer?.confidence, "high")
+        // Not readable, absent, or in a shape nobody expected: the photo is still stored, there is just no number.
+        XCTAssertNil(try up(#","odometer":{"reading":null,"confidence":"low"}"#).odometer?.reading)
+        XCTAssertNil(try up("").odometer)
+        XCTAssertEqual(try up(#","odometer":{"reading":"12340"}"#).odometer?.reading, 12340)
+        XCTAssertNil(try up(#","odometer":{"reading":{"x":1}}"#).odometer?.reading)
+        XCTAssertNil(try up(#","odometer":"nope""#).odometer)
+        XCTAssertEqual(try up(#","odometer":"nope""#).url, "https://x/o.jpg")
+    }
+
+    func testTheUploadAsksForTheReadThePolicyWants() {
+        XCTAssertEqual(ExpenseUploadScan.receipt.path, "/expenses/receipts")
+        XCTAssertEqual(ExpenseUploadScan.storeOnly.path, "/expenses/receipts?scan=0")
+        XCTAssertEqual(ExpenseUploadScan.odometer.path, "/expenses/receipts?scan=odometer")
+    }
+
+    func testAReadingFromThePhotoFillsTheMatchingSlotAndStaysEditable() {
+        var line = ExpenseLineFields()
+        line.category = "mileage"; line.odometerStart = "100"; line.odometerEnd = "250"
+        // Before: replaces what was there.
+        XCTAssertEqual(line.applyOdometerScan(ExpenseOdometerScan(reading: 12340), start: true), .read)
+        XCTAssertEqual(line.odometerStart, "12340")
+        XCTAssertEqual(line.odometerEnd, "250")
+        // After: only its own slot moves.
+        XCTAssertEqual(line.applyOdometerScan(ExpenseOdometerScan(reading: 12392.5), start: false), .read)
+        XCTAssertEqual(line.odometerStart, "12340")
+        XCTAssertEqual(line.odometerEnd, "12392.5")
+        // It is plain text in the field, so the person can still type over it.
+        line.odometerEnd = "12400"
+        XCTAssertEqual(line.odometerKm, 60)
+    }
+
+    func testAPhotoThatCouldNotBeReadAsksForTheNumberAndKeepsWhatWasTyped() {
+        var line = ExpenseLineFields()
+        line.odometerStart = "500"
+        for scan in [nil, ExpenseOdometerScan(reading: nil), ExpenseOdometerScan(reading: -3), ExpenseOdometerScan(reading: .nan), ExpenseOdometerScan(reading: .infinity)] {
+            XCTAssertEqual(line.applyOdometerScan(scan, start: true), .unreadable)
+            XCTAssertEqual(line.odometerStart, "500")
+        }
+        XCTAssertEqual(OdometerScanNote.read.text, "Read from the photo — please check")
+        XCTAssertEqual(OdometerScanNote.unreadable.text, "Couldn't read the number — please enter it")
+        // A zero reading is a real reading.
+        XCTAssertEqual(line.applyOdometerScan(ExpenseOdometerScan(reading: 0), start: true), .read)
+        XCTAssertEqual(line.odometerStart, "0")
+    }
+
+    // MARK: - Odometer history
+
+    private func entries() throws -> [ExpenseOdometerEntry] {
+        let json = """
+        [{"id":"l2","claim_id":"c2","claim_no":"EXP-0009","claim_status":"submitted","user_id":"u","user_name":"Asha","item_date":"2026-10-05",
+          "vehicle_type":"two_wheeler","vehicle_label":"Two-wheeler","odometer_start":12340,"odometer_end":12392,"distance_km":52,"amount":208,
+          "start_photo_url":"https://x/a.jpg","end_photo_url":"https://x/b.jpg","created_at":"2026-10-05T09:00:00Z"},
+         {"id":"l1","claim_id":"c1","claim_status":"approved","item_date":"2026-10-01T00:00:00Z","vehicle_type":"car","odometer_start":12000,"odometer_end":null}]
+        """
+        return try JSONDecoder().decode([ExpenseOdometerEntry].self, from: Data(json.utf8))
+    }
+
+    func testTheOdometerHistoryDecodesWhatTheServerSends() throws {
+        let rows = try entries()
+        XCTAssertEqual(rows.map { $0.id }, ["l2", "l1"])
+        XCTAssertEqual(rows[0].vehicleText, "Two-wheeler")
+        XCTAssertEqual(rows[0].readingsText, "12340 → 12392")
+        XCTAssertEqual(rows[0].statusText, "Submitted")
+        XCTAssertEqual(rows[0].start_photo_url, "https://x/a.jpg")
+        // No label from the server: a readable vehicle id; a missing end reading shows a dash.
+        XCTAssertEqual(rows[1].vehicleText, "Car")
+        XCTAssertEqual(rows[1].readingsText, "12000 → —")
+        XCTAssertNil(rows[1].distance_km)
+    }
+
+    func testTheLastReadingIsTheNewestOneOnFile() throws {
+        let rows = try entries()
+        let last = try XCTUnwrap(ExpenseLogic.lastReading(in: rows))
+        XCTAssertEqual(last.km, 12392)
+        XCTAssertEqual(ExpenseLogic.lastReadingText(last), "Last reading: 12392 km (5 Oct 2026)")
+        // The claim being edited does not offer its own reading back; the next-newest line does (its start when it has no end).
+        let other = try XCTUnwrap(ExpenseLogic.lastReading(in: rows, excludingClaim: "c2"))
+        XCTAssertEqual(other.km, 12000)
+        XCTAssertEqual(ExpenseLogic.lastReadingText(other), "Last reading: 12000 km (1 Oct 2026)")
+        XCTAssertNil(ExpenseLogic.lastReading(in: []))
+        XCTAssertNil(ExpenseLogic.lastReading(in: [rows[0]], excludingClaim: "c2"))
+    }
+
+    func testShortDatesReadAsDayMonthYear() {
+        XCTAssertEqual(ExpenseLogic.shortDate("2026-10-05"), "5 Oct 2026")
+        XCTAssertEqual(ExpenseLogic.shortDate("2026-12-31T23:59:00Z"), "31 Dec 2026")
+        XCTAssertNil(ExpenseLogic.shortDate(nil))
+        XCTAssertNil(ExpenseLogic.shortDate("2026"))
+        XCTAssertEqual(ExpenseLogic.shortDate("not-a-date-at-all"), "not-a-date")
     }
 }

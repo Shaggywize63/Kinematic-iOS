@@ -98,10 +98,12 @@ struct ExpensesAPI {
 
     // ── Receipts + mileage ────────────────────────────────────────────────────
     /// Upload a receipt photo/PDF (multipart field "file", 10 MB max). Returns the
-    /// stored reference to put on the line, a link to show it, and the OCR read.
-    /// `scan: false` stores the file without the OCR read (e.g. an odometer photo is not a receipt).
-    func uploadReceipt(data: Data, filename: String, mime: String, scan: Bool = true) async throws -> ExpenseUploadedReceipt {
-        var req = try makeRequest(scan ? "/expenses/receipts" : "/expenses/receipts?scan=0", method: "POST")
+    /// stored reference to put on the line, a link to show it, and the read of it.
+    /// `scan` picks the read: `.receipt` (default) reads it as a receipt; `.storeOnly` stores the file without a
+    /// read (`?scan=0`, e.g. an odometer photo is not a receipt); `.odometer` reads the odometer number
+    /// (`?scan=odometer`) and answers it in `odometer`.
+    func uploadReceipt(data: Data, filename: String, mime: String, scan: ExpenseUploadScan = .receipt) async throws -> ExpenseUploadedReceipt {
+        var req = try makeRequest(scan.path, method: "POST")
         req.timeoutInterval = 60
         let boundary = "kinematic-\(UUID().uuidString)"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -114,6 +116,15 @@ struct ExpensesAPI {
         add("\r\n--\(boundary)--\r\n")
         req.httpBody = body
         return try decode(try await send(req))
+    }
+
+    /// The caller's own odometer readings, newest first (`GET /expenses/odometer-history`). `from` / `to` are
+    /// optional ISO dates; they are left off the request when nil.
+    func odometerHistory(limit: Int = 50, from: String? = nil, to: String? = nil) async throws -> [ExpenseOdometerEntry] {
+        var q = "?limit=\(limit)"
+        if let f = from, !f.isEmpty { q += "&from=" + (f.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed) ?? f) }
+        if let t = to, !t.isEmpty { q += "&to=" + (t.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed) ?? t) }
+        return try decode(try await request("/expenses/odometer-history\(q)"))
     }
 
     func mileage(fromISO: String, toISO: String) async throws -> ExpenseMileageResult {

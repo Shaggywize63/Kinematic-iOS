@@ -52,6 +52,8 @@ final class CrmHomeMissionViewModel: ObservableObject {
 
 struct CrmHomeMissionView: View {
     @StateObject private var vm = CrmHomeMissionViewModel()
+    /// This month's sales / collection targets (opt-in per client — the card draws nothing without them).
+    @StateObject private var targets = MyTargetsViewModel()
     @State private var selectedLeadId: String?
 
     var body: some View {
@@ -59,6 +61,7 @@ struct CrmHomeMissionView: View {
             VStack(spacing: 22) {
                 if let p = vm.payload {
                     heroCard(target: p.todayTarget)
+                    MyTargetsCard(model: targets, title: ClientFeatures.labelFor("home", "my_targets", default: "My targets"))
                     section(title: "Next best actions",
                             subtitle: "Ranked by urgency × score — each suggestion explains why.") {
                         if p.nextActions.isEmpty {
@@ -114,7 +117,12 @@ struct CrmHomeMissionView: View {
             .padding(.bottom, 32)
         }
         .background(Color(uiColor: .systemBackground))
-        .refreshable { await vm.load(silent: true) }
+        .refreshable {
+            async let t: Void = targets.loadIfEnabled()
+            await vm.load(silent: true)
+            await t
+        }
+        .task { await targets.loadIfEnabled() }
         .task {
             await vm.load()
             // Kick the queue on every Home entry so anything captured

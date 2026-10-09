@@ -42,7 +42,7 @@
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Used to print bills on a Bluetooth thermal printer.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>We need camera access to capture selfies for attendance verification.</string>
+	<string>We need camera access to capture selfies for attendance verification, and to photograph odometer readings and receipts for your expense claims.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Unlock Kinematic with Face ID.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
