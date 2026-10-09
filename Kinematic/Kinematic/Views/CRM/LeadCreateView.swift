@@ -375,9 +375,11 @@ struct LeadCreateView: View {
                     // Edit form. Same gate as Edit: only reps who may reassign
                     // (and not Consumer Champions, who'd lose 'own'-scoped
                     // visibility of the lead) see it, and the field override
-                    // can still hide it.
-                    if ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion
-                        && !fieldOverrides.isHidden("owner_id", isB2C: isB2C) {
+                    // can still hide it. A client that reserves owner
+                    // assignment for admins (`lead_form.owner_assignment`)
+                    // takes it away from everyone else — the new lead is then
+                    // simply owned by its creator.
+                    if ownerPickerAllowed {
                         Picker(fieldOverrides.labelFor("owner_id", defaultLabel: "Owner", isB2C: isB2C), selection: $ownerId) {
                             Text("Unassigned").tag("")
                             ForEach(owners, id: \.id) { u in
@@ -1138,6 +1140,14 @@ struct LeadCreateView: View {
         }
     }
 
+    /// Whether the Owner picker is on the form (and so whether an owner may be sent): the long-standing gates
+    /// plus `lead_form.owner_assignment` — a non-admin of an admin-only client gets neither.
+    private var ownerPickerAllowed: Bool {
+        ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion
+            && !fieldOverrides.isHidden("owner_id", isB2C: isB2C)
+            && fieldOverrides.mayChooseLeadOwner
+    }
+
     private func buildBody() -> [String: Any] {
         // Helper — only include non-empty trimmed strings. Empty values
         // were tripping the backend's Zod validator (e.g. `email` with
@@ -1164,9 +1174,10 @@ struct LeadCreateView: View {
             "is_b2c": isB2C,
         ]
         // owner_id — from the Owner picker, when the rep may reassign and the
-        // field isn't hidden. Empty = leave unassigned (omit the key).
-        if ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion
-            && !fieldOverrides.isHidden("owner_id", isB2C: isB2C) && !ownerId.isEmpty {
+        // field isn't hidden. Empty = leave unassigned (omit the key). Never
+        // sent by a non-admin of a client that reserves owner assignment for
+        // admins: the server then owns the lead to its creator.
+        if ownerPickerAllowed && !ownerId.isEmpty {
             body["owner_id"] = ownerId
         }
         if !trimmedLast.isEmpty { body["last_name"] = trimmedLast }

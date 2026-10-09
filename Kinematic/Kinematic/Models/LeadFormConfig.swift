@@ -6,6 +6,7 @@
 //     segment_labels: { b2b?: String, b2c?: String },   // "Dealer" / "Farmers"
 //     address_on_b2b: Bool,                              // address block on B2B too
 //     schedule_visit: { segments: ["b2b"] },             // who gets "Schedule visit"
+//     owner_assignment: "admin_only",                    // only an admin chooses / changes a lead's owner
 //   }
 //
 // Contract: a client WITHOUT this config behaves exactly as before. Every default here is the legacy
@@ -23,6 +24,9 @@ struct LeadFormConfig: Equatable {
     var addressOnB2b: Bool = false
     /// Lead types ("b2b" / "b2c") whose create form offers "Schedule visit".
     var scheduleVisitSegments: Set<String> = []
+    /// `owner_assignment == "admin_only"`: only an admin may choose or change a lead's owner (a non-admin's new lead
+    /// is owned by themselves). Absent = anyone who could before still can. Who counts as an admin: `LeadOwnerRules`.
+    var ownerAdminOnly: Bool = false
 
     private func key(_ isB2C: Bool) -> String { isB2C ? "b2c" : "b2b" }
 
@@ -81,7 +85,46 @@ struct LeadFormConfig: Equatable {
         }
         var onB2b = false
         if case let .bool(b)? = raw["address_on_b2b"] { onB2b = b }
-        return LeadFormConfig(segmentLabels: labels, addressOnB2b: onB2b, scheduleVisitSegments: segments)
+        // Only the exact value "admin_only" restricts anything; any other value (or a non-string) leaves it as before.
+        var adminOnly = false
+        if case let .string(s)? = raw["owner_assignment"] {
+            adminOnly = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "admin_only"
+        }
+        return LeadFormConfig(segmentLabels: labels, addressOnB2b: onB2b, scheduleVisitSegments: segments, ownerAdminOnly: adminOnly)
+    }
+}
+
+// MARK: - Who may choose a lead's owner
+
+/// `lead_form.owner_assignment == "admin_only"`: a non-admin sees no control that chooses or changes a lead's
+/// owner (create, edit, the detail screen's Assign) and never sends one. The server enforces the same rule
+/// (403 OWNER_ASSIGN_FORBIDDEN "Only an admin can assign leads"), so this only removes controls that would fail.
+/// The current owner is still shown as plain text. Without the flag nothing here changes any behaviour.
+///
+/// Pure (no session, no SwiftUI) so it is unit-tested — see KinematicTests/LeadOwnerRulesTests.
+enum LeadOwnerRules {
+    /// System roles the backend treats as admin for owner assignment.
+    static let adminRoles: Set<String> = ["admin", "super_admin", "main_admin", "org_admin", "sub_admin", "client"]
+
+    /// An admin role whose org role does not limit them to their own records (data scope "own" is never an admin
+    /// here, whatever the system role says). A missing role is not an admin.
+    static func isAdmin(role: String?, dataScope: String?) -> Bool {
+        let r = (role ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard adminRoles.contains(r) else { return false }
+        return (dataScope ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "own"
+    }
+
+    /// The client reserves owner assignment for admins AND this user is not one: no owner control, no owner sent.
+    static func isLocked(ownerAdminOnly: Bool, role: String?, dataScope: String?) -> Bool {
+        ownerAdminOnly && !isAdmin(role: role, dataScope: dataScope)
+    }
+
+    /// May this user be offered the owner controls (on top of the gates each screen already has)? An admin always;
+    /// anyone else only once the settings have loaded and the client has not locked it — before that the flag is
+    /// unknown, so a non-admin's picker must not flash up and vanish.
+    static func mayChooseOwner(ownerAdminOnly: Bool, didLoad: Bool, role: String?, dataScope: String?) -> Bool {
+        if isAdmin(role: role, dataScope: dataScope) { return true }
+        return didLoad && !ownerAdminOnly
     }
 }
 
