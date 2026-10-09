@@ -15,6 +15,10 @@ import SwiftUI
 // span the full picked day(s).
 struct LeadsFilterSheet: View {
     @ObservedObject var vm: LeadsViewModel
+    /// False hides the Owner filter: a client that reserves lead ownership for admins
+    /// (`lead_form.owner_assignment == "admin_only"`) gives everyone else no owner control, the filter included.
+    /// The list passes `LeadFieldOverridesModel.mayChooseLeadOwner`.
+    var showOwnerFilter: Bool = true
     @Environment(\.dismiss) private var dismiss
 
 
@@ -83,10 +87,12 @@ struct LeadsFilterSheet: View {
                         Text("All").tag("all"); Text("Converted").tag("yes"); Text("Not converted").tag("no")
                     }.pickerStyle(.segmented)
                 }
-                Section("Owner") {
-                    Picker("Owner", selection: $vm.ownerFilter) {
-                        Text("All owners").tag("all")
-                        ForEach(vm.owners) { u in Text(u.displayName).tag(u.id) }
+                if showOwnerFilter {
+                    Section("Owner") {
+                        Picker("Owner", selection: $vm.ownerFilter) {
+                            Text("All owners").tag("all")
+                            ForEach(vm.owners) { u in Text(u.displayName).tag(u.id) }
+                        }
                     }
                 }
                 Section("Source") {

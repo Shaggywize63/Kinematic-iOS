@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ActivitiesView: View {
     @StateObject var vm: ActivitiesViewModel
+    /// Settings-driven gate for the Owner filter (`lead_form.owner_assignment`): a client that reserves lead
+    /// ownership for admins shows it to admins only.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
     @State private var showCompose = false
     /// Whether the compose sheet opens in Schedule (future reminder) or Log
     /// (completed) mode. Set by the "+" menu before the sheet is shown.
@@ -62,7 +65,7 @@ struct ActivitiesView: View {
 
             // Owner + date-range filters (city/state come from the global scope).
             HStack(spacing: 8) {
-                if !vm.owners.isEmpty {
+                if fieldOverrides.mayChooseLeadOwner && !vm.owners.isEmpty {
                     Menu {
                         Button("All owners") { vm.ownerFilter = "all"; Task { await vm.refresh() } }
                         ForEach(vm.owners) { u in
@@ -243,6 +246,8 @@ struct ActivitiesView: View {
             }
         }
         .task { await vm.refresh(); await vm.loadOwners() }
+        // Concurrent with the load above, so a non-admin's filter row is not held up behind the list.
+        .task { await fieldOverrides.load() }
     }
 
     /// Activity row with tap-to-edit and long-press context menu.
