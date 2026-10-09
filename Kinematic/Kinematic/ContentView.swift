@@ -329,6 +329,9 @@ struct TabBtn: View {
 struct HomeView: View {
     @EnvironmentObject var appState: KiniAppState
     @StateObject var vm = HomeViewModel()
+    /// This month's sales / collection targets (opt-in per client: the card below the tiles only appears for a
+    /// client that configured rupee targets — see RupeeTargets).
+    @StateObject private var targets = MyTargetsViewModel()
     /// Rajkamal-only: presents the ad-hoc Marketing Visit flow (GPS Start →
     /// End tied to a lead) as a full-screen cover. Gated on
     /// `ClientFeatures.isRajkamal` so no other tenant sees the card.
@@ -427,6 +430,10 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, 20)
 
+                    // My targets — below the tiles; draws nothing at all unless the client has rupee targets.
+                    MyTargetsCard(model: targets, title: ClientFeatures.labelFor("home", "my_targets", default: "My targets"),
+                                  horizontalPadding: 20)
+
                     SessionCard(record: appState.today).padding(.horizontal, 20)
 
                     if vm.showSubmissionSuccess {
@@ -491,9 +498,16 @@ struct HomeView: View {
                     Spacer().frame(height: 110)
                 }
             }
-            .refreshable { await vm.refresh() }
+            .refreshable {
+                async let t: Void = targets.loadIfEnabled()
+                await vm.refresh()
+                await t
+            }
         }
-        .onAppear { Task { await vm.refresh() } }
+        .onAppear {
+            Task { await vm.refresh() }
+            Task { await targets.loadIfEnabled() }
+        }
         // Rajkamal ad-hoc Marketing Visit flow. Presented full-screen with its
         // own NavigationStack so MarketingVisitView (which carries no nav chrome
         // of its own) gets a title bar + the "Done" closer.

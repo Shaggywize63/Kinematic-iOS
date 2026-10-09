@@ -872,13 +872,14 @@ final class CRMService {
     /// Whitelist of API surfaces that honour `?city=` on the backend.
     /// Matches the dashboard's `CITY_AWARE_CRM_PREFIXES` in api.ts so
     /// every report consistently narrows when the picker changes.
-    private static func isCityAwareAnalyticsPath(_ path: String) -> Bool {
+    static func isCityAwareAnalyticsPath(_ path: String) -> Bool {
         return path.hasPrefix("/api/v1/crm/analytics")
             || path.hasPrefix("/api/v1/crm/dashboard")
             || path.hasPrefix("/api/v1/crm/lead-analytics")
             || path.hasPrefix("/api/v1/crm/reports")
             || path == "/api/v1/crm/leaderboard"
-            || path.hasPrefix("/api/v1/crm/targets")
+            // The lead-count targets narrow by city; the rupee targets are the caller's own figures and do not.
+            || (path.hasPrefix("/api/v1/crm/targets") && !RupeeTargets.isRupeeTargetsPath(path))
     }
 
     // MARK: - Lead Updates (Recent Updates timeline)
@@ -1123,6 +1124,54 @@ final class CRMService {
         } catch {
             throw CRMServiceError.decodeFailed(String(describing: error))
         }
+    }
+}
+
+// MARK: - Rupee targets (Sales / Collection)
+
+/// GET/POST/DELETE /api/v1/crm/targets/{types,progress,entries}. Opt-in per client: the fetches throw on any failure
+/// and the caller treats that — like an empty type list — as "show nothing". See RupeeTargets.
+extension CRMService {
+    /// The target types this client has configured (`data.types`); [] when none.
+    func rupeeTargetTypes() async throws -> [RupeeTargetType] {
+        let payload: RupeeTargetTypesPayload = try await get("/api/v1/crm/targets/types")
+        return payload.types
+    }
+
+    /// The caller's own standing for the current month.
+    func rupeeTargetProgress() async throws -> RupeeTargetProgress {
+        try await get("/api/v1/crm/targets/progress")
+    }
+
+    /// Log a sale / collection. On any 2xx the entry is saved — if the reply can't be read the call still
+    /// succeeds (nil), so the person is never invited to log it a second time. A refusal throws with the server's
+    /// own message (TARGET_TYPE_NOT_ENABLED, TARGET_ENTRIES_NOT_ENABLED, validation errors).
+    @discardableResult
+    func createRupeeTargetEntry(kind: String, amount: Double, leadId: String?, note: String?,
+                                idempotencyKey: String? = nil) async throws -> RupeeTargetEntry? {
+        var body: [String: Any] = ["kind": kind, "amount": amount]
+        if let leadId, !leadId.isEmpty { body["lead_id"] = leadId }
+        if let note, !note.isEmpty { body["note"] = note }
+        let data = try JSONSerialization.data(withJSONObject: body, options: [])
+        var req = try makeRequest(path: "/api/v1/crm/targets/entries", method: "POST", body: data)
+        if let idempotencyKey { req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key") }
+        let raw = try await fetchData(req)
+        return (try? decoder.decode(APIEnvelope<RupeeTargetEntry>.self, from: raw))?.data
+    }
+
+    /// The caller's own entries, newest first. `from` / `to` are "YYYY-MM-DD" and left off when nil.
+    func listRupeeTargetEntries(kind: String? = nil, from: String? = nil, to: String? = nil, limit: Int = 50) async throws -> [RupeeTargetEntry] {
+        var q: [String: String] = ["limit": String(limit)]
+        if let kind, !kind.isEmpty { q["kind"] = kind }
+        if let from, !from.isEmpty { q["from"] = from }
+        if let to, !to.isEmpty { q["to"] = to }
+        return try await get("/api/v1/crm/targets/entries", query: q)
+    }
+
+    /// Delete an entry (the owner, within 24 hours of logging it — the server answers 403 otherwise).
+    func deleteRupeeTargetEntry(id: String) async throws {
+        let req = try makeRequest(path: "/api/v1/crm/targets/entries/\(id)", method: "DELETE", body: nil)
+        _ = try await fetchData(req)
     }
 }
 

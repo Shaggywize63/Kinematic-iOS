@@ -1894,6 +1894,28 @@ class Session: ObservableObject {
         set { KeychainTokenStore.set(newValue ?? "", for: "active_session_id") }
     }
 
+    /// When the current login session began (nil = unknown). Written at login; cleared at logout. For a session
+    /// that began before this was recorded it is read once from the Keychain modification date of the
+    /// session-id item (which is only written at login) and kept. Offline queues use it to tell rows queued
+    /// during this login — which are certainly the current user's — from older ones (see QueueOwnership).
+    /// Every uncertain case answers nil, which only ever makes the queues more cautious.
+    static var sessionStartedAt: Date? {
+        get {
+            if let t = UserDefaults.standard.object(forKey: "session_started_at") as? Date { return t }
+            guard !sessionStartProbed, !sharedToken.isEmpty else { return nil }
+            sessionStartProbed = true
+            guard let t = KeychainTokenStore.modificationDate("active_session_id") else { return nil }
+            UserDefaults.standard.set(t, forKey: "session_started_at")
+            return t
+        }
+        set {
+            sessionStartProbed = false
+            if let v = newValue { UserDefaults.standard.set(v, forKey: "session_started_at") }
+            else { UserDefaults.standard.removeObject(forKey: "session_started_at") }
+        }
+    }
+    private static var sessionStartProbed = false
+
     /// Multi-project routing key resolved from the user's email at login
     /// (backend GET /auth/project-for-email), persisted so every request can
     /// echo it back as `X-Kinematic-Project`. Only a non-"default" project is
@@ -1914,6 +1936,7 @@ class Session: ObservableObject {
         sharedToken = ""
         refreshToken = ""
         sessionId = nil
+        sessionStartedAt = nil
         project = nil
         currentUser = nil
         isDemoMode = false
@@ -3129,6 +3152,7 @@ class KinematicRepository {
                         Session.sharedToken = t
                         Session.refreshToken = result.data?.refreshToken ?? ""
                         Session.sessionId = result.data?.sessionId
+                        Session.sessionStartedAt = Date()
                         Session.currentUser = result.data?.user
                         KiniAppState.shared.clearSessionKickedMsg()
                         KiniAppState.shared.checkAuth()
@@ -3227,6 +3251,7 @@ class KinematicRepository {
                         // X-Session-Id. Clear any leftover kicked-device
                         // toast from a previous forced logout.
                         Session.sessionId = result.data?.sessionId
+                        Session.sessionStartedAt = Date()
                         KiniAppState.shared.clearSessionKickedMsg()
                         Session.currentUser = result.data?.user
                         KiniAppState.shared.checkAuth()

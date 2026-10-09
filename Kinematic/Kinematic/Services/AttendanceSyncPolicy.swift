@@ -52,6 +52,11 @@ enum AttendanceSyncPolicy {
         .cannotFindHost, .dnsLookupFailed, .internationalRoamingOff, .callIsActive,
     ]
 
+    /// How far back a punch queued by an older build — and orphaned by a token refresh — may be adopted and sent.
+    /// The server stamps a punch with the time it ARRIVES, so one replayed days late would record the wrong time
+    /// or close the wrong shift; older ones stay on the device, unsent.
+    static let legacyAdoptionWindow: TimeInterval = 12 * 3600
+
     static func isTransient(urlError code: URLError.Code) -> Bool { transientURLErrorCodes.contains(code) }
 
     /// 408 Request Timeout, 429 Too Many Requests and every 5xx are worth retrying; other statuses are answers.

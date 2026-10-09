@@ -81,6 +81,20 @@ enum KeychainTokenStore {
         }
     }
 
+    /// When the item was last written, if it exists. Used for one thing: the session-id item is only written at
+    /// login (`SecItemUpdate` keeps the item and bumps this date), so its modification date is when the current
+    /// login session began — see `Session.sessionStartedAt`. Not cached; callers keep their own copy.
+    static func modificationDate(_ key: String) -> Date? {
+        lock.lock(); defer { lock.unlock() }
+        var query = baseQuery(account: key)
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let attrs = result as? [String: Any] else { return nil }
+        return attrs[kSecAttrModificationDate as String] as? Date
+    }
+
     // MARK: - SecItem plumbing
 
     private static func baseQuery(account: String) -> [String: Any] {

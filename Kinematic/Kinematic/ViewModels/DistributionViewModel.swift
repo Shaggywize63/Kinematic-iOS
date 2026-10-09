@@ -143,6 +143,7 @@ final class DistributionViewModel: ObservableObject {
     }
 
     func flushQueue() async {
+        cache.adoptLegacyRows()   // carry rows queued before the owner key became the user id
         let p = cache.pendingForCurrentUser()
         for row in p.orders {
             do {

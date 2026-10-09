@@ -14,7 +14,8 @@ import Network
 struct PendingAttendance: Codable, Identifiable {
     let id: UUID
     let idempotencyKey: String
-    let userKey: String
+    /// Who queued it: "u:<user id>" — or, on rows queued by older builds, a token suffix (see QueueOwnership).
+    var userKey: String
     let kind: String                 // "checkin" | "checkout"
     let lat: Double
     let lng: Double
@@ -34,6 +35,8 @@ struct PendingAttendance: Codable, Identifiable {
     /// Set when the server refused this punch (a 4xx, a "no"): it is never replayed. Nil while it can still go.
     var rejectedReason: String? = nil
 }
+
+extension PendingAttendance: QueueOwned {}
 
 @MainActor
 final class AttendanceCache: ObservableObject {
@@ -86,16 +89,29 @@ final class AttendanceCache: ObservableObject {
         await flush()
     }
 
-    static func userKey() -> String { String(Session.sharedToken.suffix(24)) }
+    /// The signed-in identity. Punches orphaned by a token refresh are only adopted if they are recent
+    /// (see `AttendanceSyncPolicy.legacyAdoptionWindow`).
+    private static func identity() -> QueueOwnership.Identity {
+        QueueOwnership.currentIdentity(adoptionWindow: AttendanceSyncPolicy.legacyAdoptionWindow)
+    }
+
+    /// Move rows queued by older builds (keyed by an access-token suffix that has since rotated) onto the
+    /// stable user key, wherever it is provable they are the signed-in user's. Nothing is removed. Cheap and
+    /// idempotent: runs before every send and every new row.
+    private func adoptLegacyRows() {
+        var copy = rows    // assign only when something moved, so a no-op never notifies observers
+        if QueueOwnership.migrate(&copy, identity: Self.identity()) > 0 { rows = copy; persist() }
+    }
 
     /// Enqueue an attendance event and return the row (with its idempotency
     /// key). Caller is responsible for kicking the flush.
     func enqueue(kind: String, lat: Double, lng: Double, selfieUrl: String?, battery: Int?,
                  isMock: Bool? = nil, locationAccuracyM: Double? = nil) -> PendingAttendance {
+        adoptLegacyRows()
         var row = PendingAttendance(
             id: UUID(),
             idempotencyKey: "att-\(kind == "checkin" ? "ci" : "co")-\(UUID().uuidString)",
-            userKey: Self.userKey(),
+            userKey: QueueOwnership.keyForNewRow(Self.identity()),
             kind: kind,
             lat: lat, lng: lng,
             selfieUrl: selfieUrl,
@@ -151,8 +167,11 @@ final class AttendanceCache: ObservableObject {
     }
 
     func pendingForCurrentUser() -> [PendingAttendance] {
-        let key = Self.userKey()
-        return rows.filter { !$0.isSynced && $0.rejectedReason == nil && $0.userKey == key }
+        let who = Self.identity()
+        return rows.filter {
+            !$0.isSynced && $0.rejectedReason == nil
+                && QueueOwnership.owns(rowKey: $0.userKey, createdAt: $0.createdAt, identity: who)
+        }
     }
 
     func clearSynced() {
@@ -179,6 +198,7 @@ final class AttendanceCache: ObservableObject {
         isFlushing = true
         defer { isFlushing = false }
         pruneRejected()
+        adoptLegacyRows()
 
         let pending = AttendanceSyncPolicy.drainOrder(pendingForCurrentUser().filter { !inFlight.contains($0.id) })
         for row in pending {
