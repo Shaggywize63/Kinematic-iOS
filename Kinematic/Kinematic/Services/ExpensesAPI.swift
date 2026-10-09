@@ -25,10 +25,14 @@ struct ExpensesAPI {
     static let shared = ExpensesAPI()
     private let baseURL = "https://api.kinematicapp.com/api/v1"
 
-    private func makeRequest(_ path: String, method: String) throws -> URLRequest {
+    /// Internal (not private) only so a test can pin the cache policy of the request it builds.
+    func makeRequest(_ path: String, method: String) throws -> URLRequest {
         guard let url = URL(string: "\(baseURL)\(path)") else { throw ExpensesAPIError.noResponse }
         var req = URLRequest(url: url)
         req.httpMethod = method
+        // Always ask the server: the shared URL cache keys an entry by URL alone (not by who is signed in), so the
+        // policy — and so the vehicles on offer — can never come from a stored or revalidated entry.
+        req.cachePolicy = .reloadIgnoringLocalCacheData
         req.timeoutInterval = 30
         req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
         if let proj = Session.project, !proj.isEmpty { req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }

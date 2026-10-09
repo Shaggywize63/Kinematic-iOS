@@ -17,7 +17,8 @@
 import Foundation
 
 enum CRMClientScope {
-    private static let storageKey = "kinematic_selected_client"
+    /// The UserDefaults key of the persisted selection (also listed in `SessionCleanup`, which wipes it at sign-out).
+    static let storageKey = "kinematic_selected_client"
 
     /// Persisted client selection. Returns nil unless the stored value is a
     /// valid UUID — guards against legacy strings ("Kinematic", "") that

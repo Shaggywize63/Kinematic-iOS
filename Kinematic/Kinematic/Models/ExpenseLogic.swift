@@ -111,6 +111,14 @@ enum ExpenseLogic {
         return list[0].id
     }
 
+    /// The policy to hold after asking the server for it again: the fresh one when it came, else the one already held
+    /// (a failed refresh must not blank the vehicles the person was just looking at). Never the other way round — a
+    /// policy fetched once is NOT kept for the life of the screen: the Expenses tab's model lives as long as the app
+    /// does, and the policy (and so the Vehicle picker) is changed on the server from time to time.
+    static func policyAfterRefresh(current: ExpensePolicy?, fetched: ExpensePolicy?) -> ExpensePolicy? {
+        fetched ?? current
+    }
+
     /// Claims the owner may still change: before approval, or being fixed after a rejection.
     static func isEditable(_ status: String?) -> Bool {
         ["draft", "submitted", "rejected"].contains((status ?? "draft").lowercased())

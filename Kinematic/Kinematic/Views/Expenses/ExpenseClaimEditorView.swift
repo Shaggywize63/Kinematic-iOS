@@ -166,6 +166,9 @@ struct ExpenseClaimEditorView: View {
             .onChange(of: soleVehicleKey, initial: true) { applySoleVehicle() }
             // Vehicle flow: fetch the odometer history for the "last reading" hint (best effort).
             .task(id: byVehicle) { if byVehicle { await vm.loadOdometerHistory() } }
+            // Work from the policy as it is now, not the one fetched when the Expenses screen first opened: the
+            // vehicles offered are its vehicles. A late arrival is caught up by the two onChange handlers above.
+            .task { await vm.loadPolicy() }
             .sheet(isPresented: $showCamera, onDismiss: handleCamera) {
                 // Camera-only odometer photos never fall back to the photo library on a phone without a camera.
                 ImagePicker(image: $cameraImage, sourceType: .camera, cameraDevice: .rear,
@@ -367,7 +370,8 @@ struct ExpenseClaimEditorView: View {
 
     private func policySummary(_ p: ExpensePolicy) -> some View {
         let rules = p.rules
-        let travel = (rules?.vehicle_rates ?? []).map { "\($0.label) \(expenseMoney($0.rate_per_km, currency))/km" }
+        // The same list the Vehicle picker offers (the policy's own vehicles, nothing merged in).
+        let travel = ExpenseLogic.policyVehicles(rules).map { "\($0.label) \(expenseMoney($0.rate_per_km, currency))/km" }
         let mileageName = ExpenseLogic.categoryLabel("mileage", labels: rules?.category_labels)
         let travelName = ExpenseLogic.customLabel("mileage", labels: rules?.category_labels) ?? "Travel"
         let flatRate = expenseMoney(rules?.mileage_rate ?? p.mileage_rate, currency)
