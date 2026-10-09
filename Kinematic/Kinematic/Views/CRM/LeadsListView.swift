@@ -310,7 +310,9 @@ struct LeadsListView: View {
             LeadImportView()
         }
         .sheet(isPresented: $showFilters) {
-            LeadsFilterSheet(vm: vm)
+            // Admin-only-ownership clients: no Owner filter for anyone but an admin (fail closed until the
+            // settings have loaded for a non-admin).
+            LeadsFilterSheet(vm: vm, showOwnerFilter: fieldOverrides.mayChooseLeadOwner)
         }
         .sheet(isPresented: $showDateFilter) {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Created date") {
