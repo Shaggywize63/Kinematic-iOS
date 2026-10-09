@@ -305,13 +305,26 @@ struct LeadEditView: View {
                     // would lose visibility of the lead by reassigning it.
                     // Explicitly gate Consumer Champion too in case the
                     // backend's data_scope returns looser than 'own'.
+                    // A client that reserves owner assignment for admins
+                    // (`lead_form.owner_assignment`) also takes the picker
+                    // away from everyone else.
                     if ClientFeatures.canReassignLeads && !ClientFeatures.isConsumerChampion
-                        && !fieldOverrides.isHidden("owner_id", isB2C: isB2C) {
+                        && !fieldOverrides.isHidden("owner_id", isB2C: isB2C)
+                        && fieldOverrides.mayChooseLeadOwner {
                         Picker(fieldOverrides.labelFor("owner_id", defaultLabel: "Owner", isB2C: isB2C), selection: $ownerId) {
                             Text("Unassigned").tag("")
                             ForEach(owners, id: \.id) { u in
                                 Text(u.name ?? u.email ?? "User").tag(u.id)
                             }
+                        }
+                    } else if fieldOverrides.leadOwnerLocked && !ClientFeatures.isConsumerChampion
+                                && !fieldOverrides.isHidden("owner_id", isB2C: isB2C),
+                              let ownerName = lead.ownerName?.trimmingCharacters(in: .whitespacesAndNewlines), !ownerName.isEmpty {
+                        // Locked: the owner is information only — shown, not chosen.
+                        HStack {
+                            Text(fieldOverrides.labelFor("owner_id", defaultLabel: "Owner", isB2C: isB2C))
+                            Spacer()
+                            Text(ownerName).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -478,7 +491,6 @@ struct LeadEditView: View {
             "alternate_mobiles": altMobiles,
             "status":     status,
             "is_b2c":     isB2C,
-            "owner_id":   ownerId.isEmpty   ? NSNull() : ownerId,
             "source_id":  sourceId.isEmpty  ? NSNull() : sourceId,
             "notes":      notes.isEmpty     ? NSNull() : notes,
             "address_line1": addressLine1.isEmpty ? NSNull() : addressLine1,
@@ -497,6 +509,12 @@ struct LeadEditView: View {
                 return merged
             })(),
         ]
+        // owner_id is sent as always — except by a non-admin of a client that reserves owner assignment for
+        // admins (`lead_form.owner_assignment`): their edit carries no owner at all, so the server can never
+        // see a change (it answers 403 OWNER_ASSIGN_FORBIDDEN to one).
+        if !fieldOverrides.leadOwnerLocked {
+            body["owner_id"] = ownerId.isEmpty ? NSNull() : ownerId
+        }
         // Steel-dealer: backend pops this flag and spawns a fresh site_visit
         // activity tied to the lead. Guard mirrors the toggle's render gate
         // (steel-dealer tenant only) so it can never be sent for a Kinematic

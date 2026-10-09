@@ -695,8 +695,11 @@ struct LeadDetailView: View {
             }
             // Reps with data_scope='own' (e.g. Consumer Champion) can only
             // see leads they own — reassigning would hide the record from
-            // them, so suppress the affordance.
-            if !vm.assignableUsers.isEmpty && ClientFeatures.canReassignLeads {
+            // them, so suppress the affordance. A client that reserves owner
+            // assignment for admins (`lead_form.owner_assignment`) takes it
+            // away from every non-admin too; the owner stays visible in the
+            // RECORD card.
+            if !vm.assignableUsers.isEmpty && ClientFeatures.canReassignLeads && fieldOverrides.mayChooseLeadOwner {
                 secondaryAction("Assign", icon: "person.badge.plus", busy: vm.assignBusy) {
                     showAssignSheet = true
                 }

@@ -28,6 +28,8 @@
 		AB0000000000000000000051 /* AppUiConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000041 /* AppUiConfigTests.swift */; };
 		AB0000000000000000000052 /* QueueOwnershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000042 /* QueueOwnershipTests.swift */; };
 		AB0000000000000000000053 /* RupeeTargetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000043 /* RupeeTargetsTests.swift */; };
+		AB0000000000000000000054 /* LeadOwnerRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000044 /* LeadOwnerRulesTests.swift */; };
+		AB0000000000000000000055 /* ExpenseSoleVehicleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000045 /* ExpenseSoleVehicleTests.swift */; };
 		D1D1D1D1D1D1D1D1D1D1000C /* KinematicWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -89,6 +91,8 @@
 		AB0000000000000000000041 /* AppUiConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUiConfigTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000042 /* QueueOwnershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueOwnershipTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000043 /* RupeeTargetsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RupeeTargetsTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000044 /* LeadOwnerRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadOwnerRulesTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000045 /* ExpenseSoleVehicleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseSoleVehicleTests.swift; sourceTree = "<group>"; };
 		D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KinematicWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -197,6 +201,8 @@
 				AB0000000000000000000041 /* AppUiConfigTests.swift */,
 				AB0000000000000000000042 /* QueueOwnershipTests.swift */,
 				AB0000000000000000000043 /* RupeeTargetsTests.swift */,
+				AB0000000000000000000044 /* LeadOwnerRulesTests.swift */,
+				AB0000000000000000000045 /* ExpenseSoleVehicleTests.swift */,
 			);
 			path = KinematicTests;
 			sourceTree = "<group>";
@@ -370,6 +376,8 @@
 				AB0000000000000000000051 /* AppUiConfigTests.swift in Sources */,
 				AB0000000000000000000052 /* QueueOwnershipTests.swift in Sources */,
 				AB0000000000000000000053 /* RupeeTargetsTests.swift in Sources */,
+				AB0000000000000000000054 /* LeadOwnerRulesTests.swift in Sources */,
+				AB0000000000000000000055 /* ExpenseSoleVehicleTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

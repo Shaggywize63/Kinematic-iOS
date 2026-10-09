@@ -69,20 +69,24 @@ struct ExpenseClaimEditorView: View {
         _title = State(initialValue: claim?.title ?? "")
         _savedId = State(initialValue: claim?.id)
         var seeded: [EditorLine] = []
+        // The policy's only vehicle (if it lists exactly one) is pre-selected on mileage lines that have none.
+        let sole = ExpenseLogic.soleVehicleId(ExpenseLogic.policyVehicles(vm.policy?.rules))
         for item in claim?.items ?? [] {
             var f = item.toFields()
             if f.itemDate.isEmpty { f.itemDate = Self.today() }
-            seeded.append(EditorLine(f: f, receiptView: item.receipt_signed_url,
+            seeded.append(EditorLine(f: f.withSoleVehicle(sole), receiptView: item.receipt_signed_url,
                                      odoStartView: item.odometer_start_photo_signed_url, odoEndView: item.odometer_end_photo_signed_url))
         }
-        // The policy may already be known (the list loads it); if it arrives later, onlyCategory below catches up.
-        if seeded.isEmpty { seeded = [Self.blankLine(category: ExpenseLogic.defaultCategory(vm.policy?.rules))] }
+        // The policy may already be known (the list loads it); if it arrives later, onlyCategory and
+        // applySoleVehicle below catch up.
+        if seeded.isEmpty { seeded = [Self.blankLine(category: ExpenseLogic.defaultCategory(vm.policy?.rules), soleVehicle: sole)] }
         _lines = State(initialValue: seeded)
     }
 
     /// A new, untouched line. `category` is the policy's only enabled category in single-category mode, else "food".
-    private static func blankLine(category: String) -> EditorLine {
-        EditorLine(f: ExpenseLineFields(category: category, itemDate: Self.today()))
+    /// `soleVehicle` is the policy's only vehicle, pre-selected when the line is a mileage line.
+    private static func blankLine(category: String, soleVehicle: String?) -> EditorLine {
+        EditorLine(f: ExpenseLineFields(category: category, itemDate: Self.today()).withSoleVehicle(soleVehicle))
     }
 
     private var status: String { (claim?.status ?? "draft").lowercased() }
@@ -90,8 +94,11 @@ struct ExpenseClaimEditorView: View {
     private var rate: Double { vm.policy?.rules?.mileage_rate ?? vm.policy?.mileage_rate ?? 0 }
     /// Where the policy pays mileage by vehicle, a mileage line takes the vehicle + odometer readings instead of a
     /// typed distance; the server works the distance and amount out.
-    private var vehicles: [ExpenseVehicleRate] { vm.policy?.rules?.vehicle_rates ?? [] }
+    /// Only the vehicles of the policy that governs this person (GET /expenses/policy is resolved per user).
+    private var vehicles: [ExpenseVehicleRate] { ExpenseLogic.policyVehicles(vm.policy?.rules) }
     private var byVehicle: Bool { !vehicles.isEmpty }
+    /// The policy's only vehicle, when it lists exactly one — pre-selected on mileage lines (nil for none or several).
+    private var soleVehicle: String? { ExpenseLogic.soleVehicleId(vehicles) }
     private var photosRequired: Bool { vm.policy?.rules?.odometer_photos_required != false }
     private var rules: ExpensePolicyRules? { vm.policy?.rules }
     /// The policy's own category names (mileage → "Travel"); every category name on this screen goes through them.
@@ -110,9 +117,10 @@ struct ExpenseClaimEditorView: View {
         return ExpenseLogic.lastReadingText(r)
     }
     private var total: Double { lines.reduce(0) { $0 + $1.f.effectiveAmount(mileageRate: rate, vehicles: vehicles) } }
-    private var filled: [EditorLine] { lines.filter { $0.f.isFilled } }
+    /// A new line carrying only the pre-selected sole vehicle is still untouched (see `isFilledIgnoring`).
+    private var filled: [EditorLine] { lines.filter { $0.f.isFilledIgnoring(soleVehicle: soleVehicle) } }
     /// The lines that went into the policy check, in order — findings are indexed by position among them.
-    private var checked: [EditorLine] { lines.filter { $0.f.isFilled && $0.f.canSave(byVehicle: byVehicle) } }
+    private var checked: [EditorLine] { lines.filter { $0.f.isFilledIgnoring(soleVehicle: soleVehicle) && $0.f.canSave(byVehicle: byVehicle) } }
     private var checkedFields: [ExpenseLineFields] { checked.map { $0.f } }
     private var blocking: Bool { check?.blocking == true }
 
@@ -127,7 +135,7 @@ struct ExpenseClaimEditorView: View {
 
                 Section {
                     if !singleLine {
-                        Button { lines.append(Self.blankLine(category: ExpenseLogic.defaultCategory(rules))) } label: { Label("Add another expense", systemImage: "plus") }
+                        Button { lines.append(Self.blankLine(category: ExpenseLogic.defaultCategory(rules), soleVehicle: soleVehicle)) } label: { Label("Add another expense", systemImage: "plus") }
                     }
                     HStack { Text("Total").bold(); Spacer(); Text(expenseMoney(total, currency)).bold() }
                 }
@@ -153,6 +161,9 @@ struct ExpenseClaimEditorView: View {
             .task(id: CheckKey(fields: checkedFields, byVehicle: byVehicle, routeFields: routeFields)) { await runCheck() }
             // The policy arrives after the editor can open: once it says "one category only", new lines take it.
             .onChange(of: onlyCategory, initial: true) { _, only in applyOnlyCategory(only) }
+            // Likewise the vehicle: a policy with exactly one vehicle pre-selects it on every mileage line that has none
+            // — when the policy arrives late, when a line is added and when a line becomes a mileage line.
+            .onChange(of: soleVehicleKey, initial: true) { applySoleVehicle() }
             // Vehicle flow: fetch the odometer history for the "last reading" hint (best effort).
             .task(id: byVehicle) { if byVehicle { await vm.loadOdometerHistory() } }
             .sheet(isPresented: $showCamera, onDismiss: handleCamera) {
@@ -404,6 +415,21 @@ struct ExpenseClaimEditorView: View {
         }
     }
 
+    /// What decides whether a vehicle must be pre-selected: the sole vehicle and the mileage lines still lacking one.
+    private struct SoleVehicleKey: Equatable { let vehicle: String; let lines: [UUID] }
+    private var soleVehicleKey: SoleVehicleKey? {
+        guard let sole = soleVehicle else { return nil }
+        return SoleVehicleKey(vehicle: sole, lines: lines.filter { $0.f.lacksVehicle }.map { $0.id })
+    }
+
+    /// Put the policy's only vehicle on every mileage line that has no vehicle. Never replaces a chosen vehicle.
+    private func applySoleVehicle() {
+        guard let sole = soleVehicle else { return }
+        for i in lines.indices where lines[i].f.lacksVehicle {
+            lines[i].f = lines[i].f.withSoleVehicle(sole)
+        }
+    }
+
     private func dateBinding(_ line: Binding<EditorLine>) -> Binding<Date> {
         Binding(
             get: { Self.localDay.date(from: line.wrappedValue.f.itemDate) ?? Date() },
@@ -553,7 +579,7 @@ struct ExpenseClaimEditorView: View {
 
     private func save(submit: Bool) async {
         guard !filled.isEmpty else { errorText = "Add at least one expense."; return }
-        if let bad = lines.firstIndex(where: { $0.f.isFilled && !$0.f.canSave(byVehicle: byVehicle) }) {
+        if let bad = lines.firstIndex(where: { $0.f.isFilledIgnoring(soleVehicle: soleVehicle) && !$0.f.canSave(byVehicle: byVehicle) }) {
             if byVehicle && lines[bad].f.category == "mileage" {
                 errorText = "Expense \(bad + 1) needs a vehicle and the odometer readings."
             } else {

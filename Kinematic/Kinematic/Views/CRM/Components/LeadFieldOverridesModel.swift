@@ -196,11 +196,35 @@ final class LeadFieldOverridesModel: ObservableObject {
     func requiredFor(_ key: String, defaultRequired: Bool, isB2C: Bool) -> Bool {
         lookup(key, isB2C: isB2C)?.required ?? defaultRequired
     }
+
     /// True only when an admin EXPLICITLY marked the field required (persisted `required: true`), as
     /// opposed to it merely defaulting to required. The create form enforces required-ness only for
     /// these, so a tenant that never configured it keeps the behaviour it had.
     func explicitlyRequired(_ key: String, isB2C: Bool) -> Bool {
         lookup(key, isB2C: isB2C)?.required == true
+    }
+
+    // ── Who may choose a lead's owner (`lead_form.owner_assignment`) ─
+    // On top of — never instead of — the `owner_id` hidden / relabel gate and each screen's own gates
+    // (`canReassignLeads`, Consumer Champion). Without the flag these change nothing for anyone.
+
+    /// May the signed-in user be offered a control that chooses or changes a lead's owner? An admin always;
+    /// anyone else only once the settings have loaded and the client has not reserved it for admins. Rows that
+    /// use this wait for `didLoad` for non-admins, like every other admin-gated row.
+    var mayChooseLeadOwner: Bool {
+        // Settled without asking who is signed in (the session is decoded from disk on every read).
+        if didLoad && !leadForm.ownerAdminOnly { return true }
+        let u = Session.currentUser
+        return LeadOwnerRules.mayChooseOwner(ownerAdminOnly: leadForm.ownerAdminOnly, didLoad: didLoad,
+                                             role: u?.role, dataScope: u?.orgRoleDataScope)
+    }
+
+    /// True when the client reserves owner assignment for admins and the signed-in user is not one: the owner
+    /// is shown as text only and an edit must not send `owner_id` at all.
+    var leadOwnerLocked: Bool {
+        guard leadForm.ownerAdminOnly else { return false }
+        let u = Session.currentUser
+        return LeadOwnerRules.isLocked(ownerAdminOnly: true, role: u?.role, dataScope: u?.orgRoleDataScope)
     }
 
     // ── Custom lead statuses ───────────────────────────────────────
