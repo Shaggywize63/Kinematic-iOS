@@ -78,7 +78,8 @@ struct SecondaryScreenHost: View {
                         case .orderHistory:
                             OrderHistoryView()
                         case .orderCart:
-                            OrderCartView(outletId: "", outletName: nil, visitId: nil)
+                            // Book Order with no outlet preselected: the outlet picker first, then the cart.
+                            OrderOutletPickView()
                         case .orderReview:
                             // Reached only via NavigationLink from OrderCartView; placeholder for direct opens.
                             OrderHistoryView()

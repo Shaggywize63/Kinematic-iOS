@@ -97,13 +97,52 @@ struct AppUiConfig: Codable {
     let settings: [String: Bool]?
     /// section -> id -> custom display name (rename override).
     let labels: [String: [String: String]]?
-    enum CodingKeys: String, CodingKey { case menu, tabs, home, settings, labels; case crmMore = "crm_more" }
+    /// Opt-in feature switches, id -> on (e.g. `rate_prompt`). ONLY an explicit `true` turns a feature on (absent /
+    /// false = off) — see `featureOn`. Kept so the app's own round trip (the user is stored as JSON) does not drop it.
+    let features: [String: Bool]?
+    enum CodingKeys: String, CodingKey { case menu, tabs, home, settings, labels, features; case crmMore = "crm_more" }
+
+    /// Reads every map exactly as the synthesized decoder did. `features` alone is read forgivingly: an entry that is
+    /// not a boolean is skipped, and a `features` that is not an object at all reads as none — whatever it holds, it
+    /// can never make the rest of the config (and so every menu / tab override) fail to load.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        menu = try c.decodeIfPresent([String: Bool].self, forKey: .menu)
+        tabs = try c.decodeIfPresent([String: Bool].self, forKey: .tabs)
+        crmMore = try c.decodeIfPresent([String: Bool].self, forKey: .crmMore)
+        home = try c.decodeIfPresent([String: Bool].self, forKey: .home)
+        settings = try c.decodeIfPresent([String: Bool].self, forKey: .settings)
+        labels = try c.decodeIfPresent([String: [String: String]].self, forKey: .labels)
+        features = AppUiConfig.readFeatures(c)
+    }
+
+    /// One `features` entry: a boolean, or nothing.
+    private struct LenientBool: Decodable {
+        let value: Bool?
+        init(from decoder: Decoder) throws {
+            let single = try decoder.singleValueContainer()
+            value = try? single.decode(Bool.self)
+        }
+    }
+
+    private static func readFeatures(_ c: KeyedDecodingContainer<CodingKeys>) -> [String: Bool]? {
+        guard let raw = try? c.decode([String: LenientBool].self, forKey: .features) else { return nil }
+        var out: [String: Bool] = [:]
+        for (key, entry) in raw {
+            if let b = entry.value { out[key] = b }
+        }
+        return out
+    }
 
     /// The maps are free-form id -> Bool, so a key the app does not know yet (e.g. `tabs.expenses`) survives
     /// decoding untouched and can be read later.
     /// True only when the tab is switched ON explicitly (`true`). Absent and `false` both mean "not on" —
     /// unlike `tabs[id] != false` (the hide-only check), which treats absent as visible.
     func tabExplicitlyOn(_ id: String) -> Bool { tabs?[id] == true }
+
+    /// True only when the admin explicitly turned this opt-in feature ON for the client (`features[id] == true`);
+    /// absent, false or unreadable config = off. Same shape as `tabExplicitlyOn`.
+    func featureOn(_ id: String) -> Bool { features?[id] == true }
 }
 
 // MARK: - Entitlement helpers
@@ -127,6 +166,8 @@ extension User {
     func tabVisible(_ id: String) -> Bool { appUiConfig?.tabs?[id] != false }
     /// Opt-in tabs: shown only when `tabs[id]` is explicitly `true` (absent / false = not shown).
     func tabExplicitlyOn(_ id: String) -> Bool { appUiConfig?.tabExplicitlyOn(id) ?? false }
+    /// Opt-in features (e.g. `rate_prompt`): on only when `features[id]` is explicitly `true`.
+    func featureOn(_ id: String) -> Bool { appUiConfig?.featureOn(id) ?? false }
     func crmMoreVisible(_ id: String) -> Bool { appUiConfig?.crmMore?[id] != false }
     func homeVisible(_ id: String) -> Bool { appUiConfig?.home?[id] != false }
     func settingsVisible(_ id: String) -> Bool { appUiConfig?.settings?[id] != false }
@@ -283,6 +324,9 @@ class KiniAppState: ObservableObject {
     @Published var pendingPushData: [String: String]? = nil
     /// An expense claim to open — set when an expense push is tapped (to review / approved / rejected with a remark / reimbursed).
     @Published var pendingExpenseClaimId: String? = nil
+    /// With `pendingExpenseClaimId`: open that claim straight in the editor (a REJECTED claim's push, and the draft
+    /// "Add today's travel to expenses" just created). False = just open the claim.
+    @Published var pendingExpenseClaimEdit: Bool = false
     /// A notification's screen waiting for the app to be ready — set by a tap that arrives
     /// before sign-in has finished (cold start from a push). Opened by `openPendingNotificationTarget()`.
     @Published var pendingNotificationTarget: NotificationTarget? = nil
@@ -390,6 +434,12 @@ class KiniAppState: ObservableObject {
         // Session.logout() removed the persisted location pick; this empties the live store the filter bar reads.
         CRMLocationStore.shared.clear()
         OutletCache.shared.invalidateAll()
+        // The attendance rules (and the travel mode / "today" the next person would otherwise inherit) are this person's.
+        AttendanceRulesStore.shared.reset()
+        self.attendanceVM.resetForSignOut()
+        // "Add today's travel to expenses?" belongs to the person who left; the rate prompt's counters are per device and stay.
+        TravelPromptModel.shared.reset()
+        RatePromptCoordinator.shared.withdraw()
         self.isAuthenticated = false
         self.selectedTab = 0
         self.showSideMenu = false
@@ -1083,9 +1133,18 @@ struct AttendanceRecord: Codable {
     let checkinAddress: String?
     let checkoutAddress: String?
     let totalDuration: Int?
+    /// Mode of transport the rep chose for the day (an id of the attendance rules' `transport_modes`) and its display
+    /// label. Present ONLY for clients whose attendance rule `track_transport_mode` is on, once a mode was chosen.
+    var transportMode: String?
+    var transportLabel: String?
+    /// `late` block — present ONLY for clients that configured shift rules, and only on a record with a check-in.
+    var late: AttendanceLateInfo?
 
     enum CodingKeys: String, CodingKey {
         case id, date, status
+        case transportMode = "transport_mode"
+        case transportLabel = "transport_label"
+        case late
         case checkinAt = "checkin_at"
         case checkoutAt = "checkout_at"
         case checkInAt = "check_in_at"
@@ -1125,7 +1184,10 @@ struct AttendanceRecord: Codable {
         checkoutAddress: String? = nil,
         firstCheckinAt: String? = nil,
         lastCheckoutAt: String? = nil,
-        totalDuration: Int? = nil
+        totalDuration: Int? = nil,
+        transportMode: String? = nil,
+        transportLabel: String? = nil,
+        late: AttendanceLateInfo? = nil
     ) {
         self.id = id
         self.date = date
@@ -1144,6 +1206,9 @@ struct AttendanceRecord: Codable {
         self.firstCheckinAt = firstCheckinAt
         self.lastCheckoutAt = lastCheckoutAt
         self.totalDuration = totalDuration
+        self.transportMode = transportMode
+        self.transportLabel = transportLabel
+        self.late = late
     }
 
     init(from decoder: Decoder) throws {
@@ -1177,6 +1242,10 @@ struct AttendanceRecord: Codable {
         firstCheckinAt = container.decodeLossyString(forKey: .firstCheckinAt)
         lastCheckoutAt = container.decodeLossyString(forKey: .lastCheckoutAt)
         totalDuration = container.decodeLossyInt(forKey: .totalDuration)
+        // Opt-in keys: absent (or of another type) for every client that never configured them.
+        transportMode = container.decodeLossyString(forKey: .transportMode)
+        transportLabel = container.decodeLossyString(forKey: .transportLabel)
+        late = try? container.decodeIfPresent(AttendanceLateInfo.self, forKey: .late)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -1198,6 +1267,9 @@ struct AttendanceRecord: Codable {
         try container.encodeIfPresent(firstCheckinAt, forKey: .firstCheckinAt)
         try container.encodeIfPresent(lastCheckoutAt, forKey: .lastCheckoutAt)
         try container.encodeIfPresent(totalDuration, forKey: .totalDuration)
+        try container.encodeIfPresent(transportMode, forKey: .transportMode)
+        try container.encodeIfPresent(transportLabel, forKey: .transportLabel)
+        try container.encodeIfPresent(late, forKey: .late)
     }
 
     var isIn: Bool {
@@ -1405,11 +1477,53 @@ struct ActivityFeedItem: Codable, Identifiable {
     let outletName: String?
     let isConverted: Bool
     let submittedAt: String?
-    
+    // Added by the server for the Recent activity cards; all optional so an older server (or an older row) still
+    // decodes. See ActivityFeedLogic for how they are combined into the card's title and subtitle.
+    /// The form's "Customer Name" answer, when the form has one.
+    let customerName: String?
+    /// The form template's name.
+    let formName: String?
+    /// The server's own best title for the row (customer, else outlet, else form ...).
+    let title: String?
+    /// A second line the server chose for the row.
+    let subtitle: String?
+
     enum CodingKeys: String, CodingKey {
-        case id, isConverted
+        case id, title, subtitle
+        case isConverted = "is_converted"
         case outletName = "outlet_name"
         case submittedAt = "submitted_at"
+        case customerName = "customer_name"
+        case formName = "form_name"
+    }
+
+    /// The server's older spelling of the converted flag (`isConverted`), still read when `is_converted` is absent.
+    private enum LegacyKeys: String, CodingKey { case isConverted }
+
+    init(id: String, outletName: String?, isConverted: Bool, submittedAt: String?,
+         customerName: String? = nil, formName: String? = nil, title: String? = nil, subtitle: String? = nil) {
+        self.id = id
+        self.outletName = outletName
+        self.isConverted = isConverted
+        self.submittedAt = submittedAt
+        self.customerName = customerName
+        self.formName = formName
+        self.title = title
+        self.subtitle = subtitle
+    }
+
+    /// Tolerant on purpose: one odd row (a missing flag, a null name) must not fail the whole feed.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.decodeLossyString(forKey: .id) ?? UUID().uuidString
+        outletName = c.decodeLossyString(forKey: .outletName)
+        let legacy = try? decoder.container(keyedBy: LegacyKeys.self)
+        isConverted = c.decodeLossyBool(forKey: .isConverted) ?? legacy?.decodeLossyBool(forKey: .isConverted) ?? false
+        submittedAt = c.decodeLossyString(forKey: .submittedAt)
+        customerName = c.decodeLossyString(forKey: .customerName)
+        formName = c.decodeLossyString(forKey: .formName)
+        title = c.decodeLossyString(forKey: .title)
+        subtitle = c.decodeLossyString(forKey: .subtitle)
     }
 }
 
@@ -1494,9 +1608,14 @@ struct FormField: Codable, Identifiable {
     let cameraOnly: Bool?
     let pageId: String?
     let keyboardType: String?
-    
+    /// The builder's `validation.max` (a number, or a number in a string) — how many stars a rating question has
+    /// (see FormFieldLogic.ratingMax). Read tolerantly: whatever else is in `validation`, or nothing at all, never
+    /// fails the decoding of the whole form.
+    let validationMax: Double?
+
     enum CodingKeys: String, CodingKey {
         case id, label, placeholder
+        case validation
         case fieldKey = "field_key"
         case fieldType = "field_type"
         case helpText = "help_text"
@@ -1545,7 +1664,15 @@ struct FormField: Codable, Identifiable {
         cameraOnly = try? container.decodeIfPresent(Bool.self, forKey: .cameraOnly)
         pageId = try? container.decodeIfPresent(String.self, forKey: .pageId)
         keyboardType = try? container.decodeIfPresent(String.self, forKey: .keyboardType)
+        // `validation` is free-form JSON: only `max` is read, and only when it is (or holds) a number.
+        if let v = try? container.nestedContainer(keyedBy: ValidationKeys.self, forKey: .validation) {
+            validationMax = v.decodeLossyDouble(forKey: .max)
+        } else {
+            validationMax = nil
+        }
     }
+
+    private enum ValidationKeys: String, CodingKey { case max }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -1553,6 +1680,10 @@ struct FormField: Codable, Identifiable {
         try container.encode(label, forKey: .label)
         try container.encode(fieldKey, forKey: .fieldKey)
         try container.encode(fieldType, forKey: .fieldType)
+        if let m = validationMax {
+            var v = container.nestedContainer(keyedBy: ValidationKeys.self, forKey: .validation)
+            try v.encode(m, forKey: .max)
+        }
         try container.encodeIfPresent(placeholder, forKey: .placeholder)
         try container.encodeIfPresent(helpText, forKey: .helpText)
         try container.encode(isRequired, forKey: .isRequired)
@@ -1566,7 +1697,7 @@ struct FormField: Codable, Identifiable {
         try container.encodeIfPresent(keyboardType, forKey: .keyboardType)
     }
 
-    init(id: String, label: String, fieldKey: String, fieldType: String, placeholder: String? = nil, helpText: String? = nil, isRequired: Bool = false, sortOrder: Int? = nil, options: [FormOption]? = nil, dependsOnId: String? = nil, dependsOnValue: String? = nil, imageCount: Int? = nil, cameraOnly: Bool? = nil, pageId: String? = nil, keyboardType: String? = nil) {
+    init(id: String, label: String, fieldKey: String, fieldType: String, placeholder: String? = nil, helpText: String? = nil, isRequired: Bool = false, sortOrder: Int? = nil, options: [FormOption]? = nil, dependsOnId: String? = nil, dependsOnValue: String? = nil, imageCount: Int? = nil, cameraOnly: Bool? = nil, pageId: String? = nil, keyboardType: String? = nil, validationMax: Double? = nil) {
         self.id = id
         self.label = label
         self.fieldKey = fieldKey
@@ -1582,6 +1713,7 @@ struct FormField: Codable, Identifiable {
         self.cameraOnly = cameraOnly
         self.pageId = pageId
         self.keyboardType = keyboardType
+        self.validationMax = validationMax
     }
 }
 
@@ -1628,7 +1760,14 @@ struct FormSubmissionRequest: Codable {
     let submittedAt: String
     let isConverted: Bool?
     let responses: [FormResponse]
-    
+    // Check-in / check-out on a form (attendance rule `form_checkin_required`): when the visit started and ended, and
+    // where ("lat,lng"). Nil for every client that did not turn the rule on — and a nil is not encoded, so their
+    // request is exactly what it always was. See FormVisit.
+    var checkInAt: String? = nil
+    var checkOutAt: String? = nil
+    var checkInGps: String? = nil
+    var checkOutGps: String? = nil
+
     enum CodingKeys: String, CodingKey {
         case responses, latitude, longitude
         case templateId = "template_id"
@@ -1637,6 +1776,10 @@ struct FormSubmissionRequest: Codable {
         case outletName = "outlet_name"
         case submittedAt = "submitted_at"
         case isConverted = "is_converted"
+        case checkInAt = "check_in_at"
+        case checkOutAt = "check_out_at"
+        case checkInGps = "check_in_gps"
+        case checkOutGps = "check_out_gps"
     }
 }
 
@@ -3336,29 +3479,33 @@ class KinematicRepository {
     func markAttendance(isCheckIn: Bool, lat: Double, lng: Double, selfieUrl: String? = nil, battery: Int? = nil,
                         faceScore: Double? = nil, faceVerified: Bool? = nil, faceModelId: String? = nil,
                         isMock: Bool? = nil, locationAccuracyM: Double? = nil,
-                        idempotencyKey: String? = nil) async -> AttendanceSubmitResult {
+                        idempotencyKey: String? = nil,
+                        // Opt-in extras, all nil for a client that never configured the matching attendance rule — the
+                        // request is then exactly what it always was. `transportMode`: the answer to "How are you
+                        // travelling today?" (check-in only). `capturedAt` / `dateQuery`: the real punch time and the
+                        // `?date=` of its attendance day, sent only by an offline-capable punch (rule allow_offline_checkin).
+                        transportMode: String? = nil,
+                        capturedAt: String? = nil,
+                        dateQuery: String? = nil) async -> AttendanceSubmitResult {
         let endpoint = isCheckIn ? "/attendance/checkin" : "/attendance/checkout"
         let status = HTTPStatusBox()
 
         do {
-            var payload: [String: Any] = ["latitude": lat, "longitude": lng]
-            if let selfie = selfieUrl { payload["selfie_url"] = selfie }
-            if let battery = battery { payload["battery_percentage"] = battery }
-            // Face-recognition attendance (module face_attendance): the
-            // on-device 1:1 match result. Absent for clients without the module.
-            if let faceScore { payload["face_score"] = faceScore }
-            if let faceVerified { payload["face_verified"] = faceVerified }
-            if let faceModelId { payload["face_model_id"] = faceModelId }
-            // GPS-integrity signals (all field-force tenants — not a paid module).
-            // is_mock = the captured fix was software-simulated; accuracy in metres.
-            if let isMock { payload["is_mock"] = isMock }
-            if let locationAccuracyM { payload["location_accuracy_m"] = locationAccuracyM }
-
-            let body = try? JSONSerialization.data(withJSONObject: payload)
+            // The body (see AttendancePunch.requestPayload): lat / lng, the selfie, battery, the face match (module
+            // face_attendance) and the GPS-integrity signals; plus, ONLY when set, the opt-in extras above. Sorted keys:
+            // the server hashes the body against the Idempotency-Key, so a replay must serialise to the same bytes.
+            let payload = AttendancePunch.requestPayload(
+                isCheckIn: isCheckIn, lat: lat, lng: lng, selfieUrl: selfieUrl, battery: battery,
+                faceScore: faceScore, faceVerified: faceVerified, faceModelId: faceModelId,
+                isMock: isMock, locationAccuracyM: locationAccuracyM,
+                transportMode: transportMode, capturedAt: capturedAt)
+            let body = AttendancePunch.requestBody(payload)
+            let query = AttendancePunch.queryItems(dateQuery: dateQuery)
             let res: ApiResponse<AttendanceRecord>? = try await performRequest(
                 endpoint,
                 method: "POST",
                 body: body,
+                queryItems: query,
                 idempotencyKey: idempotencyKey,
                 statusBox: status
             )
@@ -3483,6 +3630,119 @@ class KinematicRepository {
         }
     }
 
+    // MARK: Attendance rules + mode of transport (opt-in per client BY DATA — see AttendanceRules.swift)
+
+    /// GET /attendance/rules — the resolved rules for the caller's client. Nil when the request failed or the reply
+    /// could not be read at all (the caller keeps what it had: the remembered copy, else today's defaults).
+    func fetchAttendanceRules() async -> AttendanceRulesInfo? {
+        do {
+            let res: ApiResponse<AnyJSON>? = try await performRequest("/attendance/rules")
+            guard res?.success == true else { return nil }
+            return AttendanceRulesParser.info(from: res?.data)
+        } catch {
+            print("⚠️ ATTENDANCE_RULES_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// GET /attendance/today — the caller's record for today (null when there is none). Unlike the Home payload it
+    /// carries `transport_mode` / `transport_label`, which is why Home asks for it when the travel question is on.
+    func fetchAttendanceToday() async -> AttendanceRecord? {
+        do {
+            let res: ApiResponse<AttendanceRecord>? = try await performRequest("/attendance/today")
+            guard res?.success == true else { return nil }
+            return res?.data
+        } catch {
+            print("⚠️ ATTENDANCE_TODAY_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// PATCH /attendance/transport-mode — set or change the mode of transport on the caller's own attendance row.
+    /// ONLINE ONLY (it is never queued): the result says whether it worked and, if not, why (see AttendanceSyncPolicy).
+    /// `date` (`YYYY-MM-DD`) only for a day other than today (IST).
+    func setTransportMode(_ mode: String, date: String? = nil) async -> AttendanceSubmitResult {
+        let status = HTTPStatusBox()
+        do {
+            var payload: [String: Any] = ["mode": mode]
+            if let date, !date.isEmpty { payload["date"] = date }
+            let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let res: ApiResponse<AttendanceRecord>? = try await performRequest(
+                "/attendance/transport-mode", method: "PATCH", body: body, statusBox: status)
+            if res?.success == true { return .ok(record: res?.data, httpStatus: status.status) }
+            let kind = AttendanceSyncPolicy.classify(urlErrorCode: nil, httpStatus: status.status, serverCode: res?.details?.code)
+            let message = AttendanceSyncPolicy.userMessage(
+                serverMessage: res?.error ?? res?.message, urlErrorCode: nil, httpStatus: status.status,
+                fallback: "Couldn't change your travel mode.")
+            return .failed(kind, message: message, httpStatus: status.status)
+        } catch {
+            if AttendanceSyncPolicy.acceptedDespiteUnreadableReply(httpStatus: status.status) {
+                return .ok(record: nil, httpStatus: status.status)
+            }
+            let code = (error as? URLError)?.code
+            let kind = AttendanceSyncPolicy.classify(urlErrorCode: code, httpStatus: status.status, serverCode: nil)
+            let message = AttendanceSyncPolicy.userMessage(for: error, httpStatus: status.status, fallback: "Couldn't change your travel mode.")
+            return .failed(kind, message: message, httpStatus: status.status)
+        }
+    }
+
+    /// How an upload of already-compressed selfie bytes ended — used by the offline-capable punch, which must tell
+    /// "no connection, try again later" from "the server will not take it" (`uploadImage` only says nil).
+    enum SelfieUploadOutcome {
+        case uploaded(String)
+        /// Nothing wrong with the photo: no network, a timeout, 408 / 429 / 5xx, or a sign-in that needs refreshing.
+        case transient(String)
+        /// The server looked at it and said no, or the reply held no address.
+        case failed(String)
+    }
+
+    /// POST /upload/selfie with `data` (a JPEG, already compressed). One silent token refresh on a 401.
+    func uploadSelfieData(_ data: Data, retriedAfterRefresh: Bool = false) async -> SelfieUploadOutcome {
+        guard let url = URL(string: "\(baseURL)/upload/selfie") else { return .failed("Bad upload address") }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+        if let orgId = Session.currentUser?.orgId { request.setValue(orgId, forHTTPHeaderField: "X-Org-Id") }
+        if let proj = Session.project, !proj.isEmpty { request.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"selfie.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+        do {
+            let (respData, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if statusCode == 401 {
+                if !retriedAfterRefresh, await refreshAccessToken() {
+                    return await uploadSelfieData(data, retriedAfterRefresh: true)
+                }
+                return .transient("Your session has expired — sign in again.")
+            }
+            if (200..<300).contains(statusCode) {
+                if let res = try? JSONDecoder().decode(ApiResponse<UploadResponse>.self, from: respData),
+                   let u = res.data?.url, !u.isEmpty {
+                    return .uploaded(u)
+                }
+                return .failed("The server did not return the selfie address.")
+            }
+            if AttendanceSyncPolicy.isTransient(httpStatus: statusCode) {
+                return .transient(AttendanceSyncPolicy.userMessage(serverMessage: nil, urlErrorCode: nil, httpStatus: statusCode, fallback: "The server is busy."))
+            }
+            let serverMessage: String? = (try? JSONDecoder().decode(ApiResponse<UploadResponse>.self, from: respData)).flatMap { $0.error ?? $0.message }
+            return .failed(AttendanceSyncPolicy.userMessage(serverMessage: serverMessage, urlErrorCode: nil, httpStatus: statusCode, fallback: "The selfie could not be uploaded."))
+        } catch {
+            if let ue = error as? URLError, AttendanceSyncPolicy.isTransient(urlError: ue.code) {
+                return .transient(AttendanceSyncPolicy.userMessage(for: error, httpStatus: nil, fallback: "No connection."))
+            }
+            return .failed("The selfie could not be uploaded.")
+        }
+    }
+
     func logSecurityViolation(type: String, action: String, lat: Double?, lng: Double?) async {
         do {
             let payload: [String: Any?] = ["type": type, "action": action, "lat": lat, "lng": lng]
@@ -3519,7 +3779,9 @@ class KinematicRepository {
     
     func getFeed() async -> [ActivityFeedItem] {
         do {
-            let res: ApiResponse<[ActivityFeedItem]>? = try await performRequest("/feed")
+            // The backend serves the feed at /analytics/activity-feed (the path Android uses); there is no /feed route,
+            // so the Work Feed used to ask for a path that does not exist and always came back empty.
+            let res: ApiResponse<[ActivityFeedItem]>? = try await performRequest("/analytics/activity-feed")
             return res?.data ?? []
         } catch {
             return []
@@ -3704,6 +3966,8 @@ struct KinematicApp: App {
 
     init() {
         print("🚀 APP_LIFE: KinematicApp launched")
+        // When this phone first ran the app (once): the install age the rate-the-app prompt counts from.
+        RatePromptStore.recordFirstLaunchIfNeeded()
     }
 
     var body: some Scene {
@@ -3764,7 +4028,12 @@ struct KinematicApp: App {
                     // Drain queued attendance + distribution writes whenever
                     // the app comes back to the foreground.
                     if phase == .active && Session.isAuthenticated {
+                        // Distribution clients: send the orders / payments / returns saved on the phone.
+                        Task { await DistributionSync.kickIfDistribution() }
                         Task { await AttendanceCache.shared.flush() }
+                        // The attendance rules (selfie / travel question / offline check-in): asked again at most every
+                        // few minutes; a failure keeps what is held.
+                        Task { await AttendanceRulesStore.shared.refresh() }
                         // Same VPN-on-resume check. A rep can leave
                         // the app, enable a VPN, then return — the
                         // scene-phase callback is the only place we

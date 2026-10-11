@@ -62,6 +62,10 @@ struct AttendanceHistoryView: View {
             statTile(label: "Days", value: "\(records.count)", icon: "calendar", color: Brand.red)
             statTile(label: "Present", value: "\(present)", icon: "checkmark.seal.fill", color: .green)
             statTile(label: "Avg hrs", value: String(format: "%.1f", avgHours), icon: "clock.fill", color: Brand.red)
+            // Only for a client that tracks lateness (its records carry a `late` block): late days are a subset of Present.
+            if AttendanceLate.showsLateInfo(history: records, today: nil) {
+                statTile(label: "Late", value: "\(AttendanceLate.lateCount(records))", icon: "exclamationmark.circle.fill", color: .orange)
+            }
         }
     }
 
@@ -100,6 +104,11 @@ private struct AttendanceHistoryCard: View {
                 Text(statusLabel)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(Color(uiColor: .label))
+                if let lateText = AttendanceLate.label(record.late) {
+                    Text(lateText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.orange)
+                }
                 HStack(spacing: 12) {
                     if let ci = record.firstCheckinAt ?? record.checkinAt {
                         Label(formatTime(ci), systemImage: "arrow.right.circle.fill")

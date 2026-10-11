@@ -4,6 +4,9 @@ struct OrderCartView: View {
     let outletId: String
     let outletName: String?
     let visitId: String?
+    /// The picked outlet's distributor ("Choose another outlet" / Book Order); nil on the route-plan path, where the
+    /// server resolves it from the outlet.
+    var distributorId: String? = nil
 
     @StateObject private var vm = DistributionViewModel()
     @Environment(\.dismiss) private var dismiss
@@ -20,14 +23,16 @@ struct OrderCartView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(vm.previewing ? "Pricing…" : "Preview") { Task { await vm.runPreview(outletId: outletId) } }
+                Button(vm.previewing ? "Pricing…" : "Preview") { Task { await vm.runPreview(outletId: outletId, distributorId: distributorId) } }
                     .disabled(vm.previewing || vm.cartQty.isEmpty)
             }
         }
         .task { await vm.loadSuggest(outletId: outletId) }
         .sheet(isPresented: $showReview) {
             NavigationStack {
-                OrderReviewView(outletId: outletId, outletName: outletName, visitId: visitId, vm: vm)
+                // Once the order is placed or saved, the whole flow (review sheet and cart) closes.
+                OrderReviewView(outletId: outletId, outletName: outletName, visitId: visitId,
+                                distributorId: distributorId, onFinished: { dismiss() }, vm: vm)
             }
         }
         .sheet(isPresented: $showCatalogue) {

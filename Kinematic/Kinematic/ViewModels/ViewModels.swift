@@ -57,7 +57,9 @@ class HomeViewModel: ObservableObject {
             
             // Centralized State Sync (Android Parity)
             if let today = newData?.today {
-                KiniAppState.shared.today = today
+                // With what this phone knows laid over it (a punch still waiting to sync, the travel mode); untouched
+                // for a client that has neither.
+                KiniAppState.shared.today = KiniAppState.shared.attendanceVM.mergedToday(today)
             }
             
             if let summ = newData?.summary {
@@ -156,6 +158,27 @@ class AttendanceViewModel: ObservableObject {
     @Published var isOnBreak: Bool = false
     @Published var breakBusy: Bool = false
 
+    // MARK: Attendance rules (opt-in per client BY DATA — AttendanceRules.swift; the logic is in
+    // AttendanceViewModel+Punch.swift). All of this stays idle for a client that configured nothing.
+    /// The answer to "How are you travelling today?" for the Clock-In in progress, and when it was given.
+    var transportChoice: String? = nil
+    var transportChoiceAt: Date? = nil
+    /// Non-nil while the "How are you travelling today?" step is on screen (it is hosted by `ClockInTransportHost`).
+    @Published var transportRequest: TransportPickRequest? = nil
+    /// What to do once the rep has answered: re-enter the flow that was interrupted.
+    var afterTransportChoice: (() -> Void)? = nil
+    /// True while a change of today's mode of transport is being sent.
+    @Published var transportBusy: Bool = false
+    /// What happened to the last change of the travel mode ("Travel mode updated" / why it failed); shown once.
+    @Published var transportMessage: String? = nil
+    /// True while a GPS-only punch is finding a fix.
+    @Published var gpsPunching: Bool = false
+    /// IST date (`yyyy-MM-dd`) of a shift whose check-out has JUST reached the server (online). A state, not an event:
+    /// whoever acts on it ("Add today's travel to expenses?") reads it and calls `consumeFreshCheckout()`.
+    @Published var freshCheckoutDate: String? = nil
+    /// The travel mode this phone knows for a day (what the Home payload leaves out), laid over every read of today.
+    var knownTransport: KnownTransportMode? = nil
+
     @MainActor
     func toggleBreak() async {
         guard !breakBusy else { return }
@@ -239,6 +262,15 @@ class AttendanceViewModel: ObservableObject {
             return
         }
 
+        // Attendance rules (opt-in per client BY DATA; both are no-ops for a client that configured nothing):
+        // the REQUIRED "How are you travelling today?" step comes first (location is already checked, so the rep is
+        // not asked and then blocked); a client whose rule says no selfie punches with GPS only — no camera.
+        if askClockInQuestionIfNeeded(isCheckIn: isCheckIn, resume: { [weak self] in self?.startFlow() }) { return }
+        if !AttendanceRulesStore.shared.currentRules().selfieRequired {
+            Task { await self.punchGpsOnly() }
+            return
+        }
+
         print("🔥 [CRITICAL] BROADCASTING CAMERA SIGNAL")
         print("🚀 ATTEMPT: startFlow() signal broadcasted")
         print("📸 [AttendanceVM] startFlow() entered")
@@ -261,13 +293,13 @@ class AttendanceViewModel: ObservableObject {
     }
 
     private var lastRefreshTime: Date?
-    private var lastAttendanceActionTime: Date? // Guard against stale server data
+    var lastAttendanceActionTime: Date? // Guard against stale server data
     private var isRefreshing = false
 
     func refresh(force: Bool = false) async {
         // --- STABILITY: Concurrency Guard ---
         guard !isRefreshing else { return }
-        
+
         // --- PERFORMANCE: Throttling (Bypass with 'force') ---
         if !force {
             if let last = lastRefreshTime, Date().timeIntervalSince(last) < 30 {
@@ -278,11 +310,19 @@ class AttendanceViewModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
+        // Attendance rules (selfie / travel question / offline check-in): asked at the same time as the Home payload,
+        // at most every few minutes (a failure keeps what is held and never delays or fails the refresh).
+        async let rulesAsked: Void = AttendanceRulesStore.shared.refresh()
         let data = await KinematicRepository.shared.getMobileHome()
-        await MainActor.run { 
+        await rulesAsked
+        // The Home payload leaves out the mode of transport; when the client asks for it, read today's record too.
+        let homeToday: AttendanceRecord? = await self.todayWithTransportMode(data?.today)
+        await MainActor.run {
             self.lastRefreshTime = Date()
-            let serverToday = data?.today
-            
+            // The server's record with what this phone knows laid over it (a punch still waiting to sync, the travel
+            // mode). Untouched — exactly `data?.today` — for a client that has neither.
+            let serverToday = self.mergedToday(homeToday)
+
             // ── STABILITY: Stale-State Guard (Extended 2m) ──────────
             if let lastAction = self.lastAttendanceActionTime, Date().timeIntervalSince(lastAction) < 120 {
                 let localIsIn = KiniAppState.shared.today?.isIn ?? false
@@ -348,10 +388,29 @@ class AttendanceViewModel: ObservableObject {
             return
         }
 
+        // Attendance rules (opt-in per client BY DATA; a client that configured nothing passes straight through):
+        // the REQUIRED "How are you travelling today?" step comes before a check-in goes anywhere.
+        let rules = AttendanceRulesStore.shared.currentRules()
+        if askClockInQuestionIfNeeded(isCheckIn: isCheckIn, resume: { [weak self] in
+            guard let self = self else { return }
+            Task { await self.toggleAttendance(loc: loc) }
+        }) { return }
+        // A check-in carries the answer only while the rule is on and the id is one of the offered choices.
+        let modeToSend: String? = isCheckIn
+            ? TransportMode.modeToSend(trackTransportMode: rules.trackTransportMode, options: rules.transportModes, chosen: transportChoice)
+            : nil
+
         let action = isCheckIn ? "CHECK_IN" : "CHECK_OUT"
-        
+
         guard await checkSecurity(action: action, lat: loc.coordinate.latitude, lng: loc.coordinate.longitude, location: loc) else { return }
-        
+
+        // A client that allows offline check-in / check-out keeps the punch with its real capture time and sends it
+        // when it can (see OfflinePunch.swift). Everything below this block is the flow every other client has.
+        if rules.allowOfflineCheckin {
+            await performOfflineCapablePunch(loc: loc, isCheckIn: isCheckIn, rules: rules, modeToSend: modeToSend)
+            return
+        }
+
         // OPTIMISTIC UI — flip `today` to the new state immediately so the
         // user sees "Checked In" / "Checked Out" the moment they commit, even
         // while the selfie upload + markAttendance round-trip is in flight.
@@ -376,6 +435,7 @@ class AttendanceViewModel: ObservableObject {
                 if optimistic.firstCheckinAt == nil { optimistic.firstCheckinAt = nowIso }
                 optimistic.checkinAt = nowIso
                 optimistic.checkoutAt = nil
+                if let mode = modeToSend { optimistic.transportMode = mode; optimistic.transportLabel = nil }
             } else {
                 optimistic.status = "checked_out"
                 optimistic.checkoutAt = nowIso
@@ -407,7 +467,8 @@ class AttendanceViewModel: ObservableObject {
         } else {
             // Android Parity: Force selfie for Field Executives
             let isExecutive = Session.currentUser?.role.lowercased().contains("executive") ?? false
-            if isExecutive {
+            // ...unless the client's attendance rule says no selfie (a GPS-only punch; the server agrees).
+            if AttendancePunch.selfieDemanded(isExecutive: isExecutive, ruleRequired: rules.selfieRequired) {
                 await MainActor.run {
                     self.today = previousToday                       // rollback
                     KiniAppState.shared.today = previousToday
@@ -441,7 +502,8 @@ class AttendanceViewModel: ObservableObject {
             selfieUrl: selfieUrl,
             battery: batteryLevel >= 0 ? batteryLevel : nil,
             isMock: isMock,
-            locationAccuracyM: locationAccuracyM
+            locationAccuracyM: locationAccuracyM,
+            transportMode: modeToSend
         )
         // This call owns the row until it ends; the background flush leaves it alone meanwhile.
         await AttendanceCache.shared.beginInline(pending.id)
@@ -486,7 +548,8 @@ class AttendanceViewModel: ObservableObject {
             faceModelId: faceModelId,
             isMock: isMock,
             locationAccuracyM: locationAccuracyM,
-            idempotencyKey: pending.idempotencyKey
+            idempotencyKey: pending.idempotencyKey,
+            transportMode: modeToSend
         )
         let success = result.success
         let record = result.record
@@ -506,6 +569,8 @@ class AttendanceViewModel: ObservableObject {
             await AttendanceCache.shared.markRejected(pending.id, error: result.message ?? "unknown")
         }
         await AttendanceCache.shared.endInline(pending.id)
+        // The answer to "How are you travelling today?" belonged to this Clock-In; the next one asks again.
+        if isCheckIn { clearTransportChoice() }
 
         await MainActor.run {
             if success {
@@ -536,6 +601,9 @@ class AttendanceViewModel: ObservableObject {
                 // Clear selfie
                 self.selfie = nil
                 message = isCheckIn ? "Checked in!" : "Checked out!"
+                // Travel-mode bookkeeping (remember it, self-heal a mode the server lost) and the final-check-out
+                // signal; both inert for a client that asks nothing.
+                self.punchReachedServerOnline(isCheckIn: isCheckIn, modeSent: modeToSend, record: record, shiftBefore: previousToday)
 
                 if isCheckIn {
                     let stamp = String(format: "%.4f, %.4f", loc.coordinate.latitude, loc.coordinate.longitude)

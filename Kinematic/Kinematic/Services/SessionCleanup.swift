@@ -10,6 +10,10 @@
 //    • the state / city they picked in the CRM location filter (`?city=` on the analytics calls),
 //    • the cached Home and Route-plan payloads (shown instead of a fresh load when the next one fails),
 //    • the last-known `owner_assignment` value remembered per user + client (`OwnerAssignmentCache`),
+//    • the last attendance rules answer remembered per user (`AttendanceRulesCache`),
+//    • the visits they started on a form and have not closed (`FormVisitStore`), and what they chose on "Add today's
+//      travel to expenses?" (`TravelPromptStore`).
+//  What is left alone on purpose: the rate-the-app prompt's counters (`RatePromptStore`) — per device, not per person.
 //    • whatever the shared URL cache still holds (an entry is keyed by URL, not by who asked).
 //
 //  Pure Foundation. `keysToClear(existing:)` is the whole decision and is unit-tested; the rest just applies it.
@@ -30,11 +34,16 @@ enum SessionCleanup {
         CRMLocationStore.cityKey,         // "crm.location.city"
         mobileHomeCacheKey,
         routePlanCacheKey,
+        FormVisitStore.storageKey,        // "form_visit_sessions" — visits started on a form and not yet closed
+        TravelPromptStore.storageKey,     // "travel_prompt_memory" — what the rep chose on "Add today's travel to expenses?"
+        // NOT here, on purpose: the rate-the-app prompt's counters (`RatePromptStore.recordKey` / `.firstLaunchKey`)
+        // are per DEVICE, not per person — they survive sign-out.
     ]
 
     /// Every key that starts with one of these is removed too (a family of keys, one per user + client).
     static let userDefaultsKeyPrefixes: [String] = [
         OwnerAssignmentCache.keyPrefix,   // "lead_owner_admin_only."
+        AttendanceRulesCache.keyPrefix,   // "attendance_rules." — the last attendance rules answer, per user
     ]
 
     /// The keys to remove, given the keys that exist: the fixed ones, then each existing key with a listed prefix.

@@ -176,11 +176,13 @@ enum AttendanceRulesParser {
         if let v = bool(r["allow_offline_checkin"]) { out.allowOfflineCheckin = v }
         out.shiftStart = text(r["shift_start"])
         out.shiftEnd = text(r["shift_end"])
-        if let n = number(r["grace_minutes"]) { out.graceMinutes = Int(n) }
+        if let n = number(r["grace_minutes"]), abs(n) < 1_000_000 { out.graceMinutes = Int(n) }
         if let days = array(r["weekly_off"]) {
             var list: [Int] = []
             for d in days {
-                if let n = number(d) { list.append(Int(n)) }
+                // (Some JSON decoders read a bare 0 / 1 as a boolean; a weekday 0 or 1 is still that weekday.)
+                if case .bool(let b) = d { list.append(b ? 1 : 0); continue }
+                if let n = number(d), abs(n) < 1_000_000 { list.append(Int(n)) }
             }
             out.weeklyOff = list
         }
@@ -251,6 +253,9 @@ enum AttendanceRulesParser {
         switch j {
         case .number(let n)?:
             return n.isFinite ? n : nil
+        case .bool(let b)?:
+            // (Some JSON decoders read a bare 0 / 1 as a boolean.)
+            return b ? 1 : 0
         case .string(let s)?:
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "")
             if let d = Double(t), d.isFinite { return d }
@@ -402,6 +407,8 @@ final class AttendanceRulesStore: ObservableObject {
     func refresh(force: Bool = false) async {
         restoreCached()
         guard Session.isAuthenticated || fetchProvider != nil else { return }
+        // A CRM-only client has no attendance at all (no field-force shell): nothing to ask, no request to make.
+        if fetchProvider == nil && ClientFeatures.isCrmOnly { return }
         if refreshing { return }
         if !AttendanceRulesRefresh.shouldRefresh(now: Date(), stamp: lastAttemptStamp, force: force) { return }
         refreshing = true
@@ -424,6 +431,11 @@ final class AttendanceRulesStore: ObservableObject {
             AttendanceRulesCache.write(info.rules, key: AttendanceRulesCache.key(userId: askedFor), in: defaults)
         }
         didLoad = true
+    }
+
+    /// Ask the server now, whatever the throttle says (sign-in, app start). Fails soft exactly like `refresh`.
+    func load() async {
+        await refresh(force: true)
     }
 
     private func normalized(_ id: String?) -> String? {
@@ -542,7 +554,7 @@ enum TransportMode {
     /// (`policyVehicleIds` = ids of its `vehicle_rates`), otherwise nil. `public_transport` and `other` never
     /// pre-select anything (even if a policy happened to list a vehicle with such an id), and neither does an id the
     /// policy does not know.
-    static func preselectVehicle(modeId: String?, policyVehicleIds: [String]) -> String? {
+    static func preselectVehicle<C: Collection>(modeId: String?, policyVehicleIds: C) -> String? where C.Element == String {
         guard let id = clean(modeId) else { return nil }
         if id == publicTransport || id == other { return nil }
         return policyVehicleIds.contains(id) ? id : nil
@@ -559,15 +571,16 @@ enum TransportMode {
     }
 
     /// The chip for today's `record`, or nil when the question is not `active` or the rep has not checked in. A
-    /// check-in that is still waiting in the offline queue (the stand-in record) shows the chosen mode but offers no
-    /// change: the server has no attendance row to change yet.
-    static func chip(active: Bool, record: AttendanceRecord?, options: [TransportOption]) -> Chip? {
+    /// check-in that is still waiting in the offline queue (the stand-in record, or `checkinQueued`) shows the chosen
+    /// mode but offers no change: the server has no attendance row to change yet.
+    static func chip(active: Bool, record: AttendanceRecord?, options: [TransportOption], checkinQueued: Bool = false) -> Chip? {
         guard let rec = record else { return nil }
         if !active || rec.checkinAt == nil { return nil }
         let mode: String? = validMode(rec.transportMode)
         let label: String? = labelFor(id: mode, options: options, serverLabel: rec.transportLabel)
-        let text: String = label != nil ? "Travelling by \(label ?? "")" : "Travel mode not set"
-        if OfflinePunchState.isStandIn(rec) {
+        var text: String = "Travel mode not set"
+        if let l = label { text = "Travelling by " + l }
+        if OfflinePunchState.isStandIn(rec) || checkinQueued {
             return Chip(text: text, action: nil, note: "You can change this once your check-in has synced.")
         }
         return Chip(text: text, action: mode != nil ? "Change" : "Set", note: nil)
@@ -575,10 +588,10 @@ enum TransportMode {
 
     /// Why today's mode cannot be changed right now, or nil when it can: no connection (the change is online only, it
     /// is never queued), no check-in yet, or a check-in the server does not have yet.
-    static func cannotChange(online: Bool, record: AttendanceRecord?) -> String? {
+    static func cannotChange(online: Bool, record: AttendanceRecord?, checkinQueued: Bool = false) -> String? {
         if !online { return "You're offline. Connect to the internet to change your travel mode." }
         if record?.checkinAt == nil { return "Check in first, then you can say how you're travelling." }
-        if OfflinePunchState.isStandIn(record) {
+        if OfflinePunchState.isStandIn(record) || checkinQueued {
             return "Your check-in hasn't reached the server yet. You can change your travel mode once it has synced."
         }
         return nil

@@ -805,6 +805,10 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
                 
+                // Rate the app — opt-in per client (app_ui_config.features.rate_prompt) and hideable (settings.rate_app);
+                // draws nothing for everyone else.
+                RateThisAppRow()
+
                 // About section
                 if ClientFeatures.settingsVisible("about") {
                 VStack(alignment: .leading, spacing: 16) {

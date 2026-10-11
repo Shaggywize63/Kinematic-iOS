@@ -88,6 +88,10 @@ enum ExpenseLogic {
     /// Mileage is priced by vehicle from odometer readings.
     static func paysByVehicle(_ rules: ExpensePolicyRules?) -> Bool { !(rules?.vehicle_rates ?? []).isEmpty }
 
+    /// GPS distance instead of odometer readings: on only when the policy says `gps_distance: true` AND pays mileage by
+    /// vehicle. Without it a vehicle line is exactly what it has always been (vehicle + odometer before / after).
+    static func gpsDistanceOn(_ rules: ExpensePolicyRules?) -> Bool { rules?.gps_distance == true && paysByVehicle(rules) }
+
     /// The vehicles the Vehicle picker offers: those of the policy that governs the signed-in person, nothing else.
     /// GET /expenses/policy already answers with that person's own policy (the one naming them, else their role's,
     /// else everyone's), so its `vehicle_rates` ARE their vehicles; no built-in or other policy's list is mixed in.
@@ -340,6 +344,14 @@ struct ExpenseLineFields: Equatable {
             !odoStartPhoto.isEmpty || !odoEndPhoto.isEmpty
     }
 
+    /// A line that carries the day's GPS distance and no odometer data at all (what "Add today's travel to expenses"
+    /// creates): the server prices it from the vehicle's rate. Only where the policy pays GPS distance (`gps`).
+    func isGpsDistanceLine(gps: Bool) -> Bool {
+        func blank(_ s: String) -> Bool { s.trimmingCharacters(in: .whitespaces).isEmpty }
+        return gps && category == "mileage" && Self.positive(distanceKm) != nil &&
+            blank(odometerStart) && blank(odometerEnd) && blank(odoStartPhoto) && blank(odoEndPhoto)
+    }
+
     /// A mileage line that has no vehicle yet — the one the policy's only vehicle is pre-selected on.
     var lacksVehicle: Bool {
         category == "mileage" && vehicleType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -380,9 +392,11 @@ struct ExpenseLineFields: Equatable {
 
     /// The line's amount for the on-screen total. Mileage with only a distance is priced at the policy rate;
     /// by vehicle it is the odometer distance × that vehicle's rate (`vehicles` non-empty).
-    func effectiveAmount(mileageRate: Double, vehicles: [ExpenseVehicleRate]? = nil) -> Double {
+    func effectiveAmount(mileageRate: Double, vehicles: [ExpenseVehicleRate]? = nil, gpsDistance: Bool = false) -> Double {
         if category == "mileage", let vs = vehicles, !vs.isEmpty {
-            guard let km = odometerKm, let rate = ExpenseLogic.vehicleRate(vehicleType, in: vs)?.rate_per_km else { return 0 }
+            // A GPS-distance line (policy `gps_distance`, no odometer) is priced from its distance, like an odometer one.
+            let gpsKm: Double? = isGpsDistanceLine(gps: gpsDistance) ? Self.positive(distanceKm) : nil
+            guard let km = odometerKm ?? gpsKm, let rate = ExpenseLogic.vehicleRate(vehicleType, in: vs)?.rate_per_km else { return 0 }
             return (km * rate * 100).rounded() / 100
         }
         if let a = Self.positive(amount) { return a }
@@ -392,9 +406,11 @@ struct ExpenseLineFields: Equatable {
 
     /// `routeFields` false (the policy turned From / To off): the route is never sent. Like any nil it is
     /// omitted, so a route already on file is left alone.
-    func toInput(byVehicle: Bool = false, routeFields: Bool = true) -> ExpenseClaimItemInput {
+    func toInput(byVehicle: Bool = false, routeFields: Bool = true, gpsDistance: Bool = false) -> ExpenseClaimItemInput {
         let mileage = category == "mileage"
         let vehicleLine = mileage && byVehicle
+        // A GPS-distance line keeps its distance (there is no odometer to work it out from); the server still prices it.
+        let gpsLine = vehicleLine && isGpsDistanceLine(gps: gpsDistance)
         func nonEmpty(_ s: String) -> String? { let t = s.trimmingCharacters(in: .whitespaces); return t.isEmpty ? nil : t }
         // A receipt that is attached is sent; one that was removed is cleared with "" (nil is omitted,
         // and an omitted receipt means "keep what is on file"). Odometer photos follow the same rule.
@@ -407,7 +423,7 @@ struct ExpenseLineFields: Equatable {
             description: nonEmpty(description),
             // By vehicle the server works the distance and amount out from the readings; never send them.
             amount: vehicleLine ? nil : Self.positive(amount),
-            distance_km: (mileage && !vehicleLine) ? Self.positive(distanceKm) : nil,
+            distance_km: ((mileage && !vehicleLine) || gpsLine) ? Self.positive(distanceKm) : nil,
             from_location: (mileage && routeFields) ? nonEmpty(fromLocation) : nil,
             to_location: (mileage && routeFields) ? nonEmpty(toLocation) : nil,
             merchant: mileage ? nil : nonEmpty(merchant),
@@ -504,6 +520,9 @@ extension ExpenseClaimItem {
             let a = odometer_start.map { ExpenseLogic.trimNumber($0) } ?? "—"
             let b = odometer_end.map { ExpenseLogic.trimNumber($0) } ?? "—"
             parts.append("Odometer \(a) → \(b)")
+        } else if (distance_km ?? 0) > 0 {
+            // A vehicle line with a distance and no odometer is a GPS-distance line (policy `gps_distance`).
+            parts.append("GPS distance")
         }
         return parts.joined(separator: " · ")
     }

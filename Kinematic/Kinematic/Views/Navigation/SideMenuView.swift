@@ -107,11 +107,24 @@ struct SideMenuView: View {
                     //    own the distribution SKU. Opens the order history sheet
                     //    via the same SecondaryRoute mechanism the other rows use;
                     //    SecondaryScreenHost re-checks the package gate.
-                    if hasDistribution && ClientFeatures.menuVisible("my_orders") {
-                        MenuButton(icon: "cart.fill", title: ClientFeatures.labelFor("menu", "my_orders", default: "My Orders"), isSelected: false, color: .indigo) {
+                    // Book an order / collect a payment for ANY outlet in scope (outlet picker first), without
+                    // a route-plan order activity. Gated on the distribution package plus the module behind each
+                    // action; the cards on the outlet screen are unchanged.
+                    if hasDistribution && hasModule("distribution_orders") && ClientFeatures.menuVisible("book_order") {
+                        MenuButton(icon: "cart.badge.plus", title: ClientFeatures.labelFor("menu", "book_order", default: "Book Order"), isSelected: false, color: .indigo) {
                             withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .orderHistory)
+                            appState.activeSecondaryRoute = ModalRoute(route: .orderCart)
                         }
+                    }
+                    if hasDistribution && hasModule("distribution_payments") && ClientFeatures.menuVisible("collect_payment") {
+                        MenuButton(icon: "indianrupeesign.circle.fill", title: ClientFeatures.labelFor("menu", "collect_payment", default: "Collect Payment"), isSelected: false, color: .green) {
+                            withAnimation { isOpen = false }
+                            appState.activeSecondaryRoute = ModalRoute(route: .paymentCollect)
+                        }
+                    }
+                    if hasDistribution && ClientFeatures.menuVisible("my_orders") {
+                        // Shows how many orders / payments / returns are saved on the phone waiting to upload.
+                        MyOrdersMenuButton(isOpen: $isOpen)
                     }
 
                     // ── Van Load (module distribution_van) — day-start load-in +

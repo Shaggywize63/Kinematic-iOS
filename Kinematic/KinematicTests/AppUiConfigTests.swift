@@ -89,6 +89,72 @@ final class AppUiConfigTests: XCTestCase {
         XCTAssertFalse(ClientFeatures.expensesTabShown(showsExpenses: true, config: nil))
     }
 
+    // MARK: - opt-in features (app_ui_config.features)
+
+    func testNoConfigMeansNoOptInFeature() throws {
+        XCTAssertFalse(try config("{}").featureOn("rate_prompt"))
+        XCTAssertFalse(try config(#"{"features":{}}"#).featureOn("rate_prompt"))
+        XCTAssertFalse(try config(#"{"features":null}"#).featureOn("rate_prompt"))
+        XCTAssertFalse(try user(nil).featureOn("rate_prompt"))
+    }
+
+    func testOnlyAnExplicitTrueTurnsAFeatureOn() throws {
+        XCTAssertTrue(try config(#"{"features":{"rate_prompt":true}}"#).featureOn("rate_prompt"))
+        XCTAssertFalse(try config(#"{"features":{"rate_prompt":false}}"#).featureOn("rate_prompt"))
+        // a feature that is not named is off — unlike the hide-only switches, where absent means shown
+        XCTAssertFalse(try config(#"{"features":{"something_else":true}}"#).featureOn("rate_prompt"))
+        XCTAssertFalse(try config(#"{"features":{"rate_prompt":true}}"#).featureOn("something_else"))
+        XCTAssertTrue(try user(#"{"tabs":{"attendance":false}}"#).settingsVisible("rate_prompt"))
+        XCTAssertFalse(try user(#"{"tabs":{"attendance":false}}"#).featureOn("rate_prompt"))
+    }
+
+    func testASwitchInAnotherSectionDoesNotTurnAFeatureOn() throws {
+        XCTAssertFalse(try config(#"{"tabs":{"rate_prompt":true}}"#).featureOn("rate_prompt"))
+        XCTAssertFalse(try config(#"{"settings":{"rate_prompt":true}}"#).featureOn("rate_prompt"))
+        XCTAssertFalse(try config(#"{"home":{"rate_prompt":true}}"#).featureOn("rate_prompt"))
+    }
+
+    func testFeaturesSitBesideTheHideOnlySwitchesWithoutDisturbingThem() throws {
+        let u = try user(#"{"tabs":{"new_form":false},"settings":{"app_lock":false},"features":{"rate_prompt":true}}"#)
+        XCTAssertTrue(u.featureOn("rate_prompt"))
+        XCTAssertFalse(u.tabVisible("new_form"))
+        XCTAssertFalse(u.settingsVisible("app_lock"))
+        XCTAssertTrue(u.settingsVisible("appearance"))
+    }
+
+    func testAMalformedFeaturesValueNeverCostsTheRestOfTheConfig() throws {
+        // `features` that is not an object, or holds non-booleans, reads as none / skips the entry;
+        // every other map is still there.
+        let notAnObject = try config(#"{"tabs":{"new_form":false},"features":"rate_prompt"}"#)
+        XCTAssertNil(notAnObject.features)
+        XCTAssertEqual(notAnObject.tabs?["new_form"], false)
+        XCTAssertFalse(notAnObject.featureOn("rate_prompt"))
+
+        let mixed = try config(#"{"menu":{"profile":false},"features":{"rate_prompt":true,"count":3,"nested":{"a":1},"name":"x","gone":null}}"#)
+        XCTAssertTrue(mixed.featureOn("rate_prompt"))
+        XCTAssertNil(mixed.features?["count"])
+        XCTAssertNil(mixed.features?["gone"])
+        XCTAssertEqual(mixed.menu?["profile"], false)
+
+        // a string "true" is NOT an explicit true
+        XCTAssertFalse(try config(#"{"features":{"rate_prompt":"true"}}"#).featureOn("rate_prompt"))
+    }
+
+    func testTheFeaturesSurviveTheUserBeingStoredWithTheSession() throws {
+        // The user is persisted as JSON between launches; the key must come back.
+        let u = try user(#"{"features":{"rate_prompt":true,"other":false},"tabs":{"expenses":true}}"#)
+        let back = try JSONDecoder().decode(User.self, from: JSONEncoder().encode(u))
+        XCTAssertTrue(back.featureOn("rate_prompt"))
+        XCTAssertFalse(back.featureOn("other"))
+        XCTAssertEqual(back.appUiConfig?.features?["other"], false)
+        XCTAssertTrue(back.tabExplicitlyOn("expenses"))
+        // an old config with no features round-trips to "off"
+        let old = try user(#"{"tabs":{"new_form":false}}"#)
+        let oldBack = try JSONDecoder().decode(User.self, from: JSONEncoder().encode(old))
+        XCTAssertFalse(oldBack.featureOn("rate_prompt"))
+        XCTAssertFalse(oldBack.tabVisible("new_form"))
+    }
+
     // MARK: - dashboard summary
 
     private func summary(_ json: String) throws -> CRMAnalyticsSummary {
