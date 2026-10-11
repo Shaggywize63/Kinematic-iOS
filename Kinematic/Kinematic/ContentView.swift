@@ -1222,7 +1222,13 @@ struct AttendanceView: View {
 
                                 Button(action: {
                                     print("📸 [AttendanceView] Take Selfie Button Tapped")
-                                    vm.startFlow()
+                                    // A client with no selfie punches straight from startFlow(), so a stray tap here must not
+                                    // clock the rep out without the "End shift?" confirmation the main button shows.
+                                    if !rulesStore.rules.selfieRequired && !isCheckInIntent {
+                                        showCheckoutAlert = true
+                                    } else {
+                                        vm.startFlow()
+                                    }
                                 }) {
                                     ZStack {
                                         Circle().fill(Color.white.opacity(0.05)).frame(width: 130, height: 130)
