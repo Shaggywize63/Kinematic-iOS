@@ -179,9 +179,9 @@ struct OrderReviewView: View {
     private func placeOrder() {
         let key = draftKey
         Task {
-            let outcome = await vm.submit(outletId: outletId, outletName: outletName, visitId: visitId,
-                                          distributorId: distributorId, idempotencyKey: key)
-            guard let outcome = outcome else { return }
+            let attempted = await vm.submit(outletId: outletId, outletName: outletName, visitId: visitId,
+                                            distributorId: distributorId, idempotencyKey: key)
+            guard let outcome = attempted else { return }
             switch outcome {
             case .synced(_, let reference, _):
                 doneMessage = reference.map { "Order placed · " + $0 } ?? "Order placed"
