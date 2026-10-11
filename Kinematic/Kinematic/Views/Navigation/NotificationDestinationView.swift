@@ -15,12 +15,16 @@ struct NotificationDestinationView: View {
             LeadDetailView(leadId: id)
         case .deal(let id):
             DealDetailView(dealId: id)
-        case .expenseClaim(let id):
+        case .expenseClaim(let id, let edit):
             // Expenses ship per client; a tenant without them lands on the list instead.
             if ClientFeatures.showsExpenses {
-                // ExpenseClaimsView opens `pendingExpenseClaimId` once its claims load.
+                // ExpenseClaimsView opens `pendingExpenseClaimId` once its claims load — in the editor when `edit`
+                // (a rejected claim: fix and resubmit).
                 ExpenseClaimsView()
-                    .onAppear { appState.pendingExpenseClaimId = id }
+                    .onAppear {
+                        appState.pendingExpenseClaimEdit = edit
+                        appState.pendingExpenseClaimId = id
+                    }
             } else {
                 NotificationsView()
             }

@@ -29,9 +29,25 @@ struct DistributionAPI {
 
     private func request(_ path: String, method: String = "GET", body: Encodable? = nil, idempotencyKey: String? = nil) async throws -> Data {
         guard let url = URL(string: "\(baseURL)\(path)") else { throw DistributionAPIError.noResponse }
+        let req = try makeRequest(url: url, method: method, body: body, idempotencyKey: idempotencyKey, timeout: 20)
+        let (data, status) = try await perform(req)
+        if !(200..<300).contains(status) {
+            let serverMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw DistributionAPIError.http(status, serverMsg)
+        }
+        return data
+    }
+
+    /// Builds the request: auth + routing headers, the Idempotency-Key, and the JSON body.
+    ///
+    /// The body is encoded with SORTED KEYS so the same value always produces the same bytes. The server's
+    /// idempotency middleware compares a retry's body with the first attempt's, and a queued write is re-encoded
+    /// from disk (in a later process) every time it is replayed — an unstable key order would turn a harmless
+    /// replay into "Idempotency-Key reused with a different request body".
+    private func makeRequest(url: URL, method: String, body: Encodable?, idempotencyKey: String?, timeout: TimeInterval) throws -> URLRequest {
         var req = URLRequest(url: url)
         req.httpMethod = method
-        req.timeoutInterval = 20
+        req.timeoutInterval = timeout
         req.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
         if let proj = Session.project, !proj.isEmpty { req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project") }
         if let orgId = Session.currentUser?.orgId {
@@ -41,16 +57,56 @@ struct DistributionAPI {
         if let body = body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             let enc = JSONEncoder()
+            enc.outputFormatting = [.sortedKeys]
             req.httpBody = try enc.encode(AnyEncodable(body))
         }
+        return req
+    }
 
+    /// Sends `req` and returns the body and HTTP status (0 when there was no HTTP answer). On a 401 the access
+    /// token is refreshed once (the same silent refresh the rest of the app uses) and the request goes out again
+    /// with the new token — an hour-old token must not leave a collected payment stuck in the queue.
+    private func perform(_ req: URLRequest) async throws -> (Data, Int) {
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if !(200..<300).contains(status) {
-            let serverMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
-            throw DistributionAPIError.http(status, serverMsg)
+        if status == 401 {
+            let refreshed = await KinematicRepository.shared.refreshAccessToken()
+            if refreshed {
+                var again = req
+                again.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+                let (data2, response2) = try await URLSession.shared.data(for: again)
+                return (data2, (response2 as? HTTPURLResponse)?.statusCode ?? 0)
+            }
         }
-        return data
+        return (data, status)
+    }
+
+    /// What one call came to, without throwing: the HTTP status and body, or — when the request itself failed
+    /// (no connection, timeout, a body that could not be encoded) — the error, with status 0.
+    struct RawResponse {
+        let status: Int
+        let body: Data
+        let error: Error?
+    }
+
+    /// One attempt of a request whose outcome the caller classifies itself (the offline queue: see
+    /// `DistributionQueuePolicy`). Never throws.
+    func send(path: String, method: String = "POST", queryItems: [URLQueryItem] = [], body: Encodable? = nil,
+              idempotencyKey: String? = nil, timeout: TimeInterval = 20) async -> RawResponse {
+        do {
+            guard var components = URLComponents(string: "\(baseURL)\(path)") else {
+                return RawResponse(status: 0, body: Data(), error: DistributionAPIError.noResponse)
+            }
+            if !queryItems.isEmpty { components.queryItems = queryItems }
+            guard let url = components.url else {
+                return RawResponse(status: 0, body: Data(), error: DistributionAPIError.noResponse)
+            }
+            let req = try makeRequest(url: url, method: method, body: body, idempotencyKey: idempotencyKey, timeout: timeout)
+            let (data, status) = try await perform(req)
+            return RawResponse(status: status, body: data, error: nil)
+        } catch {
+            return RawResponse(status: 0, body: Data(), error: error)
+        }
     }
 
     private struct Envelope<U: Decodable>: Decodable {
@@ -104,6 +160,39 @@ struct DistributionAPI {
         } catch DistributionAPIError.http(404, _) {
             return nil
         }
+    }
+
+    // ── Outlet picker + outstanding (online only; nothing here is cached) ─────────
+    /// Outlets in the rep's scope (today's route-plan outlets first), `name` / `code` search, at most 100 — the
+    /// picker behind "Collect Payment" and "Book Order". Never throws: a missing connection is `.offline`.
+    func searchOutlets(query: String?, limit: Int = OutletPickerLogic.pageSize) async -> OutletSearchResult {
+        var items: [URLQueryItem] = []
+        if let q = query, !q.isEmpty { items.append(URLQueryItem(name: "search", value: q)) }
+        items.append(URLQueryItem(name: "limit", value: String(limit)))
+        let response = await send(path: "/salesman/outlets", method: "GET", queryItems: items)
+        if let error = response.error {
+            if DistributionQueuePolicy.isOffline(error) { return .offline }
+            return .failed(DistributionQueuePolicy.message(forThrown: error))
+        }
+        if (200..<300).contains(response.status) {
+            return .found(SalesmanJSON.outlets(fromData: response.body))
+        }
+        return .failed(DistributionQueuePolicy.serverMessage(body: response.body, httpStatus: response.status))
+    }
+
+    /// An outlet's balance and open invoices (oldest first). Online only: money data must not be stale, so it is
+    /// never cached and offline is reported as such.
+    func outstanding(outletId: String) async -> OutstandingResult {
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
+        let safeId = outletId.addingPercentEncoding(withAllowedCharacters: allowed) ?? outletId
+        let response = await send(path: "/salesman/outlets/\(safeId)/outstanding", method: "GET")
+        if let error = response.error {
+            return DistributionQueuePolicy.isOffline(error) ? .offline : .unavailable
+        }
+        guard (200..<300).contains(response.status), let parsed = SalesmanJSON.outstanding(fromData: response.body) else {
+            return .unavailable
+        }
+        return .loaded(parsed)
     }
 
     // ── Mutations ────────────────────────────────────────────────────────────────

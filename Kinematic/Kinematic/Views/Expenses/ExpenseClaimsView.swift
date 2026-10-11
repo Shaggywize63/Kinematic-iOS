@@ -238,11 +238,13 @@ struct ExpenseClaimsView: View {
         } message: { Text(vm.notice ?? "") }
     }
 
-    /// A tapped expense push opens its claim.
+    /// A tapped expense push opens its claim — in the editor when it is a rejected one (fix and resubmit).
     private func consumePushTarget() {
         guard let id = appState.pendingExpenseClaimId, !id.isEmpty else { return }
+        let edit: Bool = appState.pendingExpenseClaimEdit
         appState.pendingExpenseClaimId = nil
-        openInEditor = false
+        appState.pendingExpenseClaimEdit = false
+        openInEditor = edit
         openClaimId = id
     }
 

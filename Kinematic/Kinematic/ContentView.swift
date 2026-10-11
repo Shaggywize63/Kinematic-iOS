@@ -64,6 +64,8 @@ struct ContentView: View {
         // a root-level alert presents reliably. The form submit hosts its own
         // gate because it runs inside a fullScreenCover.
         .locationGateAlert($appState.locationGatePrompt)
+        // The REQUIRED "How are you travelling today?" step in front of Clock-In (clients whose attendance rule asks it).
+        .clockInTransportHost(appState.attendanceVM)
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
         }
@@ -94,6 +96,9 @@ struct ContentView: View {
             PushNotificationManager.requestAuthorizationAndRegister()
             // A push tapped before sign-in finished (cold start) opens its screen now.
             await MainActor.run { appState.openPendingNotificationTarget() }
+            // Distribution clients: send the orders / payments / returns saved on the phone (cold start / sign-in).
+            // Its own task, so a slow send never holds up anything above.
+            Task { await DistributionSync.kickIfDistribution() }
         }
     }
 }
@@ -376,6 +381,10 @@ struct HomeView: View {
 
                     SelfieStatusCard(record: appState.today).padding(.horizontal, 20)
 
+                    // Late line, offline-punch notice, travel-mode chip (each only for a client whose attendance rules
+                    // produce it; draws nothing otherwise).
+                    AttendanceStatusExtras(vm: appState.attendanceVM, showsPunchMessage: true).padding(.horizontal, 20)
+
                     // Marketing Visit (Rajkamal) — prominent entry into the
                     // ad-hoc GPS Start → End visit flow. Rajkamal is a hybrid
                     // (field-force + CRM) tenant running this field-force shell,
@@ -435,6 +444,10 @@ struct HomeView: View {
                                   horizontalPadding: 20)
 
                     SessionCard(record: appState.today).padding(.horizontal, 20)
+
+                    // After check-out: the way back into "Add today's travel to expenses" (clients whose expense policy
+                    // pays GPS distance; draws nothing for everyone else, until added or closed for the day).
+                    TravelPromptCard()
 
                     if vm.showSubmissionSuccess {
                         HStack(spacing: 15) {
@@ -516,6 +529,9 @@ struct HomeView: View {
                 MarketingVisitView(onClose: { showMarketingVisit = false })
             }
         }
+        // Opt-in prompts hosted by Home (nothing for a client that did not turn them on): "Add today's travel to
+        // expenses?" after the final check-out, and the rate-the-app prompt.
+        .homePrompts()
     }
 }
 
@@ -525,13 +541,20 @@ struct SelfieStatusCard: View {
     @EnvironmentObject var appState: KiniAppState
     let record: AttendanceRecord?
     @State private var showCheckoutAlert = false
-    
+    /// A client whose attendance rule says no selfie sees "Check-In", not "Selfie" (everyone else: the text it always had).
+    @ObservedObject private var rulesStore = AttendanceRulesStore.shared
+
     var isIn: Bool { record?.isIn ?? false }
     
     var body: some View {
         let isCheckInIntent = appState.today?.checkinAt == nil
         let isShiftEnded = appState.today?.checkoutAt != nil
-        
+        // The card's words: the ones it always had, unless the client's attendance rule says no selfie.
+        let needsSelfie: Bool = rulesStore.rules.selfieRequired
+        let headline: String = AttendancePunch.headline(shiftEnded: isShiftEnded, isIn: isIn, hasCheckin: record?.checkinAt != nil, selfieRequired: needsSelfie)
+        let tapHint: String = AttendancePunch.tapHint(selfieRequired: needsSelfie)
+        let glyph: String = AttendancePunch.actionGlyph(shiftEnded: isShiftEnded, selfieRequired: needsSelfie)
+
         Button(action: {
             if isShiftEnded { return } // No actions after checkout
             
@@ -576,11 +599,11 @@ struct SelfieStatusCard: View {
                         }
                     }
                     
-                    Text(isShiftEnded ? "Shift Completed" : (isIn ? "Shift Active" : (record?.checkinAt == nil ? "Daily Selfie Required" : "Check In to Resume")))
+                    Text(headline)
                         .font(.system(size: 18, weight: .black, design: .rounded))
                         .foregroundColor(Color(uiColor: .label))
-                    
-                    Text(isShiftEnded ? "See you tomorrow!" : (isIn ? "Ongoing since \(formatTime(record?.checkinAt))" : (record?.checkinAt == nil ? "Tap to complete check-in" : "Last seen at \(formatTime(record?.checkoutAt))")))
+
+                    Text(isShiftEnded ? "See you tomorrow!" : (isIn ? "Ongoing since \(formatTime(record?.checkinAt))" : (record?.checkinAt == nil ? tapHint : "Last seen at \(formatTime(record?.checkoutAt))")))
                         .font(.caption)
                         .fontWeight(.bold)
                         .foregroundColor(.secondary)
@@ -589,7 +612,7 @@ struct SelfieStatusCard: View {
                 Spacer()
                 
                 // Action Glyph (Dynamic)
-                Image(systemName: isShiftEnded ? "checkmark.seal.fill" : "camera.fill")
+                Image(systemName: glyph)
                     .font(.title3)
                     .foregroundColor(.white)
                     .frame(width: 44, height: 44)
@@ -1123,6 +1146,10 @@ struct OutletCard: View {
 struct AttendanceView: View {
     @EnvironmentObject var appState: KiniAppState
     var vm: AttendanceViewModel { appState.attendanceVM }
+    /// Observes the same view model, so the one-tap (GPS-only) punch's spinner and the offline notice stay current.
+    @ObservedObject private var observedVM = KiniAppState.shared.attendanceVM
+    /// The attendance rules: a client whose rule says no selfie sees "Check In", not "Take Selfie".
+    @ObservedObject private var rulesStore = AttendanceRulesStore.shared
     @EnvironmentObject var locationService: LocationTrackingService
     @State private var currentTime = Date()
     @State private var showCheckoutAlert = false
@@ -1157,7 +1184,7 @@ struct AttendanceView: View {
                             let isCheckInIntent = appState.today?.checkinAt == nil
                             let isShiftEnded = appState.today?.checkoutAt != nil
                             let isExecutive = Session.currentUser?.role.lowercased().contains("executive") ?? false
-                            let needsSelfie = vm.selfie == nil && (isCheckInIntent || isExecutive)
+                            let needsSelfie = rulesStore.rules.selfieRequired && vm.selfie == nil && (isCheckInIntent || isExecutive)
 
                             // ── 1. Completed state — short, clear summary.
                             //       No more selfie / button cycle; the day is
@@ -1195,7 +1222,13 @@ struct AttendanceView: View {
 
                                 Button(action: {
                                     print("📸 [AttendanceView] Take Selfie Button Tapped")
-                                    vm.startFlow()
+                                    // A client with no selfie punches straight from startFlow(), so a stray tap here must not
+                                    // clock the rep out without the "End shift?" confirmation the main button shows.
+                                    if !rulesStore.rules.selfieRequired && !isCheckInIntent {
+                                        showCheckoutAlert = true
+                                    } else {
+                                        vm.startFlow()
+                                    }
                                 }) {
                                     ZStack {
                                         Circle().fill(Color.white.opacity(0.05)).frame(width: 130, height: 130)
@@ -1212,8 +1245,8 @@ struct AttendanceView: View {
                                             }
                                         } else {
                                             VStack(spacing: 6) {
-                                                Image(systemName: "camera.fill").font(.title2).foregroundColor(.red)
-                                                Text("Take Selfie").font(.caption2).fontWeight(.bold).foregroundColor(.gray)
+                                                Image(systemName: rulesStore.rules.selfieRequired ? "camera.fill" : "location.fill").font(.title2).foregroundColor(.red)
+                                                Text(rulesStore.rules.selfieRequired ? "Take Selfie" : (isCheckInIntent ? "Check In" : "Check Out")).font(.caption2).fontWeight(.bold).foregroundColor(.gray)
                                             }
                                         }
                                     }.overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
@@ -1244,7 +1277,8 @@ struct AttendanceView: View {
 
                                 Button(action: {
                                     if isCheckInIntent {
-                                        if needsSelfie { vm.startFlow() }
+                                        // (No selfie for this client: startFlow() punches with GPS only, from a fresh fix.)
+                                        if needsSelfie || !rulesStore.rules.selfieRequired { vm.startFlow() }
                                         else if let loc = locationService.lastLocation {
                                             Task { await vm.toggleAttendance(loc: loc) }
                                         }
@@ -1253,7 +1287,7 @@ struct AttendanceView: View {
                                     }
                                 }) {
                                     HStack(spacing: 10) {
-                                        if vm.isLoading { ProgressView().tint(.white) }
+                                        if vm.isLoading || vm.gpsPunching { ProgressView().tint(.white) }
                                         else if needsSelfie && isCheckInIntent {
                                             Image(systemName: "camera.fill")
                                             Text("TAKE SELFIE TO CHECK IN").fontWeight(.black)
@@ -1271,7 +1305,7 @@ struct AttendanceView: View {
                                 .frame(maxWidth: .infinity).padding()
                                 .background(isCheckInIntent ? (needsSelfie ? Brand.red : Color.green) : Color.red)
                                 .foregroundColor(.white).cornerRadius(18)
-                                .disabled(vm.isLoading)
+                                .disabled(vm.isLoading || vm.gpsPunching)
 
                                 // BREAK TOGGLE — only mid-shift.
                                 if !isCheckInIntent {
@@ -1308,11 +1342,17 @@ struct AttendanceView: View {
                                 vm.startFlow()
                             }
                         } message: {
-                            Text("You'll take a quick check-out selfie to confirm. Once you clock out you won't be able to clock in again today — make sure you've finished all visits and submissions.")
+                            Text(rulesStore.rules.selfieRequired
+                                 ? "You'll take a quick check-out selfie to confirm. Once you clock out you won't be able to clock in again today — make sure you've finished all visits and submissions."
+                                 : "Once you clock out you won't be able to clock in again today — make sure you've finished all visits and submissions.")
                         }
 
+                        // Late line, offline-punch notice, travel-mode chip (each only for a client whose attendance
+                        // rules produce it; draws nothing otherwise).
+                        AttendanceStatusExtras(vm: vm).padding(.horizontal, 20)
+
                         SessionCard(record: appState.today).padding(.horizontal, 20)
-                        
+
                         HStack {
                             Text("RECENT HISTORY").font(.caption).fontWeight(.bold).foregroundColor(.gray).tracking(1)
                             Spacer()
@@ -1350,6 +1390,10 @@ struct AttendanceHistoryRow: View {
             else { dateBadge }
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayCheckout != nil ? "Daily Shift Completed" : (displayCheckin != nil ? "Shift In Progress" : "Present")).font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label))
+                // "Late by N min" — only for a client that tracks it (the API adds `late` for those alone).
+                if let lateText = AttendanceLate.label(record.late) {
+                    Text(lateText).font(.caption2).fontWeight(.semibold).foregroundColor(.orange)
+                }
                 HStack(spacing: 10) { 
                     Label(formatTime(displayCheckin), systemImage: "clock").font(.caption2).foregroundColor(.gray)
                     if let co = displayCheckout { 
@@ -1436,12 +1480,20 @@ struct ActivityRow: View {
                 .background(Brand.red.opacity(0.12))
                 .clipShape(Circle())
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.outletName ?? "General Submission")
+                // Title = the customer / outlet / form the submission is about (ActivityFeedLogic), not just the outlet.
+                Text(ActivityFeedLogic.title(item))
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundColor(Color(uiColor: .label))
                     .lineLimit(1)
-                Text(formatTime(item.submittedAt))
+                if let sub = ActivityFeedLogic.subtitle(item) {
+                    Text(sub)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                // Time of day for today's submissions, "11 Oct, 04:30 PM" for older ones.
+                Text(ActivityFeedLogic.timeLine(item.submittedAt, now: Date()))
                     .font(.caption2)
                     .foregroundColor(.gray)
             }

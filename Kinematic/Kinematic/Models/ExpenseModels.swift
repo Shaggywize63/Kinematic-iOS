@@ -55,6 +55,9 @@ struct ExpensePolicyRules: Codable, Equatable {
     let single_line: Bool?
     /// true: an odometer photo can only be taken with the camera (no photo library), and the reading is read from it.
     let odometer_camera_only: Bool?
+    /// true (with vehicle rates): a mileage line may claim the distance the server worked out from the rep's GPS route
+    /// for that day instead of odometer readings, and the server prices it from the vehicle's rate. Default false.
+    let gps_distance: Bool?
 }
 
 /// The policy that governs the signed-in user. The scalar fields are the

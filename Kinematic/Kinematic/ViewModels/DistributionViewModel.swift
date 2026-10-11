@@ -17,10 +17,8 @@ final class DistributionViewModel: ObservableObject {
 
     @Published var submitting = false
     @Published var submitError: String?
-    @Published var lastQueuedOrder: PendingOrder?
 
     private let api = DistributionAPI.shared
-    private let cache = OrderCache.shared
 
     func loadRoute() async {
         do { route = try await api.routeToday() } catch { route = nil }
@@ -47,13 +45,17 @@ final class DistributionViewModel: ObservableObject {
 
     func setQty(skuId: String, qty: Int) {
         if qty <= 0 { cartQty.removeValue(forKey: skuId) } else { cartQty[skuId] = qty }
+        // The priced total no longer matches the cart: placing it would be refused as PRICE_MISMATCH. Price it again.
+        preview = nil
     }
 
     func clearCart() {
         cartQty = [:]; preview = nil; previewError = nil; submitError = nil
     }
 
-    func runPreview(outletId: String) async {
+    /// `distributorId` = the picked outlet's distributor ("Choose another outlet" / Book Order); nil on the route-plan
+    /// path, where the server resolves it from the outlet.
+    func runPreview(outletId: String, distributorId: String? = nil) async {
         let items = cartQty.compactMap { (skuId, qty) -> CartLineInput? in
             guard qty > 0 else { return nil }
             return CartLineInput(sku_id: skuId, qty: qty, uom: nil)
@@ -63,7 +65,7 @@ final class DistributionViewModel: ObservableObject {
         defer { previewing = false }
         let outlet = route?.outlets.first(where: { $0.id == outletId })
         let gps = (outlet?.lat).flatMap { lat in (outlet?.lng).map { GeoPoint(lat: lat, lng: $0) } }
-        let input = OrderInput(outlet_id: outletId, distributor_id: nil, visit_id: outlet?.route_visit_id, items: items, gps: gps, notes: nil, client_total: nil)
+        let input = OrderInput(outlet_id: outletId, distributor_id: DistributionQueuePolicy.nonBlank(distributorId), visit_id: outlet?.route_visit_id, items: items, gps: gps, notes: nil, client_total: nil)
         do {
             preview = try await api.preview(input)
         } catch {
@@ -71,31 +73,37 @@ final class DistributionViewModel: ObservableObject {
         }
     }
 
-    func submit(outletId: String, outletName: String?, visitId: String?) async {
+    /// Places the order: saved on the phone first, sent straight away, and left in the queue when the network is
+    /// down. `idempotencyKey` is made ONCE by the confirm screen and passed back on every submit, so a second tap or
+    /// a retry is the same order on the server; after a refused order the screen takes a NEW key (the refused one is
+    /// spent). `distributorId` = the picked outlet's distributor (nil on the route-plan path; the server then resolves
+    /// it from the outlet). Returns what happened (nil if nothing was attempted: empty cart, or a send in progress).
+    /// The cart is cleared once the order is placed or saved; after a refusal it is kept and `submitError` says why.
+    func submit(outletId: String, outletName: String?, visitId: String?, distributorId: String?,
+                idempotencyKey: String) async -> DistributionSync.SubmitOutcome? {
+        if submitting { return nil }      // a second tap while the first is still in flight
         let items = cartQty.compactMap { (skuId, qty) -> CartLineInput? in
             guard qty > 0 else { return nil }
             return CartLineInput(sku_id: skuId, qty: qty, uom: nil)
         }
-        guard !items.isEmpty else { submitError = "Cart is empty"; return }
+        guard !items.isEmpty else { submitError = "Cart is empty"; return nil }
         submitting = true; submitError = nil
         defer { submitting = false }
 
         let outlet = route?.outlets.first(where: { $0.id == outletId })
         let gps = (outlet?.lat).flatMap { lat in (outlet?.lng).map { GeoPoint(lat: lat, lng: $0) } }
         let total = preview?.totals.grand_total
-        let input = OrderInput(outlet_id: outletId, distributor_id: nil, visit_id: visitId, items: items, gps: gps, notes: nil, client_total: total)
+        let input = OrderInput(outlet_id: outletId, distributor_id: DistributionQueuePolicy.nonBlank(distributorId), visit_id: visitId, items: items, gps: gps, notes: nil, client_total: total)
 
-        let pending = cache.enqueueOrder(input: input, clientTotal: total ?? 0, outletName: outletName, visitId: visitId)
-        lastQueuedOrder = pending
-
-        do {
-            _ = try await api.submitOrder(input, idempotencyKey: pending.idempotencyKey)
-            cache.markOrderSynced(pending.id)
-        } catch {
-            cache.recordOrderError(pending.id, error: error.localizedDescription)
-            submitError = "Queued — will sync when network is available."
+        let outcome = await DistributionSync.shared.recordOrder(input: input, clientTotal: total ?? 0, outletName: outletName,
+                                                                visitId: visitId, idempotencyKey: idempotencyKey)
+        switch outcome {
+        case .synced, .queued:
+            clearCart()
+        case .rejected(let message):
+            submitError = message
         }
-        clearCart()
+        return outcome
     }
 
     func loadOrders() async {
@@ -142,26 +150,9 @@ final class DistributionViewModel: ObservableObject {
         }
     }
 
+    /// "Retry now": sends everything waiting (orders, payments, returns). Rows the server refuses are marked failed
+    /// and stay in the list; rows that could not be delivered stay waiting.
     func flushQueue() async {
-        cache.adoptLegacyRows()   // carry rows queued before the owner key became the user id
-        let p = cache.pendingForCurrentUser()
-        for row in p.orders {
-            do {
-                _ = try await api.submitOrder(row.input, idempotencyKey: row.idempotencyKey)
-                cache.markOrderSynced(row.id)
-            } catch { cache.recordOrderError(row.id, error: error.localizedDescription) }
-        }
-        for row in p.payments {
-            do {
-                _ = try await api.submitPayment(row.input, idempotencyKey: row.idempotencyKey)
-                cache.markPaymentSynced(row.id)
-            } catch { cache.recordPaymentError(row.id, error: error.localizedDescription) }
-        }
-        for row in p.returns {
-            do {
-                _ = try await api.submitReturn(row.input, idempotencyKey: row.idempotencyKey)
-                cache.markReturnSynced(row.id)
-            } catch { cache.recordReturnError(row.id, error: error.localizedDescription) }
-        }
+        await DistributionSync.shared.flushAll()
     }
 }

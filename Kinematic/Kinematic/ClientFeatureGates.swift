@@ -259,6 +259,9 @@ enum ClientFeatures {
     static func tabVisible(_ id: String) -> Bool { Session.currentUser?.tabVisible(id) ?? true }
     /// Opt-in tab: on only when the client's config says `tabs[id] == true` (absent / false = off; no user = off).
     static func tabExplicitlyOn(_ id: String) -> Bool { Session.currentUser?.tabExplicitlyOn(id) ?? false }
+    /// Opt-in feature (`app_ui_config.features[id]`, e.g. `rate_prompt`): on only when explicitly `true`
+    /// (absent / false / no user / unreadable config = off).
+    static func featureOn(_ id: String) -> Bool { Session.currentUser?.featureOn(id) ?? false }
     static func crmMoreVisible(_ id: String) -> Bool { Session.currentUser?.crmMoreVisible(id) ?? true }
     static func homeVisible(_ id: String) -> Bool { Session.currentUser?.homeVisible(id) ?? true }
     static func settingsVisible(_ id: String) -> Bool { Session.currentUser?.settingsVisible(id) ?? true }

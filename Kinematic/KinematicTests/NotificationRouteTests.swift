@@ -61,6 +61,50 @@ final class NotificationRouteTests: XCTestCase {
         XCTAssertNil(route(["kind": "expense_submitted"]))
     }
 
+    func testARejectedExpenseDecisionOpensTheClaimStraightInTheEditor() {
+        XCTAssertEqual(route(["kind": "expense_decision", "claim_id": "C1", "decision": "rejected"]), .expenseClaim("C1", edit: true))
+        // the push carries `type`, not `kind`
+        XCTAssertEqual(route(["type": "expense_decision", "claim_id": "C1", "decision": "rejected", "reason": "No receipt", "claim_no": "EXP-12"]),
+                       .expenseClaim("C1", edit: true))
+        // tolerant of case and stray spaces
+        XCTAssertEqual(route(["kind": "expense_decision", "claim_id": "C1", "decision": " Rejected "]), .expenseClaim("C1", edit: true))
+    }
+
+    func testEveryOtherExpenseNotificationStillJustOpensTheClaim() {
+        // an approval
+        XCTAssertEqual(route(["kind": "expense_decision", "claim_id": "C1", "decision": "approved"]), .expenseClaim("C1", edit: false))
+        // no decision on the payload (an older server)
+        XCTAssertEqual(route(["kind": "expense_decision", "claim_id": "C1"]), .expenseClaim("C1", edit: false))
+        XCTAssertEqual(route(["kind": "expense_decision", "claim_id": "C1", "decision": "null"]), .expenseClaim("C1", edit: false))
+        // other kinds never edit, even if they carry a decision key
+        for kind in ["expense_submitted", "expense_escalated", "expense_reimbursed", "expense_cancelled"] {
+            XCTAssertEqual(route(["kind": kind, "claim_id": "C1", "decision": "rejected"]), .expenseClaim("C1", edit: false), kind)
+        }
+        // still needs a claim id
+        XCTAssertNil(route(["kind": "expense_decision", "decision": "rejected"]))
+        // the default form of the case is "just open it"
+        XCTAssertEqual(NotificationTarget.expenseClaim("C1"), .expenseClaim("C1", edit: false))
+        XCTAssertNotEqual(NotificationTarget.expenseClaim("C1", edit: true), .expenseClaim("C1"))
+    }
+
+    func testOpensExpenseEditorIsTrueOnlyForTheDecisionOnARejectedClaim() {
+        XCTAssertTrue(NotificationRoute.opensExpenseEditor(kind: "expense_decision", decision: "rejected"))
+        XCTAssertTrue(NotificationRoute.opensExpenseEditor(kind: "expense_decision", decision: "REJECTED"))
+        XCTAssertFalse(NotificationRoute.opensExpenseEditor(kind: "expense_decision", decision: "approved"))
+        XCTAssertFalse(NotificationRoute.opensExpenseEditor(kind: "expense_decision", decision: nil))
+        XCTAssertFalse(NotificationRoute.opensExpenseEditor(kind: "expense_submitted", decision: "rejected"))
+        XCTAssertFalse(NotificationRoute.opensExpenseEditor(kind: nil, decision: "rejected"))
+    }
+
+    func testATappedRejectedClaimPushAndARowInTheListLandOnTheSameEditorTarget() {
+        let payload = ["type": "expense_decision", "claim_id": "C9", "decision": "rejected", "notification_id": "N1"]
+        XCTAssertEqual(NotificationRoute.resolve(payload), .expenseClaim("C9", edit: true))
+        XCTAssertEqual(NotificationRoute.forPush(payload), .expenseClaim("C9", edit: true))
+        // a row's data jsonb comes through the same table
+        let row = NotificationRoute.payload(fromJSON: ["kind": "expense_decision", "claim_id": "C9", "decision": "rejected", "reason": "Blurry"])
+        XCTAssertEqual(NotificationRoute.resolve(row), .expenseClaim("C9", edit: true))
+    }
+
     func testALeaveRequestAndItsCancellationGoToTheApproverADecisionToTheApplicant() {
         XCTAssertEqual(route(["kind": "leave_request", "request_id": "R1"]), .leaveApprovals)
         XCTAssertEqual(route(["kind": "leave_cancelled", "request_id": "R1"]), .leaveApprovals)

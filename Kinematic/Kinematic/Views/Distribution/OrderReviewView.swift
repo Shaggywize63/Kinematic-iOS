@@ -4,8 +4,17 @@ struct OrderReviewView: View {
     let outletId: String
     let outletName: String?
     let visitId: String?
+    /// The picked outlet's distributor ("Choose another outlet" / Book Order); nil on the route-plan path.
+    var distributorId: String? = nil
+    /// Called once the order is placed or saved, to close the whole order flow (this sheet and the cart).
+    var onFinished: (() -> Void)? = nil
     @ObservedObject var vm: DistributionViewModel
     @Environment(\.dismiss) private var dismiss
+
+    // ONE Idempotency-Key per confirmation, reused by every retry of it; a refused order spends it (a new one is made).
+    @State private var draftKey: String = DistributionQueuePolicy.newKey(prefix: DistributionQueuePolicy.orderKeyPrefix)
+    @State private var doneMessage: String = ""
+    @State private var showDone = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,6 +25,13 @@ struct OrderReviewView: View {
         .navigationTitle("Confirm Order")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button("Close") { dismiss() } } }
+        .alert("Order", isPresented: $showDone) {
+            Button("OK") {
+                if let finish = onFinished { finish() } else { dismiss() }
+            }
+        } message: {
+            Text(doneMessage)
+        }
     }
 
     private var content: some View {
@@ -158,12 +174,31 @@ struct OrderReviewView: View {
         }
     }
 
+    /// Places the order: saved on the phone, sent, and the rep is told honestly what happened — placed (with the order
+    /// number), saved to upload when online, or refused (the server's reason stays on screen and the cart is kept).
+    private func placeOrder() {
+        let key = draftKey
+        Task {
+            let attempted = await vm.submit(outletId: outletId, outletName: outletName, visitId: visitId,
+                                            distributorId: distributorId, idempotencyKey: key)
+            guard let outcome = attempted else { return }
+            switch outcome {
+            case .synced(_, let reference, _):
+                doneMessage = reference.map { "Order placed · " + $0 } ?? "Order placed"
+                showDone = true
+            case .queued:
+                doneMessage = DistributionQueuePolicy.savedMessage
+                showDone = true
+            case .rejected:
+                // The server refused it: that key is spent, so a corrected order goes out under a new one.
+                draftKey = DistributionQueuePolicy.newKey(prefix: DistributionQueuePolicy.orderKeyPrefix)
+            }
+        }
+    }
+
     private var footer: some View {
         Button {
-            Task {
-                await vm.submit(outletId: outletId, outletName: outletName, visitId: visitId)
-                if vm.lastQueuedOrder != nil { dismiss() }
-            }
+            placeOrder()
         } label: {
             Text(vm.submitting ? "Placing…" : "Place Order")
                 .frame(maxWidth: .infinity).font(.headline).padding(.vertical, 14)

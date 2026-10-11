@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import CoreLocation
 
 /// Ad-hoc form flow for route-less field-force tenants (ByteBack), reached from
@@ -107,6 +108,10 @@ struct AdHocFormsView: View {
 }
 
 /// Fills and submits a single ad-hoc form (no outlet / activity binding).
+///
+/// For a client whose attendance rule says `form_checkin_required`, the form is locked behind "Start visit (Check-in)"
+/// (time + GPS, no API call, no photo) and the submit is the check-out; that visit is stored under
+/// `FormVisit.adHocKey(templateId)` so it never mixes with a route-plan visit. With the rule off none of that exists.
 struct AdHocFormFillView: View {
     let template: FormTemplate
     @Environment(\.dismiss) private var dismiss
@@ -115,23 +120,33 @@ struct AdHocFormFillView: View {
     @State private var responses: [String: String] = [:]
     @State private var cachedImages: [String: [UIImage]] = [:]
     @State private var isSubmitting = false
-    @State private var missingRequiredLabels: [String] = []
-    @State private var invalidPhoneLabels: [String] = []
+    // What stops the form from being sent (unmet required fields, a bad phone / e-mail / number); see FormFieldLogic.banner.
+    @State private var formBanner: FormFieldLogic.Banner? = nil
     @State private var locationGate: LocationGatePrompt? = nil
     @State private var didSubmit = false
+    // Check-in / check-out on every form (attendance rule `form_checkin_required`); see FormVisit.
+    @StateObject private var visit: FormVisitTracker
+    @ObservedObject private var attendanceRules = AttendanceRulesStore.shared
+    @State private var visitNotice: String? = nil
 
-    private var unmetRequiredFields: [FormField] {
-        guard let fields = template.fields else { return [] }
-        return fields.filter { field in
-            guard field.isRequired, field.fieldType != "section_header" else { return false }
-            let val = (responses[field.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let hasImages = cachedImages[field.id]?.isEmpty == false
-            let assetTypes: Set<String> = ["image", "photo", "camera", "signature", "file"]
-            if assetTypes.contains(field.fieldType.lowercased()) {
-                return val.isEmpty && !hasImages
-            }
-            return val.isEmpty
-        }
+    init(template: FormTemplate) {
+        self.template = template
+        _visit = StateObject(wrappedValue: FormVisitTracker(
+            key: FormVisit.adHocKey(template.id),
+            outletId: nil,
+            name: template.name
+        ))
+    }
+
+    /// The rule is on for this client: the form is filled between a "Start visit" and the submit.
+    private var visitMode: Bool { attendanceRules.rules.formCheckinRequired }
+
+    /// The rule is on and this form's visit has not been started: the questions are hidden.
+    private var locked: Bool { visitMode && visit.session == nil }
+
+    /// A photo / signature / file question counts as answered while it holds a picture the form has not sent yet.
+    private func hasAsset(_ fieldId: String) -> Bool {
+        cachedImages[fieldId]?.isEmpty == false
     }
 
     var body: some View {
@@ -146,6 +161,15 @@ struct AdHocFormFillView: View {
                     Text("Thanks — your response was recorded.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                    if let summary = visit.summary {
+                        // The visit this form closed: how long it took, and when it started and ended.
+                        FormVisitSummaryView(summary: summary)
+                            .padding(.top, 4)
+                        Button("Done") { dismiss() }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                            .padding(.top, 8)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -162,7 +186,10 @@ struct AdHocFormFillView: View {
             if let fields = template.fields {
                 for f in fields where responses[f.id] == nil { responses[f.id] = "" }
             }
+            visit.reload()
         }
+        // The attendance rules decide whether this form needs a visit; ask (throttled) in case Home has not yet.
+        .task { await attendanceRules.refresh() }
         .locationGateAlert($locationGate)
     }
 
@@ -175,30 +202,15 @@ struct AdHocFormFillView: View {
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let fields = template.fields {
-                    LazyVStack(spacing: 16) {
-                        ForEach(fields) { field in
-                            if shouldShow(field: field) {
-                                if field.fieldType == "section_header" {
-                                    SectionHeaderRow(label: field.label)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.top, 8)
-                                } else {
-                                    FieldCard(
-                                        field: field,
-                                        value: Binding(
-                                            get: { responses[field.id] ?? "" },
-                                            set: { responses[field.id] = $0 }
-                                        ),
-                                        images: Binding(
-                                            get: { cachedImages[field.id] ?? [] },
-                                            set: { cachedImages[field.id] = $0 }
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
+                if visitMode, let started = visit.session {
+                    // The running time of the open visit.
+                    VisitTimerChip(checkInAt: started.checkInAt)
+                }
+                if locked {
+                    // Nothing to fill until the visit is started: nothing hidden behind a dimmed form either.
+                    FormVisitLockedView()
+                } else if let fields = template.fields {
+                    fieldList(fields)
                 }
             }
             .padding(.horizontal, 20)
@@ -206,39 +218,61 @@ struct AdHocFormFillView: View {
         }
     }
 
+    @ViewBuilder
+    private func fieldList(_ fields: [FormField]) -> some View {
+        LazyVStack(spacing: 16) {
+            ForEach(fields) { field in
+                if shouldShow(field: field) {
+                    if FormFieldLogic.kindOf(field) == .section {
+                        SectionHeaderRow(label: field.label)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 8)
+                    } else {
+                        FieldCard(
+                            field: field,
+                            value: Binding(
+                                get: { responses[field.id] ?? "" },
+                                set: { responses[field.id] = $0 }
+                            ),
+                            images: Binding(
+                                get: { cachedImages[field.id] ?? [] },
+                                set: { cachedImages[field.id] = $0 }
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private var submitBar: some View {
         VStack(spacing: 0) {
             Divider()
-            if !missingRequiredLabels.isEmpty {
+            if let banner = formBanner, !locked {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "exclamationmark.circle.fill").foregroundColor(.red)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Fill these required field\(missingRequiredLabels.count == 1 ? "" : "s") first")
+                        Text(banner.title)
                             .font(.caption.weight(.bold)).foregroundColor(.red)
-                        Text(missingRequiredLabels.joined(separator: " • "))
+                        Text(banner.detail)
                             .font(.caption2).foregroundColor(.secondary).lineLimit(3)
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 20).padding(.top, 8)
             }
-            if !invalidPhoneLabels.isEmpty {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundColor(.red)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enter a 10-digit mobile number")
-                            .font(.caption.weight(.bold)).foregroundColor(.red)
-                        Text(invalidPhoneLabels.joined(separator: " • "))
-                            .font(.caption2).foregroundColor(.secondary).lineLimit(3)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 20).padding(.top, 8)
+            if let notice = visitNotice, locked {
+                Text(notice)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
             }
             Button(action: { submit() }) {
                 HStack(spacing: 8) {
-                    if isSubmitting { ProgressView().tint(.white).scaleEffect(0.85) }
-                    Text(isSubmitting ? "Submitting…" : "Submit Form")
+                    if isSubmitting || visit.starting { ProgressView().tint(.white).scaleEffect(0.85) }
+                    Text(submitLabel)
                         .font(.headline.weight(.semibold))
                         .foregroundColor(.white)
                 }
@@ -246,44 +280,62 @@ struct AdHocFormFillView: View {
                 .padding(.vertical, 16)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(isSubmitting ? Color.red.opacity(0.7) : Color.red)
+                        .fill(submitColor)
                 )
                 .padding(.horizontal, 20)
             }
-            .disabled(isSubmitting)
+            .disabled(isSubmitting || visit.starting)
             .padding(.vertical, 12)
         }
         .background(Color(uiColor: .secondarySystemBackground))
     }
 
+    private var submitColor: Color {
+        if isSubmitting || visit.starting { return locked ? Color.green.opacity(0.7) : Color.red.opacity(0.7) }
+        return locked ? Color.green : Color.red
+    }
+
+    private var submitLabel: String {
+        if isSubmitting { return "Submitting…" }
+        if visit.starting { return "Getting your location…" }
+        if locked { return "Start visit (Check-in)" }
+        return "Submit Form"
+    }
+
     private func shouldShow(field: FormField) -> Bool {
-        guard let depId = field.dependsOnId, !depId.isEmpty else { return true }
-        return (responses[depId] ?? "") == field.dependsOnValue
+        FormFieldLogic.isVisible(field, responses: responses)
+    }
+
+    /// Start this form's visit: the time and the position, nothing else.
+    private func startVisit() async {
+        visitNotice = nil
+        let result: FormVisitTracker.StartResult = await visit.start()
+        switch result {
+        case .started:
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .blocked(let prompt):
+            locationGate = prompt
+        case .noFix:
+            visitNotice = "Couldn't get your location. Check that location is on and try again."
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
     }
 
     private func submit() {
-        let unmet = unmetRequiredFields
-        if !unmet.isEmpty {
-            missingRequiredLabels = unmet.map { $0.label }
-            invalidPhoneLabels = []
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        // The visit comes first when the client's rule asks for one: this tap starts it (no API call).
+        if locked {
+            Task { await startVisit() }
             return
         }
-        missingRequiredLabels = []
 
-        // Phone fields must be exactly 10 digits (matches the input cap and the
-        // backend guard). Validate only filled values — required-ness is above.
-        let badPhones = (template.fields ?? []).filter { field in
-            field.fieldType.lowercased() == "phone"
-                && !(responses[field.id] ?? "").isEmpty
-                && (responses[field.id] ?? "").filter { $0.isNumber }.count != 10
-        }
-        if !badPhones.isEmpty {
-            invalidPhoneLabels = badPhones.map { $0.label }
+        // Required answers, a 10-digit phone, an e-mail, a number: only the questions on screen count.
+        let fields: [FormField] = template.fields ?? []
+        if let banner = FormFieldLogic.banner(fields: fields, responses: responses, hasAsset: { id in hasAsset(id) }) {
+            formBanner = banner
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return
         }
-        invalidPhoneLabels = []
+        formBanner = nil
 
         // Geo-stamped submission: refuse to send a location-less row when
         // location is off. Block, prompt, and report (parity with the outlet form).
@@ -322,19 +374,30 @@ struct AdHocFormFillView: View {
                 finalResponses[id] ?? FormResponse(fieldId: id, value: responses[id], photo: nil, gps: nil)
             }
 
+            let lat: Double? = LocationTrackingService.shared.lastLocation?.coordinate.latitude
+            let lng: Double? = LocationTrackingService.shared.lastLocation?.coordinate.longitude
+            // With the rule on, the submit IS the check-out: stamp this form's own visit (nothing is stamped otherwise).
+            let stamp: FormVisit.Stamp = visit.stamp(lat: lat, lng: lng)
+
             let request = FormSubmissionRequest(
                 templateId: template.id,
                 activityId: nil,
                 outletId: nil,
                 outletName: nil,
-                latitude: LocationTrackingService.shared.lastLocation?.coordinate.latitude,
-                longitude: LocationTrackingService.shared.lastLocation?.coordinate.longitude,
+                latitude: lat,
+                longitude: lng,
                 submittedAt: ISO8601DateFormatter().string(from: Date()),
                 isConverted: false,
-                responses: processedResponses
+                responses: processedResponses,
+                checkInAt: stamp.checkInAt,
+                checkOutAt: stamp.checkOutAt,
+                checkInGps: stamp.checkInGps,
+                checkOutGps: stamp.checkOutGps
             )
 
+            let pendingBefore: Int = OfflineMutationQueue.shared.pendingCount
             let outcome = await KinematicRepository.shared.submitForm(request: request)
+            let pendingAfter: Int = OfflineMutationQueue.shared.pendingCount
             await MainActor.run {
                 isSubmitting = false
                 if outcome == .locationRequired {
@@ -343,10 +406,20 @@ struct AdHocFormFillView: View {
                     return
                 }
                 if outcome == .success {
+                    // The visit this form closed is over; keep how long it took for the success state.
+                    visit.saved(with: stamp)
+                    // A form that reached the server (not one only saved for later) is a good moment for the
+                    // rate-the-app prompt (counted only for clients that opted in).
+                    if RatePrompt.formReachedServer(pendingBefore: pendingBefore, pendingAfter: pendingAfter) {
+                        RatePromptCoordinator.shared.notePositiveMoment()
+                    }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     withAnimation { didSubmit = true }
-                    // Pop back to the picker after a brief confirmation.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { dismiss() }
+                    // Without a visit summary to read, pop back to the picker after a brief confirmation; with one the
+                    // rep reads it and taps Done.
+                    if visit.summary == nil {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { dismiss() }
+                    }
                 }
             }
         }

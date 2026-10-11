@@ -169,9 +169,11 @@ struct SignedUpload: Codable {
     let expires_in: Int
 }
 
-struct AppliedInvoice: Codable {
+struct AppliedInvoice: Codable, Equatable {
     let invoice_id: String
     let amount: Double
+    /// Display only — the server stamps the invoice's real number on the stored entry whatever is sent here.
+    var invoice_no: String? = nil
 }
 
 struct PaymentInput: Codable {
@@ -184,6 +186,10 @@ struct PaymentInput: Codable {
     let cheque_image_url: String?
     let applied_to_invoices: [AppliedInvoice]?
     let gps: GeoPoint?
+    /// true = the server allocates the amount to the outlet's open invoices, oldest first (the remainder stays on
+    /// account); false = keep the whole amount on account; nil = key not sent (the behaviour before this existed).
+    /// Ignored by the server when `applied_to_invoices` is sent. See `PaymentAllocation`.
+    var auto_allocate: Bool? = nil
 }
 
 struct ReturnLineInput: Codable {

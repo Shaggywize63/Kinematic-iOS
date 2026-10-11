@@ -5,15 +5,18 @@ struct ReturnView: View {
     let originalInvoiceId: String
 
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var cache = OrderCache.shared
 
     @State private var reasonCode: String = "damaged"
     @State private var skuId: String = ""
     @State private var qty: String = "1"
     @State private var notes: String = ""
-    @State private var photoUrls: [String] = []
+    @State private var photoUrl: String? = nil
     @State private var msg: String?
     @State private var busy = false
+    // ONE Idempotency-Key per submission, reused by every retry; a refused submit spends it.
+    @State private var draftKey: String = DistributionQueuePolicy.newKey(prefix: DistributionQueuePolicy.returnKeyPrefix)
+    @State private var doneMessage: String = ""
+    @State private var showDone = false
 
     private let reasons = ["damaged", "near_expiry", "wrong_sku", "trade_return"]
 
@@ -30,21 +33,15 @@ struct ReturnView: View {
                 TextField("Notes (optional)", text: $notes)
             }
             Section("Photos") {
-                Button {
-                    // Real flow: launch camera + /uploads/sign + persist URL.
-                    photoUrls.append("https://placeholder.local/distribution/return/\(UUID().uuidString).jpg")
-                } label: {
-                    Label(photoUrls.isEmpty ? "Photo of damaged stock required" : "\(photoUrls.count) photo(s) attached",
-                          systemImage: photoUrls.isEmpty ? "camera" : "checkmark.seal")
-                        .foregroundColor(photoUrls.isEmpty ? .red : .green)
-                }
+                DistributionPhotoRow(kind: "return", attachedTitle: "Photo attached", missingTitle: "Photo of damaged stock required",
+                                     hint: "Needed to submit the return", url: $photoUrl)
             }
             if let msg = msg {
                 Section { Text(msg).font(.caption).foregroundColor(.red) }
             }
             Section {
                 Button(busy ? "Saving…" : "Submit Return") { submit() }
-                    .disabled(busy || photoUrls.isEmpty || skuId.isEmpty)
+                    .disabled(busy || photoUrl == nil || skuId.isEmpty)
                     .frame(maxWidth: .infinity)
                     .foregroundColor(.white)
                     .listRowBackground(Color(red: 208/255, green: 30/255, blue: 44/255))
@@ -52,29 +49,42 @@ struct ReturnView: View {
         }
         .navigationTitle("Return Goods")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Return", isPresented: $showDone) {
+            Button("OK") { dismiss() }
+        } message: {
+            Text(doneMessage)
+        }
     }
 
     private func submit() {
+        if busy { return }
         guard let q = Int(qty), q > 0 else { msg = "Qty required"; return }
+        guard let photo = photoUrl else { msg = "Photo is required"; return }
         busy = true; msg = nil
         let input = ReturnInput(
             outlet_id: outletId,
             original_invoice_id: originalInvoiceId,
             reason_code: reasonCode,
             reason_notes: notes.isEmpty ? nil : notes,
-            photo_urls: photoUrls,
+            photo_urls: [photo],
             items: [ReturnLineInput(sku_id: skuId, qty: q, condition: reasonCode == "damaged" ? "damaged" : "saleable", original_invoice_item_id: nil)],
             gps: nil
         )
-        let pending = cache.enqueueReturn(input)
+        let key = draftKey
         Task {
-            do {
-                _ = try await DistributionAPI.shared.submitReturn(input, idempotencyKey: pending.idempotencyKey)
-                cache.markReturnSynced(pending.id)
-                await MainActor.run { dismiss() }
-            } catch {
-                cache.recordReturnError(pending.id, error: error.localizedDescription)
-                await MainActor.run { msg = "Queued — will sync when online."; busy = false }
+            let outcome = await DistributionSync.shared.recordReturn(input: input, outletName: nil, idempotencyKey: key)
+            busy = false
+            switch outcome {
+            case .synced(_, let number, _):
+                doneMessage = "Return submitted" + (number.map { " · " + $0 } ?? "")
+                showDone = true
+            case .queued:
+                doneMessage = DistributionQueuePolicy.savedMessage
+                showDone = true
+            case .rejected(let message):
+                // The server refused it: that key is spent, so a corrected return goes out under a new one.
+                msg = message
+                draftKey = DistributionQueuePolicy.newKey(prefix: DistributionQueuePolicy.returnKeyPrefix)
             }
         }
     }

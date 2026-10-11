@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import CoreLocation
 import PhotosUI
 
@@ -17,38 +18,43 @@ struct ActivitySubmissionView: View {
     // the submit button so they know their last save landed.
     @State private var submissionsThisVisit: Int = 0
     @State private var lastSubmitFlashed: Bool = false
-    // Labels of unmet required fields when the user taps Submit on an
-    // incomplete form. Surfaced inline above the submit button.
-    @State private var missingRequiredLabels: [String] = []
+    // What stops the form from being sent (unmet required fields, a bad phone / e-mail / number), shown inline above
+    // the submit button. See FormFieldLogic.banner.
+    @State private var formBanner: FormFieldLogic.Banner? = nil
     // Feature 3: drives the blocking "turn on location to submit" gate. Local
     // to this view because the form is presented inside a fullScreenCover, so
     // the root-level attendance gate would not surface above it.
     @State private var locationGate: LocationGatePrompt? = nil
+    // Check-in / check-out on every form (attendance rule `form_checkin_required`). With the rule off none of this
+    // shows and the form is exactly what it always was. See FormVisit.
+    @StateObject private var visit: FormVisitTracker
+    @ObservedObject private var attendanceRules = AttendanceRulesStore.shared
+    @State private var visitNotice: String? = nil
 
-    /// Required fields the user hasn't satisfied yet. A field is
-    /// satisfied when it has a non-empty text response OR (for image /
-    /// photo / signature / file types) at least one attached asset.
-    private var unmetRequiredFields: [FormField] {
-        guard let fields = template?.fields else { return [] }
-        return fields.filter { field in
-            guard field.isRequired, field.fieldType != "section_header" else { return false }
-            let val = (responses[field.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let hasImages = cachedImages[field.id]?.isEmpty == false
-            let assetTypes: Set<String> = ["image", "photo", "camera", "signature", "file"]
-            if assetTypes.contains(field.fieldType.lowercased()) {
-                return val.isEmpty && !hasImages
-            }
-            return val.isEmpty
-        }
+    init(activity: RouteActivity) {
+        self.activity = activity
+        let outlet = KiniAppState.shared.selectedOutlet
+        _visit = StateObject(wrappedValue: FormVisitTracker(
+            key: activity.id ?? "",
+            outletId: outlet?.rawId,
+            name: outlet?.storeName ?? activity.name
+        ))
+    }
+
+    /// The rule is on for this client: the form is filled between a "Start visit" and the submit.
+    private var visitMode: Bool { attendanceRules.rules.formCheckinRequired }
+
+    /// The rule is on and this form's visit has not been started: the questions are hidden.
+    private var locked: Bool { visitMode && visit.session == nil }
+
+    /// A photo / signature / file question counts as answered while it holds a picture the form has not sent yet.
+    private func hasAsset(_ fieldId: String) -> Bool {
+        cachedImages[fieldId]?.isEmpty == false
     }
 
     private var progress: Double {
         guard let fields = template?.fields else { return 0 }
-        let requiredFields = fields.filter { $0.isRequired && $0.fieldType != "section_header" }
-        if requiredFields.isEmpty { return 0.5 }
-        let unmet = unmetRequiredFields.count
-        let satisfied = requiredFields.count - unmet
-        return Double(satisfied) / Double(requiredFields.count)
+        return FormFieldLogic.completion(fields: fields, responses: responses, hasAsset: { id in hasAsset(id) })
     }
 
     var body: some View {
@@ -90,7 +96,17 @@ struct ActivitySubmissionView: View {
                 }
             }
             .task { await loadTemplate() }
+            // The attendance rules decide whether this form needs a visit; ask (throttled) in case Home has not yet.
+            .task { await attendanceRules.refresh() }
             .locationGateAlert($locationGate)
+            .alert("Form submitted", isPresented: Binding<Bool>(
+                get: { visit.summary != nil },
+                set: { shown in if !shown { visit.dismissSummary() } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(visit.summary.map { FormVisit.summaryMessage($0) } ?? "")
+            }
         }
     }
 
@@ -112,55 +128,73 @@ struct ActivitySubmissionView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Completion")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("\(Int(progress * 100))%")
-                            .font(.footnote.weight(.bold))
-                            .foregroundColor(.red)
-                    }
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.gray.opacity(0.15)).frame(height: 5)
-                            Capsule().fill(Color.red)
-                                .frame(width: geo.size.width * CGFloat(progress), height: 5)
-                                .animation(.easeInOut(duration: 0.3), value: progress)
-                        }
-                    }
-                    .frame(height: 5)
+                if visitMode, let started = visit.session {
+                    // The running time of the open visit.
+                    VisitTimerChip(checkInAt: started.checkInAt)
                 }
 
-                if let fields = t.fields {
-                    LazyVStack(spacing: 16) {
-                        ForEach(fields) { field in
-                            if shouldShow(field: field) {
-                                if field.fieldType == "section_header" {
-                                    SectionHeaderRow(label: field.label)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.top, 8)
-                                } else {
-                                    FieldCard(
-                                        field: field,
-                                        value: Binding(
-                                            get: { responses[field.id] ?? "" },
-                                            set: { responses[field.id] = $0 }
-                                        ),
-                                        images: Binding(
-                                            get: { cachedImages[field.id] ?? [] },
-                                            set: { cachedImages[field.id] = $0 }
-                                        )
-                                    )
-                                }
-                            }
-                        }
+                if locked {
+                    // Nothing to fill until the visit is started: nothing hidden behind a dimmed form either.
+                    FormVisitLockedView()
+                } else {
+                    completionBar
+                    if let fields = t.fields {
+                        fieldList(fields)
                     }
                 }
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
+        }
+    }
+
+    private var completionBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Completion")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(progress * 100))%")
+                    .font(.footnote.weight(.bold))
+                    .foregroundColor(.red)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.gray.opacity(0.15)).frame(height: 5)
+                    Capsule().fill(Color.red)
+                        .frame(width: geo.size.width * CGFloat(progress), height: 5)
+                        .animation(.easeInOut(duration: 0.3), value: progress)
+                }
+            }
+            .frame(height: 5)
+        }
+    }
+
+    @ViewBuilder
+    private func fieldList(_ fields: [FormField]) -> some View {
+        LazyVStack(spacing: 16) {
+            ForEach(fields) { field in
+                if shouldShow(field: field) {
+                    if FormFieldLogic.kindOf(field) == .section {
+                        SectionHeaderRow(label: field.label)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 8)
+                    } else {
+                        FieldCard(
+                            field: field,
+                            value: Binding(
+                                get: { responses[field.id] ?? "" },
+                                set: { responses[field.id] = $0 }
+                            ),
+                            images: Binding(
+                                get: { cachedImages[field.id] ?? [] },
+                                set: { cachedImages[field.id] = $0 }
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -186,17 +220,17 @@ struct ActivitySubmissionView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
             }
-            if !missingRequiredLabels.isEmpty {
-                // Surface unmet required-field validation inline so the
-                // user knows exactly what to fill before the next attempt.
+            if let banner = formBanner, !locked {
+                // Surface what stops the form from being sent inline so the
+                // user knows exactly what to fix before the next attempt.
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "exclamationmark.circle.fill")
                         .foregroundColor(.red)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Fill these required field\(missingRequiredLabels.count == 1 ? "" : "s") first")
+                        Text(banner.title)
                             .font(.caption.weight(.bold))
                             .foregroundColor(.red)
-                        Text(missingRequiredLabels.joined(separator: " • "))
+                        Text(banner.detail)
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .lineLimit(3)
@@ -206,9 +240,17 @@ struct ActivitySubmissionView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
             }
+            if let notice = visitNotice, locked {
+                Text(notice)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+            }
             Button(action: { submit() }) {
                 HStack(spacing: 8) {
-                    if isSubmitting {
+                    if isSubmitting || visit.starting {
                         ProgressView().tint(.white).scaleEffect(0.85)
                     } else if lastSubmitFlashed {
                         Image(systemName: "checkmark.circle.fill")
@@ -221,27 +263,32 @@ struct ActivitySubmissionView: View {
                 .padding(.vertical, 16)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(isSubmitting ? Color.red.opacity(0.7) : Color.red)
+                        .fill(submitColor)
                 )
                 .padding(.horizontal, 20)
             }
-            .disabled(isSubmitting)
+            .disabled(isSubmitting || visit.starting)
             .padding(.vertical, 12)
         }
         .background(Color(uiColor: .secondarySystemBackground))
     }
 
+    private var submitColor: Color {
+        if isSubmitting || visit.starting { return locked ? Color.green.opacity(0.7) : Color.red.opacity(0.7) }
+        return locked ? Color.green : Color.red
+    }
+
     private var submitLabel: String {
         if isSubmitting { return "Submitting…" }
+        if visit.starting { return "Getting your location…" }
+        if locked { return "Start visit (Check-in)" }
         if lastSubmitFlashed { return "Saved — submit another?" }
         if submissionsThisVisit > 0 { return "Submit Another" }
         return "Submit Audit"
     }
 
     private func shouldShow(field: FormField) -> Bool {
-        guard let depId = field.dependsOnId, !depId.isEmpty else { return true }
-        let depValue = responses[depId] ?? ""
-        return depValue == field.dependsOnValue
+        FormFieldLogic.isVisible(field, responses: responses)
     }
 
     private func loadTemplate() async {
@@ -255,20 +302,42 @@ struct ActivitySubmissionView: View {
         }
     }
 
+    /// Start this form's visit: the time and the position, nothing else.
+    private func startVisit() async {
+        visitNotice = nil
+        let result: FormVisitTracker.StartResult = await visit.start()
+        switch result {
+        case .started:
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .blocked(let prompt):
+            locationGate = prompt
+        case .noFix:
+            visitNotice = "Couldn't get your location. Check that location is on and try again."
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
+    }
+
     private func submit() {
+        // The visit comes first when the client's rule asks for one: this tap starts it (no API call).
+        if locked {
+            Task { await startVisit() }
+            return
+        }
+
         // Block submission until every required field has a value (or
-        // for asset-type fields, at least one attachment). The submit
-        // button previously bypassed this entirely — empty submissions
-        // were landing in form_submissions.
-        let unmet = unmetRequiredFields
-        if !unmet.isEmpty {
-            missingRequiredLabels = unmet.map { $0.label }
+        // for asset-type fields, at least one attachment) and what was typed
+        // is usable (a 10-digit phone, an e-mail, a number). Only questions
+        // that are on screen count. The submit button previously bypassed
+        // this entirely — empty submissions were landing in form_submissions.
+        let fields: [FormField] = template?.fields ?? []
+        if let banner = FormFieldLogic.banner(fields: fields, responses: responses, hasAsset: { id in hasAsset(id) }) {
+            formBanner = banner
             // Warning haptic when validation fails so the rep feels the
             // block, not just sees the banner.
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return
         }
-        missingRequiredLabels = []
+        formBanner = nil
 
         // Feature 3 gate: the submission is geo-stamped, so refuse to send a
         // location-less row when location is off. Block, prompt, and report.
@@ -312,19 +381,30 @@ struct ActivitySubmissionView: View {
                 finalResponses[id] ?? FormResponse(fieldId: id, value: responses[id], photo: nil, gps: nil)
             }
 
+            let lat: Double? = LocationTrackingService.shared.lastLocation?.coordinate.latitude
+            let lng: Double? = LocationTrackingService.shared.lastLocation?.coordinate.longitude
+            // With the rule on, the submit IS the check-out: stamp this form's visit (nothing is stamped otherwise).
+            let stamp: FormVisit.Stamp = visit.stamp(lat: lat, lng: lng)
+
             let request = FormSubmissionRequest(
                 templateId: template?.id,
                 activityId: activity.id,
                 outletId: KiniAppState.shared.selectedOutlet?.rawId,
                 outletName: KiniAppState.shared.selectedOutlet?.storeName,
-                latitude: LocationTrackingService.shared.lastLocation?.coordinate.latitude,
-                longitude: LocationTrackingService.shared.lastLocation?.coordinate.longitude,
+                latitude: lat,
+                longitude: lng,
                 submittedAt: ISO8601DateFormatter().string(from: Date()),
                 isConverted: false,
-                responses: processedResponses
+                responses: processedResponses,
+                checkInAt: stamp.checkInAt,
+                checkOutAt: stamp.checkOutAt,
+                checkInGps: stamp.checkInGps,
+                checkOutGps: stamp.checkOutGps
             )
 
+            let pendingBefore: Int = OfflineMutationQueue.shared.pendingCount
             let outcome = await KinematicRepository.shared.submitForm(request: request)
+            let pendingAfter: Int = OfflineMutationQueue.shared.pendingCount
             await MainActor.run {
                 isSubmitting = false
                 // Server backstop: strict tenants reject a location-less
@@ -335,6 +415,13 @@ struct ActivitySubmissionView: View {
                     return
                 }
                 if outcome == .success {
+                    // The visit this form closed is over; remember how long it took for the success state.
+                    visit.saved(with: stamp)
+                    // A form that reached the server (not one only saved for later) is a good moment for the
+                    // rate-the-app prompt (counted only for clients that opted in).
+                    if RatePrompt.formReachedServer(pendingBefore: pendingBefore, pendingAfter: pendingAfter) {
+                        RatePromptCoordinator.shared.notePositiveMoment()
+                    }
                     // Field reps can submit the same activity multiple times
                     // per visit (e.g. one entry per shelf / aisle). After a
                     // successful save we:
@@ -435,41 +522,64 @@ struct FieldCard: View {
         .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
     }
 
+    /// The control for the question — chosen by `FormFieldLogic.kindOf`, the same rule the submit validation uses.
     @ViewBuilder
     private var fieldControl: some View {
-        switch field.fieldType {
-        case "select", "dropdown":
+        switch FormFieldLogic.kindOf(field) {
+        case .dropdown:
             DropdownField(field: field, value: $value)
-        case "radio":
+        case .radio:
             ChoiceListField(field: field, value: $value, multiSelect: false)
-        case "checkbox":
+        case .multiSelect:
+            // A builder checkbox WITH options ("Multi Select"): one box per option, the answer is the chosen option
+            // values joined with commas.
             ChoiceListField(field: field, value: $value, multiSelect: true)
-        case "yes_no":
+        case .checkbox:
+            if field.fieldType.lowercased() == "consent" {
+                ConsentToggleField(value: $value)
+            } else {
+                SingleCheckboxField(value: $value)
+            }
+        case .yesNo:
             YesNoField(value: $value)
-        case "rating":
-            RatingField(value: $value)
-        case "image", "photo":
+        case .rating:
+            // As many stars as the builder asked for (validation.max, 5 when it says nothing).
+            RatingField(value: $value, maxStars: FormFieldLogic.ratingMax(field.validationMax))
+        case .photo:
             PhotoCaptureField(images: $images, maxCount: field.imageCount ?? 5)
-        case "file":
+        case .file:
             FileAttachmentField(value: $value)
-        case "signature":
+        case .signature:
             SignatureCaptureField(value: $value)
-        case "consent":
-            ConsentToggleField(value: $value)
-        case "long_text":
+        case .longText:
             LongTextField(value: $value, placeholder: field.placeholder)
-        case "location":
+        case .location:
             LocationFetchField(value: $value)
-        case "number":
-            StyledTextField(value: $value, placeholder: field.placeholder ?? "0", keyboardType: .numberPad)
-        case "phone":
+        case .number:
+            // A number question takes numbers only (checked again on submit, see FormFieldLogic.firstProblem).
+            StyledTextField(value: $value, placeholder: field.placeholder ?? "0", keyboardType: .decimalPad)
+        case .phone:
             StyledTextField(value: $value, placeholder: field.placeholder ?? "10-digit mobile number", keyboardType: .phonePad, maxDigits: 10)
-        case "email":
+        case .email:
             StyledTextField(value: $value, placeholder: field.placeholder ?? "Email address", keyboardType: .emailAddress)
-        case "date":
-            DateInputField(value: $value)
-        default:
-            StyledTextField(value: $value, placeholder: field.placeholder ?? "Enter response")
+        case .date:
+            FormMomentField(mode: .date, value: $value, placeholder: "Select date")
+        case .time:
+            FormMomentField(mode: .time, value: $value, placeholder: "Select time")
+        case .dateTime:
+            FormMomentField(mode: .dateTime, value: $value, placeholder: "Select date and time")
+        case .text, .section, .other:
+            StyledTextField(value: $value, placeholder: field.placeholder ?? "Enter response", keyboardType: textKeyboard)
+        }
+    }
+
+    /// A text box takes the keyboard the builder asked for (`keyboard_type`), as the other platforms do.
+    private var textKeyboard: UIKeyboardType {
+        switch (field.keyboardType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "phone":  return .phonePad
+        case "number": return .decimalPad
+        case "email":  return .emailAddress
+        default:       return .default
         }
     }
 }
@@ -532,8 +642,10 @@ struct DropdownField: View {
     let field: FormField
     @Binding var value: String
 
+    /// The chosen option's label (what is stored is still the option's value); the placeholder while nothing is chosen.
     private var selectedLabel: String {
-        field.options?.first(where: { $0.value == value })?.label ?? field.placeholder ?? "Choose an option"
+        if value.isEmpty { return field.placeholder ?? "Choose an option" }
+        return FormFieldLogic.optionLabel(field.options, value: value)
     }
 
     var body: some View {
@@ -566,16 +678,13 @@ struct ChoiceListField: View {
 
     private func isSelected(_ opt: FormOption) -> Bool {
         multiSelect
-            ? value.split(separator: ",").map(String.init).contains(opt.value)
+            ? FormFieldLogic.selectedValues(value).contains(opt.value)
             : value == opt.value
     }
 
     private func toggle(_ opt: FormOption) {
         if multiSelect {
-            var current = value.split(separator: ",").map(String.init).filter { !$0.isEmpty }
-            if isSelected(opt) { current.removeAll { $0 == opt.value } }
-            else { current.append(opt.value) }
-            value = current.joined(separator: ",")
+            value = FormFieldLogic.toggleSelected(value, optionValue: opt.value, checked: !isSelected(opt))
         } else {
             value = opt.value
         }
@@ -650,12 +759,15 @@ struct YesNoButton: View {
 
 struct RatingField: View {
     @Binding var value: String
+    /// How many stars (the question's `validation.max`, 5 when it says nothing; always 1...10).
+    var maxStars: Int = 5
+
     var body: some View {
-        HStack(spacing: 16) {
-            ForEach(1...5, id: \.self) { star in
+        HStack(spacing: maxStars > 5 ? 8 : 16) {
+            ForEach(1...max(1, maxStars), id: \.self) { star in
                 let filled = star <= (Int(value) ?? 0)
                 Image(systemName: filled ? "star.fill" : "star")
-                    .font(.title2)
+                    .font(maxStars > 5 ? .title3 : .title2)
                     .foregroundColor(filled ? .orange : Color.gray.opacity(0.3))
                     .onTapGesture { value = "\(star)" }
             }
@@ -824,28 +936,31 @@ struct ConsentToggleField: View {
     }
 }
 
+/// The location question: a read-only `lat,lng` filled by tapping to capture the rep's position. A fresh fix is used
+/// (the live-tracking one when it is recent); with location off the usual "turn on location" prompt names the problem,
+/// and a position that cannot be had is said so — never a silent no-op, never an invented value.
 struct LocationFetchField: View {
     @Binding var value: String
     @State private var isFetching = false
+    @State private var gate: LocationGatePrompt? = nil
+    @State private var failed = false
 
     var body: some View {
-        Button(action: {
-            isFetching = true
-            if let loc = LocationTrackingService.shared.lastLocation {
-                value = String(format: "%.5f, %.5f", loc.coordinate.latitude, loc.coordinate.longitude)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { isFetching = false }
-        }) {
+        Button(action: { Task { await capture() } }) {
             HStack(spacing: 12) {
                 Image(systemName: "location.circle.fill")
                     .font(.title3)
                     .foregroundColor(.red)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(value.isEmpty ? "Tap to capture location" : value)
+                    Text(value.isEmpty ? "Tap to capture location" : FormFieldLogic.locationDisplay(value))
                         .font(.subheadline)
                         .foregroundColor(value.isEmpty ? .secondary : .primary)
-                    if !value.isEmpty {
-                        Text("GPS coordinates captured")
+                    if failed {
+                        Text("Couldn't get your location. Check that location is on and try again.")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    } else if !value.isEmpty {
+                        Text("GPS coordinates captured · tap to capture again")
                             .font(.caption)
                             .foregroundColor(.green)
                     }
@@ -864,33 +979,29 @@ struct LocationFetchField: View {
             .background(Color(uiColor: .tertiarySystemGroupedBackground))
             .cornerRadius(10)
         }
-    }
-}
-
-struct DateInputField: View {
-    @Binding var value: String
-
-    private var dateBinding: Binding<Date> {
-        Binding(
-            get: { ISO8601DateFormatter().date(from: value) ?? Date() },
-            set: { value = ISO8601DateFormatter().string(from: $0) }
-        )
+        .disabled(isFetching)
+        .locationGateAlert($gate)
     }
 
-    var body: some View {
-        HStack {
-            DatePicker("", selection: dateBinding, displayedComponents: .date)
-                .datePickerStyle(.compact)
-                .labelsHidden()
-            Spacer()
+    private func capture() async {
+        failed = false
+        // Same honesty gate as every geo-stamped action: location off -> the "turn it on" prompt.
+        if let prompt = LocationGate.promptIfBlocked(verb: "add your location") {
+            gate = prompt
+            return
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
-        .background(Color(uiColor: .tertiarySystemGroupedBackground))
-        .cornerRadius(10)
+        isFetching = true
+        let fix = await FormLocationFix.current()
+        isFetching = false
+        if let f = fix, let text = FormFieldLogic.formatLatLng(lat: f.lat, lng: f.lng) {
+            value = text
+        } else {
+            failed = true
+        }
     }
 }
+
+// (The date question is `FormMomentField` — see FormFieldControls.swift.)
 
 // MARK: - PHPicker gallery wrapper
 

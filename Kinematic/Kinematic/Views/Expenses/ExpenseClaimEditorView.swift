@@ -36,7 +36,7 @@ struct ExpenseClaimEditorView: View {
     private struct OdoTarget { let lineId: UUID; let start: Bool }
 
     /// What the live policy check depends on — the lines AND whether mileage is priced by vehicle (and whether the route is sent).
-    private struct CheckKey: Equatable { let fields: [ExpenseLineFields]; let byVehicle: Bool; let routeFields: Bool }
+    private struct CheckKey: Equatable { let fields: [ExpenseLineFields]; let byVehicle: Bool; let routeFields: Bool; let gpsDistance: Bool }
 
     private struct EditorLine: Identifiable {
         let id = UUID()
@@ -116,7 +116,10 @@ struct ExpenseClaimEditorView: View {
         guard byVehicle, let r = ExpenseLogic.lastReading(in: vm.odometerHistory, excludingClaim: savedId ?? claim?.id) else { return nil }
         return ExpenseLogic.lastReadingText(r)
     }
-    private var total: Double { lines.reduce(0) { $0 + $1.f.effectiveAmount(mileageRate: rate, vehicles: vehicles) } }
+    /// Policy `gps_distance`: a vehicle line may carry the day's GPS distance instead of odometer readings (the line
+    /// "Add today's travel to expenses" creates). Off for every policy that does not say so.
+    private var gpsDistance: Bool { ExpenseLogic.gpsDistanceOn(rules) }
+    private var total: Double { lines.reduce(0) { $0 + $1.f.effectiveAmount(mileageRate: rate, vehicles: vehicles, gpsDistance: gpsDistance) } }
     /// A new line carrying only the pre-selected sole vehicle is still untouched (see `isFilledIgnoring`).
     private var filled: [EditorLine] { lines.filter { $0.f.isFilledIgnoring(soleVehicle: soleVehicle) } }
     /// The lines that went into the policy check, in order — findings are indexed by position among them.
@@ -158,7 +161,7 @@ struct ExpenseClaimEditorView: View {
             .navigationTitle(claim == nil ? "New claim" : (status == "rejected" ? "Fix and resubmit" : "Edit claim"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(saving) } }
-            .task(id: CheckKey(fields: checkedFields, byVehicle: byVehicle, routeFields: routeFields)) { await runCheck() }
+            .task(id: CheckKey(fields: checkedFields, byVehicle: byVehicle, routeFields: routeFields, gpsDistance: gpsDistance)) { await runCheck() }
             // The policy arrives after the editor can open: once it says "one category only", new lines take it.
             .onChange(of: onlyCategory, initial: true) { _, only in applyOnlyCategory(only) }
             // Likewise the vehicle: a policy with exactly one vehicle pre-selects it on every mileage line that has none
@@ -225,9 +228,15 @@ struct ExpenseClaimEditorView: View {
                     Text("Choose a vehicle…").tag("")
                     ForEach(vehicles) { v in Text("\(v.label) · \(expenseMoney(v.rate_per_km, currency))/km").tag(v.id) }
                 }
-                odometerRow(line, start: true)
-                odometerRow(line, start: false)
-                odometerSummaryRow(l)
+                if l.f.isGpsDistanceLine(gps: gpsDistance) {
+                    // A line that carries the day's GPS distance and no odometer data shows that distance; the person
+                    // can still switch to odometer readings.
+                    gpsDistanceRow(line, l)
+                } else {
+                    odometerRow(line, start: true)
+                    odometerRow(line, start: false)
+                    odometerSummaryRow(l)
+                }
             } else if mileage {
                 if routeFields {
                     TextField("From", text: line.f.fromLocation)
@@ -346,6 +355,26 @@ struct ExpenseClaimEditorView: View {
         }
     }
 
+    /// The day's GPS distance and what it comes to (distance x the vehicle's rate); the server prices it again on save.
+    @ViewBuilder private func gpsDistanceRow(_ line: Binding<EditorLine>, _ l: EditorLine) -> some View {
+        let chosen = ExpenseLogic.vehicleRate(l.f.vehicleType, in: vehicles)
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("GPS distance").font(.caption).foregroundColor(.secondary)
+                Text("\(l.f.distanceKm.trimmingCharacters(in: .whitespaces)) km").bold()
+            }
+            Spacer()
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Amount").font(.caption).foregroundColor(.secondary)
+                Text(chosen != nil ? expenseMoney(l.f.effectiveAmount(mileageRate: 0, vehicles: vehicles, gpsDistance: true), currency) : "—").bold()
+            }
+        }
+        Text("Worked out from your GPS route for this day — distance × the vehicle's rate. Checked again when you save.")
+            .font(.caption).foregroundColor(.secondary)
+        Button("Enter odometer readings instead") { line.wrappedValue.f.distanceKm = "" }
+            .buttonStyle(.borderless)
+    }
+
     /// Distance and amount from the readings, or what is wrong with them.
     @ViewBuilder private func odometerSummaryRow(_ l: EditorLine) -> some View {
         if let problem = l.f.odometerOrderProblem {
@@ -446,7 +475,7 @@ struct ExpenseClaimEditorView: View {
         if fields.isEmpty { check = nil; return }
         try? await Task.sleep(nanoseconds: 650_000_000)   // debounce while typing
         if Task.isCancelled { return }
-        let r = await vm.check(items: fields.map { $0.toInput(byVehicle: byVehicle, routeFields: routeFields) }, claimId: savedId)
+        let r = await vm.check(items: fields.map { $0.toInput(byVehicle: byVehicle, routeFields: routeFields, gpsDistance: gpsDistance) }, claimId: savedId)
         if !Task.isCancelled { check = r }
     }
 
@@ -599,7 +628,7 @@ struct ExpenseClaimEditorView: View {
         saving = true
         defer { saving = false }
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let out = await vm.save(claimId: savedId, title: t.isEmpty ? nil : t, items: filled.map { $0.f.toInput(byVehicle: byVehicle, routeFields: routeFields) }, submit: submit)
+        let out = await vm.save(claimId: savedId, title: t.isEmpty ? nil : t, items: filled.map { $0.f.toInput(byVehicle: byVehicle, routeFields: routeFields, gpsDistance: gpsDistance) }, submit: submit)
         if let id = out.savedId { savedId = id }
         if let e = out.error { errorText = e; return }
         if let id = out.savedId { onDone(id, out.submitted); dismiss() }

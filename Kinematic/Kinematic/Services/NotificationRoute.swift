@@ -9,7 +9,10 @@ import Foundation
 enum NotificationTarget: Equatable {
     case lead(String)
     case deal(String)
-    case expenseClaim(String)
+    /// An expense claim. `edit` opens it straight in the editor: set for a REJECTED decision, so the claimant lands
+    /// on "Fix and resubmit" with the reason on screen instead of having to find the Edit button. False for
+    /// everything else (an approval, a submission, an escalation, a reimbursement, a cancellation just open the claim).
+    case expenseClaim(String, edit: Bool = false)
     case crmHome
     case deals
     case activities
@@ -71,6 +74,12 @@ enum NotificationRoute {
     private static let noScreen: Set<String> = [
         "route_deviation", "security_alert", "location_off", "kini_reminder", "finance_invoice_due",
     ]
+
+    /// Does an expense notification open the claim in the editor? Only the decision on a claim that was REJECTED
+    /// (`kind == "expense_decision"`, `decision == "rejected"`): the claimant is told why and can fix and resubmit.
+    static func opensExpenseEditor(kind: String?, decision: String?) -> Bool {
+        kind == "expense_decision" && (decision ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "rejected"
+    }
 
     private static func byId(_ leadId: String?, _ dealId: String?) -> NotificationTarget? {
         if let l = leadId { return .lead(l) }
@@ -138,7 +147,8 @@ enum NotificationRoute {
 
         default:
             if kind.hasPrefix("expense") {
-                if let c = claimId { return .expenseClaim(c) }
+                // A rejected decision opens the claim in the editor (fix and resubmit); every other expense kind just opens it.
+                if let c = claimId { return .expenseClaim(c, edit: opensExpenseEditor(kind: kind, decision: nz(data["decision"]))) }
                 return nil
             }
             // route_deviation, security_alert, location_off, kini_reminder, finance_invoice_due have

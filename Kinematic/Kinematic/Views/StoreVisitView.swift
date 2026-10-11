@@ -12,6 +12,11 @@ struct StoreVisitView: View {
     // are, passing the selected outlet straight through.
     @State private var showOrderCart = false
     @State private var showPaymentCollect = false
+    // "Choose another outlet to book an order": book for ANY outlet in the rep's scope, not just this one. The picked
+    // outlet's distributor travels with the order.
+    @State private var showOutletPicker = false
+    @State private var showOtherOrderCart = false
+    @State private var otherOutlet: SalesmanOutlet? = nil
 
     /// Distribution SKU gate — mirrors the entitlement checks used elsewhere
     /// (`hasPackage("distribution")`). Non-distribution tenants see nothing new.
@@ -160,6 +165,30 @@ struct StoreVisitView: View {
                 }
             }
         }
+        // Book Order for another outlet: pick it, then the cart opens for it. The cart is presented once the picker
+        // sheet has finished dismissing (two presentations cannot overlap).
+        .sheet(isPresented: $showOutletPicker, onDismiss: {
+            if otherOutlet != nil { showOtherOrderCart = true }
+        }) {
+            OutletPickerView(onPick: { outlet in
+                otherOutlet = outlet
+                showOutletPicker = false
+            })
+        }
+        .fullScreenCover(isPresented: $showOtherOrderCart, onDismiss: { otherOutlet = nil }) {
+            NavigationStack {
+                if let outlet = otherOutlet {
+                    let target = OutletPickerLogic.orderTarget(for: outlet)
+                    OrderCartView(outletId: target.outletId, outletName: target.outletName, visitId: nil,
+                                  distributorId: target.distributorId)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Close") { showOtherOrderCart = false }
+                            }
+                        }
+                }
+            }
+        }
         // Activity form is its own full screen — driven by an isPresented
         // Binding so we never run into iOS 18 .fullScreenCover(item:)
         // lifecycle quirks (the previous form was implicated in the splash
@@ -304,6 +333,15 @@ struct StoreVisitView: View {
                             subtitle: "RECORD A PAYMENT",
                             tint: .green
                         ) { showPaymentCollect = true }
+
+                        Button {
+                            otherOutlet = nil
+                            showOutletPicker = true
+                        } label: {
+                            Text("Choose another outlet to book an order")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .padding(.leading, 4)
                     }
                     .padding(.top, 4)
                 }

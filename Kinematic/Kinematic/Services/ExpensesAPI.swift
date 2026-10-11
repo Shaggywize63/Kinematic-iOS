@@ -137,6 +137,16 @@ struct ExpensesAPI {
         return try decode(try await request("/expenses/mileage?from=\(f)&to=\(t)"))
     }
 
+    // ── Travel (attendance) ───────────────────────────────────────────────────
+    /// The distance the signed-in person travelled on `date` (`yyyy-MM-dd`, an India day; nil = today on the server),
+    /// with the legs it is made of (`GET /attendance/travel`). Backs "Add today's travel to expenses" for clients whose
+    /// expense policy pays GPS distance. A day with no attendance is a 200 with `attendance_id: null` and 0 km.
+    func travel(date: String?) async throws -> TravelSummary {
+        var q = ""
+        if let d = date, !d.isEmpty { q = "?date=" + (d.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed) ?? d) }
+        return try decode(try await request("/attendance/travel\(q)"))
+    }
+
     // ── Approver ──────────────────────────────────────────────────────────────
     func pendingClaims() async throws -> [ExpenseClaim] {
         try decode(try await request("/expenses/claims/pending"))

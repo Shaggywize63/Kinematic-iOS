@@ -253,71 +253,60 @@ struct CustomFieldsSection: View {
             ImageCustomFieldRow(def: d, model: model)
 
         case "date":
-            // Render a native DatePicker so reps don't have to type
-            // YYYY-MM-DD by hand. Stored value stays a plain string in
-            // the same format the backend / web write, so this round-trips
-            // through hydrate(from:) without a schema change.
-            DatePicker(
-                d.formLabel,
-                selection: Binding(
-                    get: { Self.parseISODate(model.text[d.fieldKey]) ?? Date() },
-                    set: { newDate in model.text[d.fieldKey] = Self.formatISODate(newDate) }
-                ),
-                displayedComponents: .date
-            )
+            // A native date picker so reps don't have to type YYYY-MM-DD by hand. Nothing is stored until a date is
+            // picked ("Select date"), and the stored value stays the plain `yyyy-MM-dd` the backend / web write, so
+            // this round-trips through hydrate(from:) without a schema change.
+            momentRow(d, mode: .date, storage: .local, placeholder: "Select date")
         case "datetime":
-            DatePicker(
-                d.formLabel,
-                selection: Binding(
-                    get: { Self.parseISODateTime(model.text[d.fieldKey]) ?? Date() },
-                    set: { newDate in model.text[d.fieldKey] = Self.formatISODateTime(newDate) }
-                )
-            )
+            // Date AND time (date picker, then time). Stored as the ISO instant in UTC it always was (CrmDateTime).
+            momentRow(d, mode: .dateTime, storage: .utcInstant, placeholder: "Select date and time")
+        case "longtext", "long_text", "textarea":
+            // A long answer gets a multi-line box.
+            VStack(alignment: .leading, spacing: 4) {
+                Text(d.formLabel).font(.caption).foregroundColor(.secondary)
+                TextField("", text: Binding(get: { model.text[d.fieldKey] ?? "" },
+                                            set: { model.text[d.fieldKey] = $0 }),
+                          axis: .vertical)
+                    .lineLimit(3...8)
+            }
         default:
-            // text / longtext / number / currency / url / email / phone
+            // text / number / currency / url / email / phone
             HStack {
                 Text(d.formLabel)
                 Spacer()
-                TextField(d.fieldType == "number" || d.fieldType == "currency" ? "0" : "",
-                          text: Binding(get: { model.text[d.fieldKey] ?? "" },
-                                        set: { model.text[d.fieldKey] = $0 }))
+                TextField(CustomFieldInput.isNumeric(d.fieldType) ? "0" : "", text: textBinding(for: d))
                     .multilineTextAlignment(.trailing)
                     .keyboardType(keyboard(for: d.fieldType))
             }
         }
     }
 
-    // Date helpers — kept static so the row builder can call them from
-    // its Binding closures without capturing self. Format YYYY-MM-DD
-    // matches what the backend stores in custom_fields for date types
-    // (and what the web DatePicker writes), so round-tripping doesn't
-    // need a server-side migration.
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = TimeZone(secondsFromGMT: 0)
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-    private static let dateTimeFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-    fileprivate static func parseISODate(_ s: String?) -> Date? {
-        guard let s, !s.isEmpty else { return nil }
-        // Tolerate full ISO datetimes too — the backend sometimes stores
-        // a timestamp where a date is expected.
-        if let d = dateFormatter.date(from: String(s.prefix(10))) { return d }
-        return dateTimeFormatter.date(from: s)
+    /// The text of a one-line field. A number / currency box keeps digits and one decimal point only (what is typed or
+    /// pasted), so the value always parses.
+    private func textBinding(for d: CRMCustomFieldDef) -> Binding<String> {
+        let numeric: Bool = CustomFieldInput.isNumeric(d.fieldType)
+        return Binding<String>(
+            get: { model.text[d.fieldKey] ?? "" },
+            set: { model.text[d.fieldKey] = numeric ? CustomFieldInput.numeric($0) : $0 }
+        )
     }
-    fileprivate static func formatISODate(_ d: Date) -> String { dateFormatter.string(from: d) }
-    fileprivate static func parseISODateTime(_ s: String?) -> Date? {
-        guard let s, !s.isEmpty else { return nil }
-        if let d = dateTimeFormatter.date(from: s) { return d }
-        return dateFormatter.date(from: String(s.prefix(10)))
+
+    /// A labelled date / date-and-time row.
+    @ViewBuilder
+    private func momentRow(_ d: CRMCustomFieldDef, mode: FormMomentMode, storage: FormMomentStorage, placeholder: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(d.formLabel).font(.caption).foregroundColor(.secondary)
+            FormMomentField(
+                mode: mode,
+                storage: storage,
+                value: Binding<String>(
+                    get: { model.text[d.fieldKey] ?? "" },
+                    set: { model.text[d.fieldKey] = $0 }
+                ),
+                placeholder: placeholder
+            )
+        }
     }
-    fileprivate static func formatISODateTime(_ d: Date) -> String { dateTimeFormatter.string(from: d) }
 
     private func keyboard(for type: String) -> UIKeyboardType {
         switch type {

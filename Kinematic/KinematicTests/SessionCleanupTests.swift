@@ -31,8 +31,53 @@ final class SessionCleanupTests: XCTestCase {
             "crm.location.city",
             "cached_mobile_home_payload",
             "cached_route_plan_payload",
+            "form_visit_sessions",
+            "travel_prompt_memory",
         ])
-        XCTAssertEqual(SessionCleanup.userDefaultsKeyPrefixes, ["lead_owner_admin_only."])
+        XCTAssertEqual(SessionCleanup.userDefaultsKeyPrefixes, ["lead_owner_admin_only.", "attendance_rules."])
+    }
+
+    func testTheVisitAndTravelMemoryAreTheirsAndGoAtSignOut() {
+        // The constants the owners' code reads and writes are the ones in the list.
+        XCTAssertEqual(FormVisitStore.storageKey, "form_visit_sessions")
+        XCTAssertEqual(TravelPromptStore.storageKey, "travel_prompt_memory")
+        XCTAssertTrue(SessionCleanup.userDefaultsKeys.contains(FormVisitStore.storageKey))
+        XCTAssertTrue(SessionCleanup.userDefaultsKeys.contains(TravelPromptStore.storageKey))
+        withSuite { d in
+            let session = FormVisitSession(key: "a1", outletId: "o1", name: "Shop", checkInAt: "2026-10-10T04:30:00.000Z", lat: 13.0, lng: 80.0)
+            FormVisitStore.save(session, userId: "u1", now: Date(), in: d)
+            TravelPromptStore.write("u1|2026-10-10|snoozed", in: d)
+            XCTAssertEqual(FormVisitStore.sessions(userId: "u1", in: d).count, 1)
+            XCTAssertNotNil(TravelPromptStore.read(in: d))
+
+            SessionCleanup.clearPersistedUserState(in: d)
+
+            XCTAssertTrue(FormVisitStore.sessions(userId: "u1", in: d).isEmpty)
+            XCTAssertNil(TravelPromptStore.read(in: d))
+        }
+    }
+
+    func testTheRatePromptsMemoryIsPerDeviceAndSurvivesSignOut() {
+        // Per DEVICE, not per person: neither key is in the list, and no listed prefix matches either.
+        let perDevice = [RatePromptStore.recordKey, RatePromptStore.firstLaunchKey]
+        let keys = SessionCleanup.keysToClear(existing: perDevice)
+        for k in perDevice {
+            XCTAssertFalse(keys.contains(k), k)
+            XCTAssertFalse(SessionCleanup.userDefaultsKeys.contains(k), k)
+            XCTAssertFalse(SessionCleanup.userDefaultsKeyPrefixes.contains { k.hasPrefix($0) }, k)
+        }
+        withSuite { d in
+            RatePromptStore.update(in: d) { RatePrompt.notePositive(RatePrompt.noteOpen($0, day: "2026-10-10")) }
+            RatePromptStore.recordFirstLaunchIfNeeded(now: Date(timeIntervalSince1970: 1_760_000_000), in: d)
+            let before = RatePromptStore.read(in: d)
+            XCTAssertEqual(before.openDays, 1)
+            XCTAssertEqual(before.positives, 1)
+
+            SessionCleanup.clearPersistedUserState(in: d)
+
+            XCTAssertEqual(RatePromptStore.read(in: d), before)
+            XCTAssertEqual(RatePromptStore.firstLaunchMs(in: d), 1_760_000_000_000)
+        }
     }
 
     func testTheKeysTheOwnersCodeUsesAreTheOnesInTheList() {
