@@ -136,6 +136,9 @@ enum OdometerCaptureMode: Equatable {
     case start
     /// Evening (after check-out): record the end odometer against the start already on file.
     case end
+    /// Evening fallback (after check-out) when NO start was recorded at check-in: capture the whole trip at once —
+    /// pick the vehicle, record both the start AND the end odometer, so the day's travel can still be logged.
+    case combined
 }
 
 /// The capture sheet shown after a check-in (START — pick the vehicle, record the start odometer) or after the final
@@ -155,14 +158,19 @@ struct OdometerCaptureSheet: View {
     let busy: Bool
     /// Upload + read the odometer photo (from the model).
     let upload: (Data) async -> (ExpenseUploadedReceipt?, String?)
-    /// The rep saved: (vehicle on START, reading, the stored photo reference or nil).
+    /// The rep saved a START or END: (vehicle on START, reading, the stored photo reference or nil).
     let onCapture: (_ vehicleType: String?, _ reading: Double, _ photoRef: String?) -> Void
+    /// The rep saved the COMBINED fallback (start + end at check-out): vehicle, start reading + photo, end reading + photo.
+    var onCaptureCombined: (_ vehicleType: String?, _ start: Double, _ startPhotoRef: String?, _ end: Double, _ endPhotoRef: String?) -> Void = { _, _, _, _, _ in }
     /// The rep skipped (or dismissed): attendance carries on, nothing is recorded.
     let onSkip: () -> Void
 
     @State private var reading = ""
     @State private var photo = ""
     @State private var vehicle = ""
+    /// The END reading + photo, used only by the combined fallback (`reading`/`photo` hold the START there).
+    @State private var endReading = ""
+    @State private var endPhoto = ""
     @State private var localError: String?
 
     private var vehicles: [ExpenseVehicleRate] { vehicleRates }
@@ -172,7 +180,11 @@ struct OdometerCaptureSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header
-                    if mode == .start { startBody } else { endBody }
+                    switch mode {
+                    case .start:    startBody
+                    case .end:      endBody
+                    case .combined: combinedBody
+                    }
                     if let e = localError { Text(e).font(.caption).foregroundColor(.red) }
                     saveButton
                     Button("Skip for now", action: onSkip)
@@ -183,7 +195,7 @@ struct OdometerCaptureSheet: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .navigationTitle(mode == .start ? "Start your travel" : "End your travel")
+            .navigationTitle(mode == .start ? "Start your travel" : (mode == .combined ? "Log today's travel" : "End your travel"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Skip", action: onSkip).disabled(busy) }
@@ -201,8 +213,14 @@ struct OdometerCaptureSheet: View {
     }
 
     private var header: some View {
-        Label(mode == .start ? "Record your start odometer" : "Record your end odometer", systemImage: "car.fill")
-            .font(.headline)
+        let title: String = {
+            switch mode {
+            case .start:    return "Record your start odometer"
+            case .end:      return "Record your end odometer"
+            case .combined: return "Record today's travel"
+            }
+        }()
+        return Label(title, systemImage: "car.fill").font(.headline)
     }
 
     // ── START ─────────────────────────────────────────────────────────────────
@@ -264,26 +282,98 @@ struct OdometerCaptureSheet: View {
         OdometerTripLogic.distance(start: recordedStart, end: OdometerTripLogic.reading(reading))
     }
 
+    // ── COMBINED (check-out fallback when no start was recorded at check-in) ────
+
+    @ViewBuilder private var combinedBody: some View {
+        Text("You didn't record a start reading at check-in, so log the whole trip now — the odometer before you set out and the reading now.")
+            .font(.subheadline).foregroundColor(.secondary)
+        if vehicles.count > 1 {
+            Picker("Vehicle", selection: $vehicle) {
+                Text("Choose a vehicle…").tag("")
+                ForEach(vehicles) { v in Text("\(v.label) · \(expenseMoney(v.rate_per_km, currency))/km").tag(v.id) }
+            }
+            .pickerStyle(.menu)
+        } else if let only = vehicles.first {
+            HStack {
+                Text("Vehicle").foregroundColor(.secondary)
+                Spacer()
+                Text("\(only.label) · \(expenseMoney(only.rate_per_km, currency))/km")
+            }.font(.subheadline)
+        }
+        OdometerCaptureField(title: "Start odometer", reading: $reading, photoURL: $photo,
+                             cameraOnly: cameraOnly, photosRequired: photosRequired,
+                             upload: upload, onError: { localError = $0 })
+        OdometerCaptureField(title: "End odometer", reading: $endReading, photoURL: $endPhoto,
+                             cameraOnly: cameraOnly, photosRequired: photosRequired,
+                             upload: upload, onError: { localError = $0 })
+        if let km = combinedDistance { Text("Distance: \(ExpenseLogic.trimNumber(km)) km").font(.caption).foregroundColor(.secondary) }
+        ForEach(combinedHints, id: \.self) { hint($0) }
+    }
+
+    private var combinedDistance: Double? {
+        OdometerTripLogic.distance(start: OdometerTripLogic.reading(reading), end: OdometerTripLogic.reading(endReading))
+    }
+
+    /// Everything the combined fallback still needs, with distinct messages for the two readings/photos (so the list
+    /// has no duplicate entries). Empty = ready to save.
+    private var combinedHints: [String] {
+        var out: [String] = []
+        let start = OdometerTripLogic.reading(reading)
+        let end = OdometerTripLogic.reading(endReading)
+        if OdometerTripLogic.vehicleChoiceRequired(vehicles),
+           vehicle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { out.append("Choose a vehicle.") }
+        if start == nil { out.append("Enter the start odometer reading.") }
+        if end == nil { out.append("Enter the end odometer reading.") }
+        if let s = start, let e = end, e < s { out.append(OdometerTripMissing.endBelowStart.text) }
+        if photosRequired, photo.trimmingCharacters(in: .whitespaces).isEmpty { out.append("Add a photo of the start odometer.") }
+        if photosRequired, endPhoto.trimmingCharacters(in: .whitespaces).isEmpty { out.append("Add a photo of the end odometer.") }
+        return out
+    }
+
+    private var combinedReady: Bool { combinedHints.isEmpty }
+
     // ── Save ──────────────────────────────────────────────────────────────────
 
     private var missing: [OdometerTripMissing] { mode == .start ? startMissing : endMissing }
+
+    private var saveDisabled: Bool {
+        if busy { return true }
+        return mode == .combined ? !combinedReady : !missing.isEmpty
+    }
+
+    private var saveLabel: String {
+        switch mode {
+        case .start:    return "Save start"
+        case .end:      return "Save end"
+        case .combined: return "Save travel"
+        }
+    }
 
     private var saveButton: some View {
         Button {
             save()
         } label: {
-            HStack { if busy { ProgressView() }; Text(mode == .start ? "Save start" : "Save end") }
+            HStack { if busy { ProgressView() }; Text(saveLabel) }
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(busy || !missing.isEmpty)
+        .disabled(saveDisabled)
     }
 
     private func save() {
+        let v = vehicle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if mode == .combined {
+            guard combinedReady,
+                  let start = OdometerTripLogic.reading(reading),
+                  let end = OdometerTripLogic.reading(endReading) else { return }
+            let sp = photo.trimmingCharacters(in: .whitespacesAndNewlines)
+            let ep = endPhoto.trimmingCharacters(in: .whitespacesAndNewlines)
+            onCaptureCombined(v.isEmpty ? nil : v, start, sp.isEmpty ? nil : sp, end, ep.isEmpty ? nil : ep)
+            return
+        }
         guard let km = OdometerTripLogic.reading(reading), missing.isEmpty else { return }
         let photoRef = photo.trimmingCharacters(in: .whitespacesAndNewlines)
         if mode == .start {
-            let v = vehicle.trimmingCharacters(in: .whitespacesAndNewlines)
             onCapture(v.isEmpty ? nil : v, km, photoRef.isEmpty ? nil : photoRef)
         } else {
             onCapture(nil, km, photoRef.isEmpty ? nil : photoRef)
@@ -322,6 +412,10 @@ struct OdometerCaptureHost: ViewModifier {
                     upload: { await model.uploadOdometer(data: $0) },
                     onCapture: { vehicle, reading, photo in
                         Task { await model.complete(request: request, vehicleType: vehicle, reading: reading, photoRef: photo) }
+                    },
+                    onCaptureCombined: { vehicle, start, startPhoto, end, endPhoto in
+                        Task { await model.completeCombined(request: request, vehicleType: vehicle,
+                                                            start: start, startPhoto: startPhoto, end: end, endPhoto: endPhoto) }
                     },
                     onSkip: { model.skip() }
                 )
