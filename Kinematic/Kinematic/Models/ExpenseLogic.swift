@@ -88,6 +88,10 @@ enum ExpenseLogic {
     /// Mileage is priced by vehicle from odometer readings.
     static func paysByVehicle(_ rules: ExpensePolicyRules?) -> Bool { !(rules?.vehicle_rates ?? []).isEmpty }
 
+    /// The two-step daily odometer trip ("Today's travel" card): on only when the policy opts in AND pays mileage by
+    /// vehicle. Every other policy keeps the combined before/after odometer editor exactly as it was.
+    static func dailyTripOn(_ rules: ExpensePolicyRules?) -> Bool { rules?.odometer_daily_trip == true && paysByVehicle(rules) }
+
     /// GPS distance instead of odometer readings: on only when the policy says `gps_distance: true` AND pays mileage by
     /// vehicle. Without it a vehicle line is exactly what it has always been (vehicle + odometer before / after).
     static func gpsDistanceOn(_ rules: ExpensePolicyRules?) -> Bool { rules?.gps_distance == true && paysByVehicle(rules) }
@@ -97,9 +101,15 @@ enum ExpenseLogic {
     /// else everyone's), so its `vehicle_rates` ARE their vehicles; no built-in or other policy's list is mixed in.
     /// In the policy's order; a blank or repeated id is dropped (it could not be told apart in the picker).
     static func policyVehicles(_ rules: ExpensePolicyRules?) -> [ExpenseVehicleRate] {
+        dedupeVehicles(rules?.vehicle_rates)
+    }
+
+    /// The vehicles a list offers, in order, with a blank or repeated id dropped (it could not be told apart in a
+    /// picker). Shared by the claim editor's Vehicle picker and the daily-trip card.
+    static func dedupeVehicles(_ list: [ExpenseVehicleRate]?) -> [ExpenseVehicleRate] {
         var seen = Set<String>()
         var out: [ExpenseVehicleRate] = []
-        for v in rules?.vehicle_rates ?? [] {
+        for v in list ?? [] {
             let id = v.id.trimmingCharacters(in: .whitespacesAndNewlines)
             if id.isEmpty || seen.contains(v.id) { continue }
             seen.insert(v.id)

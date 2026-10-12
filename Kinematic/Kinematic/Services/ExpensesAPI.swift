@@ -137,6 +137,27 @@ struct ExpensesAPI {
         return try decode(try await request("/expenses/mileage?from=\(f)&to=\(t)"))
     }
 
+    // ── Daily odometer trip (two-step: start / end) ───────────────────────────
+    /// The signed-in person's trip for `date` (`yyyy-MM-dd`, nil = today IST). When the flow is not opted in the
+    /// server answers `{ enabled:false, … }` rather than an error, so this never throws just because the policy is off.
+    func odometerTrip(date: String? = nil) async throws -> OdometerTripResponse {
+        var q = ""
+        if let d = date, !d.isEmpty { q = "?date=" + (d.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed) ?? d) }
+        return try decode(try await request("/expenses/odometer-trip\(q)"))
+    }
+
+    /// Record the morning start reading; opens the day's draft claim (201). 409 DAILY_TRIP_OFF when the policy is not
+    /// opted in, 400 VALIDATION with a message to show.
+    func startOdometerTrip(_ input: OdometerTripStartInput) async throws -> OdometerTripResponse {
+        try decode(try await request("/expenses/odometer-trip/start", method: "POST", body: input, idempotencyKey: UUID().uuidString))
+    }
+
+    /// Record the evening end reading; prices and closes the trip. The response carries the built `claim`. 404
+    /// NO_OPEN_TRIP when there was no start that day, 400 VALIDATION with a message to show.
+    func endOdometerTrip(_ input: OdometerTripEndInput) async throws -> OdometerTripResponse {
+        try decode(try await request("/expenses/odometer-trip/end", method: "POST", body: input, idempotencyKey: UUID().uuidString))
+    }
+
     // ── Travel (attendance) ───────────────────────────────────────────────────
     /// The distance the signed-in person travelled on `date` (`yyyy-MM-dd`, an India day; nil = today on the server),
     /// with the legs it is made of (`GET /attendance/travel`). Backs "Add today's travel to expenses" for clients whose

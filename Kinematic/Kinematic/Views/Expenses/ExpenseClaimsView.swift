@@ -147,6 +147,8 @@ struct ExpenseClaimsView: View {
     }
 
     @StateObject private var vm = ExpensesViewModel()
+    /// The two-step daily odometer trip ("Today's travel"), shown above the list for opted-in clients only.
+    @StateObject private var tripModel = DailyTripModel()
     @ObservedObject private var appState = KiniAppState.shared
     @State private var showCreate = false
     @State private var filter: Filter = .all
@@ -171,6 +173,15 @@ struct ExpenseClaimsView: View {
                 }
             } else {
                 List {
+                    // "Today's travel" above the claims, only when the policy opts in AND the server confirms it.
+                    if ExpenseLogic.dailyTripOn(vm.policy?.rules) && tripModel.enabled {
+                        Section {
+                            DailyTripCard(model: tripModel,
+                                          currency: vm.policy?.currency ?? "INR",
+                                          onOpenClaim: { id in openInEditor = false; openClaimId = id },
+                                          onChanged: { Task { await vm.loadClaims() } })
+                        }
+                    }
                     Section { summary }
                     Section {
                         Picker("Show", selection: $filter) { ForEach(Filter.allCases) { Text($0.rawValue).tag($0) } }
@@ -194,7 +205,7 @@ struct ExpenseClaimsView: View {
                         }
                     }
                 }
-                .refreshable { await vm.loadClaims() }
+                .refreshable { await reloadAll() }
             }
         }
         .navigationTitle("Expenses")
@@ -222,6 +233,8 @@ struct ExpenseClaimsView: View {
         )
         .task {
             if !vm.didLoad { await vm.loadClaims() }
+            // The policy is known now: fetch the daily trip only for clients whose policy opts in.
+            if ExpenseLogic.dailyTripOn(vm.policy?.rules) && !tripModel.loaded { await tripModel.load() }
             consumePushTarget()
         }
         .onChange(of: appState.pendingExpenseClaimId) { _, _ in consumePushTarget() }
@@ -236,6 +249,12 @@ struct ExpenseClaimsView: View {
         .alert("Expenses", isPresented: Binding(get: { vm.notice != nil }, set: { if !$0 { vm.notice = nil } })) {
             Button("OK", role: .cancel) { vm.notice = nil }
         } message: { Text(vm.notice ?? "") }
+    }
+
+    /// Pull-to-refresh: the claims (which also refreshes the policy) and the daily trip when opted in.
+    private func reloadAll() async {
+        await vm.loadClaims()
+        if ExpenseLogic.dailyTripOn(vm.policy?.rules) { await tripModel.load() }
     }
 
     /// A tapped expense push opens its claim — in the editor when it is a rejected one (fix and resubmit).
