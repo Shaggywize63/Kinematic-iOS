@@ -207,15 +207,23 @@ extension AttendanceViewModel {
     // MARK: - What a punch that reached the server means
 
     /// A punch the server accepted while the rep was waiting (online). A check-in: remember the travel mode it holds and
-    /// heal one the server lost. A check-out: raise the final-check-out signal (`freshCheckoutDate`).
+    /// heal one the server lost. A check-out: raise the final-check-out signal (`freshCheckoutDate`). Either way, offer
+    /// the daily odometer-trip capture (START at check-in, END at check-out) — inert unless the policy opts in.
     func punchReachedServerOnline(isCheckIn: Bool, modeSent: String?, record: AttendanceRecord?, shiftBefore: AttendanceRecord?) {
         if isCheckIn {
             if let r = record, let mode = r.transportMode, TransportMode.isValidId(mode) {
                 rememberTransport(mode: mode, label: r.transportLabel, record: r)
             }
             repairTransportModeIfNeeded(modeSent: modeSent, returned: record)
+            // Daily odometer trip (opt-in clients only): offer the START capture now the check-in has reached the
+            // server. Optional and skippable — the model self-gates on the policy + the server's `enabled`.
+            let day = recordDay(record)
+            Task { @MainActor in OdometerCaptureModel.shared.onCheckIn(date: day) }
         } else {
-            freshCheckoutDate = OfflinePunchState.shiftDate(today: shiftBefore, capturedAt: Date())
+            let shiftDay = OfflinePunchState.shiftDate(today: shiftBefore, capturedAt: Date())
+            freshCheckoutDate = shiftDay
+            // Daily odometer trip: offer the END capture after the final check-out (prices and closes the trip).
+            Task { @MainActor in OdometerCaptureModel.shared.onCheckOut(date: shiftDay) }
         }
     }
 
@@ -249,6 +257,8 @@ extension AttendanceViewModel {
         gpsPunching = false
         freshCheckoutDate = nil
         knownTransport = nil
+        // The daily odometer-trip capture belongs to the person who was signed in; nothing of it may carry over.
+        Task { @MainActor in OdometerCaptureModel.shared.reset() }
     }
 
     // MARK: - Reading today

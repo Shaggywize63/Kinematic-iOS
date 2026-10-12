@@ -79,7 +79,7 @@ struct ExpenseClaimEditorView: View {
         }
         // The policy may already be known (the list loads it); if it arrives later, onlyCategory and
         // applySoleVehicle below catch up.
-        if seeded.isEmpty { seeded = [Self.blankLine(category: ExpenseLogic.defaultCategory(vm.policy?.rules), soleVehicle: sole)] }
+        if seeded.isEmpty { seeded = [Self.blankLine(category: ExpenseLogic.editorDefaultCategory(vm.policy?.rules), soleVehicle: sole)] }
         _lines = State(initialValue: seeded)
     }
 
@@ -109,8 +109,11 @@ struct ExpenseClaimEditorView: View {
     private var singleLine: Bool { ExpenseLogic.isSingleLine(rules) }
     /// Odometer photos only from the camera, and the number is read from the photo.
     private var cameraOnlyOdometer: Bool { ExpenseLogic.odometerCameraOnly(rules) }
-    /// The one category the policy allows, when it allows exactly one.
-    private var onlyCategory: String? { ExpenseLogic.singleCategory(rules) }
+    /// The one category the editor forces new lines onto, when it offers exactly one. On a daily-trip policy the
+    /// mileage ("Travel") category is dropped from the editor (travel is recorded at check-in / check-out).
+    private var onlyCategory: String? { ExpenseLogic.editorSingleCategory(rules) }
+    /// Daily-trip policy: travel is recorded in the attendance flow, so the manual editor offers no mileage category.
+    private var dailyTrip: Bool { ExpenseLogic.dailyTripOn(rules) }
     /// "Last reading: 12392 km (5 Oct 2026)" under the Before field, from the odometer history.
     private var lastReadingHint: String? {
         guard byVehicle, let r = ExpenseLogic.lastReading(in: vm.odometerHistory, excludingClaim: savedId ?? claim?.id) else { return nil }
@@ -138,9 +141,13 @@ struct ExpenseClaimEditorView: View {
 
                 Section {
                     if !singleLine {
-                        Button { lines.append(Self.blankLine(category: ExpenseLogic.defaultCategory(rules), soleVehicle: soleVehicle)) } label: { Label("Add another expense", systemImage: "plus") }
+                        Button { lines.append(Self.blankLine(category: ExpenseLogic.editorDefaultCategory(rules), soleVehicle: soleVehicle)) } label: { Label("Add another expense", systemImage: "plus") }
                     }
                     HStack { Text("Total").bold(); Spacer(); Text(expenseMoney(total, currency)).bold() }
+                    // Daily-trip policy: there is no mileage category here — travel is recorded in the attendance flow.
+                    if dailyTrip {
+                        Text("Travel is recorded at check-in / check-out.").font(.caption).foregroundColor(.secondary)
+                    }
                 }
 
                 Section { policyVerdict }
@@ -208,9 +215,9 @@ struct ExpenseClaimEditorView: View {
         Section("Expense \(index + 1)") {
             // Single-category mode has nothing to choose, so the picker is hidden — except on an older line
             // that is still on another category, which needs a way to move to the allowed one.
-            if ExpenseLogic.showsCategoryPicker(rules, current: l.f.category) {
+            if ExpenseLogic.editorShowsCategoryPicker(rules, current: l.f.category) {
                 Picker("Category", selection: line.f.category) {
-                    ForEach(ExpenseLogic.allowedCategories(rules, current: l.f.category), id: \.self) {
+                    ForEach(ExpenseLogic.editorAllowedCategories(rules, current: l.f.category), id: \.self) {
                         Text(ExpenseLogic.categoryLabel($0, labels: categoryLabels)).tag($0)
                     }
                 }
@@ -582,7 +589,10 @@ struct ExpenseClaimEditorView: View {
         guard let i = lines.firstIndex(where: { $0.id == id }) else { return }
         lines[i].uploading = false
         guard let r = result else { errorText = error ?? "Couldn't upload the receipt."; return }
-        lines[i].f = lines[i].f.withScan(r.scan, receiptUrl: r.url, allowedCategories: onlyCategory.map { [$0] })
+        // Keep a receipt scan from moving the line to a category the editor does not offer — on a daily-trip policy
+        // that includes the mileage ("Travel") category, so an OCR'd "mileage" receipt can't recreate an odometer line.
+        let scanAllowed: [String]? = dailyTrip ? ExpenseLogic.editorAllowedCategories(rules, current: lines[i].f.category) : onlyCategory.map { [$0] }
+        lines[i].f = lines[i].f.withScan(r.scan, receiptUrl: r.url, allowedCategories: scanAllowed)
         lines[i].receiptView = r.signed_url
         if let s = r.scan, s.amount != nil || !(s.merchant ?? "").isEmpty {
             let bits = [s.amount.map { expenseMoney($0, currency) }, (s.merchant ?? "").isEmpty ? nil : s.merchant].compactMap { $0 }

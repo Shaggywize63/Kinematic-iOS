@@ -66,6 +66,9 @@ struct ContentView: View {
         .locationGateAlert($appState.locationGatePrompt)
         // The REQUIRED "How are you travelling today?" step in front of Clock-In (clients whose attendance rule asks it).
         .clockInTransportHost(appState.attendanceVM)
+        // The OPTIONAL daily odometer capture after a punch reaches the server — START at check-in, END at check-out
+        // (daily-trip policies only; the model self-gates, so it is inert for every other client).
+        .odometerCaptureHost()
         .fullScreenCover(item: $appState.activeSecondaryRoute) { route in
             SecondaryScreenHost(route: route)
         }
