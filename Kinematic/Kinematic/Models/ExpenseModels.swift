@@ -58,6 +58,10 @@ struct ExpensePolicyRules: Codable, Equatable {
     /// true (with vehicle rates): a mileage line may claim the distance the server worked out from the rep's GPS route
     /// for that day instead of odometer readings, and the server prices it from the vehicle's rate. Default false.
     let gps_distance: Bool?
+    /// true (with vehicle rates): the rep records the day's travel in two steps — the start odometer in the morning and
+    /// the end odometer in the evening — on the "Today's travel" card, instead of entering both at once in the combined
+    /// editor. Opt-in per client; default false, and the combined editor is unchanged for every policy without it.
+    let odometer_daily_trip: Bool?
 }
 
 /// The policy that governs the signed-in user. The scalar fields are the
@@ -361,4 +365,120 @@ enum ExpenseCategory: String, CaseIterable, Identifiable {
     case mileage, travel, food, lodging, fuel, toll, misc
     var id: String { rawValue }
     var label: String { self == .misc ? "Other" : rawValue.capitalized }
+}
+
+// MARK: - Daily odometer trip (two-step: start in the morning, end in the evening)
+
+/// One day's odometer trip, as `/expenses/odometer-trip` reports it. A trip is the mileage line of that day's
+/// draft claim: `status` is "none" before it exists, "open" after the start reading is in, and "closed" once the
+/// end reading closes it and the claim is priced. `amount` / `distance_km` are set once the trip is closed.
+///
+/// Decoded leniently so a field the server omits (or an amount that is null until the trip closes) never fails the
+/// whole response — a missing non-optional falls back to a sensible default, the same idiom as ExpenseUploadedReceipt.
+struct OdometerTrip: Decodable, Equatable {
+    let claim_id: String
+    let claim_no: String?
+    let claim_status: String
+    let item_id: String
+    let date: String?
+    let vehicle_type: String?
+    let odometer_start: Double?
+    let odometer_end: Double?
+    let distance_km: Double?
+    let amount: Double
+    let start_photo_url: String?
+    let end_photo_url: String?
+    /// "none" | "open" | "closed".
+    let status: String
+    let editable: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case claim_id, claim_no, claim_status, item_id, date, vehicle_type
+        case odometer_start, odometer_end, distance_km, amount
+        case start_photo_url, end_photo_url, status, editable
+    }
+
+    init(claim_id: String, claim_no: String? = nil, claim_status: String = "draft", item_id: String = "",
+         date: String? = nil, vehicle_type: String? = nil, odometer_start: Double? = nil, odometer_end: Double? = nil,
+         distance_km: Double? = nil, amount: Double = 0, start_photo_url: String? = nil, end_photo_url: String? = nil,
+         status: String = "none", editable: Bool = true) {
+        self.claim_id = claim_id; self.claim_no = claim_no; self.claim_status = claim_status; self.item_id = item_id
+        self.date = date; self.vehicle_type = vehicle_type; self.odometer_start = odometer_start
+        self.odometer_end = odometer_end; self.distance_km = distance_km; self.amount = amount
+        self.start_photo_url = start_photo_url; self.end_photo_url = end_photo_url
+        self.status = status; self.editable = editable
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        claim_id = (try? c.decodeIfPresent(String.self, forKey: .claim_id)) ?? ""
+        claim_no = (try? c.decodeIfPresent(String.self, forKey: .claim_no)) ?? nil
+        claim_status = (try? c.decodeIfPresent(String.self, forKey: .claim_status)) ?? "draft"
+        item_id = (try? c.decodeIfPresent(String.self, forKey: .item_id)) ?? ""
+        date = (try? c.decodeIfPresent(String.self, forKey: .date)) ?? nil
+        vehicle_type = (try? c.decodeIfPresent(String.self, forKey: .vehicle_type)) ?? nil
+        odometer_start = (try? c.decodeIfPresent(Double.self, forKey: .odometer_start)) ?? nil
+        odometer_end = (try? c.decodeIfPresent(Double.self, forKey: .odometer_end)) ?? nil
+        distance_km = (try? c.decodeIfPresent(Double.self, forKey: .distance_km)) ?? nil
+        amount = (try? c.decodeIfPresent(Double.self, forKey: .amount)) ?? 0
+        start_photo_url = (try? c.decodeIfPresent(String.self, forKey: .start_photo_url)) ?? nil
+        end_photo_url = (try? c.decodeIfPresent(String.self, forKey: .end_photo_url)) ?? nil
+        status = (try? c.decodeIfPresent(String.self, forKey: .status)) ?? "none"
+        editable = (try? c.decodeIfPresent(Bool.self, forKey: .editable)) ?? true
+    }
+}
+
+/// `/expenses/odometer-trip` (GET / start / end). When the flow is NOT opted in the server answers only
+/// `{ enabled:false, date, trip:null }`, so every config field is optional/defaulted here. The `/end` response
+/// carries, in addition, the built and priced `claim` ready to submit.
+struct OdometerTripResponse: Decodable {
+    let enabled: Bool
+    let date: String
+    let trip: OdometerTrip?
+    let vehicle_rates: [ExpenseVehicleRate]
+    let sole_vehicle: String?
+    let photos_required: Bool
+    let camera_only: Bool
+    /// Only on the `/end` response: the built, priced, ready-to-submit claim.
+    let claim: ExpenseClaim?
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled, date, trip, vehicle_rates, sole_vehicle, photos_required, camera_only, claim
+    }
+
+    init(enabled: Bool, date: String, trip: OdometerTrip?, vehicle_rates: [ExpenseVehicleRate] = [],
+         sole_vehicle: String? = nil, photos_required: Bool = true, camera_only: Bool = false, claim: ExpenseClaim? = nil) {
+        self.enabled = enabled; self.date = date; self.trip = trip; self.vehicle_rates = vehicle_rates
+        self.sole_vehicle = sole_vehicle; self.photos_required = photos_required; self.camera_only = camera_only
+        self.claim = claim
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = (try? c.decodeIfPresent(Bool.self, forKey: .enabled)) ?? false
+        date = (try? c.decodeIfPresent(String.self, forKey: .date)) ?? ""
+        // A malformed trip object counts as "no trip" (status none), never a failed response.
+        trip = (try? c.decodeIfPresent(OdometerTrip.self, forKey: .trip)) ?? nil
+        vehicle_rates = (try? c.decodeIfPresent([ExpenseVehicleRate].self, forKey: .vehicle_rates)) ?? []
+        sole_vehicle = (try? c.decodeIfPresent(String.self, forKey: .sole_vehicle)) ?? nil
+        photos_required = (try? c.decodeIfPresent(Bool.self, forKey: .photos_required)) ?? true
+        camera_only = (try? c.decodeIfPresent(Bool.self, forKey: .camera_only)) ?? false
+        claim = (try? c.decodeIfPresent(ExpenseClaim.self, forKey: .claim)) ?? nil
+    }
+}
+
+/// POST /expenses/odometer-trip/start. `vehicle_type` may be omitted when the policy has a single vehicle (the
+/// server falls back to it); `start_photo_url` is omitted when no photo was taken (policies that do not require one).
+struct OdometerTripStartInput: Encodable {
+    let odometer_start: Double
+    let vehicle_type: String?
+    let start_photo_url: String?
+    let date: String?
+}
+
+/// POST /expenses/odometer-trip/end.
+struct OdometerTripEndInput: Encodable {
+    let odometer_end: Double
+    let end_photo_url: String?
+    let date: String?
 }

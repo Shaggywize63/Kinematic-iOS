@@ -33,6 +33,7 @@
 		AB0000000000000000000056 /* OwnerAssignmentFailClosedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000046 /* OwnerAssignmentFailClosedTests.swift */; };
 		AB0000000000000000000057 /* SessionCleanupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000047 /* SessionCleanupTests.swift */; };
 		AB0000000000000000000058 /* ExpensePolicyRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000048 /* ExpensePolicyRefreshTests.swift */; };
+		AB0000000000000000000059 /* OdometerTripLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000049 /* OdometerTripLogicTests.swift */; };
 		D1D1D1D1D1D1D1D1D1D1000C /* KinematicWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -99,6 +100,7 @@
 		AB0000000000000000000046 /* OwnerAssignmentFailClosedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OwnerAssignmentFailClosedTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000047 /* SessionCleanupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCleanupTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000048 /* ExpensePolicyRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpensePolicyRefreshTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000049 /* OdometerTripLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OdometerTripLogicTests.swift; sourceTree = "<group>"; };
 		D1D1D1D1D1D1D1D1D1D10003 /* KinematicWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KinematicWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -212,6 +214,7 @@
 				AB0000000000000000000046 /* OwnerAssignmentFailClosedTests.swift */,
 				AB0000000000000000000047 /* SessionCleanupTests.swift */,
 				AB0000000000000000000048 /* ExpensePolicyRefreshTests.swift */,
+				AB0000000000000000000049 /* OdometerTripLogicTests.swift */,
 			);
 			path = KinematicTests;
 			sourceTree = "<group>";
@@ -390,6 +393,7 @@
 				AB0000000000000000000056 /* OwnerAssignmentFailClosedTests.swift in Sources */,
 				AB0000000000000000000057 /* SessionCleanupTests.swift in Sources */,
 				AB0000000000000000000058 /* ExpensePolicyRefreshTests.swift in Sources */,
+				AB0000000000000000000059 /* OdometerTripLogicTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
