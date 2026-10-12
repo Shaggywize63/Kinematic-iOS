@@ -49,6 +49,14 @@ enum OdometerTripLogic {
         return OdometerTripStatus(t.status)
     }
 
+    /// After a check-in reaches the server, the START capture is offered only when the day's trip has not begun yet
+    /// (status none). If a start is already recorded (open) or the trip is closed, nothing is offered.
+    static func offersStart(_ trip: OdometerTrip?) -> Bool { status(trip) == .none }
+
+    /// After the final check-out, the END capture is offered only when the trip is open — a start reading is in but
+    /// the end has not closed it. A trip that never started (none) or is already closed offers nothing.
+    static func offersEnd(_ trip: OdometerTrip?) -> Bool { status(trip) == .open }
+
     /// An odometer reading: any finite number from 0 up (a new vehicle can read 0). Mirrors ExpenseLineFields.
     static func reading(_ s: String) -> Double? {
         guard let v = Double(s.trimmingCharacters(in: .whitespaces)), v >= 0, v.isFinite else { return nil }

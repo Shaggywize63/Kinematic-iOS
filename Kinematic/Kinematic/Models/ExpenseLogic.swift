@@ -88,9 +88,47 @@ enum ExpenseLogic {
     /// Mileage is priced by vehicle from odometer readings.
     static func paysByVehicle(_ rules: ExpensePolicyRules?) -> Bool { !(rules?.vehicle_rates ?? []).isEmpty }
 
-    /// The two-step daily odometer trip ("Today's travel" card): on only when the policy opts in AND pays mileage by
-    /// vehicle. Every other policy keeps the combined before/after odometer editor exactly as it was.
+    /// The two-step daily odometer trip: on only when the policy opts in AND pays mileage by vehicle. On these
+    /// policies the trip is captured in the attendance check-in / check-out flow (the START odometer at check-in,
+    /// the END at check-out); every other policy keeps the combined before/after odometer editor exactly as it was.
     static func dailyTripOn(_ rules: ExpensePolicyRules?) -> Bool { rules?.odometer_daily_trip == true && paysByVehicle(rules) }
+
+    // MARK: Manual claim editor — the mileage ("Travel") category when the daily trip is on
+    //
+    // On a daily-trip policy, travel is recorded only at check-in / check-out, so the manual "New claim" editor must
+    // NOT offer the mileage category at all — there must be no way left to enter the before/after odometer together.
+    // These mirror `allowedCategories` / `defaultCategory` / `showsCategoryPicker` / `singleCategory` but drop
+    // "mileage" for a daily-trip policy. An existing line already on mileage (e.g. a trip claim opened for review)
+    // still renders and can be moved OFF it — it is kept via `current`, it just can't be switched back TO mileage, and
+    // no new line can start as mileage. For every other policy these return the originals unchanged.
+
+    /// The categories the editor's picker offers for a line whose current category is `current`.
+    static func editorAllowedCategories(_ rules: ExpensePolicyRules?, current: String) -> [String] {
+        let base = allowedCategories(rules, current: current)
+        guard dailyTripOn(rules) else { return base }
+        return base.filter { $0 != "mileage" || $0 == current }
+    }
+
+    /// Whether the editor shows the category picker for a line on `current` (hidden when only one choice remains).
+    static func editorShowsCategoryPicker(_ rules: ExpensePolicyRules?, current: String) -> Bool {
+        guard dailyTripOn(rules) else { return showsCategoryPicker(rules, current: current) }
+        return editorAllowedCategories(rules, current: current).count > 1
+    }
+
+    /// The one category the editor forces new lines onto, when exactly one remains after dropping mileage.
+    static func editorSingleCategory(_ rules: ExpensePolicyRules?) -> String? {
+        guard dailyTripOn(rules) else { return singleCategory(rules) }
+        let cats = enabledCategories(rules).filter { $0 != "mileage" }
+        return cats.count == 1 ? cats[0] : nil
+    }
+
+    /// What a NEW line in the editor starts as. Never mileage on a daily-trip policy: the usual default is substituted
+    /// for a non-mileage category only in the edge case where it would otherwise have been mileage.
+    static func editorDefaultCategory(_ rules: ExpensePolicyRules?) -> String {
+        let base = defaultCategory(rules)
+        guard dailyTripOn(rules), base == "mileage" else { return base }
+        return editorAllowedCategories(rules, current: base).first { $0 != "mileage" } ?? "food"
+    }
 
     /// GPS distance instead of odometer readings: on only when the policy says `gps_distance: true` AND pays mileage by
     /// vehicle. Without it a vehicle line is exactly what it has always been (vehicle + odometer before / after).

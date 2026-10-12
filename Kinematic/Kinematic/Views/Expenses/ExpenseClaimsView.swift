@@ -173,13 +173,13 @@ struct ExpenseClaimsView: View {
                 }
             } else {
                 List {
-                    // "Today's travel" above the claims, only when the policy opts in AND the server confirms it.
+                    // "Today's travel" above the claims — a read-only summary of the trip captured at check-in /
+                    // check-out — only when the policy opts in AND the server confirms it.
                     if ExpenseLogic.dailyTripOn(vm.policy?.rules) && tripModel.enabled {
                         Section {
                             DailyTripCard(model: tripModel,
                                           currency: vm.policy?.currency ?? "INR",
-                                          onOpenClaim: { id in openInEditor = false; openClaimId = id },
-                                          onChanged: { Task { await vm.loadClaims() } })
+                                          onOpenClaim: { id in openInEditor = false; openClaimId = id })
                         }
                     }
                     Section { summary }
