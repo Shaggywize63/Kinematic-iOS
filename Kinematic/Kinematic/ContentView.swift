@@ -629,17 +629,16 @@ struct SelfieStatusCard: View {
         .alert("End shift?", isPresented: $showCheckoutAlert) {
             Button("Stay clocked in", role: .cancel) { }
             Button("Clock out", role: .destructive) {
-                let isExecutive = Session.currentUser?.role.lowercased().contains("executive") ?? false
-                if isExecutive {
-                    appState.attendanceVM.startFlow()
-                } else if let loc = LocationTrackingService.shared.lastLocation {
-                    Task { await appState.attendanceVM.toggleAttendance(loc: loc) }
-                } else {
-                    appState.attendanceVM.startFlow()
-                }
+                // Parity with the full Attendance screen: route check-out through startFlow(), which opens the
+                // check-out selfie camera when the client requires a selfie (and punches with GPS only when it
+                // doesn't). Previously a NON-executive with a GPS fix was clocked out directly from here, so no
+                // check-out selfie was ever captured — the selfie-required clients lost the check-out selfie.
+                appState.attendanceVM.startFlow()
             }
         } message: {
-            Text("Once you clock out you won't be able to clock in again today. Make sure you've finished all visits and submissions.")
+            Text(rulesStore.rules.selfieRequired
+                 ? "You'll take a quick check-out selfie to confirm. Once you clock out you won't be able to clock in again today — make sure you've finished all visits and submissions."
+                 : "Once you clock out you won't be able to clock in again today — make sure you've finished all visits and submissions.")
         }
     }
 }

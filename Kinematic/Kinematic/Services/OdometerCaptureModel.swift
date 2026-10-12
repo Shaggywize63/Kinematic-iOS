@@ -94,14 +94,18 @@ final class OdometerCaptureModel: ObservableObject {
 
     // MARK: entry points (called by AttendanceViewModel on a punch that reached the server)
 
+    /// Which punch raised the capture — the mode is then decided from the day's trip status.
+    private enum Phase { case checkIn, checkOut }
+
     /// A check-in just reached the server: offer the START capture when the policy opts in and no trip has begun today.
     func onCheckIn(date: String?) {
-        Task { await evaluate(mode: .start, day: date) }
+        Task { await evaluate(phase: .checkIn, day: date) }
     }
 
-    /// The final check-out just reached the server: offer the END capture when the day's trip is open.
+    /// The final check-out just reached the server: offer the END capture when the day's trip is open, or — when no
+    /// start was recorded at check-in — the COMBINED fallback so the whole trip can still be logged.
     func onCheckOut(date: String?) {
-        Task { await evaluate(mode: .end, day: date) }
+        Task { await evaluate(phase: .checkOut, day: date) }
     }
 
     // MARK: eligibility
@@ -114,7 +118,7 @@ final class OdometerCaptureModel: ObservableObject {
         policy = ExpenseLogic.policyAfterRefresh(current: policy, fetched: fetched)
     }
 
-    private func evaluate(mode: OdometerCaptureMode, day: String?) async {
+    private func evaluate(phase: Phase, day: String?) async {
         syncUser()
         let uid = currentUserId
         guard uid != nil else { return }
@@ -127,10 +131,24 @@ final class OdometerCaptureModel: ObservableObject {
 
         let resp: OdometerTripResponse
         do { resp = try await api.odometerTrip(date: day) } catch { return }
-        // The server's own gate (even if the policy flag was stale) and the status decide whether to offer.
+        // The server's own gate (even if the policy flag was stale) and the status decide whether — and how — to offer.
         guard uid == currentUserId, resp.enabled, request == nil else { return }
-        let offer = mode == .start ? OdometerTripLogic.offersStart(resp.trip) : OdometerTripLogic.offersEnd(resp.trip)
-        guard offer else { return }
+
+        // Decide the capture from where the day's trip has got to:
+        //  • check-in  → START only when nothing has begun yet.
+        //  • check-out → END when a start is already on file; COMBINED (start + end at once) when none was recorded;
+        //                nothing once the trip is already closed.
+        let status = OdometerTripLogic.status(resp.trip)
+        let mode: OdometerCaptureMode?
+        switch phase {
+        case .checkIn:
+            mode = status == .none ? .start : nil
+        case .checkOut:
+            if status == .open { mode = .end }
+            else if status == .none { mode = .combined }
+            else { mode = nil }
+        }
+        guard let mode else { return }
 
         let vehicles = ExpenseLogic.dedupeVehicles(resp.vehicle_rates)
         request = OdometerCaptureRequest(
@@ -189,6 +207,33 @@ final class OdometerCaptureModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: 450_000_000)
                 endNotice = note
             }
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    /// The rep saved the COMBINED fallback (check-out with no start on file): record the start, then the end, against
+    /// the same day — reusing the two existing endpoints so the day's claim is built and priced exactly as the normal
+    /// two-step flow does. On success the sheet closes and the "Travel recorded" confirmation follows.
+    func completeCombined(request req: OdometerCaptureRequest, vehicleType: String?,
+                          start: Double, startPhoto: String?, end: Double, endPhoto: String?) async {
+        if busy { return }
+        busy = true
+        defer { busy = false }
+        func trimmed(_ s: String?) -> String? {
+            let t = (s ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        }
+        do {
+            _ = try await api.startOdometerTrip(OdometerTripStartInput(
+                odometer_start: start, vehicle_type: trimmed(vehicleType), start_photo_url: trimmed(startPhoto), date: req.date))
+            let resp = try await api.endOdometerTrip(OdometerTripEndInput(
+                odometer_end: end, end_photo_url: trimmed(endPhoto), date: req.date))
+            let note = Self.endNotice(from: resp, currency: req.currency)
+            request = nil
+            // Let the sheet finish dismissing before the confirmation alert comes up (same as the END flow).
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            endNotice = note
         } catch {
             notice = error.localizedDescription
         }
