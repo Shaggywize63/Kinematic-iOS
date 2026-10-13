@@ -5,33 +5,38 @@
 //  The telecaller's "My Calls" tab — the leads an admin assigned to them. The
 //  backend already force-scopes GET /api/v1/crm/leads to the telecaller's own
 //  owner_id, so this is just the standard own-scoped list (reusing
-//  LeadsViewModel) rendered as a lean call worklist: each row shows name /
-//  phone / status with a one-tap Call button, and tapping the row opens the
-//  streamlined Log Call sheet.
+//  LeadsViewModel) rendered as a lean call worklist.
+//
+//  Phase 3 upgrades the phase-2 campaign filter chips into a real SECTION
+//  switcher — All / General / App & DigiGold / After-Sales. Changing section
+//  does NOT client-filter a single loaded page; it sets `vm.campaign` (the
+//  exact server `campaign` value, nil for All) and REFETCHES, so every section
+//  paginates independently on the server and shows its own count. Search and
+//  infinite scroll keep working within the active section because both ride
+//  the same `fetchPage` (which now carries `?campaign=`).
+//
+//  Tapping a lead pushes a shared, cross-linked lead profile (name / phone /
+//  status / campaign + engaged-campaigns + full call history) which hosts the
+//  existing Log Call sheet.
 //
 
 import SwiftUI
 
 struct TelecallerCallsView: View {
     @StateObject private var vm = LeadsViewModel()
-    /// The lead whose Log Call sheet is open; nil hides it.
-    @State private var loggingLead: Lead?
+    /// The active campaign section; nil = "All". Drives the server `campaign`
+    /// param — NOT a client-side filter over the loaded page.
+    @State private var section: LeadCampaign?
     /// Skip the initial re-appear refresh (the .task below covers first load).
     @State private var hasAppearedOnce = false
-    /// Campaign filter chip selection; nil = "All". Filters client-side over
-    /// the already-loaded list by each lead's `campaign` custom field.
-    @State private var campaignFilter: LeadCampaign?
 
-    /// The loaded leads after applying the campaign filter.
-    private var visibleLeads: [Lead] {
-        guard let f = campaignFilter else { return vm.leads }
-        return vm.leads.filter { LeadCampaign.of($0) == f }
-    }
+    /// The sections in switcher order: All, then every campaign.
+    private let sections: [LeadCampaign?] = [nil, .general, .appDigiGold, .afterSales]
 
     var body: some View {
         VStack(spacing: 0) {
             searchBar
-            campaignFilterBar
+            sectionBar
 
             if vm.total > 0 {
                 HStack {
@@ -49,13 +54,13 @@ struct TelecallerCallsView: View {
                         ProgressView().tint(Brand.red).padding(.top, 40)
                     } else if let err = vm.errorMessage, vm.leads.isEmpty {
                         errorState(err)
-                    } else if visibleLeads.isEmpty {
+                    } else if vm.leads.isEmpty {
                         emptyState
                     } else {
-                        ForEach(visibleLeads) { lead in
-                            TelecallerLeadRow(lead: lead) { loggingLead = lead }
+                        ForEach(vm.leads) { lead in
+                            TelecallerLeadRow(lead: lead)
                                 .onAppear {
-                                    if lead.id == visibleLeads.last?.id {
+                                    if lead.id == vm.leads.last?.id {
                                         Task { await vm.loadMoreIfNeeded() }
                                     }
                                 }
@@ -72,11 +77,11 @@ struct TelecallerCallsView: View {
             .refreshable { await vm.refresh() }
         }
         .navigationTitle("My Calls")
-        .sheet(item: $loggingLead) { lead in
-            NavigationStack {
-                TelecallerLogCallSheet(lead: lead) {
-                    Task { await vm.refresh() }
-                }
+        .navigationDestination(for: Lead.self) { lead in
+            TelecallerLeadProfileView(lead: lead) {
+                // A call logged from the profile may have moved the lead's
+                // status — refresh the worklist so the row reflects it.
+                Task { await vm.refresh() }
             }
         }
         .task { await vm.refresh() }
@@ -105,45 +110,53 @@ struct TelecallerCallsView: View {
         .padding(.bottom, 8)
     }
 
-    /// Campaign filter chip row: All / General / App & DigiGold / After-Sales.
-    private var campaignFilterBar: some View {
+    /// Prominent section switcher: All / General / App & DigiGold / After-Sales.
+    /// Styled as top-tabs (bold + red underline on the selected section) with a
+    /// hairline divider beneath, so it reads as a section switcher rather than
+    /// a loose set of filter chips. Horizontally scrollable so the long
+    /// "App & DigiGold" label never truncates on a phone.
+    private var sectionBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                filterChip(title: "All", isSelected: campaignFilter == nil) {
-                    campaignFilter = nil
-                }
-                ForEach(LeadCampaign.allCases) { c in
-                    filterChip(title: c.shortLabel, isSelected: campaignFilter == c) {
-                        campaignFilter = c
-                    }
+            HStack(spacing: 22) {
+                ForEach(Array(sections.enumerated()), id: \.offset) { _, s in
+                    sectionTab(title: s?.shortLabel ?? "All",
+                               isSelected: section == s) { select(s) }
                 }
             }
             .padding(.horizontal)
         }
+        .overlay(alignment: .bottom) { Divider() }
         .padding(.bottom, 8)
     }
 
-    private func filterChip(title: String, isSelected: Bool,
+    private func sectionTab(title: String, isSelected: Bool,
                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(isSelected ? Brand.red : Color(uiColor: .secondarySystemBackground))
-                .foregroundColor(isSelected ? .white : Color(uiColor: .label))
-                .clipShape(Capsule())
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 15, weight: isSelected ? .bold : .medium))
+                    .foregroundColor(isSelected ? Brand.red : .secondary)
+                Rectangle()
+                    .fill(isSelected ? Brand.red : Color.clear)
+                    .frame(height: 2.5)
+            }
         }
         .buttonStyle(.plain)
     }
 
-    /// Count label reflecting the active filter.
+    /// Switch section → set the server `campaign` param and refetch. A no-op
+    /// when the section is unchanged.
+    private func select(_ s: LeadCampaign?) {
+        guard section != s else { return }
+        section = s
+        vm.campaign = s?.serverValue
+        Task { await vm.refresh() }
+    }
+
+    /// The active section's lead count (server total for this campaign), with a
+    /// partial-load hint while more pages remain.
     private var countLabel: String {
-        if campaignFilter != nil {
-            let n = visibleLeads.count
-            return "\(n) lead\(n == 1 ? "" : "s")"
-        }
-        return vm.leads.count >= vm.total
+        vm.leads.count >= vm.total
             ? "\(vm.total) lead\(vm.total == 1 ? "" : "s")"
             : "Showing \(vm.leads.count) of \(vm.total) leads"
     }
@@ -161,11 +174,9 @@ struct TelecallerCallsView: View {
     }
 
     private var emptyStateMessage: String {
-        if campaignFilter != nil && !vm.leads.isEmpty {
-            return "No \(campaignFilter!.shortLabel) leads."
-        }
-        return vm.search.isEmpty ? "No leads assigned to you yet."
-                                 : "No leads match your search."
+        if !vm.search.isEmpty { return "No leads match your search." }
+        if let s = section { return "No \(s.shortLabel) leads." }
+        return "No leads assigned to you yet."
     }
 
     private func errorState(_ err: String) -> some View {
@@ -196,18 +207,17 @@ struct TelecallerCallsView: View {
     }
 }
 
-/// A compact call-worklist row: identity + status on the left, a Call pill and
-/// a "Log" affordance on the right. The whole row (outside the Call button)
-/// opens the Log Call sheet.
+/// A compact call-worklist row: identity + status on the left, a Call pill on
+/// the right. The identity area is a NavigationLink that pushes the lead's
+/// profile / call-history; the Call button stays independently tappable.
 private struct TelecallerLeadRow: View {
     let lead: Lead
-    let onLog: () -> Void
 
     private var campaign: LeadCampaign { LeadCampaign.of(lead) }
 
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: onLog) {
+            NavigationLink(value: lead) {
                 HStack(spacing: 12) {
                     ZStack {
                         Circle().fill(Brand.red.opacity(0.12)).frame(width: 44, height: 44)
