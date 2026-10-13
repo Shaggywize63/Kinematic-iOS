@@ -18,16 +18,24 @@ struct TelecallerCallsView: View {
     @State private var loggingLead: Lead?
     /// Skip the initial re-appear refresh (the .task below covers first load).
     @State private var hasAppearedOnce = false
+    /// Campaign filter chip selection; nil = "All". Filters client-side over
+    /// the already-loaded list by each lead's `campaign` custom field.
+    @State private var campaignFilter: LeadCampaign?
+
+    /// The loaded leads after applying the campaign filter.
+    private var visibleLeads: [Lead] {
+        guard let f = campaignFilter else { return vm.leads }
+        return vm.leads.filter { LeadCampaign.of($0) == f }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             searchBar
+            campaignFilterBar
 
             if vm.total > 0 {
                 HStack {
-                    Text(vm.leads.count >= vm.total
-                         ? "\(vm.total) lead\(vm.total == 1 ? "" : "s")"
-                         : "Showing \(vm.leads.count) of \(vm.total) leads")
+                    Text(countLabel)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
                     Spacer()
@@ -41,13 +49,13 @@ struct TelecallerCallsView: View {
                         ProgressView().tint(Brand.red).padding(.top, 40)
                     } else if let err = vm.errorMessage, vm.leads.isEmpty {
                         errorState(err)
-                    } else if vm.leads.isEmpty {
+                    } else if visibleLeads.isEmpty {
                         emptyState
                     } else {
-                        ForEach(vm.leads) { lead in
+                        ForEach(visibleLeads) { lead in
                             TelecallerLeadRow(lead: lead) { loggingLead = lead }
                                 .onAppear {
-                                    if lead.id == vm.leads.last?.id {
+                                    if lead.id == visibleLeads.last?.id {
                                         Task { await vm.loadMoreIfNeeded() }
                                     }
                                 }
@@ -97,16 +105,67 @@ struct TelecallerCallsView: View {
         .padding(.bottom, 8)
     }
 
+    /// Campaign filter chip row: All / General / App & DigiGold / After-Sales.
+    private var campaignFilterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                filterChip(title: "All", isSelected: campaignFilter == nil) {
+                    campaignFilter = nil
+                }
+                ForEach(LeadCampaign.allCases) { c in
+                    filterChip(title: c.shortLabel, isSelected: campaignFilter == c) {
+                        campaignFilter = c
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.bottom, 8)
+    }
+
+    private func filterChip(title: String, isSelected: Bool,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(isSelected ? Brand.red : Color(uiColor: .secondarySystemBackground))
+                .foregroundColor(isSelected ? .white : Color(uiColor: .label))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Count label reflecting the active filter.
+    private var countLabel: String {
+        if campaignFilter != nil {
+            let n = visibleLeads.count
+            return "\(n) lead\(n == 1 ? "" : "s")"
+        }
+        return vm.leads.count >= vm.total
+            ? "\(vm.total) lead\(vm.total == 1 ? "" : "s")"
+            : "Showing \(vm.leads.count) of \(vm.total) leads"
+    }
+
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "phone.badge.checkmark")
                 .font(.system(size: 40))
                 .foregroundColor(Brand.red.opacity(0.5))
-            Text(vm.search.isEmpty ? "No leads assigned to you yet."
-                                   : "No leads match your search.")
+            Text(emptyStateMessage)
                 .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
         }
         .padding(.top, 60)
+    }
+
+    private var emptyStateMessage: String {
+        if campaignFilter != nil && !vm.leads.isEmpty {
+            return "No \(campaignFilter!.shortLabel) leads."
+        }
+        return vm.search.isEmpty ? "No leads assigned to you yet."
+                                 : "No leads match your search."
     }
 
     private func errorState(_ err: String) -> some View {
@@ -144,6 +203,8 @@ private struct TelecallerLeadRow: View {
     let lead: Lead
     let onLog: () -> Void
 
+    private var campaign: LeadCampaign { LeadCampaign.of(lead) }
+
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onLog) {
@@ -166,6 +227,15 @@ private struct TelecallerLeadRow: View {
                             Text(s.replacingOccurrences(of: "_", with: " ").capitalized)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(Brand.red)
+                        }
+                        if campaign != .general {
+                            Text(campaign.shortLabel)
+                                .font(.system(size: 10, weight: .bold))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Brand.red.opacity(0.12))
+                                .foregroundColor(Brand.red)
+                                .clipShape(Capsule())
                         }
                     }
                     Spacer()
