@@ -55,7 +55,13 @@ struct ContentView: View {
                 // until the user rotates off their initial/temp password.
                 SetPasswordView(onSuccess: { appState.checkAuth() })
             } else {
+                // Mandatory location: the post-login app is blocked behind a
+                // full-screen gate whenever location is unusable (permission
+                // not granted, or the device Location Services switch is off).
+                // The gate auto-dismisses the instant location becomes usable.
+                // Scoped to MainTabView so login / set-password stay reachable.
                 MainTabView()
+                    .locationRequiredGate()
             }
         }
         .background(VibrantBackgroundView().ignoresSafeArea())
