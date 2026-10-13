@@ -60,8 +60,18 @@ struct ContentView: View {
                 // not granted, or the device Location Services switch is off).
                 // The gate auto-dismisses the instant location becomes usable.
                 // Scoped to MainTabView so login / set-password stay reachable.
-                MainTabView()
-                    .locationRequiredGate()
+                //
+                // Telecallers are phone agents (no field visits / GPS), so their
+                // shell skips the gate entirely — a telecaller must reach their
+                // call list even with Location Services off. Every other
+                // authenticated shell stays behind the gate. The role is fixed
+                // for the session, so the branch identity is stable.
+                if ClientFeatures.isTelecaller {
+                    MainTabView()
+                } else {
+                    MainTabView()
+                        .locationRequiredGate()
+                }
             }
         }
         .background(VibrantBackgroundView().ignoresSafeArea())
@@ -150,7 +160,15 @@ struct MainTabView: View {
         // Pipeline / Activities / More — so CRM feels like its own product.
         // Full-access clients keep the field-ops MainTabView and reach CRM via
         // the side menu, which presents the same CRMTabView as a fullScreenCover.
-        if crmOnlyMode {
+        if ClientFeatures.isTelecaller {
+            // Telecaller (outbound "Call Tracker", phase 1): a focused phone-agent
+            // shell — My Calls / Follow-ups / Targets / More — with every
+            // field/GPS surface hidden. Checked before crmOnlyMode because a
+            // hybrid tenant (Rajkamal: field-force + CRM) is NOT crm-only, and a
+            // telecaller there must still land in this shell, never the
+            // field-ops one.
+            TelecallerTabView()
+        } else if crmOnlyMode {
             CRMTabView()
         } else {
             mainTabBody

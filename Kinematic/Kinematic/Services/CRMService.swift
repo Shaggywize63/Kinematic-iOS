@@ -396,6 +396,17 @@ final class CRMService {
     func createActivity(_ body: [String: Any]) async throws -> Activity {
         try await postJSON("/api/v1/crm/activities", body: body)
     }
+    /// Head-count of the signed-in user's activities of `type` within an ISO
+    /// window — reads the `total` of `/api/v1/crm/activities/summary` (which the
+    /// backend auto owner-scopes). Used by the telecaller Targets tab's "Calls
+    /// this month" tile. Best-effort: any failure reads as 0 so the tile never
+    /// blocks the screen. Not city-aware, so the global picker is never appended.
+    func activityCount(type: String, from: String, to: String) async -> Int {
+        struct SummaryData: Codable { let total: Int? }
+        let q = ["type": type, "from": from, "to": to]
+        let s: SummaryData? = try? await get("/api/v1/crm/activities/summary", query: q)
+        return s?.total ?? 0
+    }
     /// Update an existing activity (used by the auto-log-then-edit path on
     /// the call button: tap dials + creates a minimal activity, composer
     /// opens to optionally add notes/duration, save PATCHes the same row).

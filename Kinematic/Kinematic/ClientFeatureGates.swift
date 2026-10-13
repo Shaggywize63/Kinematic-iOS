@@ -97,6 +97,20 @@ enum ClientFeatures {
         return raw.lowercased().contains("consumer champion")
     }
 
+    /// True when the signed-in user is a Telecaller — a phone agent (no field
+    /// visits / GPS) who works the leads an admin assigned to them: call each,
+    /// log a disposition, move the lead's status, optionally set a follow-up and
+    /// a scheme amount. Drives the focused telecaller shell (My Calls /
+    /// Follow-ups / Targets / More) and bypasses the mandatory-location gate.
+    /// Matched against `orgRoleName` as a case-insensitive substring so admin
+    /// variants like "Telecaller Lead" also collapse into the same gate without
+    /// an app release — mirroring `isConsumerChampion`. The backend independently
+    /// force-scopes a telecaller's lead list to their own owner_id.
+    static var isTelecaller: Bool {
+        let raw = Session.currentUser?.orgRoleName ?? ""
+        return raw.lowercased().contains("telecaller")
+    }
+
     /// True when the signed-in user is allowed to reassign a lead's owner.
     /// Reps with `data_scope='own'` (e.g. Tata Tiscon's Consumer Champion
     /// designation) only see leads they own — handing one off would hide
