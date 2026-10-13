@@ -71,12 +71,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select latest Xcode (26 / iOS 26 SDK)
-        run: |
-          set -e
-          latest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n1 || echo "")
-          if [ -n "$latest" ]; then sudo xcode-select -s "$latest/Contents/Developer"; fi
-          xcodebuild -version
+      # Pin to the latest RELEASED (stable) Xcode on the runner. The previous
+      # `ls /Applications/Xcode*.app | sort -V | tail -n1` picked the highest-
+      # VERSIONED Xcode, which on a runner image that also ships a pre-release
+      # Xcode (e.g. an Xcode 27 beta on macos-26) selects the BETA. App Store
+      # Connect REJECTS binaries built with a beta Xcode/SDK — it surfaces as the
+      # generic "Preparing build for App Store Connect failed" at upload. `latest-
+      # stable` always excludes betas, so the uploaded build stays store-acceptable
+      # while still using the newest released SDK (Xcode 26.x today).
+      - name: Select latest released (stable) Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show selected Xcode
+        run: xcodebuild -version
 
       - name: Fail fast if signing secrets are missing
         run: |
