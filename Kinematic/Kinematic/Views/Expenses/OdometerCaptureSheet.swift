@@ -220,7 +220,9 @@ struct OdometerCaptureSheet: View {
             case .combined: return "Record today's travel"
             }
         }()
-        return Label(title, systemImage: "car.fill").font(.headline)
+        // Neutral odometer icon — the vehicle's own icon is shown on the vehicle row below, so the header
+        // never mislabels a bike rep's trip with a car.
+        return Label(title, systemImage: "speedometer").font(.headline)
     }
 
     // ── START ─────────────────────────────────────────────────────────────────
@@ -231,14 +233,16 @@ struct OdometerCaptureSheet: View {
         if vehicles.count > 1 {
             Picker("Vehicle", selection: $vehicle) {
                 Text("Choose a vehicle…").tag("")
-                ForEach(vehicles) { v in Text("\(v.label) · \(expenseMoney(v.rate_per_km, currency))/km").tag(v.id) }
+                ForEach(vehicles) { v in
+                    Label("\(v.label) · \(expenseMoney(v.rate_per_km, currency))/km", systemImage: ExpenseLogic.vehicleIcon(v.id)).tag(v.id)
+                }
             }
             .pickerStyle(.menu)
         } else if let only = vehicles.first {
             HStack {
                 Text("Vehicle").foregroundColor(.secondary)
                 Spacer()
-                Text("\(only.label) · \(expenseMoney(only.rate_per_km, currency))/km")
+                Label("\(only.label) · \(expenseMoney(only.rate_per_km, currency))/km", systemImage: ExpenseLogic.vehicleIcon(only.id))
             }.font(.subheadline)
         }
         OdometerCaptureField(title: "Start odometer", reading: $reading, photoURL: $photo,
@@ -290,14 +294,16 @@ struct OdometerCaptureSheet: View {
         if vehicles.count > 1 {
             Picker("Vehicle", selection: $vehicle) {
                 Text("Choose a vehicle…").tag("")
-                ForEach(vehicles) { v in Text("\(v.label) · \(expenseMoney(v.rate_per_km, currency))/km").tag(v.id) }
+                ForEach(vehicles) { v in
+                    Label("\(v.label) · \(expenseMoney(v.rate_per_km, currency))/km", systemImage: ExpenseLogic.vehicleIcon(v.id)).tag(v.id)
+                }
             }
             .pickerStyle(.menu)
         } else if let only = vehicles.first {
             HStack {
                 Text("Vehicle").foregroundColor(.secondary)
                 Spacer()
-                Text("\(only.label) · \(expenseMoney(only.rate_per_km, currency))/km")
+                Label("\(only.label) · \(expenseMoney(only.rate_per_km, currency))/km", systemImage: ExpenseLogic.vehicleIcon(only.id))
             }.font(.subheadline)
         }
         OdometerCaptureField(title: "Start odometer", reading: $reading, photoURL: $photo,
