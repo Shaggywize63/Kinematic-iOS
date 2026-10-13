@@ -259,6 +259,21 @@ enum ExpenseLogic {
         return t.prefix(1).uppercased() + t.dropFirst()
     }
 
+    /// The SF Symbol for a vehicle type, so a vehicle chip/row shows the right picture (a bike-policy rep
+    /// should never see a car). Matches the policy's vehicle ids (e.g. "car", "bike") and tolerant of the
+    /// common synonyms; falls back to a neutral car.
+    static func vehicleIcon(_ id: String?) -> String {
+        let t = (id ?? "").lowercased().trimmingCharacters(in: .whitespaces)
+        if t.contains("bicycle") || t == "cycle" { return "bicycle" }
+        if t.contains("bike") || t.contains("two_wheeler") || t.contains("twowheeler")
+            || t.contains("motor") || t.contains("scooter") || t.contains("scooty") { return "motorcycle" }
+        if t.contains("truck") || t.contains("lorry") || t.contains("tempo") { return "truck.box.fill" }
+        if t.contains("bus") || t.contains("public") { return "bus.fill" }
+        if t.contains("auto") || t.contains("rickshaw") { return "car.2.fill" }
+        if t.contains("walk") || t.contains("foot") { return "figure.walk" }
+        return "car.fill"
+    }
+
     /// "120", "99.5" — no trailing zeros, for putting a number back into a text field.
     static func trimNumber(_ v: Double) -> String {
         if v == v.rounded() { return String(Int(v)) }
