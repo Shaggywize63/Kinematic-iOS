@@ -2098,6 +2098,21 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
     private let locationManager = CLLocationManager()
     @Published var lastLocation: CLLocation?
 
+    // --- Mandatory-location gate state (delegate- + foreground-driven) ---
+    // The full-screen LocationRequiredGate can't poll; it must react the
+    // instant authorization flips or the Location Services master switch is
+    // toggled. We mirror both inputs onto @Published properties here — updated
+    // from the authorization-change delegate callback and re-read on every app
+    // foreground — so a SwiftUI gate bound to this single shared manager
+    // auto-dismisses the moment location becomes usable. The synchronous
+    // `isLocationUsable` below is unchanged and still used for one-off,
+    // action-time checks (attendance check-in / selfie / form submit).
+    @Published private(set) var authorizationStatus: CLAuthorizationStatus = .notDetermined
+    /// Device-level Location Services master switch. Defaults to `true` so a
+    /// returning, already-authorized user never flashes the gate before the
+    /// first (off-main) read lands.
+    @Published private(set) var locationServicesOn: Bool = true
+
     // --- Fix-driven live ping (trail density) ---
     // The trail was showing only a couple of points/day because the live
     // ping was driven *solely* by a repeating Timer at the admin cadence:
@@ -2121,7 +2136,12 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 10 // Update every 10 meters if moving fast
-        
+        // Seed the gate-state mirrors from the current authorization so a
+        // returning, already-authorized user never flashes the location gate;
+        // the master-switch read happens off the main thread.
+        self.authorizationStatus = locationManager.authorizationStatus
+        self.refreshServicesEnabled()
+
         // Defer background update activation to prevent launch-time crashes.
         //
         // CLLocationManager.allowsBackgroundLocationUpdates = true throws
@@ -2222,6 +2242,33 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
         return granted && CLLocationManager.locationServicesEnabled()
     }
 
+    /// Published mirror of `isLocationUsable` — driven by the delegate and the
+    /// foreground re-check (not a live read), so a SwiftUI gate bound to it
+    /// re-renders the instant either input changes. Usable == authorized
+    /// (When-In-Use or Always) AND the device Location Services switch is on.
+    var isLocationUsablePublished: Bool {
+        let granted = authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse
+        return granted && locationServicesOn
+    }
+
+    /// Re-read the device Location Services master switch OFF the main thread
+    /// (`locationServicesEnabled()` warns/blocks when called on main) and
+    /// publish the result back on main. Cheap; safe to call often.
+    func refreshServicesEnabled() {
+        Task.detached {
+            let on = CLLocationManager.locationServicesEnabled()
+            await MainActor.run { self.locationServicesOn = on }
+        }
+    }
+
+    /// Re-check the whole location-gate state (authorization + master switch).
+    /// Called on every app foreground, where the OS fires no authorization
+    /// delegate callback if the master switch was toggled while backgrounded.
+    func refreshLocationGateState() {
+        self.authorizationStatus = locationManager.authorizationStatus
+        refreshServicesEnabled()
+    }
+
     /// Fire-and-forget honest report of the device's location state to
     /// PATCH /users/location-status. Never blocks the UI; the 204 that tenants
     /// with live tracking disabled return is ignored downstream.
@@ -2244,6 +2291,10 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
     /// authorization / accuracy change — including changes triggered by a
     /// prompt raised on the one-shot manager, since authorization is app-wide.
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        // Keep the mandatory-location gate's mirrors current so it reacts the
+        // instant the user answers the permission prompt or flips the setting.
+        self.authorizationStatus = manager.authorizationStatus
+        refreshServicesEnabled()
         reportLocationStatus()
     }
 }
