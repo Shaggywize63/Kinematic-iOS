@@ -80,6 +80,8 @@ extension Activity {
             type: type,
             subject: subject,
             description: description,
+            body: body,
+            outcome: outcome,
             leadId: leadId,
             contactId: contactId,
             accountId: accountId,
@@ -99,7 +101,9 @@ extension Activity {
             contactName: contactName,
             dealName: dealName,
             directoryName: directoryName,
-            directoryPhone: directoryPhone
+            directoryPhone: directoryPhone,
+            customFields: customFields,
+            metadata: metadata
         )
     }
 }

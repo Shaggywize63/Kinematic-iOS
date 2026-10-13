@@ -6,6 +6,16 @@ struct Activity: Codable, Identifiable, Hashable {
     let type: String?           // call, email, meeting, note, task
     let subject: String?
     let description: String?
+    /// The persisted note column on `crm_activities`. The backend folds a
+    /// POSTed `description` into `body` (the `description` key does not exist
+    /// as a column), so a call logged via the Log Call sheet carries its
+    /// remarks here — `description` comes back nil for those rows. Read
+    /// `body` for the remarks, falling back to `description` for any older
+    /// surface that still echoes it.
+    let body: String?
+    /// Call disposition — a real `crm_activities` column, passed straight
+    /// through by the backend. Holds the Log Call sheet's "outcome".
+    let outcome: String?
     let leadId: String?
     let contactId: String?
     let accountId: String?
@@ -40,6 +50,29 @@ struct Activity: Codable, Identifiable, Hashable {
     /// name + mobile so the card can show "Radha Traders · 9431188608".
     let directoryName: String?
     let directoryPhone: String?
+    /// Campaign feedback captured on the Log Call sheet (humanised keys like
+    /// `digigold_explained`, `app_rating`, `customer_rating`, `complaint`…).
+    /// Decoded loosely — mirrors `Lead.customFields`.
+    let customFields: [String: AnyCodable]?
+    /// Free-form activity metadata (jsonb). Imported calls stamp
+    /// `metadata.campaign` here; app-logged calls may omit it. Read the
+    /// campaign via `metadata["campaign"]?.value`.
+    let metadata: [String: AnyCodable]?
+
+    /// The remarks note for display — the persisted `body`, falling back to
+    /// the legacy `description` echo.
+    var remarksText: String? {
+        if let b = body?.trimmingCharacters(in: .whitespacesAndNewlines), !b.isEmpty { return b }
+        if let d = description?.trimmingCharacters(in: .whitespacesAndNewlines), !d.isEmpty { return d }
+        return nil
+    }
+
+    /// The campaign string stamped on this activity's `metadata`, if any.
+    var metadataCampaign: String? {
+        guard let raw = metadata?["campaign"]?.value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        return raw
+    }
 
     /// Effective workflow state for UI rendering — falls back to a sensible
     /// default when the backend hasn't stamped `status` yet (older rows).
@@ -52,6 +85,9 @@ struct Activity: Codable, Identifiable, Hashable {
         case id
         case orgId = "org_id"
         case type, subject, description, status
+        case body, outcome
+        case customFields = "custom_fields"
+        case metadata
         case leadId = "lead_id"
         case contactId = "contact_id"
         case accountId = "account_id"

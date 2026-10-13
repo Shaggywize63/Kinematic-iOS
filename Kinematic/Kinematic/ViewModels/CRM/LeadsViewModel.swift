@@ -24,6 +24,11 @@ final class LeadsViewModel: ObservableObject {
     // a tenant gate).
     @Published var sortKey: String = "created"
     @Published var sortAscending: Bool = false
+    /// Telecaller campaign section filter — the exact server `campaign` value
+    /// ("General Calls" / "App & DigiGold" / "After-Sales") or nil for "All".
+    /// When set, `fetchPage` sends `?campaign=`, so each section paginates
+    /// independently on the server instead of client-filtering one page.
+    @Published var campaign: String? = nil
 
     /// True when the list is at its default ordering — drives the sort icon's
     /// neutral (vs. "a sort is applied") colour so the newest-first default
@@ -112,7 +117,8 @@ final class LeadsViewModel: ObservableObject {
             ownerId: ownerFilter == "all" ? nil : ownerFilter,
             sourceId: sourceFilter == "all" ? nil : sourceFilter,
             sort: sortKey == "recent" ? nil : sortKey,
-            order: sortKey == "recent" ? nil : (sortAscending ? "asc" : "desc")
+            order: sortKey == "recent" ? nil : (sortAscending ? "asc" : "desc"),
+            campaign: campaign
         )
     }
 

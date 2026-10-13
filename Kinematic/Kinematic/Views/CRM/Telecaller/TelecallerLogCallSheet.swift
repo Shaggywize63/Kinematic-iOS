@@ -471,10 +471,22 @@ enum LeadCampaign: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Short label used by the My Calls filter chips and the row badge.
+    /// Short label used by the My Calls section switcher and the row badge.
     var shortLabel: String {
         switch self {
         case .general: return "General"
+        case .appDigiGold: return "App & DigiGold"
+        case .afterSales: return "After-Sales"
+        }
+    }
+
+    /// The exact server `campaign` string this case maps to — what the backend
+    /// leads list matches on (`custom_fields->>campaign`) and what imported
+    /// calls stamp in `metadata.campaign`. Note General's server value is
+    /// "General Calls", not the short "General" label.
+    var serverValue: String {
+        switch self {
+        case .general: return "General Calls"
         case .appDigiGold: return "App & DigiGold"
         case .afterSales: return "After-Sales"
         }
@@ -493,5 +505,24 @@ enum LeadCampaign: String, CaseIterable, Identifiable {
     /// Classifies a lead by its `campaign` custom field.
     static func of(_ lead: Lead) -> LeadCampaign {
         from(lead.customFields?["campaign"]?.value)
+    }
+
+    /// Lenient classifier for a raw campaign string that may arrive in a
+    /// non-canonical shape (e.g. an activity's `metadata.campaign` on an
+    /// imported call). Mirrors the backend's `canonCampaign`: case- and
+    /// separator-insensitive. Unrecognised / empty → `.general`.
+    static func lenient(_ raw: String?) -> LeadCampaign {
+        let s = (raw ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "&", with: "")
+        switch s {
+        case "appdigigold": return .appDigiGold
+        case "aftersales": return .afterSales
+        default: return .general
+        }
     }
 }
