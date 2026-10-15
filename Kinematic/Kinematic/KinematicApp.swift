@@ -3956,19 +3956,35 @@ class KinematicRepository {
     /// out of the camera; this typically lands at 50–150 KB while staying
     /// readable for face-recognition / ID purposes. Hot path on attendance.
     static func compressForUpload(_ image: UIImage, maxDim: CGFloat = 1280, targetKB: Int = 150) -> Data? {
+        // 0. Bake the capture's orientation into the pixels. A camera image carries
+        // its rotation in `imageOrientation` (EXIF); encoding without flattening it
+        // can leave the photo sideways for consumers that don't honour the tag.
+        // The resize path below already redraws (and so normalizes), but a small,
+        // un-resized image would otherwise pass straight through — so normalize up
+        // front. Parity with the Android selfie-orientation fix.
+        let upright: UIImage
+        if image.imageOrientation != .up {
+            UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+            upright = UIGraphicsGetImageFromCurrentImageContext() ?? image
+            UIGraphicsEndImageContext()
+        } else {
+            upright = image
+        }
+
         // 1. Resize so neither dimension exceeds maxDim. Aspect-ratio preserved.
         let resized: UIImage
-        let w = image.size.width, h = image.size.height
+        let w = upright.size.width, h = upright.size.height
         let longest = max(w, h)
         if longest > maxDim {
             let scale = maxDim / longest
             let newSize = CGSize(width: w * scale, height: h * scale)
             UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
-            image.draw(in: CGRect(origin: .zero, size: newSize))
-            resized = UIGraphicsGetImageFromCurrentImageContext() ?? image
+            upright.draw(in: CGRect(origin: .zero, size: newSize))
+            resized = UIGraphicsGetImageFromCurrentImageContext() ?? upright
             UIGraphicsEndImageContext()
         } else {
-            resized = image
+            resized = upright
         }
 
         // 2. Iteratively reduce quality until under target, floor at 0.4.
