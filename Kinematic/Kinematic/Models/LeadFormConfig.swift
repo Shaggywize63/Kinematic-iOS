@@ -215,6 +215,38 @@ enum CustomFieldOptions {
     }
 }
 
+// MARK: - Marketing-visit area
+
+/// The "Area" pick-list on the marketing-visit quick-create.
+///
+/// Rajkamal's `area` custom field is a ~400-village list, but the quick-create screen used to be a
+/// free-text box, so the same village got typed a dozen ways. When the admin made `area` a pick-list
+/// (a select / radio with options) the screen offers the same type-ahead the lead form does. For a
+/// tenant that did not, or when the definitions could not be loaded, it returns nil and the screen
+/// keeps its free-text box — a visit can always be started.
+enum MarketingVisitArea {
+    struct Choices: Equatable {
+        let label: String
+        let options: [String]
+    }
+
+    /// `defs` are the lead definitions `CustomFieldsModel.loadDefs` already narrowed to the caller's role
+    /// and dropped tombstoned / hidden rows from. `isB2C` is the lead segment the quick-create creates (a
+    /// field scoped to the other segment is not offered).
+    static func choices(from defs: [CRMCustomFieldDef], isB2C: Bool) -> Choices? {
+        let scope = isB2C ? "b2c" : "b2b"
+        guard let def = defs.first(where: { d in
+            let applies = d.appliesTo ?? "both"
+            return d.fieldKey == "area" && (applies == "both" || applies == scope)
+        }) else { return nil }
+        guard def.fieldType == "select" || def.fieldType == "radio" else { return nil }
+        let options = CustomFieldOptions.visible(def.options)
+        guard !options.isEmpty else { return nil }
+        let label = def.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Choices(label: label.isEmpty ? "Area" : label, options: options)
+    }
+}
+
 // MARK: - Schedule visit
 
 /// Schedule visit on lead create: the rep picks a date and time; the server adds a planned meeting for the

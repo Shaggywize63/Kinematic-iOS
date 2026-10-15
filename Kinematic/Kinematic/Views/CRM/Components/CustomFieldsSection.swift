@@ -37,7 +37,13 @@ final class CustomFieldsModel: ObservableObject {
         }
     }
 
-    func load(entity: String) async {
+    /// True once `loadDefs` has finished — even when it found nothing — so a screen that renders a single
+    /// field can tell "still loading" from "this tenant has no such field".
+    @Published private(set) var didLoadDefs = false
+
+    /// Just the definitions: fetched, narrowed to the entity / role / non-tombstoned, and ordered. `load`
+    /// adds the product-name and lookup-row fetches on top; a screen that only reads the defs stops here.
+    func loadDefs(entity: String) async {
         let all = await CRMService.shared.listCustomFields()
         let roleId = await CRMService.shared.myOrgRoleId()
         defs = all
@@ -61,6 +67,11 @@ final class CustomFieldsModel: ObservableObject {
                 return roles.contains(rid)
             }
             .sorted { ($0.position ?? 0) < ($1.position ?? 0) }
+        didLoadDefs = true
+    }
+
+    func load(entity: String) async {
+        await loadDefs(entity: entity)
         // "Options from Products" selects: fetch the active product names once.
         if defs.contains(where: { $0.fieldType == "select" && CustomFieldOptions.isProductSource($0.options) }),
            let products = try? await CRMService.shared.listProducts() {
@@ -324,7 +335,8 @@ struct CustomFieldsSection: View {
 /// One row of the form: shows the current pick (or "—") and opens a search sheet on tap. For long lists
 /// (crops) and for product names, where a plain Picker is unusable. A stored value that is no longer in
 /// `options` (a product renamed later) still shows, so editing a record never silently blanks it.
-private struct SearchableOptionRow: View {
+/// Internal (not private) so other forms — the marketing-visit Area — reuse the same picker.
+struct SearchableOptionRow: View {
     let label: String
     let value: String
     let options: [String]
@@ -333,6 +345,16 @@ private struct SearchableOptionRow: View {
     let onPick: (String) -> Void
 
     @State private var sheetOpen = false
+
+    // Explicit, because the synthesized memberwise init turns private when any stored property is private
+    // (`sheetOpen` is) — fine while this row was only built inside this file, a compile error from another.
+    init(label: String, value: String, options: [String], emptyHint: String, onPick: @escaping (String) -> Void) {
+        self.label = label
+        self.value = value
+        self.options = options
+        self.emptyHint = emptyHint
+        self.onPick = onPick
+    }
 
     var body: some View {
         Button {

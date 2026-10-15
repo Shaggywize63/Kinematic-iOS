@@ -150,6 +150,64 @@ final class LeadFormConfigTests: XCTestCase {
         XCTAssertEqual(names, ["NPK 19-19-19", "Neem Oil"])
     }
 
+    // MARK: - marketing-visit Area pick-list
+
+    /// A lead definition as the API delivers it (decoded, so the real Codable keys are exercised).
+    private func areaDef(
+        key: String = "area", type: String = "select", options: [String]? = ["__searchable__", "Abbimatta", "Hosakote"],
+        label: String = "Area / Locality", appliesTo: String? = "both"
+    ) -> CRMCustomFieldDef {
+        var json: [String: Any] = [
+            "id": "d1", "entity_type": "lead", "field_key": key, "label": label, "field_type": type,
+        ]
+        if let options { json["options"] = options }
+        if let appliesTo { json["applies_to"] = appliesTo }
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        return try! JSONDecoder().decode(CRMCustomFieldDef.self, from: data)
+    }
+
+    func testAnAreaSelectBecomesAPickListWithoutTheReservedTokens() {
+        let c = MarketingVisitArea.choices(from: [areaDef()], isB2C: true)
+        XCTAssertEqual(c, MarketingVisitArea.Choices(label: "Area / Locality", options: ["Abbimatta", "Hosakote"]))
+    }
+
+    func testARadioAreaIsAPickListToo() {
+        XCTAssertEqual(MarketingVisitArea.choices(from: [areaDef(type: "radio")], isB2C: true)?.options, ["Abbimatta", "Hosakote"])
+    }
+
+    func testNoAreaFieldMeansTheFreeTextBox() {
+        XCTAssertNil(MarketingVisitArea.choices(from: [], isB2C: true))
+        XCTAssertNil(MarketingVisitArea.choices(from: [areaDef(key: "pincode")], isB2C: true))
+    }
+
+    func testAFreeTextAreaFieldStaysFreeText() {
+        XCTAssertNil(MarketingVisitArea.choices(from: [areaDef(type: "text", options: nil)], isB2C: true))
+    }
+
+    func testAnAreaSelectWithNoRealOptionsStaysFreeText() {
+        XCTAssertNil(MarketingVisitArea.choices(from: [areaDef(options: nil)], isB2C: true))
+        XCTAssertNil(MarketingVisitArea.choices(from: [areaDef(options: [])], isB2C: true))
+        // only the reserved token — nothing a rep could actually pick
+        XCTAssertNil(MarketingVisitArea.choices(from: [areaDef(options: ["__searchable__"])], isB2C: true))
+    }
+
+    func testAnAreaScopedToTheOtherSegmentIsNotOffered() {
+        XCTAssertNil(MarketingVisitArea.choices(from: [areaDef(appliesTo: "b2b")], isB2C: true))
+        XCTAssertNotNil(MarketingVisitArea.choices(from: [areaDef(appliesTo: "b2c")], isB2C: true))
+        XCTAssertNotNil(MarketingVisitArea.choices(from: [areaDef(appliesTo: "b2b")], isB2C: false))
+        // a backend row with no applies_to column behaves as "both"
+        XCTAssertNotNil(MarketingVisitArea.choices(from: [areaDef(appliesTo: nil)], isB2C: true))
+    }
+
+    func testABlankLabelFallsBackToArea() {
+        XCTAssertEqual(MarketingVisitArea.choices(from: [areaDef(label: "   ")], isB2C: true)?.label, "Area")
+    }
+
+    func testTheAreaDefIsFoundAmongOtherFields() {
+        let defs = [areaDef(key: "campaign", type: "select", options: ["X"]), areaDef(), areaDef(key: "city_note", type: "text", options: nil)]
+        XCTAssertEqual(MarketingVisitArea.choices(from: defs, isB2C: true)?.options, ["Abbimatta", "Hosakote"])
+    }
+
     // MARK: - schedule visit
 
     func testTheVisitTimeIsSentAsISOUTC() {
