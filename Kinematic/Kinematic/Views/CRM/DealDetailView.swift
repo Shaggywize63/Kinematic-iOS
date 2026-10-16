@@ -111,6 +111,7 @@ struct DealDetailView: View {
                             }
                         }
                     }
+                    UpsellsSectionView(dealId: dealId)
                     DealHistorySection(dealId: dealId, refreshTick: historyRefreshTick)
                 } else {
                     ProgressView().padding()

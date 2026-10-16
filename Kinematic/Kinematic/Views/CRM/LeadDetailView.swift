@@ -161,6 +161,7 @@ struct LeadDetailView: View {
                     recentUpdatesSection
                     recordCard(lead: lead)
                     activitiesSection
+                    UpsellsSectionView(leadId: lead.id)
                     conversationsSection
                 } else if vm.isLoading {
                     ProgressView().tint(Brand.red).padding(.top, 40).frame(maxWidth: .infinity)

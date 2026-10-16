@@ -162,6 +162,13 @@ enum ClientFeatures {
         Session.currentUser?.enabledModules.contains("timeline") == true
     }
 
+    /// IVR Call module (`ivr_call`, off by default): the "IVR Call" pill on the shared Call button, which places a
+    /// recorded server-side click-to-call (CallerDesk). STRICT entitlement check (like `hasExpenses`): an empty
+    /// legacy-session module list must NOT surface it. Mirrors Android's `modules.contains("ivr_call")`.
+    static var hasIvrCall: Bool {
+        Session.currentUser?.enabledModules.contains("ivr_call") == true
+    }
+
     /// Form Builder module (`form_builder`, package `field_force`) — the ad-hoc
     /// forms capability. Drives the ad-hoc "New" (➕) bottom tab for ANY
     /// field-force client that holds the module, not just the hardcoded ByteBack
