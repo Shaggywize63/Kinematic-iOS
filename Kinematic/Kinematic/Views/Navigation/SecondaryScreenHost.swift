@@ -67,6 +67,8 @@ struct SecondaryScreenHost: View {
                             LeaveHomeView()
                         case .expenses:
                             ExpenseClaimsView()
+                        case .timeline:
+                            DayTimelineView()
                         case .notificationTarget:
                             if let target = route.target {
                                 NotificationDestinationView(target: target)

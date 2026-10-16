@@ -155,6 +155,13 @@ enum ClientFeatures {
         Session.currentUser?.enabledModules.contains("field_expenses") == true
     }
 
+    /// Timeline module (`timeline`, off by default): a day in time order — check-in, travel, visits, halts, check-out.
+    /// STRICT entitlement check (like `hasExpenses`): an empty legacy-session module list must NOT surface it, so only
+    /// clients explicitly granted the module see the Timeline menu entry. Mirrors Android's `Entitlements.showsTimeline`.
+    static var hasTimeline: Bool {
+        Session.currentUser?.enabledModules.contains("timeline") == true
+    }
+
     /// Form Builder module (`form_builder`, package `field_force`) — the ad-hoc
     /// forms capability. Drives the ad-hoc "New" (➕) bottom tab for ANY
     /// field-force client that holds the module, not just the hardcoded ByteBack
