@@ -140,6 +140,20 @@ final class CRMService {
         try await postJSON("/api/v1/crm/telephony/click-to-call", body: ["to": to])
     }
 
+    // MARK: Upsells (extra revenue logged on an existing deal/lead)
+    func listUpsells(dealId: String? = nil, leadId: String? = nil) async throws -> [Upsell] {
+        var q: [String: String] = [:]
+        if let d = dealId, !d.isEmpty { q["deal_id"] = d }
+        if let l = leadId, !l.isEmpty { q["lead_id"] = l }
+        return try await get("/api/v1/crm/upsells", query: q)
+    }
+    func createUpsell(_ body: [String: Any]) async throws -> Upsell {
+        try await postJSON("/api/v1/crm/upsells", body: body)
+    }
+    func deleteUpsell(id: String) async throws {
+        let _: EmptyAck = try await delete("/api/v1/crm/upsells/\(id)")
+    }
+
     /// Replay-only entry point used by OfflineLeadQueue. Adds the
     /// Idempotency-Key header so the server returns the original
     /// response if the queued POST already landed once.
