@@ -195,6 +195,16 @@ struct SideMenuView: View {
                         }
                     }
 
+                    // Timeline (module `timeline`, off by default) — a day in time order: check-in, travel, visits, halts,
+                    // check-out. Own day for field executives, plus a Team view for managers. STRICT entitlement:
+                    // only clients explicitly granted the module see it.
+                    if ClientFeatures.hasTimeline && ClientFeatures.menuVisible("timeline") {
+                        MenuButton(icon: "clock.arrow.circlepath", title: ClientFeatures.labelFor("menu", "timeline", default: "Timeline"), isSelected: false, color: .blue) {
+                            withAnimation { isOpen = false }
+                            appState.activeSecondaryRoute = ModalRoute(route: .timeline)
+                        }
+                    }
+
                 if hasModule("broadcast") && ClientFeatures.menuVisible("broadcast") {
                     MenuButton(icon: "megaphone.fill", title: ClientFeatures.labelFor("menu", "broadcast", default: "Broadcasts"), isSelected: false, color: .red) {
                         withAnimation { isOpen = false }

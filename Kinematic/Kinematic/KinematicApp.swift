@@ -191,6 +191,9 @@ enum SecondaryRoute: String, Identifiable {
     // Expense claims (module `field_expenses`) — reachable from the side menu for field-force tenants
     // and opened when an expense push is tapped.
     case expenses
+    // A day in time order — check-in, travel, visits, halts, check-out (module `timeline`, off by default; STRICT-gated).
+    // Own day for field executives, plus a Team view for managers.
+    case timeline
     // Whatever screen a tapped notification points at (lead, deal, leave approvals, chat thread, …).
     // The screen itself rides on ModalRoute.target — see NotificationRoute.
     case notificationTarget
@@ -219,6 +222,7 @@ enum SecondaryRoute: String, Identifiable {
         switch self {
         case .stockBatches: return "distribution_batches"
         case .expenses:     return "field_expenses"
+        case .timeline:     return "timeline"
         default:            return nil
         }
     }
@@ -242,7 +246,7 @@ enum SecondaryRoute: String, Identifiable {
     var requiredPackage: String? {
         switch self {
         // Universal — every client gets these
-        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .expenses, .notificationTarget:
+        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .expenses, .timeline, .notificationTarget:
             return nil
         // Field Force
         case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:
