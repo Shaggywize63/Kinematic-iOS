@@ -132,6 +132,14 @@ final class CRMService {
         try await postJSON("/api/v1/crm/leads", body: body)
     }
 
+    /// Place a recorded IVR click-to-call to [to] (module `ivr_call`). The backend resolves the agent's own
+    /// number from their profile and the virtual number from the org's telephony config, so we send only `to`.
+    /// Throws CRMServiceError with the backend's message (e.g. "IVR calling is not enabled for your account").
+    @discardableResult
+    func placeIvrCall(to: String) async throws -> IvrCallAck {
+        try await postJSON("/api/v1/crm/telephony/click-to-call", body: ["to": to])
+    }
+
     /// Replay-only entry point used by OfflineLeadQueue. Adds the
     /// Idempotency-Key header so the server returns the original
     /// response if the queued POST already landed once.
