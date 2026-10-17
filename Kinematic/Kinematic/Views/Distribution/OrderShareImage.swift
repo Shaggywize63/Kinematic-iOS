@@ -77,7 +77,7 @@ enum OrderShare {
 
     static func build(order: DistOrder, company: String?) -> OrderShareModel {
         let lines = order.order_items ?? []
-        let rows = lines.map(row(for:))
+        let rows = lines.map { row(for: $0) }
         // The order carries only its taxable value, so the tax split is the sum of its lines.
         let tax: [OrderShareTax] = [
             OrderShareTax(label: "CGST", amount: lines.reduce(0) { $0 + $1.cgst }),

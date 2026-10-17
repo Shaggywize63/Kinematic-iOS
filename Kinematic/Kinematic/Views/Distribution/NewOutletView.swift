@@ -74,7 +74,7 @@ struct NewOutletView: View {
                         Button("Add another outlet") { reset() }
                     }
                 } else {
-                    Section("Outlet") {
+                    Section {
                         TextField("Outlet name *", text: $name)
                         TextField("Owner / contact name", text: $owner)
                         TextField("Phone", text: $phone).keyboardType(.phonePad)
@@ -84,6 +84,8 @@ struct NewOutletView: View {
                             Text("On-trade").tag("on_trade")
                             Text("Off-trade").tag("off_trade")
                         }
+                    } header: {
+                        Text("Outlet")
                     } footer: {
                         Text("The outlet's location is taken from your phone's GPS when it is available.")
                     }
