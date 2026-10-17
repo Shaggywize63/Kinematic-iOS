@@ -18,6 +18,10 @@ struct OrderDetailView: View {
     // fetched lazily inside InvoiceView on present.
     @State private var showInvoice = false
 
+    // The order as an image for WhatsApp / anywhere else.
+    @State private var sharedImage: SharedOrderImage?
+    @State private var shareFailed = false
+
     /// Distribution package gate — mirrors SideMenu / StoreVisit. Legacy
     /// sessions (empty entitlements) default to `true` so we never hide the
     /// action from an existing van-sales user mid-deploy; non-distribution
@@ -41,6 +45,22 @@ struct OrderDetailView: View {
                     }
                     Divider().padding(.vertical, 8)
                     HStack { Text("Grand total").bold(); Spacer(); Text("₹\(fmt(o.grand_total))").bold() }
+
+                    // SHARE — the whole order (company, items, rates, discounts, taxes, total) as an image.
+                    Button {
+                        shareImage(o)
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Share order image").bold()
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.secondary.opacity(0.5)))
+                    }
+                    .padding(.top, 16)
+                    if shareFailed {
+                        Text("Could not create the order image.").font(.caption).foregroundColor(.red)
+                    }
 
                     // VIEW INVOICE — only once the order is invoiced. Opens the
                     // formal GST invoice document (InvoiceView loads it on
@@ -116,6 +136,8 @@ struct OrderDetailView: View {
         .navigationTitle("Order")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.loadOrder(orderId) }
+        .task { await vm.loadCompanies() }
+        .sheet(item: $sharedImage) { item in OrderImageShareSheet(items: [item.url]) }
         .task { if hasDistribution { printer.reconnectLast() } }
         .sheet(isPresented: $showPrinterPicker) {
             PrinterPickerView(manager: printer) {
@@ -243,6 +265,16 @@ struct OrderDetailView: View {
             .padding(.horizontal, 10).padding(.vertical, 4)
             .background(Color.secondary.opacity(0.15))
             .cornerRadius(8)
+    }
+
+    private func shareImage(_ o: DistOrder) {
+        shareFailed = false
+        let model = OrderShare.build(order: o, company: vm.activeCompanyName)
+        if let url = OrderShareImage.png(for: model, fileName: o.order_no) {
+            sharedImage = SharedOrderImage(url: url)
+        } else {
+            shareFailed = true
+        }
     }
 
     private func fmt(_ v: Double) -> String {
