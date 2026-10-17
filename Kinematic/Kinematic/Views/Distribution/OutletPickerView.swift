@@ -15,6 +15,7 @@ struct OutletPickerView: View {
     @State private var resultsQuery: String? = nil
     @State private var loading = true
     @State private var problem: String? = nil
+    @State private var showNewOutlet = false
 
     var body: some View {
         NavigationStack {
@@ -24,8 +25,10 @@ struct OutletPickerView: View {
                 .searchable(text: $query, prompt: "Search by outlet name or code")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .primaryAction) { Button("Add outlet") { showNewOutlet = true } }
                 }
                 .task(id: query) { await load() }
+                .sheet(isPresented: $showNewOutlet) { NewOutletView() }
         }
     }
 

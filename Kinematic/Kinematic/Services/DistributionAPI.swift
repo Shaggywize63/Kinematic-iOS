@@ -194,6 +194,28 @@ struct DistributionAPI {
         return .failed(DistributionQueuePolicy.serverMessage(body: response.body, httpStatus: response.status))
     }
 
+    /// Proposes a new outlet for a manager to approve. Never throws; no connection is `.offline`.
+    func createOutlet(_ input: NewOutletInput) async -> OutletCreateResult {
+        let response = await send(path: "/salesman/outlets", method: "POST", body: input)
+        if let error = response.error {
+            return DistributionQueuePolicy.isOffline(error) ? .offline : .failed(DistributionQueuePolicy.message(forThrown: error))
+        }
+        guard (200..<300).contains(response.status) else {
+            return .failed(DistributionQueuePolicy.serverMessage(body: response.body, httpStatus: response.status))
+        }
+        guard let outlet: ProposedOutlet = try? decode(response.body) else {
+            return .failed("The server sent an empty reply. Please try again.")
+        }
+        return .created(outlet)
+    }
+
+    /// The rep's own outlets that are waiting for approval or were refused. Empty when it can't be loaded.
+    func proposedOutlets() async -> [ProposedOutlet] {
+        let response = await send(path: "/salesman/outlets/proposed", method: "GET")
+        guard response.error == nil, (200..<300).contains(response.status) else { return [] }
+        return (try? decode(response.body)) ?? []
+    }
+
     /// An outlet's balance and open invoices (oldest first). Online only: money data must not be stale, so it is
     /// never cached and offline is reported as such.
     func outstanding(outletId: String) async -> OutstandingResult {

@@ -18,10 +18,34 @@ struct ReturnView: View {
     @State private var doneMessage: String = ""
     @State private var showDone = false
 
+    // A return is booked against one company's invoice, so a rep who sells for several chooses it first.
+    @StateObject private var companyVm = DistributionViewModel()
+    @State private var companyConfirmed = false
+    @State private var changingCompany = false
+
+    private var showCompanyPicker: Binding<Bool> {
+        Binding(
+            get: { changingCompany || (companyVm.companiesLoaded && companyVm.companyPickRequired && !companyConfirmed) },
+            set: { changingCompany = $0 }
+        )
+    }
+
     private let reasons = ["damaged", "near_expiry", "wrong_sku", "trade_return"]
 
     var body: some View {
         Form {
+            if companyVm.companyPickRequired, let name = companyVm.activeCompanyName {
+                Section {
+                    Button { changingCompany = true } label: {
+                        HStack {
+                            Text("Company").foregroundColor(.secondary)
+                            Spacer()
+                            Text(name).fontWeight(.semibold)
+                            Image(systemName: "chevron.down").font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
             Section("Reason") {
                 Picker("Reason", selection: $reasonCode) {
                     ForEach(reasons, id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ")).tag($0) }
@@ -41,7 +65,7 @@ struct ReturnView: View {
             }
             Section {
                 Button(busy ? "Saving…" : "Submit Return") { submit() }
-                    .disabled(busy || photoUrl == nil || skuId.isEmpty)
+                    .disabled(busy || photoUrl == nil || skuId.isEmpty || !companyConfirmed)
                     .frame(maxWidth: .infinity)
                     .foregroundColor(.white)
                     .listRowBackground(Color(red: 208/255, green: 30/255, blue: 44/255))
@@ -49,6 +73,17 @@ struct ReturnView: View {
         }
         .navigationTitle("Return Goods")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await companyVm.loadCompanies()
+            if !companyVm.companyPickRequired { companyConfirmed = true }
+        }
+        .sheet(isPresented: showCompanyPicker) {
+            CompanyPickerSheet(companies: companyVm.companies, activeId: companyVm.activeCompanyId, required: !companyConfirmed) { id in
+                companyVm.selectCompany(id)
+                companyConfirmed = true
+                changingCompany = false
+            }
+        }
         .alert("Return", isPresented: $showDone) {
             Button("OK") { dismiss() }
         } message: {
