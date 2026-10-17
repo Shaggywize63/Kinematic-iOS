@@ -44,6 +44,8 @@ final class DistributionSync: ObservableObject {
         let body: Encodable
         /// Payments answer a retry of an already-recorded payment with 409: that row is done, not failed.
         let conflictMeansRecorded: Bool
+        /// The company the write was taken for (nil = the live selection).
+        var clientId: String? = nil
     }
 
     /// True while a drain of the queue is running (for a spinner on "Retry").
@@ -219,17 +221,17 @@ final class DistributionSync: ObservableObject {
 
     private func plan(for row: PendingOrder) -> SendPlan {
         SendPlan(kind: .order, rowId: row.id, key: row.idempotencyKey, path: "/salesman/orders",
-                 body: row.input, conflictMeansRecorded: false)
+                 body: row.input, conflictMeansRecorded: false, clientId: row.clientId)
     }
 
     private func plan(for row: PendingPayment) -> SendPlan {
         SendPlan(kind: .payment, rowId: row.id, key: row.idempotencyKey, path: "/salesman/payments",
-                 body: row.input, conflictMeansRecorded: true)
+                 body: row.input, conflictMeansRecorded: true, clientId: row.clientId)
     }
 
     private func plan(for row: PendingReturn) -> SendPlan {
         SendPlan(kind: .goodsReturn, rowId: row.id, key: row.idempotencyKey, path: "/salesman/returns",
-                 body: row.input, conflictMeansRecorded: false)
+                 body: row.input, conflictMeansRecorded: false, clientId: row.clientId)
     }
 
     /// Sends one queued row from what is on disk (so the first send and every replay are the same bytes) and
@@ -239,7 +241,7 @@ final class DistributionSync: ObservableObject {
         defer { inFlight.remove(plan.rowId) }
 
         let response = await DistributionAPI.shared.send(path: plan.path, method: "POST", body: plan.body,
-                                                         idempotencyKey: plan.key, timeout: timeout)
+                                                         idempotencyKey: plan.key, timeout: timeout, clientId: plan.clientId)
         if let error = response.error {
             let message = DistributionQueuePolicy.message(forThrown: error)
             switch DistributionQueuePolicy.verdict(forThrown: error) {
