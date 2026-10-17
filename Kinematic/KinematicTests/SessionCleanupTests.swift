@@ -27,6 +27,7 @@ final class SessionCleanupTests: XCTestCase {
     func testTheListNamesTheKeysThatBelongToThePersonWhoSignedOut() {
         XCTAssertEqual(SessionCleanup.userDefaultsKeys, [
             "kinematic_selected_client",
+            "kinematic_selling_company",
             "crm.location.state",
             "crm.location.city",
             "cached_mobile_home_payload",

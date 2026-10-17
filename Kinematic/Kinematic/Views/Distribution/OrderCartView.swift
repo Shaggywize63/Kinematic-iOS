@@ -12,6 +12,17 @@ struct OrderCartView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showReview = false
     @State private var showCatalogue = false
+    // Each company has its own catalogue and prices, so a rep who sells for more than one chooses the company
+    // before anything is suggested or added to the cart.
+    @State private var companyConfirmed = false
+    @State private var changingCompany = false
+
+    private var showCompanyPicker: Binding<Bool> {
+        Binding(
+            get: { changingCompany || (vm.companiesLoaded && vm.companyPickRequired && !companyConfirmed) },
+            set: { changingCompany = $0 }
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,7 +38,20 @@ struct OrderCartView: View {
                     .disabled(vm.previewing || vm.cartQty.isEmpty)
             }
         }
-        .task { await vm.loadSuggest(outletId: outletId) }
+        .task {
+            await vm.loadCompanies()
+            if !vm.companyPickRequired { companyConfirmed = true }
+        }
+        .task(id: companyConfirmed) {
+            if companyConfirmed { await vm.loadSuggest(outletId: outletId) }
+        }
+        .sheet(isPresented: showCompanyPicker) {
+            CompanyPickerSheet(companies: vm.companies, activeId: vm.activeCompanyId, required: !companyConfirmed) { id in
+                vm.selectCompany(id)
+                companyConfirmed = true
+                changingCompany = false
+            }
+        }
         .sheet(isPresented: $showReview) {
             NavigationStack {
                 // Once the order is placed or saved, the whole flow (review sheet and cart) closes.
@@ -44,6 +68,18 @@ struct OrderCartView: View {
         List {
             if let err = vm.previewError {
                 Text(err).foregroundColor(.red).font(.caption)
+            }
+            if vm.companyPickRequired, let name = vm.activeCompanyName {
+                Section {
+                    Button { changingCompany = true } label: {
+                        HStack {
+                            Text("Company").foregroundColor(.secondary)
+                            Spacer()
+                            Text(name).fontWeight(.semibold)
+                            Image(systemName: "chevron.down").font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                }
             }
             // Browse the full orderable SKU list beyond the server's reorder
             // suggestions. Anything picked lands in the same `cartQty` map, so it
@@ -327,4 +363,37 @@ private func catalogueMoneyFormat(_ v: Double) -> String {
 }
 private func catalogueTrimNum(_ v: Double) -> String {
     v == v.rounded() ? String(Int(v)) : catalogueMoneyFormat(v)
+}
+
+// MARK: - Company picker — a rep who sells for several companies picks one before ordering
+
+struct CompanyPickerSheet: View {
+    let companies: [Company]
+    let activeId: String?
+    /// True the first time (the rep must choose); afterwards the sheet can be dismissed to keep the current company.
+    let required: Bool
+    let onPick: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(companies) { c in
+                        Button { onPick(c.id) } label: {
+                            HStack {
+                                Text(c.name).foregroundColor(.primary)
+                                Spacer()
+                                if c.id == activeId { Image(systemName: "checkmark").foregroundColor(.accentColor) }
+                            }
+                        }
+                    }
+                } footer: {
+                    Text("Products, prices and orders are separate for each company.")
+                }
+            }
+            .navigationTitle("Select company")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .interactiveDismissDisabled(required)
+    }
 }

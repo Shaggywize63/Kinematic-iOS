@@ -20,6 +20,46 @@ final class DistributionViewModel: ObservableObject {
 
     private let api = DistributionAPI.shared
 
+    // ── Company the rep is taking orders for ─────────────────────────
+    /// The companies the rep may sell for and the one orders are being taken for.
+    @Published var companies: [Company] = []
+    @Published var activeCompanyId: String?
+    /// True only when the rep has more than one company, i.e. a real choice.
+    @Published var companyPickRequired = false
+    @Published var companiesLoaded = false
+
+    var activeCompanyName: String? { companies.first { $0.id == activeCompanyId }?.name }
+
+    /// Loads the rep's companies and reconciles the stored selection with them: a stale pick (a company the rep no
+    /// longer has) is dropped, and a rep with exactly one company is set to it automatically. When the list can't be
+    /// fetched (offline) the screen carries on with whatever was last selected.
+    func loadCompanies() async {
+        guard let mine = await api.myCompanies() else {
+            activeCompanyId = SellingCompany.selectedId()
+            companiesLoaded = true
+            return
+        }
+        let ids = mine.companies.map { $0.id }
+        var active = SellingCompany.selectedId().flatMap { ids.contains($0) ? $0 : nil }
+        if active == nil, mine.companies.count == 1 { active = mine.companies[0].id }
+        if active != SellingCompany.selectedId() { SellingCompany.set(active) }
+        companies = mine.companies
+        activeCompanyId = active
+        companyPickRequired = mine.pick_required ?? false
+        companiesLoaded = true
+    }
+
+    /// Switches the company orders are taken for. Catalogue and prices differ per company, so the cart starts over.
+    func selectCompany(_ id: String) {
+        if id != SellingCompany.selectedId() {
+            SellingCompany.set(id)
+            clearCart()
+            suggest = nil
+            catalogue = nil
+        }
+        activeCompanyId = id
+    }
+
     func loadRoute() async {
         do { route = try await api.routeToday() } catch { route = nil }
     }

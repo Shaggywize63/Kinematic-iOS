@@ -508,3 +508,16 @@ struct ReceiveBatchInput: Encodable {
     let unit_cost: Double?
     let reference: String?
 }
+
+/// One company (client) a salesman may sell for.
+struct Company: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String
+}
+
+/// `GET /companies/mine`. `pick_required` is true only when the rep has more than one company.
+struct MyCompanies: Codable {
+    let companies: [Company]
+    let active: String?
+    let pick_required: Bool?
+}
