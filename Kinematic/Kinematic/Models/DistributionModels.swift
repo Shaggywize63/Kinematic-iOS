@@ -521,3 +521,31 @@ struct MyCompanies: Codable {
     let active: String?
     let pick_required: Bool?
 }
+
+/// What a rep sends to propose a new outlet (`POST /salesman/outlets`). Nil fields are left out of the JSON.
+struct NewOutletInput: Encodable {
+    let name: String
+    let owner_name: String?
+    let phone: String?
+    let address: String?
+    /// `on_trade` or `off_trade`.
+    let trade_type: String?
+    let lat: Double?
+    let lng: Double?
+}
+
+/// An outlet the rep proposed. `approval_status` is `pending` until a manager decides; a refusal carries a reason.
+struct ProposedOutlet: Codable, Identifiable {
+    let id: String
+    let name: String?
+    let store_code: String?
+    let approval_status: String?
+    let rejection_reason: String?
+}
+
+/// What came of proposing an outlet. It needs a connection: the server makes the outlet code.
+enum OutletCreateResult {
+    case created(ProposedOutlet)
+    case offline
+    case failed(String)
+}
