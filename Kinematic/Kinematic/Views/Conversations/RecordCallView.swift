@@ -227,7 +227,7 @@ struct RecordCallView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
                 Image(systemName: "checkmark.seal.fill").foregroundColor(Brand.success)
-                Text("Analysis ready").font(.system(size: 18, weight: .bold))
+                Text("Insights ready").font(.system(size: 18, weight: .bold))
                 Spacer()
             }
             if let insights {
