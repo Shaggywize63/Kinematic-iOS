@@ -355,7 +355,7 @@ struct ConversationDetailSheet: View {
                 }
                 .padding(20)
             }
-            .navigationTitle("Conversation")
+            .navigationTitle("Call Insights")
             .navigationBarTitleDisplayMode(.inline)
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .toolbar {
