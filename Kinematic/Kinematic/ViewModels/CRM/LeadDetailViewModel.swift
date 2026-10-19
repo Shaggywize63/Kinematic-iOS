@@ -166,7 +166,10 @@ final class LeadDetailViewModel: ObservableObject {
         if let dealProductLines, !dealProductLines.isEmpty { body["deal_product_lines"] = dealProductLines }
 
         do {
-            let updated = try await api.convertLead(id: leadId, body: body)
+            // Convert returns the created record ids, not a Lead — re-fetch the
+            // lead so the detail screen reflects its new converted state.
+            try await api.convertLead(id: leadId, body: body)
+            let updated = try await api.getLead(id: leadId)
             self.lead = updated
             successMessage = "Lead converted"
             await loadAuxiliary(lead: updated)
