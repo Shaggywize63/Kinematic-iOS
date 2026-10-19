@@ -204,7 +204,11 @@ final class CRMService {
     func leadDeals(id: String) async throws -> [Deal] {
         try await get("/api/v1/crm/leads/\(id)/deals")
     }
-    func convertLead(id: String, body: [String: Any]) async throws -> Lead {
+    /// Convert returns the ids of the created records
+    /// (`{ lead_id, account_id, contact_id, deal_id }`), NOT a `Lead` — callers
+    /// re-fetch the lead afterward to refresh the detail screen.
+    @discardableResult
+    func convertLead(id: String, body: [String: Any]) async throws -> LeadConvertResult {
         try await postJSON("/api/v1/crm/leads/\(id)/convert", body: body)
     }
 

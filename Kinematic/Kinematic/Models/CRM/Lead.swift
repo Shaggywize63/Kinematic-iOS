@@ -7,6 +7,25 @@
 
 import Foundation
 
+/// Response of `POST /api/v1/crm/leads/{id}/convert`. The endpoint does NOT
+/// return a `Lead` — it returns the ids of the records the conversion created
+/// (`{ lead_id, account_id, contact_id, deal_id }`). Decoding it as a `Lead`
+/// was the cause of the "DecodingError.keyNotFound: Key 'id'" alert on convert,
+/// even though the conversion itself had already succeeded server-side.
+struct LeadConvertResult: Codable {
+    let leadId: String?
+    let accountId: String?
+    let contactId: String?
+    let dealId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case leadId = "lead_id"
+        case accountId = "account_id"
+        case contactId = "contact_id"
+        case dealId = "deal_id"
+    }
+}
+
 struct Lead: Codable, Identifiable, Hashable {
     let id: String
     let orgId: String?
