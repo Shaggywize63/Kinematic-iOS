@@ -46,9 +46,10 @@ struct CRMTabView: View {
     private func applyWidgetRoute(_ route: WidgetRoute?) {
         guard let route else { return }
         switch route {
-        case .leads, .newLead, .lead:  selectedTab = 2
+        // A tab the client's modules do not include is not there to select: the route lands on Home instead.
+        case .leads, .newLead, .lead:  selectedTab = ClientFeatures.showsCrmLeadsTab ? 2 : 0
         case .myDay, .checkIn:          selectedTab = 0
-        case .team:                     selectedTab = 1
+        case .team:                     selectedTab = ClientFeatures.showsCrmDashboardTab ? 1 : 0
         }
         widgetLink.pendingRoute = nil
     }
@@ -64,18 +65,26 @@ struct CRMTabView: View {
                 Tab("Home", systemImage: "house.fill", value: 0) {
                     NavigationStack { CrmHomeMissionView() }
                 }
-                Tab("Dashboard", systemImage: "chart.bar.fill", value: 1) {
-                    NavigationStack { CRMDashboardView() }
+                // Dashboard / Leads / Deals are not in app_ui_config, so each is gated by its module here: under
+                // `entitlements_strict` an un-ticked module's tab is not shown (always shown otherwise). Home and More are essential.
+                if ClientFeatures.showsCrmDashboardTab {
+                    Tab("Dashboard", systemImage: "chart.bar.fill", value: 1) {
+                        NavigationStack { CRMDashboardView() }
+                    }
                 }
-                Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 2) {
-                    NavigationStack { LeadsListView() }
+                if ClientFeatures.showsCrmLeadsTab {
+                    Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 2) {
+                        NavigationStack { LeadsListView() }
+                    }
                 }
                 // Deals is the higher-frequency surface (list view, search,
                 // close actions) so it gets the bottom slot. Pipeline (the
                 // kanban view) moved into the More menu — same kanban,
                 // just one tap deeper.
-                Tab("Deals", systemImage: "indianrupeesign.circle.fill", value: 3) {
-                    NavigationStack { DealsListView() }
+                if ClientFeatures.showsCrmDealsTab {
+                    Tab("Deals", systemImage: "indianrupeesign.circle.fill", value: 3) {
+                        NavigationStack { DealsListView() }
+                    }
                 }
                 // Activities moved into More at the user's request — it's a
                 // lower-frequency surface than Home/Leads/Deals for most reps.
@@ -104,7 +113,8 @@ struct CRMTabView: View {
             GuidedTourView(tour: .leadManagement) { showTour = false }
         }
         .task {
-            if !tourSeen {
+            // The tour points at controls on the Leads screen, so it waits for a client that has the Leads tab.
+            if !tourSeen && ClientFeatures.showsCrmLeadsTab {
                 tourSeen = true
                 // Switch to the Leads tab so its anchors (search / add / a row)
                 // are laid out, then run the interactive spotlight.
@@ -129,8 +139,10 @@ struct CRMTabView: View {
         .onChange(of: spotlight.replayRequested) { _, requested in
             if requested {
                 spotlight.replayRequested = false
-                selectedTab = 2
-                spotlight.start(SpotlightStep.leadManagement)
+                if ClientFeatures.showsCrmLeadsTab {
+                    selectedTab = 2
+                    spotlight.start(SpotlightStep.leadManagement)
+                }
             }
         }
         // Consume any widget route that arrived before this shell mounted,
@@ -224,114 +236,28 @@ struct CRMMoreMenu: View {
             // Activities — the rep's scheduled calls / meetings / tasks.
             // Moved here from the bottom tab at the user's request; same
             // ActivitiesView, now one tap into More.
-            Section("Work") {
-                NavigationLink {
-                    ActivitiesView()
-                } label: { MoreRow(icon: "checkmark.square.fill", title: "Activities", tint: Brand.red) }
+            // Activities has no app_ui_config switch, so it is gated by its module here (crm_activities, under
+            // `entitlements_strict`; always shown otherwise).
+            if ClientFeatures.showsCrmActivities {
+                Section("Work") {
+                    NavigationLink {
+                        ActivitiesView()
+                    } label: { MoreRow(icon: "checkmark.square.fill", title: "Activities", tint: Brand.red) }
+                }
             }
 
             // CRM module surfaces only what's actually available on the
             // dashboard. Email Templates was removed from web; CRM Settings
             // is intentionally a web-console-only control. Keep the mobile
             // CRM More menu lean — Accounts / Contacts / Products / Reports.
-            // Accounts is hidden for Consumer Champions and Tata Tiscon (their
-            // workflow is lead/deal-centric — account management lives with
-            // admins). Contacts is hidden for Consumer Champions only.
-            Section("Records") {
-                if !ClientFeatures.isConsumerChampion && ClientFeatures.showsAccounts && ClientFeatures.crmMoreVisible("accounts") {
-                    NavigationLink {
-                        AccountsListView()
-                    } label: { MoreRow(icon: "building.2.fill", title: ClientFeatures.labelFor("crm_more", "accounts", default: "Accounts"), tint: Brand.red) }
-                }
-                // Contacts hidden from mobile entirely — Tata's intake
-                // flow doesn't surface contacts; reinstate this row if a
-                // future tenant ever needs the contacts surface here.
-                // Pipeline (kanban) — moved here from the bottom tab in
-                // favour of the higher-frequency Deals list. Same view,
-                // one tap deeper.
-                if ClientFeatures.crmMoreVisible("pipeline") {
-                    NavigationLink {
-                        DealKanbanView()
-                    } label: { MoreRow(icon: "square.stack.3d.up.fill", title: ClientFeatures.labelFor("crm_more", "pipeline", default: "Pipeline"), tint: Brand.red) }
-                }
-                if ClientFeatures.crmMoreVisible("products") {
-                    NavigationLink {
-                        ProductsListView()
-                    } label: { MoreRow(icon: "shippingbox.fill", title: ClientFeatures.labelFor("crm_more", "products", default: "Products"), tint: Brand.red) }
-                }
-                if ClientFeatures.showsCustomObjects && ClientFeatures.crmMoreVisible("custom_objects") {
-                    NavigationLink {
-                        CustomObjectsListView()
-                    } label: { MoreRow(icon: "square.grid.2x2.fill", title: ClientFeatures.labelFor("crm_more", "custom_objects", default: "Custom Objects"), tint: Brand.red) }
-                }
-            }
-            // Marketing Visit (Rajkamal) — ad-hoc GPS Start → End tied to a
-            // lead. Gated strictly on the client id so no other tenant sees it;
-            // admins can still hide/relabel it via App Customization.
-            if ClientFeatures.isRajkamal && ClientFeatures.crmMoreVisible("marketing_visit") {
-                Section("Field Visits") {
-                    NavigationLink {
-                        MarketingVisitView()
-                    } label: { MoreRow(icon: "figure.walk.motion", title: ClientFeatures.labelFor("crm_more", "marketing_visit", default: "Marketing Visit"), tint: Brand.red) }
-                }
-            }
-            // Field tools that ride on the rep's current location. Distinct
-            // from "Records" because reps think of these as "where am I
-            // going next?" — not a directory.
-            if ClientFeatures.crmMoreVisible("nearest_leads") {
-                Section("Field") {
-                    NavigationLink {
-                        NearbyLeadsView()
-                    } label: { MoreRow(icon: "location.north.line.fill", title: ClientFeatures.labelFor("crm_more", "nearest_leads", default: "Nearest Leads"), tint: Brand.red) }
-                }
-            }
-            // Workplace — leave balances / requests + attendance regularization.
-            // Hidden for SRS TATA Steel AND for every CRM-only tenant (BMW, new
-            // lean-CRM clients, the parent Kinematic tenant): the "People &
-            // Support" surface was dropped from the CRM-only build. Only full
-            // field-force tenants still see it here.
-            if ClientFeatures.showsLeave && ClientFeatures.crmMoreVisible("leave") {
-                Section("Workplace") {
-                    NavigationLink {
-                        LeaveHomeView()
-                    } label: { MoreRow(icon: "calendar.badge.clock", title: ClientFeatures.labelFor("crm_more", "leave", default: "Leave"), tint: Brand.red) }
-                }
-            }
-            // Field Expenses — module-gated (field_expenses), independent of
-            // Leave, and shown on the CRM-only build. Rep files claims (mileage
-            // auto-priced from GPS, receipts AI-OCR'd); managers approve.
-            if ClientFeatures.showsExpenses && ClientFeatures.crmMoreVisible("expenses") {
-                Section("Expenses") {
-                    NavigationLink {
-                        ExpenseClaimsView()
-                    } label: { MoreRow(icon: "doc.text.magnifyingglass", title: ClientFeatures.labelFor("crm_more", "expenses", default: "Expense Claims"), tint: Brand.red) }
-                    // Only people who can approve see it (an unknown role keeps it — the API is the authority).
-                    if ExpenseLogic.canApprove(role: Session.currentUser?.role, dataScope: Session.currentUser?.orgRoleDataScope) {
-                        NavigationLink {
-                            ExpenseApprovalsView()
-                        } label: { MoreRow(icon: "checkmark.seal", title: "Expense Approvals", tint: Brand.red) }
+            // The sections below are drawn in the built-in order unless the admin arranged this menu in Client Management
+            // (app_ui_config.layout.crm_more): a section moves as a unit to where its earliest listed row sits, and its rows
+            // follow the list too. Hide flags and each row's own rules still decide what is shown at all.
+            ForEach(CRMMoreLayout.ordered(listed: ClientFeatures.layoutOrder("crm_more"), isShown: moreRowShown), id: \.id) { section in
+                Section(moreSectionTitle(section.id)) {
+                    ForEach(section.rows, id: \.self) { row in
+                        moreRow(row)
                     }
-                }
-            }
-            // Insights section is split for Consumer Champion reps —
-            // they still get a slimmed-down Reports view (3 KPI tiles)
-            // but Dashboard + Lead Analytics are manager-tier surfaces
-            // and stay hidden for FE-tier nav clarity.
-            Section("Insights") {
-                if !ClientFeatures.isConsumerChampion && ClientFeatures.crmMoreVisible("dashboard") {
-                    NavigationLink {
-                        CRMDashboardView()
-                    } label: { MoreRow(icon: "chart.bar.fill", title: ClientFeatures.labelFor("crm_more", "dashboard", default: "Dashboard"), tint: Brand.red) }
-                }
-                if ClientFeatures.crmMoreVisible("reports") {
-                    NavigationLink {
-                        CRMReportsHubView()
-                    } label: { MoreRow(icon: "chart.pie.fill", title: ClientFeatures.labelFor("crm_more", "reports", default: "Reports"), tint: Brand.red) }
-                }
-                if !ClientFeatures.isConsumerChampion && ClientFeatures.crmMoreVisible("lead_analytics") {
-                    NavigationLink {
-                        CustomLeadAnalyticsView()
-                    } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: ClientFeatures.labelFor("crm_more", "lead_analytics", default: "Lead Analytics"), tint: Brand.red) }
                 }
             }
             // Targets removed from mobile entirely — the manager-tier
@@ -409,6 +335,121 @@ struct CRMMoreMenu: View {
             Button("Sign Out", role: .destructive) { appState.logout() }
         } message: {
             Text("You'll need to sign back in to access your CRM data.")
+        }
+    }
+
+    private func moreSectionTitle(_ id: String) -> String {
+        switch id {
+        case "records":      return "Records"
+        case "field_visits": return "Field Visits"
+        case "field":        return "Field"
+        case "workplace":    return "Workplace"
+        case "expenses":     return "Expenses"
+        default:             return "Insights"
+        }
+    }
+
+    /// Is this More row shown? The rules each row has always had, plus its hide flag.
+    private func moreRowShown(_ id: String) -> Bool {
+        switch id {
+        // Accounts is hidden for Consumer Champions and Tata Tiscon (their
+        // workflow is lead/deal-centric — account management lives with
+        // admins). Contacts is hidden for Consumer Champions only.
+        case "accounts":          return !ClientFeatures.isConsumerChampion && ClientFeatures.showsAccounts && ClientFeatures.crmMoreVisible("accounts")
+        case "pipeline":          return ClientFeatures.crmMoreVisible("pipeline")
+        case "products":          return ClientFeatures.crmMoreVisible("products")
+        case "custom_objects":    return ClientFeatures.showsCustomObjects && ClientFeatures.crmMoreVisible("custom_objects")
+        // Marketing Visit (Rajkamal) — ad-hoc GPS Start → End tied to a
+        // lead. Gated strictly on the client id so no other tenant sees it;
+        // admins can still hide/relabel it via App Customization.
+        case "marketing_visit":   return ClientFeatures.isRajkamal && ClientFeatures.crmMoreVisible("marketing_visit")
+        case "nearest_leads":     return ClientFeatures.crmMoreVisible("nearest_leads")
+        // Workplace — leave balances / requests + attendance regularization.
+        // Hidden for SRS TATA Steel AND for every CRM-only tenant (BMW, new
+        // lean-CRM clients, the parent Kinematic tenant): the "People &
+        // Support" surface was dropped from the CRM-only build. Only full
+        // field-force tenants still see it here.
+        case "leave":             return ClientFeatures.showsLeave && ClientFeatures.crmMoreVisible("leave")
+        // Field Expenses — module-gated (field_expenses), independent of
+        // Leave, and shown on the CRM-only build.
+        case "expenses":          return ClientFeatures.showsExpenses && ClientFeatures.crmMoreVisible("expenses")
+        // Only people who can approve see it (an unknown role keeps it — the API is the authority).
+        case "expense_approvals": return ClientFeatures.showsExpenses && ClientFeatures.crmMoreVisible("expenses")
+                                    && ExpenseLogic.canApprove(role: Session.currentUser?.role, dataScope: Session.currentUser?.orgRoleDataScope)
+        // Insights is split for Consumer Champion reps —
+        // they still get a slimmed-down Reports view (3 KPI tiles)
+        // but Dashboard + Lead Analytics are manager-tier surfaces
+        // and stay hidden for FE-tier nav clarity.
+        case "dashboard":         return !ClientFeatures.isConsumerChampion && ClientFeatures.crmMoreVisible("dashboard")
+        case "reports":           return ClientFeatures.crmMoreVisible("reports")
+        case "lead_analytics":    return !ClientFeatures.isConsumerChampion && ClientFeatures.crmMoreVisible("lead_analytics")
+        default:                  return false
+        }
+    }
+
+    @ViewBuilder
+    private func moreRow(_ id: String) -> some View {
+        switch id {
+        case "accounts":
+            NavigationLink {
+                AccountsListView()
+            } label: { MoreRow(icon: "building.2.fill", title: ClientFeatures.labelFor("crm_more", "accounts", default: "Accounts"), tint: Brand.red) }
+        // Contacts hidden from mobile entirely — Tata's intake
+        // flow doesn't surface contacts; reinstate this row if a
+        // future tenant ever needs the contacts surface here.
+        // Pipeline (kanban) — moved here from the bottom tab in
+        // favour of the higher-frequency Deals list. Same view,
+        // one tap deeper.
+        case "pipeline":
+            NavigationLink {
+                DealKanbanView()
+            } label: { MoreRow(icon: "square.stack.3d.up.fill", title: ClientFeatures.labelFor("crm_more", "pipeline", default: "Pipeline"), tint: Brand.red) }
+        case "products":
+            NavigationLink {
+                ProductsListView()
+            } label: { MoreRow(icon: "shippingbox.fill", title: ClientFeatures.labelFor("crm_more", "products", default: "Products"), tint: Brand.red) }
+        case "custom_objects":
+            NavigationLink {
+                CustomObjectsListView()
+            } label: { MoreRow(icon: "square.grid.2x2.fill", title: ClientFeatures.labelFor("crm_more", "custom_objects", default: "Custom Objects"), tint: Brand.red) }
+        case "marketing_visit":
+            NavigationLink {
+                MarketingVisitView()
+            } label: { MoreRow(icon: "figure.walk.motion", title: ClientFeatures.labelFor("crm_more", "marketing_visit", default: "Marketing Visit"), tint: Brand.red) }
+        // Field tools that ride on the rep's current location. Distinct
+        // from "Records" because reps think of these as "where am I
+        // going next?" — not a directory.
+        case "nearest_leads":
+            NavigationLink {
+                NearbyLeadsView()
+            } label: { MoreRow(icon: "location.north.line.fill", title: ClientFeatures.labelFor("crm_more", "nearest_leads", default: "Nearest Leads"), tint: Brand.red) }
+        case "leave":
+            NavigationLink {
+                LeaveHomeView()
+            } label: { MoreRow(icon: "calendar.badge.clock", title: ClientFeatures.labelFor("crm_more", "leave", default: "Leave"), tint: Brand.red) }
+        // Rep files claims (mileage auto-priced from GPS, receipts AI-OCR'd); managers approve.
+        case "expenses":
+            NavigationLink {
+                ExpenseClaimsView()
+            } label: { MoreRow(icon: "doc.text.magnifyingglass", title: ClientFeatures.labelFor("crm_more", "expenses", default: "Expense Claims"), tint: Brand.red) }
+        case "expense_approvals":
+            NavigationLink {
+                ExpenseApprovalsView()
+            } label: { MoreRow(icon: "checkmark.seal", title: "Expense Approvals", tint: Brand.red) }
+        case "dashboard":
+            NavigationLink {
+                CRMDashboardView()
+            } label: { MoreRow(icon: "chart.bar.fill", title: ClientFeatures.labelFor("crm_more", "dashboard", default: "Dashboard"), tint: Brand.red) }
+        case "reports":
+            NavigationLink {
+                CRMReportsHubView()
+            } label: { MoreRow(icon: "chart.pie.fill", title: ClientFeatures.labelFor("crm_more", "reports", default: "Reports"), tint: Brand.red) }
+        case "lead_analytics":
+            NavigationLink {
+                CustomLeadAnalyticsView()
+            } label: { MoreRow(icon: "chart.line.uptrend.xyaxis", title: ClientFeatures.labelFor("crm_more", "lead_analytics", default: "Lead Analytics"), tint: Brand.red) }
+        default:
+            EmptyView()
         }
     }
 

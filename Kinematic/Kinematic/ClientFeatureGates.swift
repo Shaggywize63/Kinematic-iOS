@@ -298,4 +298,91 @@ enum ClientFeatures {
     static func labelFor(_ section: String, _ id: String, default def: String) -> String {
         Session.currentUser?.label(section, id, default: def) ?? def
     }
+
+    // MARK: - Strict module list (`entitlements_strict`)
+    // For a screen that had NO module check of its own. Under `entitlements_strict` it needs its module (the list is
+    // complete, an empty one means nothing); on an older server, for a platform user or for Tata it keeps what it had.
+    // No user (legacy/no session) = shown.
+    static func strictAllows(_ module: String) -> Bool { Session.currentUser?.strictAllows(module) ?? true }
+
+    // The CRM shell's main bottom tabs are not in `app_ui_config`, so the app gates them itself (Home and More are essential).
+    // The Dashboard tab shows the same screen as More → Dashboard, whose module is `crm_dashboard`.
+    static var showsCrmDashboardTab: Bool { strictAllows("crm_dashboard") }
+    static var showsCrmLeadsTab: Bool { strictAllows("crm_leads") }
+    static var showsCrmDealsTab: Bool { strictAllows("crm_deals") }
+    /// More → Work → Activities.
+    static var showsCrmActivities: Bool { strictAllows("crm_activities") }
+
+    // MARK: - App layout (Client Management drag and drop → `app_ui_config.layout`)
+    // Order only: hide flags and the gates each screen already has still decide whether it is shown at all.
+
+    /// The ids the admin listed for one container (`tabs`, `menu`, `settings`, `crm_more`, `home`); empty = never arranged.
+    static func layoutOrder(_ section: String) -> [String] { Session.currentUser?.layoutOrder(section) ?? [] }
+
+    /// `items` in the admin's order for `section` (listed ids first, the rest in their default order). Pass only the items
+    /// that are shown.
+    static func ordered<T>(_ items: [T], section: String, id: (T) -> String) -> [T] {
+        AppLayoutOrder.sorted(items, listed: layoutOrder(section), id: id)
+    }
+
+    /// True when the field-force shell's tabs (Attendance, Route …) may show: a pinned CRM-only tenant never shows them,
+    /// even on a legacy session.
+    static var hasFieldForceTabs: Bool {
+        if isPinnedCrmOnlyClient { return false }
+        return Session.currentUser?.hasFieldForce ?? true
+    }
+
+    /// The field-force bottom bar the admin laid out (Home + these ids, in order, each filtered by its own gate and hide
+    /// flag), or nil when no bar was laid out — then the built-in bar applies unchanged. See `BottomBarPlan`.
+    static func layoutBarTabs() -> [String]? {
+        BottomBarPlan.compose(layoutTabs: layoutOrder("tabs"), isAllowed: { barItemAllowed($0) })
+    }
+
+    /// Is this bar-capable screen available to the signed-in client? The same gate the screen has everywhere else (module,
+    /// package, tenant rules), plus its hide flag. Mirrors the built-in bar's conditions: Attendance / Route / Activity / New
+    /// need the field-force tabs (ByteBack's slimmed bar has no Route and no module check on New), Expenses needs the module.
+    /// The opt-in `tabs.expenses == true` is not needed — listing Expenses in the layout is the opt-in. Every other id is an
+    /// action tab with its side-menu entry's gate.
+    static func barItemAllowed(_ id: String) -> Bool {
+        switch id {
+        case "attendance": return (isByteBack || hasFieldForceTabs) && tabVisible("attendance")
+        case "route_plan": return !isByteBack && hasFieldForceTabs && tabVisible("route_plan")
+        case "activity":   return (isByteBack || hasFieldForceTabs) && tabVisible("activity")
+        case "new_form":   return (isByteBack || (hasFieldForceTabs && hasFormBuilder)) && tabVisible("new_form")
+        case "expenses":   return !isByteBack && hasFieldForceTabs && showsExpenses && tabVisible("expenses")
+        default:           return BottomBarPlan.isActionTab(id) && menuEntryAllowed(id)
+        }
+    }
+
+    /// Is this side-menu entry available to the signed-in client? The gate the menu has always applied (package, module,
+    /// tenant rules) and the entry's hide flag. The side menu draws from this, and so does an action tab in the bottom bar,
+    /// so a screen can never be open in one and closed in the other.
+    static func menuEntryAllowed(_ id: String) -> Bool {
+        let user = Session.currentUser
+        let hasCrm = user?.hasCrm ?? true
+        let hasFieldForce = user?.hasFieldForce ?? true
+        let hasDistribution = user?.hasDistribution ?? true
+        func hasModule(_ module: String) -> Bool { user?.hasModule(module) ?? true }
+        let gate: Bool
+        switch id {
+        case "crm":               gate = hasCrm
+        case "planogram":         gate = isMoiSoi
+        case "book_order":        gate = hasDistribution && hasModule("distribution_orders")
+        case "collect_payment":   gate = hasDistribution && hasModule("distribution_payments")
+        case "my_orders":         gate = hasDistribution
+        case "van_load":          gate = hasModule("distribution_van")
+        case "distributor_stock": gate = hasModule("distribution_stock")
+        case "log_damage":        gate = hasModule("distribution_damage")
+        case "stock_batches":     gate = hasDistributionBatches
+        case "leave":             gate = showsLeave
+        case "expenses":          gate = showsExpenses
+        case "timeline":          gate = hasTimeline
+        case "broadcast":         gate = hasModule("broadcast")
+        case "leaderboard", "activity_feed", "log_visit", "stock":
+                                  gate = hasFieldForce
+        case "grievance":         gate = hasModule("grievances")
+        default:                  gate = true   // profile, notifications, learning_hub, emergency_sos: the hide flag only
+        }
+        return gate && (user?.menuVisible(id) ?? true)
+    }
 }
