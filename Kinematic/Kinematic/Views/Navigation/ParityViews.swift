@@ -673,161 +673,28 @@ struct ProfileRow: View {
 struct SettingsView: View {
     @ObservedObject var appState = KiniAppState.shared
     
+    /// Is this Settings row shown to the signed-in client? (hide flag + the gate the row has always had.) Used to order the
+    /// blocks: a hidden row never pulls its block up the screen.
+    private func rowShown(_ id: String) -> Bool {
+        switch id {
+        case "face_enrollment": return ClientFeatures.hasFaceAttendance && ClientFeatures.settingsVisible("face_enrollment")
+        case "rate_app":        return ClientFeatures.featureOn(RatePrompt.featureId) && ClientFeatures.settingsVisible("rate_app")
+        default:                return ClientFeatures.settingsVisible(id)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 // Each Settings section is admin-manageable per client (App
                 // Customization → Settings) and relabelable. Appearance / modules /
                 // security / about can be hidden; Account + Sign Out are essential.
-                // Appearance Section
-                if ClientFeatures.settingsVisible("appearance") {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(ClientFeatures.labelFor("settings", "appearance", default: "APPEARANCE"))
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(.gray)
-                        .padding(.horizontal)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("App Theme")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text("Choose how the app looks")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-
-                        HStack(spacing: 10) {
-                            ThemeToggleCard(title: "System", type: .system, current: appState.theme, icon: "circle.lefthalf.filled")
-                            ThemeToggleCard(title: "Light", type: .light, current: appState.theme, icon: "sun.max.fill")
-                            ThemeToggleCard(title: "Dark", type: .dark, current: appState.theme, icon: "moon.stars.fill")
-                        }
-                    }
-                    .padding(20)
-                    .background(Color.white.opacity(0.03))
-                    .cornerRadius(24)
-                    .padding(.horizontal)
-                }
+                // The blocks are drawn in the built-in order unless the admin arranged Settings in Client Management
+                // (app_ui_config.layout.settings); Account keeps its place behind whatever is listed, Sign Out stays last.
+                ForEach(SettingsLayout.blocks(listed: ClientFeatures.layoutOrder("settings"), isShown: rowShown), id: \.self) { block in
+                    settingsBlock(block)
                 }
 
-                // MODULES — CRM-only toggle + Face Enrollment, each independently
-                // manageable; the whole section hides when both are hidden.
-                let showCrmOnly = ClientFeatures.settingsVisible("crm_only_mode")
-                let showFaceEnroll = ClientFeatures.hasFaceAttendance && ClientFeatures.settingsVisible("face_enrollment")
-                if showCrmOnly || showFaceEnroll {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("MODULES")
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(.gray)
-                        .padding(.horizontal)
-
-                    if showCrmOnly {
-                        CRMOnlyToggleCard()
-                            .padding(.horizontal)
-                    }
-
-                    // Face enrolment (module face_attendance) — supervised enroll /
-                    // re-enroll on top of the silent auto-enrol at first check-in.
-                    if showFaceEnroll {
-                        NavigationLink(destination: FaceEnrollmentView()) {
-                            HStack(spacing: 14) {
-                                Image(systemName: "faceid")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.red)
-                                    .frame(width: 28)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(ClientFeatures.labelFor("settings", "face_enrollment", default: "Face Enrollment")).font(.headline).foregroundColor(.white)
-                                    Text("Register your face for attendance").font(.caption).foregroundColor(.gray)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right").foregroundColor(.gray).font(.caption)
-                            }
-                            .padding(16)
-                            .background(Color.white.opacity(0.03))
-                            .cornerRadius(20)
-                            .padding(.horizontal)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                }
-
-                // Security
-                if ClientFeatures.settingsVisible("app_lock") {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("SECURITY")
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(.gray)
-                        .padding(.horizontal)
-
-                    AppLockToggleCard()
-                        .padding(.horizontal)
-                }
-                }
-
-                // Account Summary
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("ACCOUNT")
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(.gray)
-                        .padding(.horizontal)
-                    
-                    HStack(spacing: 16) {
-                        Circle()
-                            .fill(Color.red.opacity(0.1))
-                            .frame(width: 50, height: 50)
-                            .overlay(Text(Session.currentUser?.name.prefix(1) ?? "U").foregroundColor(.red).bold())
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(Session.currentUser?.name ?? "User").font(.headline)
-                            Text(Session.currentUser?.role ?? "Executive").font(.subheadline).foregroundColor(.gray)
-                        }
-                        Spacer()
-                    }
-                    .padding(16)
-                    .background(Color.white.opacity(0.03))
-                    .cornerRadius(20)
-                    .padding(.horizontal)
-
-                    // Profile photo + voluntary password change. Always present
-                    // (Account is one of the essential, non-hideable sections) so
-                    // every user can reach them whatever the side menu hides.
-                    NavigationLink(destination: ProfileView()) {
-                        AccountLinkRow(icon: "person.crop.circle.fill",
-                                       title: "Profile & photo",
-                                       subtitle: "Update your profile picture")
-                    }
-                    .buttonStyle(.plain)
-
-                    NavigationLink(destination: ChangePasswordView()) {
-                        AccountLinkRow(icon: "key.fill",
-                                       title: "Change password",
-                                       subtitle: "Update the password you sign in with")
-                    }
-                    .buttonStyle(.plain)
-                }
-                
-                // Rate the app — opt-in per client (app_ui_config.features.rate_prompt) and hideable (settings.rate_app);
-                // draws nothing for everyone else.
-                RateThisAppRow()
-
-                // About section
-                if ClientFeatures.settingsVisible("about") {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(ClientFeatures.labelFor("settings", "about", default: "ABOUT"))
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(.gray)
-                        .padding(.horizontal)
-
-                    VStack(spacing: 0) {
-                        AboutRow(label: "App Version", value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"))")
-                        Divider().background(Color.white.opacity(0.1))
-                        AboutRow(label: "Build Mode", value: "Production")
-                    }
-                    .background(Color.white.opacity(0.03))
-                    .cornerRadius(20)
-                    .padding(.horizontal)
-                }
-                }
-                
                 Spacer(minLength: 40)
                 
                 // Sign Out
@@ -851,6 +718,188 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+    }
+
+    @ViewBuilder
+    private func settingsBlock(_ block: String) -> some View {
+        switch block {
+        case "appearance": appearanceBlock
+        case "modules":    modulesBlock
+        case "security":   securityBlock
+        case "account":    accountBlock
+        case "rate_app":
+            // Rate the app — opt-in per client (app_ui_config.features.rate_prompt) and hideable (settings.rate_app);
+            // draws nothing for everyone else.
+            RateThisAppRow()
+        default:           aboutBlock
+        }
+    }
+
+    // Appearance Section
+    @ViewBuilder
+    private var appearanceBlock: some View {
+        if ClientFeatures.settingsVisible("appearance") {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(ClientFeatures.labelFor("settings", "appearance", default: "APPEARANCE"))
+                .font(.system(size: 12, weight: .black))
+                .foregroundColor(.gray)
+                .padding(.horizontal)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("App Theme")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Text("Choose how the app looks")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+
+                HStack(spacing: 10) {
+                    ThemeToggleCard(title: "System", type: .system, current: appState.theme, icon: "circle.lefthalf.filled")
+                    ThemeToggleCard(title: "Light", type: .light, current: appState.theme, icon: "sun.max.fill")
+                    ThemeToggleCard(title: "Dark", type: .dark, current: appState.theme, icon: "moon.stars.fill")
+                }
+            }
+            .padding(20)
+            .background(Color.white.opacity(0.03))
+            .cornerRadius(24)
+            .padding(.horizontal)
+        }
+        }
+    }
+
+    // MODULES — CRM-only toggle + Face Enrollment, each independently
+    // manageable; the whole section hides when both are hidden. The two rows
+    // follow the admin's order too (settings.crm_only_mode / settings.face_enrollment).
+    private var moduleRows: [String] {
+        let shown = ["crm_only_mode", "face_enrollment"].filter { rowShown($0) }
+        return ClientFeatures.ordered(shown, section: "settings", id: { $0 })
+    }
+
+    @ViewBuilder
+    private var modulesBlock: some View {
+        if !moduleRows.isEmpty {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("MODULES")
+                .font(.system(size: 12, weight: .black))
+                .foregroundColor(.gray)
+                .padding(.horizontal)
+
+            ForEach(moduleRows, id: \.self) { row in
+                if row == "crm_only_mode" {
+                    CRMOnlyToggleCard()
+                        .padding(.horizontal)
+                } else {
+                    faceEnrollmentRow
+                }
+            }
+        }
+        }
+    }
+
+    // Face enrolment (module face_attendance) — supervised enroll /
+    // re-enroll on top of the silent auto-enrol at first check-in.
+    private var faceEnrollmentRow: some View {
+        NavigationLink(destination: FaceEnrollmentView()) {
+            HStack(spacing: 14) {
+                Image(systemName: "faceid")
+                    .font(.system(size: 20))
+                    .foregroundColor(.red)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ClientFeatures.labelFor("settings", "face_enrollment", default: "Face Enrollment")).font(.headline).foregroundColor(.white)
+                    Text("Register your face for attendance").font(.caption).foregroundColor(.gray)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundColor(.gray).font(.caption)
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.03))
+            .cornerRadius(20)
+            .padding(.horizontal)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Security
+    @ViewBuilder
+    private var securityBlock: some View {
+        if ClientFeatures.settingsVisible("app_lock") {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("SECURITY")
+                .font(.system(size: 12, weight: .black))
+                .foregroundColor(.gray)
+                .padding(.horizontal)
+
+            AppLockToggleCard()
+                .padding(.horizontal)
+        }
+        }
+    }
+
+    // Account Summary
+    private var accountBlock: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("ACCOUNT")
+                .font(.system(size: 12, weight: .black))
+                .foregroundColor(.gray)
+                .padding(.horizontal)
+            
+            HStack(spacing: 16) {
+                Circle()
+                    .fill(Color.red.opacity(0.1))
+                    .frame(width: 50, height: 50)
+                    .overlay(Text(Session.currentUser?.name.prefix(1) ?? "U").foregroundColor(.red).bold())
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Session.currentUser?.name ?? "User").font(.headline)
+                    Text(Session.currentUser?.role ?? "Executive").font(.subheadline).foregroundColor(.gray)
+                }
+                Spacer()
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.03))
+            .cornerRadius(20)
+            .padding(.horizontal)
+
+            // Profile photo + voluntary password change. Always present
+            // (Account is one of the essential, non-hideable sections) so
+            // every user can reach them whatever the side menu hides.
+            NavigationLink(destination: ProfileView()) {
+                AccountLinkRow(icon: "person.crop.circle.fill",
+                               title: "Profile & photo",
+                               subtitle: "Update your profile picture")
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink(destination: ChangePasswordView()) {
+                AccountLinkRow(icon: "key.fill",
+                               title: "Change password",
+                               subtitle: "Update the password you sign in with")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // About section
+    @ViewBuilder
+    private var aboutBlock: some View {
+        if ClientFeatures.settingsVisible("about") {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(ClientFeatures.labelFor("settings", "about", default: "ABOUT"))
+                .font(.system(size: 12, weight: .black))
+                .foregroundColor(.gray)
+                .padding(.horizontal)
+
+            VStack(spacing: 0) {
+                AboutRow(label: "App Version", value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"))")
+                Divider().background(Color.white.opacity(0.1))
+                AboutRow(label: "Build Mode", value: "Production")
+            }
+            .background(Color.white.opacity(0.03))
+            .cornerRadius(20)
+            .padding(.horizontal)
+        }
+        }
     }
 }
 

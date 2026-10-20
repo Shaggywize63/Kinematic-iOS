@@ -129,6 +129,8 @@ struct MainTabView: View {
     /// installs continue to work, but the SKU-derived `User.isCrmOnly`
     /// computed property is the new source of truth.
     @AppStorage("crm_only_mode") private var crmOnlyModeOverride: Bool = false
+    /// The CRM module, presented full screen when the admin put "CRM" in the bottom bar (the same cover the side menu opens).
+    @State private var showCRM = false
 
     /// True when the app should run in CRM-only mode — either because the
     /// client only purchased the CRM SKU, or the manual override is on, or the
@@ -149,9 +151,51 @@ struct MainTabView: View {
 
     /// Whether the Field Force tabs (Attendance, Route) should be visible.
     /// A pinned CRM-only tenant never shows them, even on a legacy session.
-    private var hasFieldForce: Bool {
-        if ClientFeatures.isPinnedCrmOnlyClient { return false }
-        return Session.currentUser?.hasFieldForce ?? true
+    private var hasFieldForce: Bool { ClientFeatures.hasFieldForceTabs }
+
+    /// The bottom bar the admin arranged in Client Management (`app_ui_config.layout.tabs`): the ids after Home, in order,
+    /// each already filtered by its own gate and hide flag. Nil = nothing was arranged — the built-in bar below, unchanged.
+    private var layoutBar: [String]? { ClientFeatures.layoutBarTabs() }
+
+    private func barTitle(_ id: String) -> String { BottomBarPlan.spec(for: id)?.title ?? id }
+    private func barIcon(_ id: String) -> String { BottomBarPlan.spec(for: id)?.icon ?? "circle" }
+
+    /// What a laid-out tab shows. The first three are the bar's own content tabs; New and Expenses are the existing tabs of
+    /// the same name; every other id is an action tab, whose tap opens its screen instead (see `openBarAction`).
+    @ViewBuilder
+    private func layoutTabContent(_ id: String) -> some View {
+        switch id {
+        case "attendance": AttendanceView()
+        case "route_plan": RoutePlansView()
+        case "activity":   NavigationStack { ActivityFeedView() }
+        case "new_form":   AdHocFormsView()
+        case "expenses":   NavigationStack { ExpenseClaimsView() }
+        default:           Color.clear   // an action tab is never left selected, so this is never on screen
+        }
+    }
+
+    /// Open the screen an action tab stands for: the same destination as its side-menu entry.
+    private func openBarAction(_ id: String) {
+        guard let action = NavActions.action(id) else { return }
+        switch action.target {
+        case .route(let route): appState.activeSecondaryRoute = ModalRoute(route: route)
+        case .crm:              showCRM = true
+        }
+    }
+
+    /// An action tab opens its screen and the tab that was selected stays selected; a selection that no tab of this bar has
+    /// (e.g. Home's "view all" asking for Route when Route is not in the bar) goes Home. Only a laid-out bar does this.
+    private func handleBarSelection(from old: Int, to new: Int) {
+        guard let bar = layoutBar else { return }
+        switch BottomBarPlan.outcome(selected: new, bar: bar) {
+        case .keep:
+            break
+        case .goHome:
+            appState.selectedTab = 0
+        case .runAction(let id):
+            appState.selectedTab = BottomBarPlan.outcome(selected: old, bar: bar) == .keep ? old : 0
+            openBarAction(id)
+        }
     }
 
     var body: some View {
@@ -190,7 +234,30 @@ struct MainTabView: View {
             Tab("Home", systemImage: "house", value: 0) {
                 HomeView()
             }
-            if ClientFeatures.isByteBack {
+            if let bar = layoutBar {
+                // The admin's bar (Client Management → App layout): Home + up to four more, in their order. Written out per
+                // slot because the order is theirs; `bar` is already filtered by each screen's gate and hide flag.
+                if bar.indices.contains(0) {
+                    Tab(barTitle(bar[0]), systemImage: barIcon(bar[0]), value: BottomBarPlan.tabValue(for: bar[0])) {
+                        layoutTabContent(bar[0])
+                    }
+                }
+                if bar.indices.contains(1) {
+                    Tab(barTitle(bar[1]), systemImage: barIcon(bar[1]), value: BottomBarPlan.tabValue(for: bar[1])) {
+                        layoutTabContent(bar[1])
+                    }
+                }
+                if bar.indices.contains(2) {
+                    Tab(barTitle(bar[2]), systemImage: barIcon(bar[2]), value: BottomBarPlan.tabValue(for: bar[2])) {
+                        layoutTabContent(bar[2])
+                    }
+                }
+                if bar.indices.contains(3) {
+                    Tab(barTitle(bar[3]), systemImage: barIcon(bar[3]), value: BottomBarPlan.tabValue(for: bar[3])) {
+                        layoutTabContent(bar[3])
+                    }
+                }
+            } else if ClientFeatures.isByteBack {
                 // Route-less field-force shell: Home · Attendance · Activity · ➕.
                 // No Route tab; the ➕ tab opens the ad-hoc form picker so reps can
                 // fill a form anywhere without an assigned outlet.
@@ -246,6 +313,14 @@ struct MainTabView: View {
         }
         .tabBarMinimizeOnScrollIfAvailable()
         .tint(Brand.red)
+        .onChange(of: appState.selectedTab) { old, new in
+            handleBarSelection(from: old, to: new)
+        }
+        // "CRM" as an action tab opens the CRM module the way the side menu does; its "Switch to Field Force" row closes it.
+        .fullScreenCover(isPresented: $showCRM) {
+            CRMTabView(onExit: { showCRM = false })
+                .environmentObject(appState)
+        }
         .overlay(alignment: .bottom) {
             if appState.showGlobalSuccess {
                 SuccessOverlay(message: appState.lastSuccessMessage) {
@@ -369,6 +444,130 @@ struct HomeView: View {
     /// `ClientFeatures.isRajkamal` so no other tenant sees the card.
     @State private var showMarketingVisit = false
 
+    @ViewBuilder
+    private func homeBlockView(_ block: HomeBlock) -> some View {
+        switch block {
+        case .tiles(let ids): homeTiles(ids)
+        case .myTargets:      myTargetsBlock
+        case .session:        sessionBlock
+        case .route:          routeBlock
+        }
+    }
+
+    // Home stat tiles — each is admin-manageable per client
+    // (App Customization → Home: stores / visited / forms) and
+    // relabelable. Hidden ids drop out; the rest keep their slot.
+    // The first two tiles of a run share a row, a third is full width (the built-in order is Stores · Visited / Forms).
+    private func homeTiles(_ ids: [String]) -> some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                ForEach(Array(ids.prefix(2)), id: \.self) { id in
+                    homeTile(id)
+                }
+            }
+            ForEach(Array(ids.dropFirst(2)), id: \.self) { id in
+                homeTile(id)
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+
+    @ViewBuilder
+    private func homeTile(_ id: String) -> some View {
+        switch id {
+        case "stores":
+            if ClientFeatures.homeVisible("stores") {
+                StatTile(label: ClientFeatures.labelFor("home", "stores", default: "Store Target"), value: "\(vm.totalStoreCount)", icon: "storefront.fill", color: Brand.red)
+            }
+        case "visited":
+            if ClientFeatures.homeVisible("visited") {
+                StatTile(label: ClientFeatures.labelFor("home", "visited", default: "Visited"), value: "\(vm.visitedStoreCount)", icon: "checkmark.seal.fill", color: .green)
+            }
+        default:
+            if ClientFeatures.homeVisible("forms") {
+                StatTile(label: ClientFeatures.labelFor("home", "forms", default: "Data Forms Submitted Today"), value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: Brand.red)
+            }
+        }
+    }
+
+    // My targets — below the tiles; draws nothing at all unless the client has rupee targets.
+    private var myTargetsBlock: some View {
+        MyTargetsCard(model: targets, title: ClientFeatures.labelFor("home", "my_targets", default: "My targets"),
+                      horizontalPadding: 20)
+    }
+
+    // The cards that are not admin-ordered: the session timer, the travel prompt, and the submission / broadcast card.
+    @ViewBuilder
+    private var sessionBlock: some View {
+        SessionCard(record: appState.today).padding(.horizontal, 20)
+
+        // After check-out: the way back into "Add today's travel to expenses" (clients whose expense policy
+        // pays GPS distance; draws nothing for everyone else, until added or closed for the day).
+        TravelPromptCard()
+
+        if vm.showSubmissionSuccess {
+            HStack(spacing: 15) {
+                ZStack {
+                    Circle().fill(Color.green.opacity(0.15)).frame(width: 44, height: 44)
+                    Image(systemName: "checkmark.seal.fill").font(.title3).foregroundColor(.green)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Submission Successful!").font(.headline).foregroundColor(Color(uiColor: .label))
+                    Text("Thank you for your response.").font(.caption).foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            .padding(18)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
+            .padding(.horizontal, 32).transition(.scale.combined(with: .opacity))
+        } else if let b = vm.data?.broadcast, !(vm.data?.alreadyAnswered ?? b.alreadyAnswered) {
+            BroadcastCard(broadcast: b) { selectedIndex in
+                Task { await vm.submitBroadcastAnswer(id: b.id, selectedIndex: selectedIndex) }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    // Home "Today's Route" preview — admin-manageable per client
+    // (App Customization → Home: todays_route) and relabelable.
+    @ViewBuilder
+    private var routeBlock: some View {
+        if ClientFeatures.homeVisible("todays_route") {
+          VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(ClientFeatures.labelFor("home", "todays_route", default: "TODAY'S ROUTE")).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary).tracking(1)
+                Spacer()
+                Button(action: {
+                    if appState.today?.checkinAt != nil { appState.selectedTab = 2 }
+                }) {
+                    Text("VIEW ALL").font(.system(size: 11, weight: .bold)).foregroundColor(appState.today?.checkinAt != nil ? .red : .gray)
+                }
+            }
+            let previewOutlets = Array(vm.uniqueOutlets.prefix(3))
+            if appState.today?.checkinAt == nil {
+                HStack {
+                    Image(systemName: "lock.fill").foregroundColor(.gray)
+                    Text("Check in to unlock route").font(.caption).foregroundColor(.gray)
+                }
+                .padding(.vertical, 8)
+            } else if !previewOutlets.isEmpty {
+                ForEach(previewOutlets) { outlet in
+                    Button(action: {
+                        withAnimation(.spring()) { appState.selectedOutlet = outlet; appState.selectedTab = 2 }
+                    }) {
+                        RoutePreviewRow(outlet: outlet)
+                    }
+                }
+            } else {
+                Text("No stores assigned for today").font(.subheadline).foregroundColor(.secondary).padding(.vertical, 8)
+            }
+          }
+          .padding(20)
+          .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
+          .padding(.horizontal, 20)
+        }
+    }
+
     var body: some View {
         ZStack {
             ScrollView {
@@ -448,91 +647,10 @@ struct HomeView: View {
                         .padding(.horizontal, 20)
                     }
 
-                    // Home stat tiles — each is admin-manageable per client
-                    // (App Customization → Home: stores / visited / forms) and
-                    // relabelable. Hidden ids drop out; the rest keep their slot.
-                    VStack(spacing: 12) {
-                        HStack(spacing: 12) {
-                            if ClientFeatures.homeVisible("stores") {
-                                StatTile(label: ClientFeatures.labelFor("home", "stores", default: "Store Target"), value: "\(vm.totalStoreCount)", icon: "storefront.fill", color: Brand.red)
-                            }
-                            if ClientFeatures.homeVisible("visited") {
-                                StatTile(label: ClientFeatures.labelFor("home", "visited", default: "Visited"), value: "\(vm.visitedStoreCount)", icon: "checkmark.seal.fill", color: .green)
-                            }
-                        }
-                        if ClientFeatures.homeVisible("forms") {
-                            StatTile(label: ClientFeatures.labelFor("home", "forms", default: "Data Forms Submitted Today"), value: "\(vm.data?.summary?.tffCount ?? 0)", icon: "doc.text.fill", color: Brand.red)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-
-                    // My targets — below the tiles; draws nothing at all unless the client has rupee targets.
-                    MyTargetsCard(model: targets, title: ClientFeatures.labelFor("home", "my_targets", default: "My targets"),
-                                  horizontalPadding: 20)
-
-                    SessionCard(record: appState.today).padding(.horizontal, 20)
-
-                    // After check-out: the way back into "Add today's travel to expenses" (clients whose expense policy
-                    // pays GPS distance; draws nothing for everyone else, until added or closed for the day).
-                    TravelPromptCard()
-
-                    if vm.showSubmissionSuccess {
-                        HStack(spacing: 15) {
-                            ZStack {
-                                Circle().fill(Color.green.opacity(0.15)).frame(width: 44, height: 44)
-                                Image(systemName: "checkmark.seal.fill").font(.title3).foregroundColor(.green)
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Submission Successful!").font(.headline).foregroundColor(Color(uiColor: .label))
-                                Text("Thank you for your response.").font(.caption).foregroundColor(.secondary)
-                            }
-                            Spacer()
-                        }
-                        .padding(18)
-                        .background(RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .secondarySystemBackground)))
-                        .padding(.horizontal, 32).transition(.scale.combined(with: .opacity))
-                    } else if let b = vm.data?.broadcast, !(vm.data?.alreadyAnswered ?? b.alreadyAnswered) {
-                        BroadcastCard(broadcast: b) { selectedIndex in
-                            Task { await vm.submitBroadcastAnswer(id: b.id, selectedIndex: selectedIndex) }
-                        }
-                        .padding(.horizontal, 20)
-                    }
-
-                    // Home "Today's Route" preview — admin-manageable per client
-                    // (App Customization → Home: todays_route) and relabelable.
-                    if ClientFeatures.homeVisible("todays_route") {
-                      VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            Text(ClientFeatures.labelFor("home", "todays_route", default: "TODAY'S ROUTE")).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary).tracking(1)
-                            Spacer()
-                            Button(action: {
-                                if appState.today?.checkinAt != nil { appState.selectedTab = 2 }
-                            }) {
-                                Text("VIEW ALL").font(.system(size: 11, weight: .bold)).foregroundColor(appState.today?.checkinAt != nil ? .red : .gray)
-                            }
-                        }
-                        let previewOutlets = Array(vm.uniqueOutlets.prefix(3))
-                        if appState.today?.checkinAt == nil {
-                            HStack {
-                                Image(systemName: "lock.fill").foregroundColor(.gray)
-                                Text("Check in to unlock route").font(.caption).foregroundColor(.gray)
-                            }
-                            .padding(.vertical, 8)
-                        } else if !previewOutlets.isEmpty {
-                            ForEach(previewOutlets) { outlet in
-                                Button(action: {
-                                    withAnimation(.spring()) { appState.selectedOutlet = outlet; appState.selectedTab = 2 }
-                                }) {
-                                    RoutePreviewRow(outlet: outlet)
-                                }
-                            }
-                        } else {
-                            Text("No stores assigned for today").font(.subheadline).foregroundColor(.secondary).padding(.vertical, 8)
-                        }
-                      }
-                      .padding(20)
-                      .background(RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)))
-                      .padding(.horizontal, 20)
+                    // The admin-manageable cards (stat tiles, My targets, the session / broadcast cards, Today's Route), drawn in
+                    // the built-in order unless the admin arranged Home in Client Management (app_ui_config.layout.home).
+                    ForEach(HomeLayout.blocks(listed: ClientFeatures.layoutOrder("home")), id: \.self) { block in
+                        homeBlockView(block)
                     }
 
                     Spacer().frame(height: 110)
