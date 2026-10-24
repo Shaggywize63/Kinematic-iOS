@@ -190,7 +190,9 @@ struct ActivitySubmissionView: View {
                             images: Binding(
                                 get: { cachedImages[field.id] ?? [] },
                                 set: { cachedImages[field.id] = $0 }
-                            )
+                            ),
+                            allFields: fields,
+                            setResponse: { id, val in responses[id] = val }
                         )
                     }
                 }
@@ -485,6 +487,11 @@ struct FieldCard: View {
     let field: FormField
     @Binding var value: String
     @Binding var images: [UIImage]
+    /// Siblings + a setter so the `card_scan` control can write the scanned
+    /// contact values into the questions whose `prefillKey` matches. Defaulted
+    /// so non-card call sites compile unchanged.
+    var allFields: [FormField] = []
+    var setResponse: (String, String) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -551,6 +558,8 @@ struct FieldCard: View {
             FileAttachmentField(value: $value)
         case .signature:
             SignatureCaptureField(value: $value)
+        case .cardScan:
+            CardScanFormField(allFields: allFields, setResponse: setResponse)
         case .longText:
             LongTextField(value: $value, placeholder: field.placeholder)
         case .location:
@@ -774,6 +783,97 @@ struct RatingField: View {
             Spacer()
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// The `card_scan` control: capture a visiting card, OCR it via
+/// `/forms/scan-card`, and write the parsed contact values into the sibling
+/// questions whose `prefillKey` matches. Mirrors the CRM LeadScanCardView flow
+/// but seeds answers in-place instead of opening a new form.
+struct CardScanFormField: View {
+    let allFields: [FormField]
+    let setResponse: (String, String) -> Void
+
+    @State private var showCamera = false
+    @State private var pickedImage: UIImage?
+    @State private var scanning = false
+    @State private var filled = false
+    @State private var errorText: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                pickedImage = nil
+                showCamera = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.viewfinder")
+                    Text(scanning ? "Reading card…" : "Scan Visiting Card")
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Brand.red)
+            .disabled(scanning)
+
+            if scanning {
+                ProgressView().tint(Brand.red)
+            }
+            if filled {
+                Label("Contact details filled from card", systemImage: "checkmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundColor(.green)
+            }
+            if let e = errorText {
+                Text(e).font(.footnote).foregroundColor(.red)
+            }
+        }
+        // Rear camera (card is held in front of the rep); ImagePicker falls back
+        // to the photo library on the simulator.
+        .sheet(isPresented: $showCamera, onDismiss: {
+            if let img = pickedImage { Task { await scan(img) } }
+        }) {
+            ImagePicker(image: $pickedImage, sourceType: .camera, cameraDevice: .rear)
+        }
+    }
+
+    private func scan(_ image: UIImage) async {
+        await MainActor.run { scanning = true; errorText = nil; filled = false }
+        guard let data = KinematicRepository.compressForUpload(image, maxDim: 1024, targetKB: 1500),
+              !data.isEmpty else {
+            await MainActor.run { scanning = false; errorText = "Couldn't process the photo. Try again." }
+            return
+        }
+        let base64 = data.base64EncodedString()
+        let r = await KinematicRepository.shared.scanCardForForm(imageBase64: base64)
+        await MainActor.run {
+            scanning = false
+            guard let r = r else {
+                errorText = "We couldn't read that card. Retake the photo in good light, or type the details."
+                return
+            }
+            let name = [r.firstName, r.lastName]
+                .compactMap { ($0?.isEmpty == false) ? $0 : nil }
+                .joined(separator: " ")
+            let targets: [String: String?] = [
+                "contact_name": name.isEmpty ? nil : name,
+                "contact_title": r.title,
+                "contact_phone": r.phone,
+                "contact_email": r.email,
+                "contact_company": r.company,
+            ]
+            var any = false
+            for f in allFields {
+                guard let key = f.prefillKey,
+                      let opt = targets[key], let v = opt, !v.isEmpty else { continue }
+                setResponse(f.id, v)
+                any = true
+            }
+            filled = any
+            if !any { errorText = "No contact details found on the card." }
+        }
     }
 }
 

@@ -237,7 +237,9 @@ struct AdHocFormFillView: View {
                             images: Binding(
                                 get: { cachedImages[field.id] ?? [] },
                                 set: { cachedImages[field.id] = $0 }
-                            )
+                            ),
+                            allFields: fields,
+                            setResponse: { id, val in responses[id] = val }
                         )
                     }
                 }

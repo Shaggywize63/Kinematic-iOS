@@ -46,7 +46,7 @@ enum FormFieldLogic {
     /// The control a question is rendered with. `.other` = an unknown `field_type`: the plain text box it always got.
     enum Kind: Equatable {
         case text, longText, email, phone, number, checkbox, multiSelect, dropdown, yesNo, radio
-        case photo, file, signature, rating, date, time, dateTime, location, section, other
+        case photo, file, signature, cardScan, rating, date, time, dateTime, location, section, other
     }
 
     /// The control for a question of builder type `fieldType`. `hasOptions`: the question carries answer options, which
@@ -68,6 +68,7 @@ enum FormFieldLogic {
         case "photo", "image":          return .photo
         case "file":                    return .file
         case "signature":               return .signature
+        case "card_scan":               return .cardScan
         case "rating":                  return .rating
         case "date":                    return .date
         case "time":                    return .time
