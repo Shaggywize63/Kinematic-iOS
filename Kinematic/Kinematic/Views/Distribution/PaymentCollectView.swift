@@ -40,6 +40,18 @@ struct PaymentCollectView: View {
     @State private var doneMessage: String = ""
     @State private var showDone = false
 
+    // A payment belongs to one company's books, so a rep who sells for several chooses it first.
+    @StateObject private var companyVm = DistributionViewModel()
+    @State private var companyConfirmed = false
+    @State private var changingCompany = false
+
+    private var showCompanyPicker: Binding<Bool> {
+        Binding(
+            get: { changingCompany || (companyVm.companiesLoaded && companyVm.companyPickRequired && !companyConfirmed) },
+            set: { changingCompany = $0 }
+        )
+    }
+
     private let modes = ["cash", "upi", "cheque", "credit_adjustment"]
 
     init(outletId: String, outletName: String?) {
@@ -53,6 +65,7 @@ struct PaymentCollectView: View {
     var body: some View {
         Form {
             queueBanner
+            companySection
             outletSection
             if !pickedId.isEmpty { outstandingSection }
             modeSection
@@ -66,7 +79,7 @@ struct PaymentCollectView: View {
         }
         .navigationTitle("Collect Payment")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showPicker) {
+        .sheet(isPresented: Binding(get: { showPicker && companyConfirmed }, set: { showPicker = $0 })) {
             OutletPickerView(onPick: { outlet in
                 pickedId = outlet.id
                 pickedName = OutletPickerLogic.displayName(outlet)
@@ -74,7 +87,18 @@ struct PaymentCollectView: View {
                 errorMsg = nil
             })
         }
-        .task(id: pickedId) { await loadOutstanding() }
+        .task {
+            await companyVm.loadCompanies()
+            if !companyVm.companyPickRequired { companyConfirmed = true }
+        }
+        .task(id: "\(pickedId)|\(companyConfirmed)|\(companyVm.activeCompanyId ?? "")") { await loadOutstanding() }
+        .sheet(isPresented: showCompanyPicker) {
+            CompanyPickerSheet(companies: companyVm.companies, activeId: companyVm.activeCompanyId, required: !companyConfirmed) { id in
+                companyVm.selectCompany(id)
+                companyConfirmed = true
+                changingCompany = false
+            }
+        }
         .alert("Payment", isPresented: $showDone) {
             Button("OK") { dismiss() }
         } message: {
@@ -93,6 +117,22 @@ struct PaymentCollectView: View {
                     Text(line)
                         .font(.caption)
                         .foregroundColor(summary.failed > 0 ? Color.red : Color.orange)
+                }
+            }
+        }
+    }
+
+    /// The company this payment is booked under — only shown to a rep who sells for several.
+    @ViewBuilder private var companySection: some View {
+        if companyVm.companyPickRequired, let name = companyVm.activeCompanyName {
+            Section {
+                Button { changingCompany = true } label: {
+                    HStack {
+                        Text("Company").foregroundColor(.secondary)
+                        Spacer()
+                        Text(name).fontWeight(.semibold)
+                        Image(systemName: "chevron.down").font(.caption).foregroundColor(.secondary)
+                    }
                 }
             }
         }
@@ -240,7 +280,7 @@ struct PaymentCollectView: View {
     private var submitSection: some View {
         Section {
             Button(busy ? "Saving…" : "Record Payment") { record() }
-                .disabled(busy)
+                .disabled(busy || !companyConfirmed)
                 .frame(maxWidth: .infinity)
                 .foregroundColor(.white)
                 .listRowBackground(Color(red: 208/255, green: 30/255, blue: 44/255))
@@ -252,7 +292,7 @@ struct PaymentCollectView: View {
     private func loadOutstanding() async {
         outstanding = nil
         outstandingLoading = false
-        if pickedId.isEmpty { return }
+        if pickedId.isEmpty || !companyConfirmed { return }
         outstandingLoading = true
         let result = await DistributionAPI.shared.outstanding(outletId: pickedId)
         if Task.isCancelled { return }

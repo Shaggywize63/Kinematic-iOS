@@ -7,14 +7,22 @@ name: Build iOS Simulator app
 # present on the macos-26 runner image (macos-15 and earlier top out at
 # Xcode 16 / iOS 18 SDK, which failed with exit code 65 on any iOS 26 API).
 #
-# Now that macos-26 is available we build on it and verify every PR + push
-# to main, plus on-demand via workflow_dispatch.
+# Runs on push to main (publishes the simulator build as a GitHub Release)
+# and on-demand via workflow_dispatch. PRs are NOT built here: the
+# "iOS Unit Tests" workflow already compiles the app on every PR, so running
+# this too doubled the (10x-priced) macOS minutes for no extra signal.
 on:
   workflow_dispatch:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+
+# Only the newest push to main needs a published build; cancel superseded runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -112,7 +120,7 @@ jobs:
           name: kinematic-simulator-app
           path: dist/*.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
       - name: Publish to GitHub Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

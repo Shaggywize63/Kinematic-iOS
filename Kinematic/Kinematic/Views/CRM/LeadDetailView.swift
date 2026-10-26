@@ -161,6 +161,7 @@ struct LeadDetailView: View {
                     recentUpdatesSection
                     recordCard(lead: lead)
                     activitiesSection
+                    UpsellsSectionView(leadId: lead.id)
                     conversationsSection
                 } else if vm.isLoading {
                     ProgressView().tint(Brand.red).padding(.top, 40).frame(maxWidth: .infinity)
@@ -1609,7 +1610,7 @@ struct LeadDetailView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { conversationsExpanded.toggle() }
                 } label: {
                     HStack {
-                        Text("CONVERSATIONS (\(conversations.count))")
+                        Text("CALL INSIGHTS (\(conversations.count))")
                             .font(.system(size: 11, weight: .black))
                             .tracking(0.8)
                             .foregroundColor(Brand.red)

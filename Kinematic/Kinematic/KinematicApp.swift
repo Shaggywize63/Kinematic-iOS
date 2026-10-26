@@ -26,10 +26,15 @@ struct User: Codable, Identifiable {
     /// ProfileView falls back to a coloured initial circle when absent.
     let avatarUrl: String?
     /// Per-client SKU module IDs (Field Force / CRM / Distribution + universal).
-    /// Empty list = legacy session, treat as full access for backwards compat.
+    /// Empty list = legacy session, treat as full access for backwards compat — unless `entitlementsStrict`, when the list is
+    /// complete and empty means nothing.
     let enabledModules: [String]
     /// Package SKUs the client owns: field_force, distribution, crm, business, system, people, audit.
     let enabledPackages: [String]
+    /// `entitlements_strict` from the server: true = `enabled_modules` / `enabled_packages` are the COMPLETE list this client
+    /// was given, so an empty list means nothing (not "unknown, show everything"). False / absent = the older reading
+    /// (platform users, Tata, a failed lookup, an older server): see `isLegacySession`.
+    let entitlementsStrict: Bool
     /// Legacy per-user RBAC grants from user_module_permissions.
     let permissions: [String]
     /// Org-role designation (e.g. "Consumer Champion", "Business Manager").
@@ -58,6 +63,7 @@ struct User: Codable, Identifiable {
         case avatarUrl = "avatar_url"
         case enabledModules = "enabled_modules"
         case enabledPackages = "enabled_packages"
+        case entitlementsStrict = "entitlements_strict"
         case orgRoleName = "org_role_name"
         case orgRoleDataScope = "org_role_data_scope"
         case mustChangePassword = "must_change_password"
@@ -78,6 +84,7 @@ struct User: Codable, Identifiable {
         avatarUrl       = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
         enabledModules  = (try? c.decode([String].self, forKey: .enabledModules)) ?? []
         enabledPackages = (try? c.decode([String].self, forKey: .enabledPackages)) ?? []
+        entitlementsStrict = (try? c.decode(Bool.self, forKey: .entitlementsStrict)) ?? false
         permissions     = (try? c.decode([String].self, forKey: .permissions)) ?? []
         orgRoleName     = try c.decodeIfPresent(String.self, forKey: .orgRoleName)
         orgRoleDataScope = try c.decodeIfPresent(String.self, forKey: .orgRoleDataScope)
@@ -100,7 +107,10 @@ struct AppUiConfig: Codable {
     /// Opt-in feature switches, id -> on (e.g. `rate_prompt`). ONLY an explicit `true` turns a feature on (absent /
     /// false = off) — see `featureOn`. Kept so the app's own round trip (the user is stored as JSON) does not drop it.
     let features: [String: Bool]?
-    enum CodingKeys: String, CodingKey { case menu, tabs, home, settings, labels, features; case crmMore = "crm_more" }
+    /// The arrangement an admin made by drag and drop (order of each container, which screens sit in the field-force bottom
+    /// bar) — see `AppLayout`. Nil = never arranged: every container keeps its built-in order and the built-in bar.
+    let layout: AppLayout?
+    enum CodingKeys: String, CodingKey { case menu, tabs, home, settings, labels, features, layout; case crmMore = "crm_more" }
 
     /// Reads every map exactly as the synthesized decoder did. `features` alone is read forgivingly: an entry that is
     /// not a boolean is skipped, and a `features` that is not an object at all reads as none — whatever it holds, it
@@ -114,6 +124,8 @@ struct AppUiConfig: Codable {
         settings = try c.decodeIfPresent([String: Bool].self, forKey: .settings)
         labels = try c.decodeIfPresent([String: [String: String]].self, forKey: .labels)
         features = AppUiConfig.readFeatures(c)
+        // Like `features`: whatever `layout` holds, it can never make the rest of the config fail to load.
+        layout = try? c.decodeIfPresent(AppLayout.self, forKey: .layout)
     }
 
     /// One `features` entry: a boolean, or nothing.
@@ -143,15 +155,23 @@ struct AppUiConfig: Codable {
     /// True only when the admin explicitly turned this opt-in feature ON for the client (`features[id] == true`);
     /// absent, false or unreadable config = off. Same shape as `tabExplicitlyOn`.
     func featureOn(_ id: String) -> Bool { features?[id] == true }
+
+    /// The ids the admin listed for one container (`tabs`, `menu`, `settings`, `crm_more`, `home`), in order; empty = never arranged.
+    func layoutOrder(_ section: String) -> [String] { layout?.order(for: section) ?? [] }
 }
 
 // MARK: - Entitlement helpers
 extension User {
     /// True for legacy sessions stored before /auth/me started returning entitlements.
     /// Treated as full access so we never lock out an existing user mid-deploy.
-    var isLegacySession: Bool { enabledModules.isEmpty && enabledPackages.isEmpty }
+    /// Never true when the server said `entitlements_strict`: the lists are then complete, so empty means nothing —
+    /// `hasModule` / `hasPackage` read the lists only.
+    var isLegacySession: Bool { !entitlementsStrict && enabledModules.isEmpty && enabledPackages.isEmpty }
     func hasModule(_ id: String)  -> Bool { isLegacySession || enabledModules.contains(id) }
     func hasPackage(_ pkg: String) -> Bool { isLegacySession || enabledPackages.contains(pkg) }
+    /// For a screen that had NO module check before: under `entitlements_strict` it needs `module`; otherwise it keeps
+    /// whatever gate it had (so an older server, a platform user or Tata sees exactly what they saw).
+    func strictAllows(_ module: String) -> Bool { !entitlementsStrict || enabledModules.contains(module) }
     var hasFieldForce:  Bool { hasPackage("field_force") }
     var hasCrm:         Bool { hasPackage("crm") }
     var hasDistribution: Bool { hasPackage("distribution") }
@@ -171,6 +191,8 @@ extension User {
     func crmMoreVisible(_ id: String) -> Bool { appUiConfig?.crmMore?[id] != false }
     func homeVisible(_ id: String) -> Bool { appUiConfig?.home?[id] != false }
     func settingsVisible(_ id: String) -> Bool { appUiConfig?.settings?[id] != false }
+    /// The admin's order for one container (`tabs`, `menu`, `settings`, `crm_more`, `home`); empty = built-in order.
+    func layoutOrder(_ section: String) -> [String] { appUiConfig?.layoutOrder(section) ?? [] }
     /// Admin-set custom name for an item (section -> id), if non-empty; else `def`.
     func label(_ section: String, _ id: String, default def: String) -> String {
         if let v = appUiConfig?.labels?[section]?[id] {
@@ -191,6 +213,9 @@ enum SecondaryRoute: String, Identifiable {
     // Expense claims (module `field_expenses`) — reachable from the side menu for field-force tenants
     // and opened when an expense push is tapped.
     case expenses
+    // A day in time order — check-in, travel, visits, halts, check-out (module `timeline`, off by default; STRICT-gated).
+    // Own day for field executives, plus a Team view for managers.
+    case timeline
     // Whatever screen a tapped notification points at (lead, deal, leave approvals, chat thread, …).
     // The screen itself rides on ModalRoute.target — see NotificationRoute.
     case notificationTarget
@@ -219,6 +244,7 @@ enum SecondaryRoute: String, Identifiable {
         switch self {
         case .stockBatches: return "distribution_batches"
         case .expenses:     return "field_expenses"
+        case .timeline:     return "timeline"
         default:            return nil
         }
     }
@@ -242,7 +268,7 @@ enum SecondaryRoute: String, Identifiable {
     var requiredPackage: String? {
         switch self {
         // Universal — every client gets these
-        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .expenses, .notificationTarget:
+        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .expenses, .timeline, .notificationTarget:
             return nil
         // Field Force
         case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:
@@ -3987,19 +4013,35 @@ class KinematicRepository {
     /// out of the camera; this typically lands at 50–150 KB while staying
     /// readable for face-recognition / ID purposes. Hot path on attendance.
     static func compressForUpload(_ image: UIImage, maxDim: CGFloat = 1280, targetKB: Int = 150) -> Data? {
+        // 0. Bake the capture's orientation into the pixels. A camera image carries
+        // its rotation in `imageOrientation` (EXIF); encoding without flattening it
+        // can leave the photo sideways for consumers that don't honour the tag.
+        // The resize path below already redraws (and so normalizes), but a small,
+        // un-resized image would otherwise pass straight through — so normalize up
+        // front. Parity with the Android selfie-orientation fix.
+        let upright: UIImage
+        if image.imageOrientation != .up {
+            UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+            upright = UIGraphicsGetImageFromCurrentImageContext() ?? image
+            UIGraphicsEndImageContext()
+        } else {
+            upright = image
+        }
+
         // 1. Resize so neither dimension exceeds maxDim. Aspect-ratio preserved.
         let resized: UIImage
-        let w = image.size.width, h = image.size.height
+        let w = upright.size.width, h = upright.size.height
         let longest = max(w, h)
         if longest > maxDim {
             let scale = maxDim / longest
             let newSize = CGSize(width: w * scale, height: h * scale)
             UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
-            image.draw(in: CGRect(origin: .zero, size: newSize))
-            resized = UIGraphicsGetImageFromCurrentImageContext() ?? image
+            upright.draw(in: CGRect(origin: .zero, size: newSize))
+            resized = UIGraphicsGetImageFromCurrentImageContext() ?? upright
             UIGraphicsEndImageContext()
         } else {
-            resized = image
+            resized = upright
         }
 
         // 2. Iteratively reduce quality until under target, floor at 0.4.

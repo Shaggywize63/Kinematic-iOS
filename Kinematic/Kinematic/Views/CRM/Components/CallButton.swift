@@ -17,27 +17,71 @@ struct CallButton: View {
     let onCallInitiated: () -> Void
     var compact: Bool = true
 
+    @State private var placingIvr = false
+    @State private var ivrMessage: String?
+
     var body: some View {
         if let normalized = CallHelper.normalize(phone) {
-            Button {
-                CallHelper.dial(normalized: normalized)
-                onCallInitiated()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "phone.fill")
-                        .font(.system(size: compact ? 11 : 13, weight: .bold))
-                    Text("Call")
-                        .font(.system(size: compact ? 11 : 13, weight: .bold))
+            HStack(spacing: 6) {
+                pill(title: "Call", system: "phone.fill", color: Color(red: 0.10, green: 0.55, blue: 0.95)) {
+                    CallHelper.dial(normalized: normalized)
+                    onCallInitiated()
                 }
-                .padding(.horizontal, compact ? 9 : 12)
-                .padding(.vertical, compact ? 4 : 7)
-                .foregroundColor(.white)
-                .background(Color(red: 0.10, green: 0.55, blue: 0.95))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
+                // IVR Call — a recorded server-side click-to-call (CallerDesk): the
+                // agent's phone rings first, then the customer. Shown only when the
+                // client holds the `ivr_call` module (strict gate in ClientFeatures).
+                if ClientFeatures.hasIvrCall {
+                    pill(title: "IVR", system: "phone.arrow.up.right.fill", color: Color(red: 0.04, green: 0.54, blue: 0.31), disabled: placingIvr) {
+                        placeIvrCall(to: normalized)
+                    }
+                }
             }
-            .buttonStyle(.plain)
+            .alert("IVR Call", isPresented: Binding(get: { ivrMessage != nil }, set: { if !$0 { ivrMessage = nil } })) {
+                Button("OK", role: .cancel) { ivrMessage = nil }
+            } message: { Text(ivrMessage ?? "") }
         }
     }
+
+    private func pill(title: String, system: String, color: Color, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: system).font(.system(size: compact ? 11 : 13, weight: .bold))
+                Text(title).font(.system(size: compact ? 11 : 13, weight: .bold))
+            }
+            .padding(.horizontal, compact ? 9 : 12)
+            .padding(.vertical, compact ? 4 : 7)
+            .foregroundColor(.white)
+            .background(color.opacity(disabled ? 0.5 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+    }
+
+    private func placeIvrCall(to: String) {
+        guard !placingIvr else { return }
+        placingIvr = true
+        Task {
+            let message: String
+            do {
+                _ = try await CRMService.shared.placeIvrCall(to: to)
+                message = "Your phone will ring first, then the customer."
+            } catch {
+                message = (error as? LocalizedError)?.errorDescription ?? "Could not place the call."
+            }
+            await MainActor.run {
+                placingIvr = false
+                ivrMessage = message
+            }
+        }
+    }
+}
+
+/// Minimal decode of the click-to-call ack (`{ ok, provider, call_id, status }`).
+struct IvrCallAck: Codable {
+    let ok: Bool?
+    let provider: String?
+    let status: String?
 }
 
 /// Phone formatting + dialing. Kept as a helper so tests / other views can

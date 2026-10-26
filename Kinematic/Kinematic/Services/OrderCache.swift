@@ -34,6 +34,8 @@ struct PendingOrder: Codable, Identifiable {
     var attempt: Int
     var lastError: String?
     var isSynced: Bool
+    /// Company the order was taken for; replayed as X-Client-Id. Nil on rows queued by older builds.
+    var clientId: String? = nil
 }
 
 struct PendingPayment: Codable, Identifiable {
@@ -48,6 +50,8 @@ struct PendingPayment: Codable, Identifiable {
     var isSynced: Bool
     /// For the queue list only (never sent). Nil on rows queued by older builds.
     var outletName: String? = nil
+    /// Company the payment was collected for; replayed as X-Client-Id. Nil on rows queued by older builds.
+    var clientId: String? = nil
 }
 
 struct PendingReturn: Codable, Identifiable {
@@ -62,6 +66,8 @@ struct PendingReturn: Codable, Identifiable {
     var isSynced: Bool
     /// For the queue list only (never sent). Nil on rows queued by older builds.
     var outletName: String? = nil
+    /// Company the return was booked for; replayed as X-Client-Id. Nil on rows queued by older builds.
+    var clientId: String? = nil
 }
 
 extension PendingOrder: QueueOwned {}
@@ -150,7 +156,8 @@ final class OrderCache: ObservableObject {
             createdAt: Date(),
             attempt: 0,
             lastError: nil,
-            isSynced: false
+            isSynced: false,
+            clientId: SellingCompany.selectedId()
         )
         orders.insert(row, at: 0)
         persistOrders()
@@ -168,7 +175,8 @@ final class OrderCache: ObservableObject {
         if let i = DistributionQueuePolicy.rowIndex(withKey: idempotencyKey, in: payments) { return payments[i] }
         adoptLegacyRows()
         let row = PendingPayment(id: UUID(), idempotencyKey: idempotencyKey, userKey: newRowKey(), input: input,
-                                 createdAt: Date(), attempt: 0, lastError: nil, isSynced: false, outletName: outletName)
+                                 createdAt: Date(), attempt: 0, lastError: nil, isSynced: false, outletName: outletName,
+                                 clientId: SellingCompany.selectedId())
         payments.insert(row, at: 0)
         persistPayments()
         return row
@@ -184,7 +192,8 @@ final class OrderCache: ObservableObject {
         if let i = DistributionQueuePolicy.rowIndex(withKey: idempotencyKey, in: returns) { return returns[i] }
         adoptLegacyRows()
         let row = PendingReturn(id: UUID(), idempotencyKey: idempotencyKey, userKey: newRowKey(), input: input,
-                                createdAt: Date(), attempt: 0, lastError: nil, isSynced: false, outletName: outletName)
+                                createdAt: Date(), attempt: 0, lastError: nil, isSynced: false, outletName: outletName,
+                                clientId: SellingCompany.selectedId())
         returns.insert(row, at: 0)
         persistReturns()
         return row

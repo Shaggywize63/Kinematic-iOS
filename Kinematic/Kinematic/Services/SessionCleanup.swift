@@ -30,6 +30,7 @@ enum SessionCleanup {
     /// Keys removed at sign-out, whether or not they are set.
     static let userDefaultsKeys: [String] = [
         CRMClientScope.storageKey,        // "kinematic_selected_client"
+        SellingCompany.storageKey,        // "kinematic_selling_company" — the company a rep is taking orders for
         CRMLocationStore.stateKey,        // "crm.location.state"
         CRMLocationStore.cityKey,         // "crm.location.city"
         mobileHomeCacheKey,

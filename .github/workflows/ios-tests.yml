@@ -4,12 +4,21 @@ name: iOS Unit Tests
 # deployment target is iOS 26 and the codebase uses iOS 26 SwiftUI APIs, so
 # tests (which host inside the app via TEST_HOST) must build against the
 # iOS 26 SDK that ships with Xcode 26 — only present on the macos-26 image.
+#
+# PR-only: tests already ran on the PR, so re-running them on the push to
+# main doubled the (10x-priced) macOS minutes. Superseded PR runs are
+# cancelled, and docs-only changes are skipped.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:

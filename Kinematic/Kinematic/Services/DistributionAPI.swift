@@ -44,7 +44,8 @@ struct DistributionAPI {
     /// idempotency middleware compares a retry's body with the first attempt's, and a queued write is re-encoded
     /// from disk (in a later process) every time it is replayed — an unstable key order would turn a harmless
     /// replay into "Idempotency-Key reused with a different request body".
-    private func makeRequest(url: URL, method: String, body: Encodable?, idempotencyKey: String?, timeout: TimeInterval) throws -> URLRequest {
+    private func makeRequest(url: URL, method: String, body: Encodable?, idempotencyKey: String?, timeout: TimeInterval,
+                             clientId: String? = nil) throws -> URLRequest {
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = timeout
@@ -54,6 +55,13 @@ struct DistributionAPI {
             req.setValue(orgId, forHTTPHeaderField: "X-Org-Id")
         }
         if let key = idempotencyKey { req.setValue(key, forHTTPHeaderField: "Idempotency-Key") }
+        // The company the rep is selling for. A queued write names the company it was taken for, so a later
+        // replay cannot be re-filed under whichever company is active then.
+        if let cid = clientId.flatMap({ SellingCompany.isUUID($0) ? $0 : nil }) {
+            req.setValue(cid, forHTTPHeaderField: "X-Client-Id")
+        } else if SellingCompany.appliesTo(path: url.path), let cid = SellingCompany.selectedId() {
+            req.setValue(cid, forHTTPHeaderField: "X-Client-Id")
+        }
         if let body = body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             let enc = JSONEncoder()
@@ -92,7 +100,7 @@ struct DistributionAPI {
     /// One attempt of a request whose outcome the caller classifies itself (the offline queue: see
     /// `DistributionQueuePolicy`). Never throws.
     func send(path: String, method: String = "POST", queryItems: [URLQueryItem] = [], body: Encodable? = nil,
-              idempotencyKey: String? = nil, timeout: TimeInterval = 20) async -> RawResponse {
+              idempotencyKey: String? = nil, timeout: TimeInterval = 20, clientId: String? = nil) async -> RawResponse {
         do {
             guard var components = URLComponents(string: "\(baseURL)\(path)") else {
                 return RawResponse(status: 0, body: Data(), error: DistributionAPIError.noResponse)
@@ -101,7 +109,8 @@ struct DistributionAPI {
             guard let url = components.url else {
                 return RawResponse(status: 0, body: Data(), error: DistributionAPIError.noResponse)
             }
-            let req = try makeRequest(url: url, method: method, body: body, idempotencyKey: idempotencyKey, timeout: timeout)
+            let req = try makeRequest(url: url, method: method, body: body, idempotencyKey: idempotencyKey, timeout: timeout,
+                                      clientId: clientId)
             let (data, status) = try await perform(req)
             return RawResponse(status: status, body: data, error: nil)
         } catch {
@@ -125,6 +134,11 @@ struct DistributionAPI {
     }
 
     // ── Reads ────────────────────────────────────────────────────────────────
+    /// Companies the signed-in rep may sell for. Nil when the call fails (the picker then stays hidden).
+    func myCompanies() async -> MyCompanies? {
+        guard let data = try? await request("/companies/mine") else { return nil }
+        return try? decode(data)
+    }
     func routeToday() async throws -> RouteToday {
         let data = try await request("/salesman/route/today")
         return try decode(data)
@@ -178,6 +192,28 @@ struct DistributionAPI {
             return .found(SalesmanJSON.outlets(fromData: response.body))
         }
         return .failed(DistributionQueuePolicy.serverMessage(body: response.body, httpStatus: response.status))
+    }
+
+    /// Proposes a new outlet for a manager to approve. Never throws; no connection is `.offline`.
+    func createOutlet(_ input: NewOutletInput) async -> OutletCreateResult {
+        let response = await send(path: "/salesman/outlets", method: "POST", body: input)
+        if let error = response.error {
+            return DistributionQueuePolicy.isOffline(error) ? .offline : .failed(DistributionQueuePolicy.message(forThrown: error))
+        }
+        guard (200..<300).contains(response.status) else {
+            return .failed(DistributionQueuePolicy.serverMessage(body: response.body, httpStatus: response.status))
+        }
+        guard let outlet: ProposedOutlet = try? decode(response.body) else {
+            return .failed("The server sent an empty reply. Please try again.")
+        }
+        return .created(outlet)
+    }
+
+    /// The rep's own outlets that are waiting for approval or were refused. Empty when it can't be loaded.
+    func proposedOutlets() async -> [ProposedOutlet] {
+        let response = await send(path: "/salesman/outlets/proposed", method: "GET")
+        guard response.error == nil, (200..<300).contains(response.status) else { return [] }
+        return (try? decode(response.body)) ?? []
     }
 
     /// An outlet's balance and open invoices (oldest first). Online only: money data must not be stale, so it is

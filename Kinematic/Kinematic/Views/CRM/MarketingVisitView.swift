@@ -130,6 +130,8 @@ struct MarketingVisitView: View {
     @StateObject private var locator = OneShotLocationProvider()
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
     @StateObject private var leadsVM = LeadsViewModel()
+    /// Lead custom-field definitions — read only to turn Area into a pick-list (see `areaChoices`).
+    @StateObject private var customFields = CustomFieldsModel()
 
     // Start-form state
     private enum StartMode: Hashable { case new, existing }
@@ -151,6 +153,12 @@ struct MarketingVisitView: View {
     /// are consumers (B2C); a "b2b" tenant flips it. Mirrors how the lead
     /// forms derive scope from the tenant's business_type.
     private var isB2C: Bool { fieldOverrides.businessType.lowercased() != "b2b" }
+
+    /// The admin's pick-list of areas (Rajkamal: ~400 villages), or nil when this tenant has no such
+    /// field — then Area stays a free-text box.
+    private var areaChoices: MarketingVisitArea.Choices? {
+        MarketingVisitArea.choices(from: customFields.defs, isB2C: isB2C)
+    }
 
     private let defaultStatuses = ["new", "working", "qualified", "unqualified", "converted", "lost"]
 
@@ -184,6 +192,7 @@ struct MarketingVisitView: View {
             }
         }
         .task { await fieldOverrides.load() }
+        .task { await customFields.loadDefs(entity: "lead") }
         .task { await vm.bootstrap() }
         .onAppear {
             if locator.coordinate == nil && !locator.isLocating {
@@ -267,7 +276,8 @@ struct MarketingVisitView: View {
         // the field-override contract exactly like the lead-create form —
         // deferred until the override map loads, hidden when the admin hid
         // them, and relabelled via labelFor. `area` is a custom jsonb field,
-        // so it renders unconditionally.
+        // so it is not part of that gate: it is a type-ahead pick-list when the
+        // admin defined one, else a free-text box.
         if fieldOverrides.didLoad {
             Section("New customer") {
                 if !fieldOverrides.isHidden("first_name", isB2C: isB2C) {
@@ -286,10 +296,34 @@ struct MarketingVisitView: View {
                     TextField(fieldOverrides.labelFor("city", defaultLabel: "City", isB2C: isB2C),
                               text: $city)
                 }
-                TextField("Area", text: $area)
+                areaRow
             }
         } else {
             Section { ProgressView() }
+        }
+    }
+
+    /// Area. Until the definitions have loaded it shows a spinner (so nothing typed can later be swapped
+    /// out from under the rep); then the admin's pick-list as a searchable picker, or — for a tenant with
+    /// no such list, or offline — the plain text box, so a visit can always be started.
+    @ViewBuilder
+    private var areaRow: some View {
+        if !customFields.didLoadDefs {
+            HStack {
+                Text("Area").foregroundColor(.secondary)
+                Spacer()
+                ProgressView()
+            }
+        } else if let choices = areaChoices {
+            SearchableOptionRow(
+                label: choices.label,
+                value: area,
+                options: choices.options,
+                emptyHint: "No areas configured.",
+                onPick: { area = $0 }
+            )
+        } else {
+            TextField("Area", text: $area)
         }
     }
 

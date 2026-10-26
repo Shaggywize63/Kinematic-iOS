@@ -13,11 +13,119 @@ struct SideMenuView: View {
     /// double-wrapped in a navigation chrome.
     @State private var showPlanogram = false
 
-    /// Per-client SKU snapshot for nav gating. Refreshes whenever Session.currentUser changes.
-    private var hasCrm: Bool         { Session.currentUser?.hasCrm ?? true }
-    private var hasFieldForce: Bool  { Session.currentUser?.hasFieldForce ?? true }
-    private var hasDistribution: Bool { Session.currentUser?.hasDistribution ?? true }
-    private func hasModule(_ id: String) -> Bool { Session.currentUser?.hasModule(id) ?? true }
+    /// The entries below Dashboard in the order the built-in menu has always drawn them. Dashboard (first) and Settings (last)
+    /// are fixed and not part of the list. Each entry's package / module / tenant gate and hide flag live in
+    /// `ClientFeatures.menuEntryAllowed`, which the bottom bar's action tabs share.
+    private static let defaultMenuOrder: [String] = [
+        "crm", "planogram", "book_order", "collect_payment", "my_orders", "van_load", "distributor_stock", "log_damage",
+        "stock_batches", "profile", "leave", "expenses", "timeline", "broadcast", "notifications",
+        "leaderboard", "activity_feed", "log_visit", "stock", "grievance", "learning_hub", "emergency_sos",
+    ]
+
+    /// The entries to draw, in the admin's order (`app_ui_config.layout.menu`: listed ids first, the rest in the built-in
+    /// order). Hide flags and the gates still win, and a screen the bottom bar already shows is not repeated here.
+    private var orderedMenuIds: [String] {
+        let inBar = BottomBarPlan.menuIdsInBar(ClientFeatures.layoutBarTabs())
+        let shown = Self.defaultMenuOrder.filter { ClientFeatures.menuEntryAllowed($0) && !inBar.contains($0) }
+        return ClientFeatures.ordered(shown, section: "menu", id: { $0 })
+    }
+
+    /// One side-menu row that opens a sheet through the shared secondary-route mechanism.
+    private func routeRow(_ id: String, icon: String, title: String, color: Color, route: SecondaryRoute) -> some View {
+        MenuButton(icon: icon, title: ClientFeatures.labelFor("menu", id, default: title), isSelected: false, color: color) {
+            withAnimation { isOpen = false }
+            appState.activeSecondaryRoute = ModalRoute(route: route)
+        }
+    }
+
+    @ViewBuilder
+    private func menuRow(_ id: String) -> some View {
+        switch id {
+        case "crm":
+            // CRM Module — only visible to clients who own the CRM SKU.
+            if let a = NavActions.action("crm") {
+                MenuButton(icon: a.icon, title: a.title, isSelected: false, color: a.color) {
+                    withAnimation { isOpen = false }
+                    // Defer presentation until the menu close animation finishes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showCRM = true
+                    }
+                }
+            }
+
+        case "planogram":
+            // Planogram (MoiSoi) — one-tap storeless shelf capture.
+            // Opens the camera directly, submits with no store /
+            // outlet / planogram selection; the backend scores it
+            // against the org's active planogram. Only MoiSoi sees
+            // this entry; other clients capture planograms inside a
+            // store visit.
+            MenuButton(icon: "camera.viewfinder", title: ClientFeatures.labelFor("menu", "planogram", default: "Planogram"), isSelected: false, color: Brand.red) {
+                withAnimation { isOpen = false }
+                // Defer presentation until the menu close animation finishes.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showPlanogram = true
+                }
+            }
+
+        case "my_orders":
+            // Shows how many orders / payments / returns are saved on the phone waiting to upload.
+            MyOrdersMenuButton(isOpen: $isOpen)
+
+        // Van Load (module distribution_van) — day-start load-in + end-of-day reconcile. Ships OFF by default; only
+        // shown when the client's enabled_modules includes the module.
+        case "van_load":
+            routeRow("van_load", icon: "truck.box.fill", title: "Van Load", color: .indigo, route: .vanLoad)
+
+        // Distributor Stock (module distribution_stock) — read-only per-SKU on-hand view. Same module-gated rule.
+        case "distributor_stock":
+            routeRow("distributor_stock", icon: "archivebox.fill", title: "Distributor Stock", color: .brown, route: .distributorStock)
+
+        // Log Damage (module distribution_damage) — distributor damaged / expiry register. Same module-gated rule.
+        case "log_damage":
+            routeRow("log_damage", icon: "exclamationmark.triangle.fill", title: "Log Damage", color: .orange, route: .damageLog)
+
+        // Stock & Batches (module distribution_batches) — Supply Chain FEFO batch / expiry view + Receive (GRN). STRICT
+        // entitlement gate (ClientFeatures.hasDistributionBatches): an empty legacy-session module list must NOT surface
+        // this, so enabled_modules is read directly. Off by default.
+        case "stock_batches":
+            routeRow("stock_batches", icon: "calendar.badge.exclamationmark", title: "Stock & Batches", color: .purple, route: .stockBatches)
+
+        case "profile":
+            routeRow("profile", icon: "person.fill", title: "My Profile", color: .orange, route: .profile)
+
+        // Expense claims (module `field_expenses`, off by default). STRICT entitlement: only clients explicitly granted the
+        // module see it. This is the path for field-force tenants, which have no CRM "More" tab; CRM tenants also have it there.
+        case "expenses":
+            routeRow("expenses", icon: "receipt", title: "Expenses", color: .green, route: .expenses)
+
+        case "leaderboard":
+            routeRow("leaderboard", icon: "trophy.fill", title: "Leaderboard", color: .yellow, route: .leaderboard)
+
+        case "activity_feed":
+            routeRow("activity_feed", icon: "doc.text.fill", title: "Activity Feed", color: Brand.red, route: .activity)
+
+        case "stock":
+            routeRow("stock", icon: "shippingbox.fill", title: "Stock", color: .brown, route: .stock)
+
+        case "grievance":
+            routeRow("grievance", icon: "exclamationmark.bubble.fill", title: "Grievance", color: Brand.red, route: .grievance)
+
+        case "learning_hub":
+            routeRow("learning_hub", icon: "sparkles", title: "Learning Hub", color: Brand.red, route: .learning)
+
+        case "emergency_sos":
+            routeRow("emergency_sos", icon: "exclamationmark.octagon.fill", title: "Emergency SOS", color: .red, route: .sos)
+
+        default:
+            // Book Order / Collect Payment (book or collect for ANY outlet in scope, outlet picker first), Leave (+ attendance
+            // regularization), Timeline, Broadcasts, Notifications, Visit Log: the screens that can also sit in the bottom bar.
+            // One table (NavActions) names their symbol, label and destination for both places.
+            if let a = NavActions.action(id), case .route(let route) = a.target {
+                routeRow(id, icon: a.icon, title: a.defaultTitle, color: a.color, route: route)
+            }
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -76,189 +184,12 @@ struct SideMenuView: View {
                         withAnimation { isOpen = false; appState.selectedTab = 0 }
                     }
 
-                    // ── CRM Module — only visible to clients who own the CRM SKU ──
-                    if hasCrm && ClientFeatures.menuVisible("crm") {
-                        MenuButton(icon: "person.2.crop.square.stack.fill", title: ClientFeatures.labelFor("menu", "crm", default: "CRM"), isSelected: false, color: Brand.red) {
-                            withAnimation { isOpen = false }
-                            // Defer presentation until the menu close animation finishes
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                showCRM = true
-                            }
-                        }
+                    // Every entry below Dashboard is drawn from `orderedMenuIds`: the built-in order, moved by the layout the
+                    // admin arranged in Client Management (listed ids first). Dashboard stays first; Settings and Sign Out
+                    // stay where they are.
+                    ForEach(orderedMenuIds, id: \.self) { id in
+                        menuRow(id)
                     }
-
-                    // ── Planogram (MoiSoi) — one-tap storeless shelf capture.
-                    //    Opens the camera directly, submits with no store /
-                    //    outlet / planogram selection; the backend scores it
-                    //    against the org's active planogram. Only MoiSoi sees
-                    //    this entry; other clients capture planograms inside a
-                    //    store visit.
-                    if ClientFeatures.isMoiSoi && ClientFeatures.menuVisible("planogram") {
-                        MenuButton(icon: "camera.viewfinder", title: ClientFeatures.labelFor("menu", "planogram", default: "Planogram"), isSelected: false, color: Brand.red) {
-                            withAnimation { isOpen = false }
-                            // Defer presentation until the menu close animation finishes.
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                showPlanogram = true
-                            }
-                        }
-                    }
-
-                    // ── Distribution / Van Sales — only visible to clients who
-                    //    own the distribution SKU. Opens the order history sheet
-                    //    via the same SecondaryRoute mechanism the other rows use;
-                    //    SecondaryScreenHost re-checks the package gate.
-                    // Book an order / collect a payment for ANY outlet in scope (outlet picker first), without
-                    // a route-plan order activity. Gated on the distribution package plus the module behind each
-                    // action; the cards on the outlet screen are unchanged.
-                    if hasDistribution && hasModule("distribution_orders") && ClientFeatures.menuVisible("book_order") {
-                        MenuButton(icon: "cart.badge.plus", title: ClientFeatures.labelFor("menu", "book_order", default: "Book Order"), isSelected: false, color: .indigo) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .orderCart)
-                        }
-                    }
-                    if hasDistribution && hasModule("distribution_payments") && ClientFeatures.menuVisible("collect_payment") {
-                        MenuButton(icon: "indianrupeesign.circle.fill", title: ClientFeatures.labelFor("menu", "collect_payment", default: "Collect Payment"), isSelected: false, color: .green) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .paymentCollect)
-                        }
-                    }
-                    if hasDistribution && ClientFeatures.menuVisible("my_orders") {
-                        // Shows how many orders / payments / returns are saved on the phone waiting to upload.
-                        MyOrdersMenuButton(isOpen: $isOpen)
-                    }
-
-                    // ── Van Load (module distribution_van) — day-start load-in +
-                    //    end-of-day reconcile. Ships OFF by default; only shown
-                    //    when the client's enabled_modules includes the module.
-                    if hasModule("distribution_van") && ClientFeatures.menuVisible("van_load") {
-                        MenuButton(icon: "truck.box.fill", title: ClientFeatures.labelFor("menu", "van_load", default: "Van Load"), isSelected: false, color: .indigo) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .vanLoad)
-                        }
-                    }
-
-                    // ── Distributor Stock (module distribution_stock) — read-only
-                    //    per-SKU on-hand view. Same module-gated OFF-by-default rule.
-                    if hasModule("distribution_stock") && ClientFeatures.menuVisible("distributor_stock") {
-                        MenuButton(icon: "archivebox.fill", title: ClientFeatures.labelFor("menu", "distributor_stock", default: "Distributor Stock"), isSelected: false, color: .brown) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .distributorStock)
-                        }
-                    }
-
-                    // ── Log Damage (module distribution_damage) — distributor
-                    //    damaged / expiry register. Same module-gated OFF-by-default rule.
-                    if hasModule("distribution_damage") && ClientFeatures.menuVisible("log_damage") {
-                        MenuButton(icon: "exclamationmark.triangle.fill", title: ClientFeatures.labelFor("menu", "log_damage", default: "Log Damage"), isSelected: false, color: .orange) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .damageLog)
-                        }
-                    }
-
-                    // ── Stock & Batches (module distribution_batches) — Supply
-                    //    Chain FEFO batch / expiry view + Receive (GRN). STRICT
-                    //    entitlement gate (ClientFeatures.hasDistributionBatches):
-                    //    unlike the lenient `hasModule` rows above, an empty
-                    //    legacy-session module list must NOT surface this, so we
-                    //    read enabled_modules directly. Off by default.
-                    if ClientFeatures.hasDistributionBatches && ClientFeatures.menuVisible("stock_batches") {
-                        MenuButton(icon: "calendar.badge.exclamationmark", title: ClientFeatures.labelFor("menu", "stock_batches", default: "Stock & Batches"), isSelected: false, color: .purple) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .stockBatches)
-                        }
-                    }
-
-                    if ClientFeatures.menuVisible("profile") {
-                        MenuButton(icon: "person.fill", title: ClientFeatures.labelFor("menu", "profile", default: "My Profile"), isSelected: false, color: .orange) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .profile)
-                        }
-                    }
-
-                    // Leave management + attendance regularization. Shown to
-                    // every client except SRS TATA Steel (slimmed build); the
-                    // API/role decides what's actionable for the rest.
-                    if ClientFeatures.showsLeave && ClientFeatures.menuVisible("leave") {
-                        MenuButton(icon: "calendar.badge.clock", title: ClientFeatures.labelFor("menu", "leave", default: "Leave"), isSelected: false, color: .teal) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .leave)
-                        }
-                    }
-
-                    // Expense claims (module `field_expenses`, off by default). STRICT entitlement:
-                    // only clients explicitly granted the module see it. This is the path for
-                    // field-force tenants, which have no CRM "More" tab; CRM tenants also have it there.
-                    if ClientFeatures.showsExpenses && ClientFeatures.menuVisible("expenses") {
-                        MenuButton(icon: "receipt", title: ClientFeatures.labelFor("menu", "expenses", default: "Expenses"), isSelected: false, color: .green) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .expenses)
-                        }
-                    }
-
-                if hasModule("broadcast") && ClientFeatures.menuVisible("broadcast") {
-                    MenuButton(icon: "megaphone.fill", title: ClientFeatures.labelFor("menu", "broadcast", default: "Broadcasts"), isSelected: false, color: .red) {
-                        withAnimation { isOpen = false }
-                        appState.activeSecondaryRoute = ModalRoute(route: .broadcast)
-                    }
-                }
-
-                if ClientFeatures.menuVisible("notifications") {
-                    MenuButton(icon: "bell.fill", title: ClientFeatures.labelFor("menu", "notifications", default: "Notifications"), isSelected: false, color: Brand.red) {
-                        withAnimation { isOpen = false }
-                        appState.activeSecondaryRoute = ModalRoute(route: .notifications)
-                    }
-                }
-
-                if hasFieldForce {
-                    if ClientFeatures.menuVisible("leaderboard") {
-                        MenuButton(icon: "trophy.fill", title: ClientFeatures.labelFor("menu", "leaderboard", default: "Leaderboard"), isSelected: false, color: .yellow) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .leaderboard)
-                        }
-                    }
-
-                    if ClientFeatures.menuVisible("activity_feed") {
-                        MenuButton(icon: "doc.text.fill", title: ClientFeatures.labelFor("menu", "activity_feed", default: "Activity Feed"), isSelected: false, color: Brand.red) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .activity)
-                        }
-                    }
-
-                    if ClientFeatures.menuVisible("log_visit") {
-                        MenuButton(icon: "list.bullet.rectangle", title: ClientFeatures.labelFor("menu", "log_visit", default: "Visit Log"), isSelected: false, color: .green) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .visitlog)
-                        }
-                    }
-
-                    if ClientFeatures.menuVisible("stock") {
-                        MenuButton(icon: "shippingbox.fill", title: ClientFeatures.labelFor("menu", "stock", default: "Stock"), isSelected: false, color: .brown) {
-                            withAnimation { isOpen = false }
-                            appState.activeSecondaryRoute = ModalRoute(route: .stock)
-                        }
-                    }
-                }
-
-                if hasModule("grievances") && ClientFeatures.menuVisible("grievance") {
-                    MenuButton(icon: "exclamationmark.bubble.fill", title: ClientFeatures.labelFor("menu", "grievance", default: "Grievance"), isSelected: false, color: Brand.red) {
-                        withAnimation { isOpen = false }
-                        appState.activeSecondaryRoute = ModalRoute(route: .grievance)
-                    }
-                }
-
-                if ClientFeatures.menuVisible("learning_hub") {
-                    MenuButton(icon: "sparkles", title: ClientFeatures.labelFor("menu", "learning_hub", default: "Learning Hub"), isSelected: false, color: Brand.red) {
-                        withAnimation { isOpen = false }
-                        appState.activeSecondaryRoute = ModalRoute(route: .learning)
-                    }
-                }
-
-                if ClientFeatures.menuVisible("emergency_sos") {
-                    MenuButton(icon: "exclamationmark.octagon.fill", title: ClientFeatures.labelFor("menu", "emergency_sos", default: "Emergency SOS"), isSelected: false, color: .red) {
-                        withAnimation { isOpen = false }
-                        appState.activeSecondaryRoute = ModalRoute(route: .sos)
-                    }
-                }
 
                 MenuButton(icon: "gearshape.fill", title: "Settings", isSelected: false, color: .gray) {
                     withAnimation { isOpen = false }

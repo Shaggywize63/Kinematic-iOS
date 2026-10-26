@@ -132,6 +132,28 @@ final class CRMService {
         try await postJSON("/api/v1/crm/leads", body: body)
     }
 
+    /// Place a recorded IVR click-to-call to [to] (module `ivr_call`). The backend resolves the agent's own
+    /// number from their profile and the virtual number from the org's telephony config, so we send only `to`.
+    /// Throws CRMServiceError with the backend's message (e.g. "IVR calling is not enabled for your account").
+    @discardableResult
+    func placeIvrCall(to: String) async throws -> IvrCallAck {
+        try await postJSON("/api/v1/crm/telephony/click-to-call", body: ["to": to])
+    }
+
+    // MARK: Upsells (extra revenue logged on an existing deal/lead)
+    func listUpsells(dealId: String? = nil, leadId: String? = nil) async throws -> [Upsell] {
+        var q: [String: String] = [:]
+        if let d = dealId, !d.isEmpty { q["deal_id"] = d }
+        if let l = leadId, !l.isEmpty { q["lead_id"] = l }
+        return try await get("/api/v1/crm/upsells", query: q)
+    }
+    func createUpsell(_ body: [String: Any]) async throws -> Upsell {
+        try await postJSON("/api/v1/crm/upsells", body: body)
+    }
+    func deleteUpsell(id: String) async throws {
+        let _: EmptyAck = try await delete("/api/v1/crm/upsells/\(id)")
+    }
+
     /// Replay-only entry point used by OfflineLeadQueue. Adds the
     /// Idempotency-Key header so the server returns the original
     /// response if the queued POST already landed once.
@@ -182,7 +204,11 @@ final class CRMService {
     func leadDeals(id: String) async throws -> [Deal] {
         try await get("/api/v1/crm/leads/\(id)/deals")
     }
-    func convertLead(id: String, body: [String: Any]) async throws -> Lead {
+    /// Convert returns the ids of the created records
+    /// (`{ lead_id, account_id, contact_id, deal_id }`), NOT a `Lead` — callers
+    /// re-fetch the lead afterward to refresh the detail screen.
+    @discardableResult
+    func convertLead(id: String, body: [String: Any]) async throws -> LeadConvertResult {
         try await postJSON("/api/v1/crm/leads/\(id)/convert", body: body)
     }
 
