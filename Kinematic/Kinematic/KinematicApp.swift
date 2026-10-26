@@ -1634,6 +1634,10 @@ struct FormField: Codable, Identifiable {
     let cameraOnly: Bool?
     let pageId: String?
     let keyboardType: String?
+    /// Semantic target for the `card_scan` field: on a visiting-card scan, each scanned value is written into the
+    /// sibling question whose `prefill_key` matches (contact_name / contact_title / contact_phone / contact_email /
+    /// contact_company).
+    let prefillKey: String?
     /// The builder's `validation.max` (a number, or a number in a string) — how many stars a rating question has
     /// (see FormFieldLogic.ratingMax). Read tolerantly: whatever else is in `validation`, or nothing at all, never
     /// fails the decoding of the whole form.
@@ -1655,6 +1659,7 @@ struct FormField: Codable, Identifiable {
         case cameraOnly = "camera_only"
         case pageId = "page_id"
         case keyboardType = "keyboard_type"
+        case prefillKey = "prefill_key"
     }
     
     init(from decoder: Decoder) throws {
@@ -1690,6 +1695,7 @@ struct FormField: Codable, Identifiable {
         cameraOnly = try? container.decodeIfPresent(Bool.self, forKey: .cameraOnly)
         pageId = try? container.decodeIfPresent(String.self, forKey: .pageId)
         keyboardType = try? container.decodeIfPresent(String.self, forKey: .keyboardType)
+        prefillKey = try? container.decodeIfPresent(String.self, forKey: .prefillKey)
         // `validation` is free-form JSON: only `max` is read, and only when it is (or holds) a number.
         if let v = try? container.nestedContainer(keyedBy: ValidationKeys.self, forKey: .validation) {
             validationMax = v.decodeLossyDouble(forKey: .max)
@@ -1721,9 +1727,10 @@ struct FormField: Codable, Identifiable {
         try container.encodeIfPresent(cameraOnly, forKey: .cameraOnly)
         try container.encodeIfPresent(pageId, forKey: .pageId)
         try container.encodeIfPresent(keyboardType, forKey: .keyboardType)
+        try container.encodeIfPresent(prefillKey, forKey: .prefillKey)
     }
 
-    init(id: String, label: String, fieldKey: String, fieldType: String, placeholder: String? = nil, helpText: String? = nil, isRequired: Bool = false, sortOrder: Int? = nil, options: [FormOption]? = nil, dependsOnId: String? = nil, dependsOnValue: String? = nil, imageCount: Int? = nil, cameraOnly: Bool? = nil, pageId: String? = nil, keyboardType: String? = nil, validationMax: Double? = nil) {
+    init(id: String, label: String, fieldKey: String, fieldType: String, placeholder: String? = nil, helpText: String? = nil, isRequired: Bool = false, sortOrder: Int? = nil, options: [FormOption]? = nil, dependsOnId: String? = nil, dependsOnValue: String? = nil, imageCount: Int? = nil, cameraOnly: Bool? = nil, pageId: String? = nil, keyboardType: String? = nil, prefillKey: String? = nil, validationMax: Double? = nil) {
         self.id = id
         self.label = label
         self.fieldKey = fieldKey
@@ -1739,6 +1746,7 @@ struct FormField: Codable, Identifiable {
         self.cameraOnly = cameraOnly
         self.pageId = pageId
         self.keyboardType = keyboardType
+        self.prefillKey = prefillKey
         self.validationMax = validationMax
     }
 }
@@ -2515,6 +2523,29 @@ class KinematicRepository {
             return res?.data
         } catch {
             print("❌ SCAN_CARD_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// Visiting-card OCR for the Form Builder's `card_scan` field. Same single-shot
+    /// vision helper as `scanCard`, but hits the auth-only `/forms/scan-card` route
+    /// so a rep filling a survey (who may not have the CRM module) can still scan.
+    func scanCardForForm(imageBase64: String) async -> CardScanResponse? {
+        do {
+            let payload: [String: Any] = [
+                "image_base64": imageBase64,
+                "media_type": "image/jpeg"
+            ]
+            let body = try? JSONSerialization.data(withJSONObject: payload)
+            let res: ApiResponse<CardScanResponse>? = try await performRequest(
+                "/forms/scan-card",
+                method: "POST",
+                body: body
+            )
+            guard res?.success == true else { return nil }
+            return res?.data
+        } catch {
+            print("❌ FORM_SCAN_CARD_FAILED: \(error)")
             return nil
         }
     }
