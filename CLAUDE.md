@@ -35,3 +35,21 @@ a field without the gate WILL be reverted.
 
 ## Build / check
 - Xcode 26 / iOS 26 toolchain. CI builds via fastlane.
+
+## Release — version bumps
+- NEVER hand-edit `MARKETING_VERSION` in the Xcode project. Doing so
+  repeatedly broke TestFlight uploads: a version that wasn't higher than
+  the last approved one ("pre-release train closed") and app/widget
+  version drift ("the embedded extension must contain the same version
+  as the host app").
+- Use **`./bump_version.sh`** at the repo root:
+  - `./bump_version.sh current` — print the app marketing version.
+  - `./bump_version.sh patch|minor|major` — bump it across the app +
+    `KinematicWidget` **in lockstep** (the test target stays at 1.0).
+  - `./bump_version.sh set X.Y.Z` — set an explicit version (warns if not
+    higher than the current one).
+  - `./bump_version.sh check` — verify app + widget share one version and
+    one build number; the **Version lockstep** CI workflow runs this on
+    every PR, so drift fails the PR instead of the archive.
+- The build number (`CFBundleVersion` / `CURRENT_PROJECT_VERSION`) is
+  `bump_build.sh`'s job (derived from the git commit count).

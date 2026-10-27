@@ -1,0 +1,24 @@
+name: Version lockstep
+
+# Fast, toolchain-free guard for the release-version invariant that has bitten
+# TestFlight uploads before: the app target and the KinematicWidget extension
+# must share one MARKETING_VERSION (CFBundleShortVersionString) and one build
+# number, or App Store Connect rejects the upload with "the embedded extension
+# must contain the same version as the host app". `bump_version.sh check`
+# proves it in a couple of seconds on ubuntu — no Xcode needed — so drift is
+# caught on the PR instead of at archive time.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  version-lockstep:
+    name: App + widget version lockstep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check MARKETING_VERSION / build number are in lockstep
+        run: bash bump_version.sh check

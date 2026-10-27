@@ -11,8 +11,8 @@
 # state on disk + works the same locally and in CI.
 #
 # Marketing version (CFBundleShortVersionString, e.g. "1.0.0") stays
-# untouched — bump that manually in Xcode project settings when you
-# cut a new release.
+# untouched here — bump it with ./bump_version.sh (never by hand in
+# Xcode) when you cut a new release.
 
 set -euo pipefail
 
