@@ -66,21 +66,17 @@
 		<key>UISceneConfigurations</key>
 		<dict/>
 	</dict>
-	<!-- UIBackgroundModes:[location] removed temporarily so a free
-	     Apple ID (without the paid Apple Developer Program) can sign
-	     dev builds. The background-modes entitlement is gated behind
-	     the paid program; with the key present, automatic signing
-	     fails at install with "missing entitlement" / install retries
-	     loop. Re-add when you upgrade to the paid program:
-	         <key>UIBackgroundModes</key>
-	         <array>
-	             <string>location</string>
-	         </array>
-	     LocationTrackingService already skips
-	     allowsBackgroundLocationUpdates on simulator and degrades to
-	     foreground-only when the entitlement isn't present, so the
-	     live-tracking ping pauses cleanly when the app is
-	     backgrounded — no crash. -->
+	<!-- Background location for continuous live-tracking of field reps.
+	     REQUIRES the paid Apple Developer Program: this capability is gated
+	     behind it, and on a free Apple ID automatic signing fails at install
+	     ("missing entitlement" / install-retry loop). KinematicApp.swift probes
+	     this key at runtime and only enables allowsBackgroundLocationUpdates
+	     when it is present, so without the paid build iOS tracking stays
+	     foreground-only. Do NOT merge/ship until the app is on the paid program. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
