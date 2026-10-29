@@ -33,8 +33,10 @@ final class AttendancePunchTests: XCTestCase {
 
     func testWithTheSelfieRequiredEveryStringIsTheOneTheAppAlwaysHad() {
         // The Home card's headline, exactly as it was written inline before the rule existed.
+        // Multiple check-in/out per day: a clocked-out rep is "Clocked Out" (re-check-in),
+        // not a terminal "Shift Completed".
         func legacy(ended: Bool, isIn: Bool, hasCheckin: Bool) -> String {
-            ended ? "Shift Completed" : (isIn ? "Shift Active" : (!hasCheckin ? "Daily Selfie Required" : "Check In to Resume"))
+            ended ? "Clocked Out" : (isIn ? "Shift Active" : (!hasCheckin ? "Daily Selfie Required" : "Check In to Resume"))
         }
         for ended in [false, true] {
             for isIn in [false, true] {
@@ -47,18 +49,19 @@ final class AttendancePunchTests: XCTestCase {
         }
         XCTAssertEqual(AttendancePunch.tapHint(selfieRequired: true), "Tap to complete check-in")
         XCTAssertEqual(AttendancePunch.actionGlyph(shiftEnded: false, selfieRequired: true), "camera.fill")
-        XCTAssertEqual(AttendancePunch.actionGlyph(shiftEnded: true, selfieRequired: true), "checkmark.seal.fill")
+        // Clocked-out stays actionable (the rep may check in again), not a terminal seal.
+        XCTAssertEqual(AttendancePunch.actionGlyph(shiftEnded: true, selfieRequired: true), "camera.fill")
         XCTAssertEqual(AttendancePunch.checkInButtonTitle(needsSelfie: true), "TAKE SELFIE TO CHECK IN")
     }
 
     func testWithNoSelfieOnlyTheNotCheckedInYetStateChanges() {
         XCTAssertEqual(AttendancePunch.headline(shiftEnded: false, isIn: false, hasCheckin: false, selfieRequired: false), "Daily Check-In Required")
         XCTAssertEqual(AttendancePunch.headline(shiftEnded: false, isIn: true, hasCheckin: true, selfieRequired: false), "Shift Active")
-        XCTAssertEqual(AttendancePunch.headline(shiftEnded: true, isIn: false, hasCheckin: true, selfieRequired: false), "Shift Completed")
+        XCTAssertEqual(AttendancePunch.headline(shiftEnded: true, isIn: false, hasCheckin: true, selfieRequired: false), "Clocked Out")
         XCTAssertEqual(AttendancePunch.headline(shiftEnded: false, isIn: false, hasCheckin: true, selfieRequired: false), "Check In to Resume")
         XCTAssertEqual(AttendancePunch.tapHint(selfieRequired: false), "Tap to check in")
         XCTAssertEqual(AttendancePunch.actionGlyph(shiftEnded: false, selfieRequired: false), "location.fill")
-        XCTAssertEqual(AttendancePunch.actionGlyph(shiftEnded: true, selfieRequired: false), "checkmark.seal.fill")
+        XCTAssertEqual(AttendancePunch.actionGlyph(shiftEnded: true, selfieRequired: false), "location.fill")
         XCTAssertEqual(AttendancePunch.checkInButtonTitle(needsSelfie: false), "CHECK IN NOW")
     }
 
