@@ -401,7 +401,11 @@ struct ActivitySubmissionView: View {
                 checkInAt: stamp.checkInAt,
                 checkOutAt: stamp.checkOutAt,
                 checkInGps: stamp.checkInGps,
-                checkOutGps: stamp.checkOutGps
+                checkOutGps: stamp.checkOutGps,
+                accountId: KiniAppState.shared.activeVisitContext?.accountId,
+                siteId: KiniAppState.shared.activeVisitContext?.siteId,
+                contactId: KiniAppState.shared.activeVisitContext?.contactId,
+                visitId: KiniAppState.shared.activeVisitContext?.visitId
             )
 
             let pendingBefore: Int = OfflineMutationQueue.shared.pendingCount
