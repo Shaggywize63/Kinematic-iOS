@@ -37,6 +37,17 @@ private let BYTEBACK_CLIENT_ID = "9c8d7e6f-5a4b-4c3d-8e1f-0a1b2c3d4e5f"
 /// both the field-force Home and the CRM More menu, gated off this client id
 /// like the other tenant gates so no other tenant ever sees it.
 private let RAJKAMAL_CLIENT_ID = "0490f34d-d9a3-4f39-99e2-8f3adba8c583"
+/// Bahwancy / AVOD (Areej Vegetable Oils) — a PLANOGRAM-ONLY "Store audit"
+/// client under the Kinematic tenant. Like MoiSoi their rep gets a stripped-down
+/// shell (no attendance / route / CRM), but store-backed: they pick a store from
+/// the backend list (the `stores` module is granted) and shoot the shelf. Keyed
+/// off the client id like the other tenant gates. Mirrors Android's
+/// `Entitlements.isBahwancy` (same client id).
+///
+/// TODO(bahwancy): replace this placeholder with the REAL client_id printed by
+/// `node dist/tools/onboard-bahwancy.js --inspect`. Until then this sentinel
+/// matches no client, so the gate is inert and nothing changes for anyone.
+private let BAHWANCY_CLIENT_ID = "ba000000-0000-4000-a000-000000000001"
 
 enum ClientFeatures {
     /// True when the signed-in user belongs to a steel-dealer tenant — Tata
@@ -68,6 +79,13 @@ enum ClientFeatures {
     /// "Planogram" entry in the field-force side menu (storeless shelf capture).
     static var isMoiSoi: Bool {
         Session.currentUser?.clientId == MOISOI_CLIENT_ID
+    }
+
+    /// True when the signed-in user belongs to Bahwancy / AVOD. The app opens
+    /// the store-backed "Store audit" shell (pick a backend store → shoot the
+    /// shelf). See `BAHWANCY_CLIENT_ID`. Mirrors Android's `Entitlements.isBahwancy`.
+    static var isBahwancy: Bool {
+        Session.currentUser?.clientId == BAHWANCY_CLIENT_ID
     }
 
     /// True when the signed-in user belongs to ByteBack. Drives the slimmed
