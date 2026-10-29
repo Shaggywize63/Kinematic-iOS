@@ -11,6 +11,7 @@
 //
 
 import SwiftUI
+import Combine
 
 /// Minimal store row for the "Store audit" picker (GET /api/v1/stores). Extra
 /// columns the backend returns (city, zone, geo, approval) are ignored.
