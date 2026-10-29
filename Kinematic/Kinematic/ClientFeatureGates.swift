@@ -366,6 +366,7 @@ enum ClientFeatures {
         let gate: Bool
         switch id {
         case "crm":               gate = hasCrm
+        case "plant_visit":       gate = hasCrm
         case "planogram":         gate = isMoiSoi
         case "book_order":        gate = hasDistribution && hasModule("distribution_orders")
         case "collect_payment":   gate = hasDistribution && hasModule("distribution_payments")
