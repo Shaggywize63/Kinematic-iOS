@@ -345,6 +345,15 @@ class KiniAppState: ObservableObject {
     // --- Navigation & UI ---
     @Published var showSideMenu = false
     @Published var activeSecondaryRoute: ModalRoute? = nil
+
+    /// The active plant visit's CRM links, set by the merged-visit flow after
+    /// visit-intake and read when building a form submission so EVERY product
+    /// form filled during the visit attaches to the same account / site /
+    /// contact / visit (persists across multiple product forms — one visit →
+    /// many products). Cleared when a new visit starts or the rep leaves.
+    @Published var activeVisitContext: VisitContext? = nil
+    func setVisitContext(_ ctx: VisitContext?) { activeVisitContext = ctx }
+    func clearVisitContext() { activeVisitContext = nil }
     /// Last tapped push notification's data dict (type / lead_id / deal_id /
     /// task_id). Set by PushAppDelegate on tap; kept for deeper deep-linking.
     @Published var pendingPushData: [String: String]? = nil
@@ -1801,6 +1810,15 @@ struct FormSubmissionRequest: Codable {
     var checkOutAt: String? = nil
     var checkInGps: String? = nil
     var checkOutGps: String? = nil
+    // CRM visit links — set by the merged plant-visit flow so this product-survey
+    // submission attaches to the customer account / plant site / contact /
+    // opportunity / visit. Nil (and so not encoded) for a form filled outside a
+    // visit, keeping the request byte-for-byte unchanged there.
+    var accountId: String? = nil
+    var siteId: String? = nil
+    var contactId: String? = nil
+    var dealId: String? = nil
+    var visitId: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case responses, latitude, longitude
@@ -1814,6 +1832,11 @@ struct FormSubmissionRequest: Codable {
         case checkOutAt = "check_out_at"
         case checkInGps = "check_in_gps"
         case checkOutGps = "check_out_gps"
+        case accountId = "account_id"
+        case siteId = "site_id"
+        case contactId = "contact_id"
+        case dealId = "deal_id"
+        case visitId = "visit_id"
     }
 }
 
