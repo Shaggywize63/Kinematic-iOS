@@ -34,7 +34,7 @@ final class StoreAuditModel: ObservableObject {
     func load() async {
         phase = .loading
         do {
-            let list: [StoreLite] = try await CRMService.shared.getList("/api/v1/stores")
+            let list: [StoreLite] = try await CRMService.shared.listStores()
             stores = list.filter { !($0.name ?? "").isEmpty }
             phase = .loaded
         } catch {

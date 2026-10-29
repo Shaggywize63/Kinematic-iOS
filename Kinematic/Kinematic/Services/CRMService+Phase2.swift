@@ -37,6 +37,13 @@ extension CRMService {
     func dealLineItems(dealId: String) async throws -> [DealLineItem] {
         try await getList("/api/v1/crm/deals/\(dealId)/line-items")
     }
+
+    // MARK: Stores (Bahwancy "Store audit" picker)
+    /// Store list for the planogram "Store audit" picker. Server-gated on the
+    /// `stores` module (readOpen), so a client without it gets an empty list.
+    func listStores() async throws -> [StoreLite] {
+        try await getList("/api/v1/stores")
+    }
 }
 
 // MARK: - Generic helpers used only here (private to file)
