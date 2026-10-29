@@ -1177,9 +1177,13 @@ struct AttendanceRecord: Codable {
     var transportLabel: String?
     /// `late` block — present ONLY for clients that configured shift rules, and only on a record with a check-in.
     var late: AttendanceLateInfo?
+    /// Per-punch sessions for the day (multiple check-in/out). Present once the backend records
+    /// sessions; nil for legacy payloads, so the flat checkin/checkout pair stays the fallback.
+    /// See AttendanceSession + the AttendanceRecord session helpers in Models/AttendanceSession.swift.
+    var sessions: [AttendanceSession]?
 
     enum CodingKeys: String, CodingKey {
-        case id, date, status
+        case id, date, status, sessions
         case transportMode = "transport_mode"
         case transportLabel = "transport_label"
         case late
@@ -1225,7 +1229,8 @@ struct AttendanceRecord: Codable {
         totalDuration: Int? = nil,
         transportMode: String? = nil,
         transportLabel: String? = nil,
-        late: AttendanceLateInfo? = nil
+        late: AttendanceLateInfo? = nil,
+        sessions: [AttendanceSession]? = nil
     ) {
         self.id = id
         self.date = date
@@ -1247,6 +1252,7 @@ struct AttendanceRecord: Codable {
         self.transportMode = transportMode
         self.transportLabel = transportLabel
         self.late = late
+        self.sessions = sessions
     }
 
     init(from decoder: Decoder) throws {
@@ -1284,6 +1290,7 @@ struct AttendanceRecord: Codable {
         transportMode = container.decodeLossyString(forKey: .transportMode)
         transportLabel = container.decodeLossyString(forKey: .transportLabel)
         late = try? container.decodeIfPresent(AttendanceLateInfo.self, forKey: .late)
+        sessions = try? container.decodeIfPresent([AttendanceSession].self, forKey: .sessions)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -1308,11 +1315,13 @@ struct AttendanceRecord: Codable {
         try container.encodeIfPresent(transportMode, forKey: .transportMode)
         try container.encodeIfPresent(transportLabel, forKey: .transportLabel)
         try container.encodeIfPresent(late, forKey: .late)
+        try container.encodeIfPresent(sessions, forKey: .sessions)
     }
 
-    var isIn: Bool {
-        checkinAt != nil && checkoutAt == nil
-    }
+    // Sessions-aware: an open latest punch ⇒ clocked in. Falls back to the flat
+    // checkin/checkout pair when there is no session list (legacy / optimistic records).
+    // Definition lives with AttendanceSession in Models/AttendanceSession.swift.
+    var isIn: Bool { isClockedIn }
 }
 
 struct TrackingPingRequest: Codable {

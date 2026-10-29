@@ -692,8 +692,10 @@ struct SelfieStatusCard: View {
     var isIn: Bool { record?.isIn ?? false }
     
     var body: some View {
-        let isCheckInIntent = appState.today?.checkinAt == nil
-        let isShiftEnded = appState.today?.checkoutAt != nil
+        // Sessions-aware (multiple check-in/out per day): check-in intent whenever not
+        // currently clocked in; "ended" = clocked in earlier and currently out (not a lock).
+        let isCheckInIntent = !(appState.today?.isClockedIn ?? false)
+        let isShiftEnded = appState.today?.hasCheckedOut ?? false
         // The card's words: the ones it always had, unless the client's attendance rule says no selfie.
         let needsSelfie: Bool = rulesStore.rules.selfieRequired
         let headline: String = AttendancePunch.headline(shiftEnded: isShiftEnded, isIn: isIn, hasCheckin: record?.checkinAt != nil, selfieRequired: needsSelfie)
@@ -701,8 +703,7 @@ struct SelfieStatusCard: View {
         let glyph: String = AttendancePunch.actionGlyph(shiftEnded: isShiftEnded, selfieRequired: needsSelfie)
 
         Button(action: {
-            if isShiftEnded { return } // No actions after checkout
-            
+            // Multiple check-in/out per day: a clocked-out rep taps to check in again.
             if isCheckInIntent {
                 appState.attendanceVM.startFlow()
             } else {
@@ -748,7 +749,7 @@ struct SelfieStatusCard: View {
                         .font(.system(size: 18, weight: .black, design: .rounded))
                         .foregroundColor(Color(uiColor: .label))
 
-                    Text(isShiftEnded ? "See you tomorrow!" : (isIn ? "Ongoing since \(formatTime(record?.checkinAt))" : (record?.checkinAt == nil ? tapHint : "Last seen at \(formatTime(record?.checkoutAt))")))
+                    Text(isShiftEnded ? "Tap to check in again" : (isIn ? "Ongoing since \(formatTime(record?.checkinAt))" : (record?.checkinAt == nil ? tapHint : "Last seen at \(formatTime(record?.checkoutAt))")))
                         .font(.caption)
                         .fontWeight(.bold)
                         .foregroundColor(.secondary)
@@ -761,7 +762,7 @@ struct SelfieStatusCard: View {
                     .font(.title3)
                     .foregroundColor(.white)
                     .frame(width: 44, height: 44)
-                    .background(isShiftEnded ? Color.gray : Brand.red, in: Circle())
+                    .background(Brand.red, in: Circle())
             }
             .padding(20)
             // Flat CRM-style card. Status stays legible via the badge + the
@@ -1325,36 +1326,35 @@ struct AttendanceView: View {
                         Text("Attendance").font(.largeTitle).fontWeight(.black).foregroundColor(Color(uiColor: .label)).padding(.top, 10).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20)
                         
                         VStack(spacing: 20) {
-                            let isCheckInIntent = appState.today?.checkinAt == nil
-                            let isShiftEnded = appState.today?.checkoutAt != nil
+                            // Sessions-aware (multiple check-in/out per day): check-in intent
+                            // whenever not currently clocked in; "ended" = clocked in earlier
+                            // and currently out (may clock in again — not a lock).
+                            let isCheckInIntent = !(appState.today?.isClockedIn ?? false)
+                            let isShiftEnded = appState.today?.hasCheckedOut ?? false
                             let isExecutive = Session.currentUser?.role.lowercased().contains("executive") ?? false
                             let needsSelfie = rulesStore.rules.selfieRequired && vm.selfie == nil && (isCheckInIntent || isExecutive)
 
-                            // ── 1. Completed state — short, clear summary.
-                            //       No more selfie / button cycle; the day is
-                            //       locked.
+                            // ── 1. Clocked-out summary — NOT a lock. Multiple check-in/out per
+                            //       day: the active block below still offers Check In.
                             if isShiftEnded {
-                                VStack(spacing: 8) {
+                                VStack(spacing: 6) {
                                     Image(systemName: "checkmark.seal.fill")
-                                        .font(.system(size: 56))
+                                        .font(.system(size: 40))
                                         .foregroundColor(.green)
-                                    Text("Shift Completed")
-                                        .font(.title2).fontWeight(.black)
-                                        .foregroundColor(Color(uiColor: .label))
                                     if let hrs = appState.today?.totalHours, hrs > 0 {
                                         Text(String(format: "%.1f hours logged today", hrs))
-                                            .font(.subheadline)
-                                            .foregroundColor(.gray)
+                                            .font(.subheadline).fontWeight(.semibold)
+                                            .foregroundColor(Color(uiColor: .label))
                                     }
-                                    Text("Come back tomorrow to clock in again.")
+                                    Text("Clocked out — you can check in again below.")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
-                                        .padding(.top, 4)
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
-                            } else {
-                                // ── 2. Active or pre-shift state.
+                            }
+
+                            // ── 2. Active / pre-shift / re-check-in state (always shown).
                                 VStack(spacing: 4) {
                                     Text(currentTime.formatted(date: .omitted, time: .shortened))
                                         .font(.system(size: 44, weight: .black, design: .rounded))
@@ -1471,7 +1471,29 @@ struct AttendanceView: View {
                                     .cornerRadius(14)
                                     .disabled(vm.breakBusy)
                                 }
-                            }
+
+                                // Today's punches — shown when the rep clocked in/out more than
+                                // once; a single-session day looks exactly as before.
+                                if let punches = appState.today?.sessionsInOrder, punches.count >= 2 {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Divider().overlay(Color.white.opacity(0.1))
+                                        Text("Today's punches")
+                                            .font(.subheadline).fontWeight(.bold)
+                                            .foregroundColor(Color(uiColor: .label))
+                                        ForEach(Array(punches.enumerated()), id: \.offset) { idx, s in
+                                            HStack {
+                                                Text("\(idx + 1).  \(AttendanceSession.localTime(s.checkinAt)) → \(s.isOpen ? "in progress" : AttendanceSession.localTime(s.checkoutAt))")
+                                                    .font(.subheadline)
+                                                    .foregroundColor(s.isOpen ? .green : Color(uiColor: .label))
+                                                Spacer()
+                                                if let dur = s.durationText, !s.isOpen {
+                                                    Text(dur).font(.caption).foregroundColor(.gray)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
                         }.padding(28).liquidGlass().padding(.horizontal, 20)
                         .alert("End shift?", isPresented: $showCheckoutAlert) {
                             Button("Stay clocked in", role: .cancel) { }
@@ -1533,7 +1555,7 @@ struct AttendanceHistoryRow: View {
             if let selfieUrl = record.checkinSelfieUrl, !selfieUrl.isEmpty { SignedAsyncImage(urlString: selfieUrl) { image in image.resizable().aspectRatio(contentMode: .fill).frame(width: 50, height: 50).clipShape(RoundedRectangle(cornerRadius: 12)) } placeholder: { dateBadge } }
             else { dateBadge }
             VStack(alignment: .leading, spacing: 4) {
-                Text(displayCheckout != nil ? "Daily Shift Completed" : (displayCheckin != nil ? "Shift In Progress" : "Present")).font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label))
+                Text(record.isClockedIn ? "Shift In Progress" : (displayCheckout != nil ? "Clocked Out" : (displayCheckin != nil ? "Shift In Progress" : "Present"))).font(.subheadline).fontWeight(.bold).foregroundColor(Color(uiColor: .label))
                 // "Late by N min" — only for a client that tracks it (the API adds `late` for those alone).
                 if let lateText = AttendanceLate.label(record.late) {
                     Text(lateText).font(.caption2).fontWeight(.semibold).foregroundColor(.orange)

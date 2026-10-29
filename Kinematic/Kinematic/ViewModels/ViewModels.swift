@@ -372,13 +372,10 @@ class AttendanceViewModel: ObservableObject {
         guard !isLoading else { return }
         
         let currentSession = KiniAppState.shared.today
-        let isCheckIn = currentSession?.checkinAt == nil
-        
-        // --- SINGLE-CYCLE GUARD ---
-        if currentSession?.checkoutAt != nil {
-            await MainActor.run { message = "Shift already completed for today." }
-            return
-        }
+        // Sessions-aware: check in whenever not currently clocked in (first punch OR after a
+        // check-out — multiple check-in/out per day). No single-cycle "day over" guard: the
+        // backend reopens the day and records a new session.
+        let isCheckIn = !(currentSession?.isClockedIn ?? false)
 
         // Feature 3 gate: never stamp an attendance punch when location is off.
         // Covers the direct-call paths (a lastLocation was already present) that
@@ -430,6 +427,10 @@ class AttendanceViewModel: ObservableObject {
                 checkinAt: nil, checkoutAt: nil,
                 totalHours: 0, checkinSelfieUrl: nil, checkoutSelfieUrl: nil
             )
+            // Drop the session list optimistically so isClockedIn falls back to the flat
+            // pair below and reads right immediately; the server's real record (with
+            // sessions[]) replaces it on success.
+            optimistic.sessions = nil
             if isCheckIn {
                 optimistic.status = "present"
                 if optimistic.firstCheckinAt == nil { optimistic.firstCheckinAt = nowIso }
