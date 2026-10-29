@@ -17,7 +17,7 @@ struct SideMenuView: View {
     /// are fixed and not part of the list. Each entry's package / module / tenant gate and hide flag live in
     /// `ClientFeatures.menuEntryAllowed`, which the bottom bar's action tabs share.
     private static let defaultMenuOrder: [String] = [
-        "crm", "planogram", "book_order", "collect_payment", "my_orders", "van_load", "distributor_stock", "log_damage",
+        "crm", "plant_visit", "planogram", "book_order", "collect_payment", "my_orders", "van_load", "distributor_stock", "log_damage",
         "stock_batches", "profile", "leave", "expenses", "timeline", "broadcast", "notifications",
         "leaderboard", "activity_feed", "log_visit", "stock", "grievance", "learning_hub", "emergency_sos",
     ]
@@ -52,6 +52,11 @@ struct SideMenuView: View {
                     }
                 }
             }
+
+        case "plant_visit":
+            // Merged plant-visit capture (customer → plant → people met → product
+            // forms). Universal CRM capability; opens via the shared secondary-route.
+            routeRow("plant_visit", icon: "mappin.and.ellipse", title: "New Plant Visit", color: Brand.red, route: .plantVisit)
 
         case "planogram":
             // Planogram (MoiSoi) — one-tap storeless shelf capture.

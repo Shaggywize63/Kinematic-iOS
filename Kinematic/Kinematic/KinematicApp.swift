@@ -210,6 +210,9 @@ enum SecondaryRoute: String, Identifiable {
     // CRM lead-management Home (mission control) — universal; opened when a
     // daily-briefing notification is tapped (data.kind == "crm_home").
     case crmHome
+    // Merged plant-visit capture (customer → plant/site → people met → product
+    // forms). Universal CRM capability; opened from the CRM home.
+    case plantVisit
     // Expense claims (module `field_expenses`) — reachable from the side menu for field-force tenants
     // and opened when an expense push is tapped.
     case expenses
@@ -268,7 +271,7 @@ enum SecondaryRoute: String, Identifiable {
     var requiredPackage: String? {
         switch self {
         // Universal — every client gets these
-        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .expenses, .timeline, .notificationTarget:
+        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .plantVisit, .expenses, .timeline, .notificationTarget:
             return nil
         // Field Force
         case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:
