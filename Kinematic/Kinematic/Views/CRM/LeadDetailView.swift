@@ -137,6 +137,7 @@ struct LeadDetailView: View {
                     // mirror of the multi-row picker so the basket is
                     // visible without entering edit mode.
                     LeadProductsCard(lead: lead)
+                    if !vm.contacts.isEmpty { contactsCard() }
                     CustomFieldsDetailCard(entity: "lead", customFields: lead.customFields)
                     nbaContainer
                     // Lead-score breakdown + Boost-score suggestions are
@@ -1006,6 +1007,46 @@ struct LeadDetailView: View {
                         if showChannel, let pcm = lead.preferredContactMethod { profileRow(fieldOverrides.labelFor("preferred_contact_method", defaultLabel: "Preferred Channel", isB2C: true), value: pcm.capitalized) }
                         if showMarketing { profileRow(fieldOverrides.labelFor("marketing_consent", defaultLabel: "Marketing Consent", isB2C: true), value: (lead.marketingConsent ?? false) ? "Yes" : "No") }
                         if showWhatsapp { profileRow(fieldOverrides.labelFor("whatsapp_consent", defaultLabel: "WhatsApp Consent", isB2C: true), value: (lead.whatsappConsent ?? false) ? "Yes" : "No") }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Contacts captured on this lead (B2B, read-only — revisit view)
+
+    /// The contact-persons logged on this lead and each one's requirement.
+    /// Read-only: opening an already-visited lead shows everyone captured on it
+    /// (by any rep), so a returning field exec sees the people + needs already
+    /// on record. Built-in contact fields (title/phone/email) are gated through
+    /// the `contact`-entity field-overrides per the contract and deferred until
+    /// the overrides have loaded; `requirement` is a non-built-in column so it
+    /// always shows. Only rendered when `vm.contacts` is non-empty.
+    private func contactsCard() -> some View {
+        let loaded = fieldOverrides.didLoad
+        let showTitle = loaded && !fieldOverrides.isHidden(entity: "contact", "title")
+        let showPhone = loaded && !fieldOverrides.isHidden(entity: "contact", "phone")
+        let showEmail = loaded && !fieldOverrides.isHidden(entity: "contact", "email")
+        return Card(title: fieldOverrides.labelFor(entity: "contact", "contacts", "Contacts & requirements").uppercased()) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(vm.contacts.enumerated()), id: \.element.id) { idx, c in
+                    if idx > 0 { Divider() }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(c.displayName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.primary)
+                        if showTitle, let t = c.title, !t.isEmpty {
+                            profileRow(fieldOverrides.labelFor(entity: "contact", "title", "Title"), value: t)
+                        }
+                        if showPhone, let p = (c.phone ?? c.mobile), !p.isEmpty {
+                            profileRow(fieldOverrides.labelFor(entity: "contact", "phone", "Phone"), value: p)
+                        }
+                        if showEmail, let e = c.email, !e.isEmpty {
+                            profileRow(fieldOverrides.labelFor(entity: "contact", "email", "Email"), value: e)
+                        }
+                        if let r = c.requirement, !r.isEmpty {
+                            profileRow(fieldOverrides.labelFor(entity: "contact", "requirement", "Requirement"), value: r)
+                        }
                     }
                 }
             }

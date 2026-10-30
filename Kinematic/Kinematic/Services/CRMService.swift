@@ -67,6 +67,12 @@ final class CRMService {
         return try await get("/api/v1/crm/leads", query: q)
     }
     func getLead(id: String) async throws -> Lead { try await get("/api/v1/crm/leads/\(id)") }
+    /// Contacts captured on a lead — the B2B contact-persons and each one's
+    /// `requirement`. Org-scoped (not owner-filtered) so a revisit shows everyone
+    /// logged on the lead, including contacts another rep added on an earlier visit.
+    func leadContacts(id: String) async throws -> [Contact] {
+        try await get("/api/v1/crm/leads/\(id)/contacts")
+    }
 
     // MARK: Proposals
     /// Generate an AI-tailored, branded proposal PDF from the products a lead is

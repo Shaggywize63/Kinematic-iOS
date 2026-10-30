@@ -13,6 +13,10 @@ final class LeadDetailViewModel: ObservableObject {
     @Published var convertedContact: Contact?
     @Published var convertedAccount: CRMAccount?
     @Published var convertedDeal: Deal?
+    /// Contact-persons captured on this lead (B2B: name/title/phone/email + each
+    /// one's `requirement`). The revisit surface — opening an already-visited
+    /// lead shows everyone logged on it, by any rep. Empty for non-B2B leads.
+    @Published var contacts: [Contact] = []
     /// Next Best Action for the lead's converted deal. Lead-scoped NBA
     /// doesn't exist server-side (the backend endpoint is per-deal), so
     /// we surface the converted deal's NBA on the lead detail when one
@@ -70,12 +74,16 @@ final class LeadDetailViewModel: ObservableObject {
             async let dealsTask = api.leadDeals(id: leadId)
             async let assignableTask = api.listAssignableUsers()
             async let updatesTask: [LeadUpdate] = (try? await api.listLeadUpdates(leadId: leadId)) ?? []
+            // Lead-scoped contacts-with-requirements. Non-blocking — a lead with
+            // no captured contacts (or a backend without the route yet) yields [].
+            async let contactsTask: [Contact] = (try? await api.leadContacts(id: leadId)) ?? []
             let lead = try await leadTask
             self.lead = lead
             self.updates = await updatesTask
             self.activities = (try? await actsTask) ?? []
             self.relatedDeals = (try? await dealsTask) ?? []
             self.assignableUsers = await assignableTask
+            self.contacts = await contactsTask
             // Auxiliary fetches that depend on lead fields (converted IDs)
             // fan out in parallel too.
             await loadAuxiliary(lead: lead)
