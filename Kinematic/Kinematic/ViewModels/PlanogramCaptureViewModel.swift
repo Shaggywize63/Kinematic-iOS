@@ -27,6 +27,14 @@ final class PlanogramCaptureViewModel: ObservableObject {
     @Published var storeId: String? = nil
     @Published var visitId: String? = nil
 
+    /// Shelf photos queued for this audit. The rep can add several (camera or
+    /// photo library, multi-select) and submit them all in one go — no single
+    /// "frame the shelf" step is required. Each photo becomes its own capture.
+    @Published var images: [UIImage] = []
+    /// Progress across a multi-photo submit: how many of `batchTotal` are done.
+    @Published var batchDone: Int = 0
+    @Published var batchTotal: Int = 0
+
     private let service: PlanogramService
     private let location: CLLocationManager
 
@@ -41,9 +49,72 @@ final class PlanogramCaptureViewModel: ObservableObject {
     }
 
     var canSubmit: Bool {
-        if capturedImage == nil { return false }
+        if images.isEmpty { return false }
         if case .uploading = phase { return false }
         return true
+    }
+
+    /// Add one or more shelf photos to the audit queue.
+    func addImages(_ newImages: [UIImage]) {
+        guard !newImages.isEmpty else { return }
+        images.append(contentsOf: newImages)
+        if case .failed = phase { phase = .idle }
+    }
+
+    func removeImage(at index: Int) {
+        guard images.indices.contains(index) else { return }
+        images.remove(at: index)
+    }
+
+    /// Upload + analyze every queued photo sequentially (each is its own
+    /// capture, same pipeline as a single shot). Navigates to the first
+    /// successful capture's report; the rest persist and show in the dashboard.
+    func submitAll() async {
+        guard !images.isEmpty else {
+            phase = .failed("Add at least one shelf photo first.")
+            return
+        }
+        phase = .uploading
+        batchTotal = images.count
+        batchDone = 0
+
+        var coords: (Double, Double)? = nil
+        if let loc = location.location {
+            coords = (loc.coordinate.latitude, loc.coordinate.longitude)
+        }
+
+        var firstResponse: CaptureResponse? = nil
+        var failures = 0
+        for image in images {
+            guard let uploadedURL = await KinematicRepository.shared.uploadImage(image: image, type: "photo") else {
+                failures += 1
+                batchDone += 1
+                continue
+            }
+            do {
+                let response = try await service.submitCapture(
+                    image: image,
+                    storeId: storeId,
+                    visitId: visitId,
+                    planogramId: planogramId,
+                    imageURL: uploadedURL,
+                    location: coords
+                )
+                if firstResponse == nil {
+                    firstResponse = response
+                    capturedImage = image
+                }
+            } catch {
+                failures += 1
+            }
+            batchDone += 1
+        }
+
+        if let response = firstResponse {
+            phase = .complete(response)
+        } else {
+            phase = .failed("None of the \(images.count) photo(s) could be analyzed. Please try again.")
+        }
     }
 
     func submit(imageURL: String) async {
@@ -88,6 +159,9 @@ final class PlanogramCaptureViewModel: ObservableObject {
 
     func reset() {
         capturedImage = nil
+        images = []
+        batchDone = 0
+        batchTotal = 0
         phase = .idle
     }
 }
