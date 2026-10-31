@@ -43,11 +43,7 @@ private let RAJKAMAL_CLIENT_ID = "0490f34d-d9a3-4f39-99e2-8f3adba8c583"
 /// the backend list (the `stores` module is granted) and shoot the shelf. Keyed
 /// off the client id like the other tenant gates. Mirrors Android's
 /// `Entitlements.isBahwancy` (same client id).
-///
-/// TODO(bahwancy): replace this placeholder with the REAL client_id printed by
-/// `node dist/tools/onboard-bahwancy.js --inspect`. Until then this sentinel
-/// matches no client, so the gate is inert and nothing changes for anyone.
-private let BAHWANCY_CLIENT_ID = "ba000000-0000-4000-a000-000000000001"
+private let BAHWANCY_CLIENT_ID = "c7232547-554a-4ba1-9f14-1dc027f9febd"
 
 enum ClientFeatures {
     /// True when the signed-in user belongs to a steel-dealer tenant — Tata
@@ -384,7 +380,6 @@ enum ClientFeatures {
         let gate: Bool
         switch id {
         case "crm":               gate = hasCrm
-        case "plant_visit":       gate = hasCrm
         case "planogram":         gate = isMoiSoi
         case "book_order":        gate = hasDistribution && hasModule("distribution_orders")
         case "collect_payment":   gate = hasDistribution && hasModule("distribution_payments")
