@@ -167,6 +167,14 @@ struct ExpenseClaim: Codable, Identifiable {
     let auto_approved: Bool?
     let reimbursed_at: String?
     let reimbursed_ref: String?
+    // Connected-B2B (Spark & Ray): the mandatory purpose, and the CRM account +
+    // builder form this expense is linked to. account_name / form_title are
+    // stamped by the server for display. Absent (nil) for every other tenant.
+    let clarification: String?
+    let account_id: String?
+    let form_id: String?
+    let account_name: String?
+    let form_title: String?
     let created_at: String?
     let user_name: String?
     let employee_id: String?
@@ -338,12 +346,25 @@ struct ExpenseClaimItemInput: Encodable, Equatable {
 
 struct ExpenseClaimInput: Encodable {
     let title: String?
+    // Connected-B2B (Spark & Ray): the mandatory purpose + the linked account / form.
+    // nil for every other tenant (the backend ignores them for non-B2B clients).
+    var clarification: String? = nil
+    var account_id: String? = nil
+    var form_id: String? = nil
     let items: [ExpenseClaimItemInput]
 }
 
 struct ExpenseClaimCheckInput: Encodable {
     let items: [ExpenseClaimItemInput]
     let claim_id: String?
+}
+
+/// A builder form an admin marked "expense-linked" — an option in the expense
+/// form picker (connected-B2B). Read from /api/v1/builder/forms.
+struct ExpenseLinkForm: Decodable, Identifiable, Hashable {
+    let id: String
+    let title: String?
+    let expense_linked: Bool?
 }
 
 /// One line's decision inside a decision request.
