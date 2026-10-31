@@ -6,12 +6,18 @@
 //  core actions (attendance, visit verification, geo-stamped leads) are
 //  meaningless without a location fix, so the authenticated shell is blocked
 //  behind a full-screen gate whenever location is NOT usable — i.e. the
-//  authorization is `.notDetermined` / `.denied` / `.restricted`, OR the device
+//  authorization is anything other than `.authorizedAlways`, OR the device
 //  Location Services master switch is off.
 //
+//  "Always" (Allow all the time) is COMPULSORY: "While Using the App" is not
+//  enough, because visits and attendance must keep tracking in the background.
+//
 //  The gate:
-//    • `.notDetermined` — requests When-In-Use authorization (the app's
-//      existing tier) and re-prompts on demand.
+//    • `.notDetermined` — requests When-In-Use authorization (Apple's required
+//      first step) and re-prompts on demand.
+//    • `.authorizedWhenInUse` — raises the system "Change to Always Allow?"
+//      upgrade prompt, and offers a Settings deep-link as the fallback (iOS
+//      only shows that system prompt once per install).
 //    • `.denied` / `.restricted` — explains location is required and deep-links
 //      to the app's Settings page.
 //    • master switch off — tells the user to turn Location Services on, with
@@ -75,7 +81,8 @@ struct LocationRequiredView: View {
 
     /// What's wrong right now — chosen from the live, published gate state.
     private enum Reason {
-        case needsPermission   // .notDetermined — we can still ask
+        case needsPermission   // .notDetermined — we can still ask (When-In-Use first)
+        case needsAlways       // .authorizedWhenInUse — must upgrade to Always
         case permissionBlocked // .denied / .restricted — Settings only
         case servicesOff       // authorized, but the master switch is off
     }
@@ -86,8 +93,13 @@ struct LocationRequiredView: View {
             return .needsPermission
         case .denied, .restricted:
             return .permissionBlocked
-        case .authorizedAlways, .authorizedWhenInUse:
-            // Authorized, so the only remaining blocker is the master switch.
+        case .authorizedWhenInUse:
+            // Granted only "While Using the App". Location must be "Always" (Allow
+            // all the time) to continue — unless the master switch is also off,
+            // which is the more fundamental fix to surface first.
+            return location.locationServicesOn ? .needsAlways : .servicesOff
+        case .authorizedAlways:
+            // Always-authorized, so the only remaining blocker is the master switch.
             return .servicesOff
         @unknown default:
             return .permissionBlocked
@@ -97,6 +109,7 @@ struct LocationRequiredView: View {
     private var title: String {
         switch reason {
         case .needsPermission:   return "Location Required"
+        case .needsAlways:       return "Allow Location Always"
         case .permissionBlocked: return "Location Required"
         case .servicesOff:       return "Turn On Location Services"
         }
@@ -106,6 +119,8 @@ struct LocationRequiredView: View {
         switch reason {
         case .needsPermission:
             return "Kinematic needs your location to verify store visits and attendance. Allow location access to continue."
+        case .needsAlways:
+            return "Kinematic needs location set to “Always” (Allow all the time), not just “While Using the App”, so your visits and attendance keep tracking in the background. Please change location access to Always to continue."
         case .permissionBlocked:
             return "Location access is required to use Kinematic. Open Settings and allow location for Kinematic to continue."
         case .servicesOff:
@@ -116,8 +131,16 @@ struct LocationRequiredView: View {
     private var primaryButtonTitle: String {
         switch reason {
         case .needsPermission: return "Allow Location"
+        case .needsAlways:     return "Allow All the Time"
         default:               return "Open Settings"
         }
+    }
+
+    /// A second, quieter action — only the Always step needs one, because iOS
+    /// shows the system "Change to Always Allow?" prompt at most once: after that
+    /// the only way to Always is the Settings deep-link.
+    private var secondaryButtonTitle: String? {
+        reason == .needsAlways ? "Open Settings" : nil
     }
 
     var body: some View {
@@ -162,17 +185,30 @@ struct LocationRequiredView: View {
                             .background(Brand.red)
                             .cornerRadius(16)
                     }
+                    if let secondary = secondaryButtonTitle {
+                        Button(action: openSettings) {
+                            Text(secondary)
+                                .font(Brand.Body.semiBold(16))
+                                .foregroundColor(.white.opacity(0.85))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                        }
+                    }
                 }
                 .padding(.horizontal, 32)
                 .padding(.bottom, 40)
             }
         }
-        // First paint with authorization still undecided: surface the system
-        // permission prompt straight away so the common first-launch path is a
-        // single tap. iOS no-ops a repeat request while one is already pending.
+        // First paint: surface the matching system prompt straight away so the
+        // common path is a single tap — the When-In-Use prompt when undecided,
+        // or the "Change to Always Allow?" upgrade prompt when we're one step
+        // short. iOS no-ops a repeat request while one is already pending, and
+        // only ever shows the Always upgrade prompt once per install.
         .task {
-            if case .needsPermission = reason {
-                location.requestPermissions()
+            switch reason {
+            case .needsPermission: location.requestPermissions()
+            case .needsAlways:     location.upgradeToAlwaysIfPossible()
+            default:               break
             }
         }
     }
@@ -183,10 +219,18 @@ struct LocationRequiredView: View {
             // Re-raise the system prompt. If the user had already dismissed it,
             // the status stays .notDetermined and this shows it again.
             location.requestPermissions()
+        case .needsAlways:
+            // Raise the system "Change to Always Allow?" upgrade prompt. iOS only
+            // presents it once; after that the Open Settings button is the path.
+            location.upgradeToAlwaysIfPossible()
         case .permissionBlocked, .servicesOff:
-            if let url = URL(string: UIApplication.openSettingsURLString) {
-                UIApplication.shared.open(url)
-            }
+            openSettings()
+        }
+    }
+
+    private func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 }
