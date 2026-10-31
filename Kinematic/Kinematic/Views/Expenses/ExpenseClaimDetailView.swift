@@ -138,6 +138,10 @@ struct ExpenseClaimDetailView: View {
         var rows: [(String, String)] = []
         if let d = c.submitted_at { rows.append(("Submitted", String(d.prefix(10)))) }
         if let p = c.policy_name { rows.append(("Policy", p)) }
+        // Connected-B2B links (shown only when set): the company + the form's name.
+        if let a = c.account_name, !a.isEmpty { rows.append(("Company", a)) }
+        if let f = c.form_title, !f.isEmpty { rows.append(("Form", f)) }
+        if let cl = c.clarification, !cl.isEmpty { rows.append(("Clarification", cl)) }
         rows.append(("Claimed", expenseMoney(c.total_amount, c.currency)))
         if let a = c.approved_amount, (c.status ?? "") != "rejected" { rows.append(("Approved", expenseMoney(a, c.currency))) }
         if (c.status ?? "") == "submitted", let w = c.approver_name {
