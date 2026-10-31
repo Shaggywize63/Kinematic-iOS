@@ -53,6 +53,8 @@ struct SecondaryScreenHost: View {
                             NotificationsView()
                         case .crmHome:
                             CrmHomeMissionView()
+                        case .plantVisit:
+                            MergedVisitView()
                         case .grievance:
                             GrievanceView()
                         case .visitlog:

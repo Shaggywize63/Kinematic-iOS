@@ -295,6 +295,10 @@ enum OfflinePunchState {
             shell.status = "checked_out"
             shell.checkoutAt = outAt
             shell.lastCheckoutAt = outAt
+            // Drop the server's session list for this offline overlay: the pending checkout
+            // isn't in it yet, so the sessions-aware isClockedIn must fall back to the flat
+            // checkout above (otherwise a still-"open" session would read as clocked in).
+            shell.sessions = nil
             rec = shell
         }
         return rec

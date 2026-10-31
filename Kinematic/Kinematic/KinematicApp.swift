@@ -210,6 +210,9 @@ enum SecondaryRoute: String, Identifiable {
     // CRM lead-management Home (mission control) — universal; opened when a
     // daily-briefing notification is tapped (data.kind == "crm_home").
     case crmHome
+    // Merged plant-visit capture (customer → plant/site → people met → product
+    // forms). Universal CRM capability; opened from the CRM home.
+    case plantVisit
     // Expense claims (module `field_expenses`) — reachable from the side menu for field-force tenants
     // and opened when an expense push is tapped.
     case expenses
@@ -268,7 +271,7 @@ enum SecondaryRoute: String, Identifiable {
     var requiredPackage: String? {
         switch self {
         // Universal — every client gets these
-        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .expenses, .timeline, .notificationTarget:
+        case .profile, .settings, .learning, .notifications, .sos, .leave, .crmHome, .plantVisit, .expenses, .timeline, .notificationTarget:
             return nil
         // Field Force
         case .broadcast, .leaderboard, .grievance, .visitlog, .stock, .activity, .camera:
@@ -345,6 +348,15 @@ class KiniAppState: ObservableObject {
     // --- Navigation & UI ---
     @Published var showSideMenu = false
     @Published var activeSecondaryRoute: ModalRoute? = nil
+
+    /// The active plant visit's CRM links, set by the merged-visit flow after
+    /// visit-intake and read when building a form submission so EVERY product
+    /// form filled during the visit attaches to the same account / site /
+    /// contact / visit (persists across multiple product forms — one visit →
+    /// many products). Cleared when a new visit starts or the rep leaves.
+    @Published var activeVisitContext: VisitContext? = nil
+    func setVisitContext(_ ctx: VisitContext?) { activeVisitContext = ctx }
+    func clearVisitContext() { activeVisitContext = nil }
     /// Last tapped push notification's data dict (type / lead_id / deal_id /
     /// task_id). Set by PushAppDelegate on tap; kept for deeper deep-linking.
     @Published var pendingPushData: [String: String]? = nil
@@ -1165,9 +1177,13 @@ struct AttendanceRecord: Codable {
     var transportLabel: String?
     /// `late` block — present ONLY for clients that configured shift rules, and only on a record with a check-in.
     var late: AttendanceLateInfo?
+    /// Per-punch sessions for the day (multiple check-in/out). Present once the backend records
+    /// sessions; nil for legacy payloads, so the flat checkin/checkout pair stays the fallback.
+    /// See AttendanceSession + the AttendanceRecord session helpers in Models/AttendanceSession.swift.
+    var sessions: [AttendanceSession]?
 
     enum CodingKeys: String, CodingKey {
-        case id, date, status
+        case id, date, status, sessions
         case transportMode = "transport_mode"
         case transportLabel = "transport_label"
         case late
@@ -1213,7 +1229,8 @@ struct AttendanceRecord: Codable {
         totalDuration: Int? = nil,
         transportMode: String? = nil,
         transportLabel: String? = nil,
-        late: AttendanceLateInfo? = nil
+        late: AttendanceLateInfo? = nil,
+        sessions: [AttendanceSession]? = nil
     ) {
         self.id = id
         self.date = date
@@ -1235,6 +1252,7 @@ struct AttendanceRecord: Codable {
         self.transportMode = transportMode
         self.transportLabel = transportLabel
         self.late = late
+        self.sessions = sessions
     }
 
     init(from decoder: Decoder) throws {
@@ -1272,6 +1290,7 @@ struct AttendanceRecord: Codable {
         transportMode = container.decodeLossyString(forKey: .transportMode)
         transportLabel = container.decodeLossyString(forKey: .transportLabel)
         late = try? container.decodeIfPresent(AttendanceLateInfo.self, forKey: .late)
+        sessions = try? container.decodeIfPresent([AttendanceSession].self, forKey: .sessions)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -1296,11 +1315,13 @@ struct AttendanceRecord: Codable {
         try container.encodeIfPresent(transportMode, forKey: .transportMode)
         try container.encodeIfPresent(transportLabel, forKey: .transportLabel)
         try container.encodeIfPresent(late, forKey: .late)
+        try container.encodeIfPresent(sessions, forKey: .sessions)
     }
 
-    var isIn: Bool {
-        checkinAt != nil && checkoutAt == nil
-    }
+    // Sessions-aware: an open latest punch ⇒ clocked in. Falls back to the flat
+    // checkin/checkout pair when there is no session list (legacy / optimistic records).
+    // Definition lives with AttendanceSession in Models/AttendanceSession.swift.
+    var isIn: Bool { isClockedIn }
 }
 
 struct TrackingPingRequest: Codable {
@@ -1801,6 +1822,15 @@ struct FormSubmissionRequest: Codable {
     var checkOutAt: String? = nil
     var checkInGps: String? = nil
     var checkOutGps: String? = nil
+    // CRM visit links — set by the merged plant-visit flow so this product-survey
+    // submission attaches to the customer account / plant site / contact /
+    // opportunity / visit. Nil (and so not encoded) for a form filled outside a
+    // visit, keeping the request byte-for-byte unchanged there.
+    var accountId: String? = nil
+    var siteId: String? = nil
+    var contactId: String? = nil
+    var dealId: String? = nil
+    var visitId: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case responses, latitude, longitude
@@ -1814,6 +1844,11 @@ struct FormSubmissionRequest: Codable {
         case checkOutAt = "check_out_at"
         case checkInGps = "check_in_gps"
         case checkOutGps = "check_out_gps"
+        case accountId = "account_id"
+        case siteId = "site_id"
+        case contactId = "contact_id"
+        case dealId = "deal_id"
+        case visitId = "visit_id"
     }
 }
 

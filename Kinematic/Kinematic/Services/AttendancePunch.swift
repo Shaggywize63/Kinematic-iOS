@@ -34,8 +34,10 @@ enum AttendancePunch {
 
     /// The Home card's headline. Only the "not checked in yet" state mentions the selfie today, so only it changes.
     /// `hasCheckin` = the record has a check-in (so "Check In to Resume" applies when paused).
+    /// With multiple check-in/out per day, a clocked-out rep is "Clocked Out" (they may
+    /// clock in again) rather than a terminal "Shift Completed".
     static func headline(shiftEnded: Bool, isIn: Bool, hasCheckin: Bool, selfieRequired: Bool) -> String {
-        if shiftEnded { return "Shift Completed" }
+        if shiftEnded { return "Clocked Out" }
         if isIn { return "Shift Active" }
         if hasCheckin { return "Check In to Resume" }
         return selfieRequired ? "Daily Selfie Required" : "Daily Check-In Required"
@@ -46,9 +48,10 @@ enum AttendancePunch {
         selfieRequired ? "Tap to complete check-in" : "Tap to check in"
     }
 
-    /// The SF Symbol of the Home card's action glyph (the camera, or a location pin when there is no selfie).
+    /// The SF Symbol of the Home card's action glyph (the camera, or a location pin when there
+    /// is no selfie). A clocked-out rep can clock in again, so the glyph stays the actionable
+    /// check-in symbol rather than a terminal "done" seal.
     static func actionGlyph(shiftEnded: Bool, selfieRequired: Bool) -> String {
-        if shiftEnded { return "checkmark.seal.fill" }
         return selfieRequired ? "camera.fill" : "location.fill"
     }
 

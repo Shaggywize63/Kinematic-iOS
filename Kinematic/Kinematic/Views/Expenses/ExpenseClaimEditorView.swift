@@ -16,6 +16,12 @@ struct ExpenseClaimEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var title: String
+    // Connected-B2B (Spark & Ray): a mandatory clarification and the linked account / form.
+    @State private var clarification: String
+    @State private var companyText: String
+    @State private var selectedAccountId: String?
+    @State private var formId: String
+    @State private var linkForms: [ExpenseLinkForm] = []
     @State private var lines: [EditorLine]
     /// Once a draft has been created from this form, a retry updates it instead of creating a second one.
     @State private var savedId: String?
@@ -67,6 +73,10 @@ struct ExpenseClaimEditorView: View {
         self.claim = claim
         self.onDone = onDone
         _title = State(initialValue: claim?.title ?? "")
+        _clarification = State(initialValue: claim?.clarification ?? "")
+        _companyText = State(initialValue: claim?.account_name ?? "")
+        _selectedAccountId = State(initialValue: claim?.account_id)
+        _formId = State(initialValue: claim?.form_id ?? "")
         _savedId = State(initialValue: claim?.id)
         var seeded: [EditorLine] = []
         // The policy's only vehicle (if it lists exactly one) is pre-selected on mileage lines that have none.
@@ -90,6 +100,8 @@ struct ExpenseClaimEditorView: View {
     }
 
     private var status: String { (claim?.status ?? "draft").lowercased() }
+    /// Connected-B2B flow (Spark & Ray): show the clarification + account/form links.
+    private var isSpark: Bool { (CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId }
     private var currency: String { vm.policy?.currency ?? claim?.currency ?? "INR" }
     private var rate: Double { vm.policy?.rules?.mileage_rate ?? vm.policy?.mileage_rate ?? 0 }
     /// Where the policy pays mileage by vehicle, a mileage line takes the vehicle + odometer readings instead of a
@@ -135,6 +147,24 @@ struct ExpenseClaimEditorView: View {
             Form {
                 if let c = claim, (c.status ?? "") == "rejected" { Section { ExpenseRejectionBanner(claim: c).listRowInsets(EdgeInsets()) } }
                 Section { TextField("Title (optional)", text: $title) }
+                if isSpark {
+                    Section("Clarification & links") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField("Clarification (the purpose of this expense)", text: $clarification, axis: .vertical)
+                                .lineLimit(2...5)
+                            Text("Required before you can submit.").font(.caption).foregroundColor(.secondary)
+                        }
+                        CompanyPickerField(company: $companyText, selectedAccountId: $selectedAccountId, label: "Linked company")
+                        Picker("Linked form", selection: $formId) {
+                            Text("None").tag("")
+                            ForEach(linkForms) { f in Text(f.title ?? "Form").tag(f.id) }
+                        }
+                        if linkForms.isEmpty {
+                            Text("No forms are marked for expense linking yet — turn it on for a form in the Form Builder.")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                }
                 if let p = vm.policy { Section("Your policy") { policySummary(p) } }
 
                 ForEach($lines) { $line in lineSection($line) }
@@ -176,6 +206,8 @@ struct ExpenseClaimEditorView: View {
             .onChange(of: soleVehicleKey, initial: true) { applySoleVehicle() }
             // Vehicle flow: fetch the odometer history for the "last reading" hint (best effort).
             .task(id: byVehicle) { if byVehicle { await vm.loadOdometerHistory() } }
+            // Connected-B2B: the forms an admin marked expense-linked (the form picker's options).
+            .task(id: isSpark) { if isSpark { linkForms = (try? await ExpensesAPI.shared.linkableForms()) ?? [] } }
             // Work from the policy as it is now, not the one fetched when the Expenses screen first opened: the
             // vehicles offered are its vehicles. A late arrival is caught up by the two onChange handlers above.
             .task { await vm.loadPolicy() }
@@ -634,11 +666,19 @@ struct ExpenseClaimEditorView: View {
             errorText = "Expense \(wrong + 1): \(lines[wrong].f.odometerOrderProblem ?? "")"; return
         }
         if lines.contains(where: { $0.uploading || $0.odoUploading != nil }) { errorText = "Wait for the upload to finish."; return }
+        let clar = clarification.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Connected-B2B: a clarification is mandatory before submit (the backend enforces it too).
+        if isSpark && submit && clar.isEmpty { errorText = "Add a clarification (the purpose of this expense) before submitting."; return }
         errorText = nil
         saving = true
         defer { saving = false }
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let out = await vm.save(claimId: savedId, title: t.isEmpty ? nil : t, items: filled.map { $0.f.toInput(byVehicle: byVehicle, routeFields: routeFields, gpsDistance: gpsDistance) }, submit: submit)
+        let out = await vm.save(
+            claimId: savedId, title: t.isEmpty ? nil : t,
+            items: filled.map { $0.f.toInput(byVehicle: byVehicle, routeFields: routeFields, gpsDistance: gpsDistance) }, submit: submit,
+            clarification: isSpark ? (clar.isEmpty ? nil : clar) : nil,
+            accountId: isSpark ? selectedAccountId : nil,
+            formId: isSpark ? (formId.isEmpty ? nil : formId) : nil)
         if let id = out.savedId { savedId = id }
         if let e = out.error { errorText = e; return }
         if let id = out.savedId { onDone(id, out.submitted); dismiss() }

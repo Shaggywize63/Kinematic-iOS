@@ -11,6 +11,11 @@ struct Contact: Codable, Identifiable, Hashable {
     let title: String?
     let accountId: String?
     let accountName: String?
+    // The lead this contact was captured on, and the free-text requirement that
+    // person gave (B2B lead → contacts-with-requirements). Set by the lead-create
+    // bridge; present only on contacts logged through that flow.
+    let leadId: String?
+    let requirement: String?
     let ownerId: String?
     let department: String?
     let leadSource: String?
@@ -61,6 +66,8 @@ struct Contact: Codable, Identifiable, Hashable {
         case email, phone, mobile, title
         case accountId = "account_id"
         case accountName = "account_name"
+        case leadId = "lead_id"
+        case requirement
         case ownerId = "owner_id"
         case department
         case leadSource = "lead_source"

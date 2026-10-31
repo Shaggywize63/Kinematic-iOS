@@ -84,6 +84,14 @@ struct LeadCreateView: View {
     /// admin has hidden them via Settings → Custom Fields.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
+    // B2B company typeahead + multiple contacts-with-requirements (Spark & Ray only —
+    // the backend links lead contacts for that client).
+    @State private var selectedAccountId: String? = nil
+    @State private var leadContacts: [LeadContactDraft] = [LeadContactDraft()]
+    private var isSparkClient: Bool {
+        (CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId
+    }
+
     /// Tata Tiscon affordance — checkbox in the create form that asks
     /// the backend to echo back an `auto_log_site_visit_prefill` block
     /// (lead_id + suggested subject + type). The compose screen reads
@@ -391,11 +399,20 @@ struct LeadCreateView: View {
                 if !isB2C {
                     Section("Business Details") {
                         if !fieldOverrides.isHidden("company", isB2C: false) {
-                            labelledField(
-                                label: fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: false),
-                                required: fieldOverrides.requiredFor("company", defaultRequired: false, isB2C: false),
-                                text: $company,
-                            )
+                            if isSparkClient {
+                                // Typeahead: pick an existing customer to link + reveal its contacts.
+                                CompanyPickerField(
+                                    company: $company,
+                                    selectedAccountId: $selectedAccountId,
+                                    label: fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: false),
+                                )
+                            } else {
+                                labelledField(
+                                    label: fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: false),
+                                    required: fieldOverrides.requiredFor("company", defaultRequired: false, isB2C: false),
+                                    text: $company,
+                                )
+                            }
                         }
                         if !fieldOverrides.isHidden("title", isB2C: false) {
                             labelledField(
@@ -411,6 +428,12 @@ struct LeadCreateView: View {
                                 text: $industry,
                             )
                         }
+                    }
+                    // Multiple contacts + requirements (Spark & Ray). Each becomes a
+                    // crm_contact linked to the lead's account; a picked existing company's
+                    // known contacts show under the company field above.
+                    if isSparkClient {
+                        LeadContactsSection(contacts: $leadContacts)
                     }
                     // A Dealer's Location (address search + fields) — only for clients that turned it on
                     // (`lead_form.address_on_b2b`). Deferred until the settings have loaded.
@@ -1202,6 +1225,13 @@ struct LeadCreateView: View {
             if !fieldOverrides.isHidden("company",  isB2C: false) { put("company",  company,  into: &body) }
             if !fieldOverrides.isHidden("title",    isB2C: false) { put("title",    title,    into: &body) }
             if !fieldOverrides.isHidden("industry", isB2C: false) { put("industry", industry, into: &body) }
+            // B2B (Spark): the picked existing account + the contacts-with-requirements.
+            // The backend de-dupes and links them; serialized into the offline queue too.
+            if isSparkClient {
+                if let accId = selectedAccountId { body["account_id"] = accId }
+                let contactPayloads = leadContacts.compactMap { $0.asPayload }
+                if !contactPayloads.isEmpty { body["contacts"] = contactPayloads }
+            }
             // The address block shows on B2B when the client turned it on (`lead_form.address_on_b2b`) — it
             // used to be dropped for every B2B lead. Hidden built-ins are not sent.
             if fieldOverrides.leadForm.addressOnB2b {

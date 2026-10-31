@@ -300,7 +300,9 @@ extension AttendanceViewModel {
     /// told to try again — a location is never invented.
     func punchGpsOnly() async {
         if gpsPunching || isLoading { return }
-        let isCheckIn: Bool = KiniAppState.shared.today?.checkinAt == nil
+        // Sessions-aware: check in whenever not currently clocked in (first punch or after
+        // a check-out). Multiple check-in/out per day.
+        let isCheckIn: Bool = !(KiniAppState.shared.today?.isClockedIn ?? false)
         gpsPunching = true
         message = ""
         defer { gpsPunching = false }
@@ -365,6 +367,9 @@ extension AttendanceViewModel {
         var optimistic: AttendanceRecord = previousToday ?? AttendanceRecord(
             id: nil, date: nil, status: nil, checkinAt: nil, checkoutAt: nil,
             totalHours: 0, checkinSelfieUrl: nil, checkoutSelfieUrl: nil)
+        // Drop the session list optimistically so isClockedIn uses the flat pair below and
+        // reads right until the server's real record (with sessions[]) lands.
+        optimistic.sessions = nil
         if isCheckIn {
             optimistic.status = "present"
             if optimistic.firstCheckinAt == nil { optimistic.firstCheckinAt = localIso }

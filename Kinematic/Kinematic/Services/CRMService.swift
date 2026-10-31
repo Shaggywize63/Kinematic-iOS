@@ -67,6 +67,12 @@ final class CRMService {
         return try await get("/api/v1/crm/leads", query: q)
     }
     func getLead(id: String) async throws -> Lead { try await get("/api/v1/crm/leads/\(id)") }
+    /// Contacts captured on a lead — the B2B contact-persons and each one's
+    /// `requirement`. Org-scoped (not owner-filtered) so a revisit shows everyone
+    /// logged on the lead, including contacts another rep added on an earlier visit.
+    func leadContacts(id: String) async throws -> [Contact] {
+        try await get("/api/v1/crm/leads/\(id)/contacts")
+    }
 
     // MARK: Proposals
     /// Generate an AI-tailored, branded proposal PDF from the products a lead is
@@ -337,6 +343,24 @@ final class CRMService {
     }
     func accountContacts(id: String) async throws -> [Contact] {
         try await get("/api/v1/crm/accounts/\(id)/contacts")
+    }
+
+    // MARK: - Visit bridge (plant visit → account/site/contacts/deals)
+
+    /// Everything the app pre-fills from when a rep opens an existing company:
+    /// the account + its plants/sites, contacts and open deals.
+    func accountBundle(id: String) async throws -> AccountBundle {
+        try await get("/api/v1/crm/accounts/\(id)/bundle")
+    }
+
+    /// Resolve (find-or-create, de-duped) customer + plant + people met and open
+    /// a visit; returns the ids to stamp onto each product-form submission.
+    /// Encoded via JSONEncoder (which omits nil optionals) so an id-only branch
+    /// reuses an existing record and a fields branch find-or-creates it.
+    func visitIntake(_ request: VisitIntakeRequest) async throws -> VisitIntakeResult {
+        let data = try JSONEncoder().encode(request)
+        let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        return try await postJSON("/api/v1/crm/visit-intake", body: dict)
     }
     func accountDeals(id: String) async throws -> [Deal] {
         try await get("/api/v1/crm/accounts/\(id)/deals")

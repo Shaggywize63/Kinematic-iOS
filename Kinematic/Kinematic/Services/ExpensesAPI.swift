@@ -95,6 +95,13 @@ struct ExpensesAPI {
     func cancel(id: String) async throws {
         _ = try await request("/expenses/claims/\(id)/cancel", method: "PATCH", body: EmptyBody())
     }
+    /// Builder forms an admin marked "expense-linked" — the options for the expense
+    /// form picker (connected-B2B). Reads the shared builder-forms list and keeps the
+    /// flagged ones; empty until at least one form is marked.
+    func linkableForms() async throws -> [ExpenseLinkForm] {
+        let all: [ExpenseLinkForm] = try decode(try await request("/builder/forms"))
+        return all.filter { $0.expense_linked == true }
+    }
     /// Dry-run the policy against unsaved lines so problems show before submitting.
     func check(items: [ExpenseClaimItemInput], claimId: String?) async throws -> ExpenseClaimCheck {
         try decode(try await request("/expenses/claims/check", method: "POST", body: ExpenseClaimCheckInput(items: items, claim_id: claimId)))
