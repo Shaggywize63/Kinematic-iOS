@@ -204,7 +204,12 @@ struct MainTabView: View {
         // Pipeline / Activities / More — so CRM feels like its own product.
         // Full-access clients keep the field-ops MainTabView and reach CRM via
         // the side menu, which presents the same CRMTabView as a fullScreenCover.
-        if ClientFeatures.isTelecaller {
+        if ClientFeatures.isBahwancy {
+            // Bahwancy / AVOD planogram-only "Store audit" shell: pick a backend
+            // store, then run a shelf audit. No field-force / CRM surface. Checked
+            // first so this single-purpose client never lands in another shell.
+            StoreAuditView()
+        } else if ClientFeatures.isTelecaller {
             // Telecaller (outbound "Call Tracker", phase 1): a focused phone-agent
             // shell — My Calls / Follow-ups / Targets / More — with every
             // field/GPS surface hidden. Checked before crmOnlyMode because a
