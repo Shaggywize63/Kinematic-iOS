@@ -2311,13 +2311,17 @@ class LocationTrackingService: NSObject, ObservableObject, CLLocationManagerDele
         return granted && CLLocationManager.locationServicesEnabled()
     }
 
-    /// Published mirror of `isLocationUsable` — driven by the delegate and the
-    /// foreground re-check (not a live read), so a SwiftUI gate bound to it
-    /// re-renders the instant either input changes. Usable == authorized
-    /// (When-In-Use or Always) AND the device Location Services switch is on.
+    /// Published mirror driven by the delegate and the foreground re-check (not a
+    /// live read), so a SwiftUI gate bound to it re-renders the instant either
+    /// input changes.
+    ///
+    /// Compulsory "Always" (Allow all the time): only `.authorizedAlways` AND the
+    /// device Location Services switch being on clears the gate. "While Using the
+    /// App" is deliberately NOT enough — this is a field-force product that must
+    /// keep tracking visits and attendance in the background, so the gate keeps
+    /// prompting for the Always upgrade until the user grants it.
     var isLocationUsablePublished: Bool {
-        let granted = authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse
-        return granted && locationServicesOn
+        return authorizationStatus == .authorizedAlways && locationServicesOn
     }
 
     /// Re-read the device Location Services master switch OFF the main thread
@@ -4226,20 +4230,13 @@ struct KinematicApp: App {
                 }
                 .task {
                     UIDevice.current.isBatteryMonitoringEnabled = true
-                    // Deferred to the next runloop tick so the launch
-                    // screen has handed off to ContentView before any
-                    // permission alert can appear over it. On first
-                    // install, the camera + location prompts being
-                    // requested synchronously inside `.task` was causing
-                    // the SwiftUI window to stay behind the alerts and
-                    // the user perceived it as "stuck on splash".
-                    DispatchQueue.main.async {
-                        locationService.requestPermissions()
-                    }
-                    // Camera permission is now requested lazily, the
-                    // first time the user opens the selfie sheet — see
-                    // AttendanceViewModel.captureSelfie. Pre-warming on
-                    // launch was part of the first-install hang.
+                    // Location permission is requested by the mandatory-location
+                    // gate (LocationRequiredGate) alone — it wraps the authenticated
+                    // shell and raises the right prompt itself (When-In-Use, then the
+                    // Always upgrade). Asking here too was redundant and fired before
+                    // login; driving it only from the gate means a single prompt
+                    // sequence, shown post-login and in context. (Camera permission is
+                    // still requested lazily on first use — see the selfie sheet.)
                 }
 
                 if showSplash {
