@@ -16,6 +16,9 @@ struct Contact: Codable, Identifiable, Hashable {
     // bridge; present only on contacts logged through that flow.
     let leadId: String?
     let requirement: String?
+    /// A builder form connected to this person's requirement — opened to fill
+    /// from the lead detail, stamping this contact + account on the submission.
+    let formId: String?
     let ownerId: String?
     let department: String?
     let leadSource: String?
@@ -68,6 +71,7 @@ struct Contact: Codable, Identifiable, Hashable {
         case accountName = "account_name"
         case leadId = "lead_id"
         case requirement
+        case formId = "form_id"
         case ownerId = "owner_id"
         case department
         case leadSource = "lead_source"
