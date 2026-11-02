@@ -87,6 +87,13 @@ enum FormFieldLogic {
         kindOf(fieldType: field.fieldType, hasOptions: !(field.options ?? []).isEmpty)
     }
 
+    /// Is a `company` answer a picked CRM account (its UUID) rather than a company name typed by hand? Only a picked
+    /// account links the submission; typed text is kept as the answer and nothing is linked.
+    static func isAccountId(_ raw: String?) -> Bool {
+        guard let raw else { return false }
+        return UUID(uuidString: raw.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+    }
+
     // MARK: - visibility
 
     /// Is the question shown, given the answers so far? Always, unless it depends on another question's answer
