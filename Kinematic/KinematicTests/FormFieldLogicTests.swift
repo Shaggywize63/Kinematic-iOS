@@ -474,4 +474,17 @@ final class FormFieldLogicTests: XCTestCase {
         XCTAssertEqual(FormFieldLogic.kindOf(fields[2]), .dateTime)
         XCTAssertNil(fields[2].validationMax)
     }
+
+    func testCompanyQuestionMapsToThePicker() {
+        XCTAssertEqual(FormFieldLogic.kindOf(fieldType: "company", hasOptions: false), .company)
+        XCTAssertEqual(FormFieldLogic.kindOf(fieldType: " Account ", hasOptions: false), .company)
+    }
+
+    func testOnlyAPickedAccountIdLinks() {
+        XCTAssertTrue(FormFieldLogic.isAccountId("0f3b1c2e-9d4a-4e6b-8a1f-2c7d5e9b0a11"))
+        XCTAssertTrue(FormFieldLogic.isAccountId("0F3B1C2E-9D4A-4E6B-8A1F-2C7D5E9B0A11"))
+        XCTAssertFalse(FormFieldLogic.isAccountId("Acme Industries"))
+        XCTAssertFalse(FormFieldLogic.isAccountId(""))
+        XCTAssertFalse(FormFieldLogic.isAccountId(nil))
+    }
 }

@@ -688,9 +688,10 @@ struct DropdownField: View {
     }
 }
 
-/// A searchable CRM account picker. The question's answer is the chosen account's id
-/// (`value`), which the backend reads on submit to link the form submission to that
-/// account; the button shows the account's name once one is picked.
+/// A searchable CRM account picker for the "Customer / Company" question. PICKING a company stores its
+/// account id as the answer (the backend swaps in the company name and links the submission to that
+/// account); a company that isn't in the CRM can be typed instead — the text is then the answer and
+/// nothing is linked, so a required question can always be answered.
 struct AccountPickerField: View {
     let field: FormField
     @Binding var value: String
@@ -699,32 +700,45 @@ struct AccountPickerField: View {
     @State private var accounts: [CRMAccount] = []
     @State private var loading = false
     @State private var query = ""
-    /// Remembered label for the currently stored id, so the button reads the name
+    /// Remembered name for the currently stored id, so the button reads the name
     /// (not the raw UUID) even before the full list has loaded.
     @State private var selectedName = ""
 
+    private var linked: Bool { FormFieldLogic.isAccountId(value) }
+    private var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+
     private var buttonLabel: String {
-        if value.isEmpty { return field.placeholder ?? "Choose a company" }
+        if value.isEmpty { return field.placeholder ?? "Search or type company" }
+        if !linked { return value }
         if !selectedName.isEmpty { return selectedName }
         if let hit = accounts.first(where: { $0.id == value }) { return hit.name }
         return "Selected company"
     }
 
     var body: some View {
-        Button { showPicker = true } label: {
-            HStack {
-                Text(buttonLabel)
-                    .foregroundColor(value.isEmpty ? .secondary : .primary)
-                    .font(.body)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            Button { showPicker = true } label: {
+                HStack {
+                    Text(buttonLabel)
+                        .foregroundColor(value.isEmpty ? .secondary : .primary)
+                        .font(.body)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color(uiColor: .tertiarySystemGroupedBackground))
+                .cornerRadius(10)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color(uiColor: .tertiarySystemGroupedBackground))
-            .cornerRadius(10)
+            if linked {
+                Label("Linked to CRM company", systemImage: "link")
+                    .font(.caption).foregroundColor(.secondary)
+            } else if !value.isEmpty {
+                Text("Not linked — pick a match to link it to the CRM")
+                    .font(.caption).foregroundColor(.secondary)
+            }
         }
         .sheet(isPresented: $showPicker) {
             NavigationStack {
@@ -734,6 +748,16 @@ struct AccountPickerField: View {
                             value = ""; selectedName = ""; showPicker = false
                         } label: {
                             Label("Clear selection", systemImage: "xmark.circle")
+                                .foregroundColor(Brand.red)
+                        }
+                    }
+                    // Not in the CRM yet: keep what the rep typed as the answer.
+                    if !trimmedQuery.isEmpty,
+                       !accounts.contains(where: { $0.name.caseInsensitiveCompare(trimmedQuery) == .orderedSame }) {
+                        Button {
+                            value = trimmedQuery; selectedName = ""; showPicker = false
+                        } label: {
+                            Label("Use “\(trimmedQuery)” (not in CRM)", systemImage: "square.and.pencil")
                                 .foregroundColor(Brand.red)
                         }
                     }
@@ -770,7 +794,7 @@ struct AccountPickerField: View {
                 .task(id: query) { await load(search: query) }
             }
         }
-        .task { if value.isEmpty == false && selectedName.isEmpty { await resolveSelected() } }
+        .task(id: value) { if linked && selectedName.isEmpty { await resolveSelected() } }
     }
 
     private func load(search: String) async {
@@ -781,7 +805,7 @@ struct AccountPickerField: View {
         loading = false
     }
 
-    /// Resolve the stored id to a name on first appearance so the button isn't a raw UUID.
+    /// Resolve the stored id to a name so the button isn't a raw UUID.
     private func resolveSelected() async {
         if let acct = try? await CRMService.shared.getAccount(id: value) {
             selectedName = acct.name
