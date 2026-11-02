@@ -180,6 +180,11 @@ extension User {
     var isCrmOnly: Bool {
         !isLegacySession && hasCrm && !hasFieldForce && !hasDistribution
     }
+    /// The platform master admin (s@kinematicapp.com). Gates the master-only
+    /// "View as User" read-only impersonation control; everyone else never sees it.
+    var isMasterAdmin: Bool {
+        (email ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == KM_MASTER_ADMIN_EMAIL
+    }
     // Per-client app-UI customization — hide-only override: false = force
     // hidden; absent/true = defer to the item's built-in gate.
     func menuVisible(_ id: String) -> Bool { appUiConfig?.menu?[id] != false }
@@ -332,6 +337,11 @@ class KiniAppState: ObservableObject {
     /// app until they set a fresh one.
     @Published var mustChangePassword = Session.currentUser?.mustChangePassword ?? false
     @Published var selectedTab: Int = 0
+    /// Bumped to force a clean rebuild of the authenticated shell when the
+    /// identity changes under the same auth state — entering/leaving a
+    /// master-admin "View as User" session. ContentView `.id()`s on it so views
+    /// re-read `Session.currentUser` as the new identity.
+    @Published var identityEpoch = UUID()
     @Published var selectedOutlet: RouteOutlet? = nil
     @Published var attendanceVM = AttendanceViewModel()
     /// Non-nil when a geo-stamped attendance action (check-in / selfie flow)
@@ -2915,6 +2925,10 @@ class KinematicRepository {
     private func endDeadSession() async {
         if Session.isDemoMode { return }
         if Session.sharedToken.isEmpty { return }
+        // A read-only "View as User" session uses a short-lived minted token with
+        // no refresh token. When it dies, return to the master's own session
+        // instead of signing out (which would lose the master too).
+        if await ImpersonationManager.shared.returnToMasterIfImpersonating() { return }
         await MainActor.run {
             KiniAppState.shared.sessionKickedMsg = "Your session has expired. Please sign in again."
             KiniAppState.shared.logout()
@@ -3013,6 +3027,14 @@ class KinematicRepository {
         // we never spin in an infinite refresh loop.
         _retryingAfterRefresh: Bool = false
     ) async throws -> ApiResponse<T>? {
+        // Read-only "View as User" session: refuse writes locally (the backend
+        // also 403s them) so the master gets a clean message, not a server error.
+        // /auth/* stays allowed (logout, refresh, me, impersonate view-switch).
+        if ImpersonationState.readOnly,
+           ["POST", "PUT", "PATCH", "DELETE"].contains(method.uppercased()),
+           !path.hasPrefix("/auth/") {
+            throw NSError(domain: "ReadOnly", code: 403, userInfo: [NSLocalizedDescriptionKey: "You're viewing as another user (read-only). You can't make changes in this mode."])
+        }
         var urlComponents = URLComponents(string: "\(baseURL)\(path)")
         if let queryItems = queryItems {
             urlComponents?.queryItems = queryItems
@@ -3285,6 +3307,34 @@ class KinematicRepository {
             print("🚩 refreshMe failed: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    // MARK: - Master-admin "View as User" (read-only impersonation)
+
+    /// Search users across every tenant for the master-admin picker. The backend
+    /// gates this to the master caller (s@kinematicapp.com); a non-master → 403 → [].
+    func impersonateSearch(_ q: String) async -> [ImpersonateSearchUser] {
+        guard !Session.sharedToken.isEmpty else { return [] }
+        let items = [URLQueryItem(name: "q", value: q), URLQueryItem(name: "limit", value: "25")]
+        do {
+            let res: ApiResponse<[ImpersonateSearchUser]>? = try await performRequest("/auth/impersonate/search", queryItems: items)
+            return res?.data ?? []
+        } catch {
+            return []
+        }
+    }
+
+    /// Mint a READ-ONLY (`ro:true`) session token for `userId` in `project`.
+    /// The returned token's identity IS the target; the backend forces
+    /// is_read_only so every write 403s.
+    func impersonateStart(userId: String, project: String?) async throws -> ImpersonateStartData {
+        struct Body: Encodable { let user_id: String; let project: String? }
+        let body = try JSONEncoder().encode(Body(user_id: userId, project: project))
+        let res: ApiResponse<ImpersonateStartData>? = try await performRequest("/auth/impersonate/start", method: "POST", body: body)
+        guard let data = res?.data else {
+            throw NSError(domain: "Impersonate", code: 0, userInfo: [NSLocalizedDescriptionKey: "No session token returned."])
+        }
+        return data
     }
 
     /// Self-profile patch. Backend allow-list (auth.controller.ts) is

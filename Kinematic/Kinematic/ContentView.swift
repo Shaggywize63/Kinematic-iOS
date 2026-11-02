@@ -39,6 +39,8 @@ func formatTime(_ iso: String?) -> String {
 struct ContentView: View {
     @EnvironmentObject var appState: KiniAppState
     @StateObject private var updateChecker = AppUpdateChecker()
+    // Master-admin "View as User" read-only session (drives the top banner).
+    @ObservedObject private var impersonation = ImpersonationManager.shared
 
     var body: some View {
         // GLOBAL CANVAS (Root-Level Atmospheric Background). The KINI FAB
@@ -66,12 +68,23 @@ struct ContentView: View {
                 // call list even with Location Services off. Every other
                 // authenticated shell stays behind the gate. The role is fixed
                 // for the session, so the branch identity is stable.
-                if ClientFeatures.isTelecaller {
-                    MainTabView()
-                } else {
-                    MainTabView()
-                        .locationRequiredGate()
+                Group {
+                    if ClientFeatures.isTelecaller {
+                        MainTabView()
+                    } else {
+                        MainTabView()
+                            .locationRequiredGate()
+                    }
                 }
+                // Rebuild the whole authenticated shell when the identity changes
+                // under the same auth state — entering/leaving "View as User".
+                .id(appState.identityEpoch)
+            }
+        }
+        // Master-admin read-only "View as User" banner across every shell.
+        .safeAreaInset(edge: .top) {
+            if let active = impersonation.active {
+                ImpersonationBanner(active: active) { _ = ImpersonationManager.shared.stop() }
             }
         }
         .background(VibrantBackgroundView().ignoresSafeArea())
