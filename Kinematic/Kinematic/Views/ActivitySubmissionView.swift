@@ -539,6 +539,10 @@ struct FieldCard: View {
         switch FormFieldLogic.kindOf(field) {
         case .dropdown:
             DropdownField(field: field, value: $value)
+        case .company:
+            // Pick a CRM account; the stored value is the account's id, which the
+            // backend reads on submit to link the submission to that account.
+            AccountPickerField(field: field, value: $value)
         case .radio:
             ChoiceListField(field: field, value: $value, multiSelect: false)
         case .multiSelect:
@@ -680,6 +684,107 @@ struct DropdownField: View {
             .padding(.vertical, 12)
             .background(Color(uiColor: .tertiarySystemGroupedBackground))
             .cornerRadius(10)
+        }
+    }
+}
+
+/// A searchable CRM account picker. The question's answer is the chosen account's id
+/// (`value`), which the backend reads on submit to link the form submission to that
+/// account; the button shows the account's name once one is picked.
+struct AccountPickerField: View {
+    let field: FormField
+    @Binding var value: String
+
+    @State private var showPicker = false
+    @State private var accounts: [CRMAccount] = []
+    @State private var loading = false
+    @State private var query = ""
+    /// Remembered label for the currently stored id, so the button reads the name
+    /// (not the raw UUID) even before the full list has loaded.
+    @State private var selectedName = ""
+
+    private var buttonLabel: String {
+        if value.isEmpty { return field.placeholder ?? "Choose a company" }
+        if !selectedName.isEmpty { return selectedName }
+        if let hit = accounts.first(where: { $0.id == value }) { return hit.name }
+        return "Selected company"
+    }
+
+    var body: some View {
+        Button { showPicker = true } label: {
+            HStack {
+                Text(buttonLabel)
+                    .foregroundColor(value.isEmpty ? .secondary : .primary)
+                    .font(.body)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(uiColor: .tertiarySystemGroupedBackground))
+            .cornerRadius(10)
+        }
+        .sheet(isPresented: $showPicker) {
+            NavigationStack {
+                List {
+                    if !value.isEmpty {
+                        Button {
+                            value = ""; selectedName = ""; showPicker = false
+                        } label: {
+                            Label("Clear selection", systemImage: "xmark.circle")
+                                .foregroundColor(Brand.red)
+                        }
+                    }
+                    if loading {
+                        HStack { ProgressView(); Text("Loading companies…").foregroundColor(.secondary) }
+                    } else if accounts.isEmpty {
+                        Text("No companies found").foregroundColor(.secondary)
+                    }
+                    ForEach(accounts) { acct in
+                        Button {
+                            value = acct.id
+                            selectedName = acct.name
+                            showPicker = false
+                        } label: {
+                            HStack {
+                                Text(acct.name).foregroundColor(.primary)
+                                Spacer()
+                                if acct.id == value {
+                                    Image(systemName: "checkmark").foregroundColor(Brand.red)
+                                }
+                            }
+                        }
+                    }
+                }
+                .listStyle(.plain)
+                .navigationTitle("Select company")
+                .navigationBarTitleDisplayMode(.inline)
+                .searchable(text: $query, prompt: "Search companies")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { showPicker = false }
+                    }
+                }
+                .task(id: query) { await load(search: query) }
+            }
+        }
+        .task { if value.isEmpty == false && selectedName.isEmpty { await resolveSelected() } }
+    }
+
+    private func load(search: String) async {
+        loading = true
+        let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = (try? await CRMService.shared.listAccounts(search: term.isEmpty ? nil : term)) ?? []
+        accounts = result
+        loading = false
+    }
+
+    /// Resolve the stored id to a name on first appearance so the button isn't a raw UUID.
+    private func resolveSelected() async {
+        if let acct = try? await CRMService.shared.getAccount(id: value) {
+            selectedName = acct.name
         }
     }
 }
