@@ -88,8 +88,6 @@ struct LeadCreateView: View {
     // the backend links lead contacts for that client).
     @State private var selectedAccountId: String? = nil
     @State private var leadContacts: [LeadContactDraft] = [LeadContactDraft()]
-    /// Active builder forms a requirement can be connected to (Spark & Ray).
-    @State private var leadForms: [ExpenseLinkForm] = []
     private var isSparkClient: Bool {
         (CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId
     }
@@ -445,10 +443,9 @@ struct LeadCreateView: View {
                     }
                     // Multiple contacts + requirements (Spark & Ray). Each becomes a
                     // crm_contact linked to the lead's account; a picked existing company's
-                    // known contacts show under the company field above. Each requirement
-                    // can connect a builder form (leadForms).
+                    // known contacts show under the company field above.
                     if isSparkClient {
-                        LeadContactsSection(contacts: $leadContacts, forms: leadForms)
+                        LeadContactsSection(contacts: $leadContacts)
                     }
                     // A Dealer's Location (address search + fields) — only for clients that turned it on
                     // (`lead_form.address_on_b2b`). Deferred until the settings have loaded.
@@ -730,11 +727,6 @@ struct LeadCreateView: View {
             .task { await productLines.load() }
             .task { await fieldOverrides.load() }
             .task { sources = await CRMService.shared.listLeadSources() }
-            // Connected-B2B (Spark & Ray): active builder forms for the
-            // per-requirement form picker. Loaded once; best-effort.
-            .task {
-                if isSparkClient { leadForms = (try? await ExpensesAPI.shared.activeForms()) ?? [] }
-            }
             .task {
                 // Only load the owner list when the Owner picker can appear —
                 // saves a call for reps who can't reassign.

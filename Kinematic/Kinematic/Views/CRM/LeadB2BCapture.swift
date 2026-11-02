@@ -19,8 +19,6 @@ struct LeadContactDraft: Identifiable {
     var phone = ""
     var email = ""
     var requirement = ""
-    /// A builder form connected to this person's requirement (backend form_id).
-    var formId = ""
 
     var isBlank: Bool {
         firstName.isEmpty && lastName.isEmpty && title.isEmpty &&
@@ -38,7 +36,6 @@ struct LeadContactDraft: Identifiable {
         if !phone.isEmpty { d["phone"] = phone }
         if !title.isEmpty { d["title"] = title }
         if !requirement.isEmpty { d["requirement"] = requirement }
-        if !formId.isEmpty { d["form_id"] = formId }
         return d
     }
 }
@@ -101,8 +98,6 @@ struct CompanyPickerField: View {
 /// Repeatable "Contacts & requirements" section for the B2B lead form.
 struct LeadContactsSection: View {
     @Binding var contacts: [LeadContactDraft]
-    /// Active builder forms a requirement can be connected to (empty = picker hidden).
-    var forms: [ExpenseLinkForm] = []
 
     var body: some View {
         Section("Contacts & requirements") {
@@ -116,15 +111,6 @@ struct LeadContactsSection: View {
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                     TextField("Requirement", text: $c.requirement, axis: .vertical).lineLimit(2...4)
-                    // Connect a builder form to this requirement so it stays linked.
-                    if !forms.isEmpty {
-                        Picker("Connected form", selection: $c.formId) {
-                            Text("— No form —").tag("")
-                            ForEach(forms) { f in
-                                Text(f.title ?? "Untitled form").tag(f.id)
-                            }
-                        }
-                    }
                 }
                 .padding(.vertical, 4)
             }

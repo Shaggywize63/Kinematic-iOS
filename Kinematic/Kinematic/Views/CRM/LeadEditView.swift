@@ -57,10 +57,9 @@ struct LeadEditView: View {
     @State private var errorMessage: String?
 
     // Connected-B2B (Spark & Ray): company→account link + contacts-with-
-    // requirements captured on a revisit, each connectable to a builder form.
+    // requirements captured on a revisit.
     @State private var selectedAccountId: String? = nil
     @State private var leadContacts: [LeadContactDraft] = []
-    @State private var leadForms: [ExpenseLinkForm] = []
     private var isSparkClient: Bool {
         (CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId
     }
@@ -213,11 +212,11 @@ struct LeadEditView: View {
                             TextField(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false), text: $industry)
                         }
                     }
-                    // Contacts & requirements captured on this revisit (Spark & Ray),
-                    // each connectable to a builder form. Resolved to crm_contacts
+                    // Contacts & requirements captured on this revisit (Spark & Ray).
+                    // Resolved to crm_contacts
                     // under the lead's account on save.
                     if isSparkClient {
-                        LeadContactsSection(contacts: $leadContacts, forms: leadForms)
+                        LeadContactsSection(contacts: $leadContacts)
                     }
                 }
 
@@ -412,11 +411,6 @@ struct LeadEditView: View {
             .navigationTitle("Edit Lead")
             .navigationBarTitleDisplayMode(.inline)
             .task { await loadPickerOptions() }
-            // Connected-B2B (Spark & Ray): active builder forms for the
-            // per-requirement form picker. Best-effort.
-            .task {
-                if isSparkClient { leadForms = (try? await ExpensesAPI.shared.activeForms()) ?? [] }
-            }
             // Scope the custom-field section to the current lead segment (B2C
             // farmer vs B2B distributor). initial:true seeds it; it re-filters
             // if the rep flips the type picker.
