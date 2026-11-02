@@ -692,6 +692,8 @@ struct DropdownField: View {
 /// account id as the answer (the backend swaps in the company name and links the submission to that
 /// account); a company that isn't in the CRM can be typed instead — the text is then the answer and
 /// nothing is linked, so a required question can always be answered.
+///  - Opened from a visit / account: the question starts filled with that company (the rep can change it).
+///  - Empty search box: the companies this rep picked last are listed first ("Recent", on-device, per user).
 struct AccountPickerField: View {
     let field: FormField
     @Binding var value: String
@@ -703,9 +705,15 @@ struct AccountPickerField: View {
     /// Remembered name for the currently stored id, so the button reads the name
     /// (not the raw UUID) even before the full list has loaded.
     @State private var selectedName = ""
+    @State private var recents: [RecentCompany] = []
+    /// The answer was pre-filled from the visit's company (not picked by the rep).
+    @State private var fromVisit = false
+    /// The pre-fill is tried once per question, so a company the rep cleared is not put back when the row reappears.
+    @State private var prefillTried = false
 
     private var linked: Bool { FormFieldLogic.isAccountId(value) }
     private var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var userId: String { Session.currentUser?.id ?? "" }
 
     private var buttonLabel: String {
         if value.isEmpty { return field.placeholder ?? "Search or type company" }
@@ -732,7 +740,10 @@ struct AccountPickerField: View {
                 .background(Color(uiColor: .tertiarySystemGroupedBackground))
                 .cornerRadius(10)
             }
-            if linked {
+            if linked && fromVisit {
+                Label("This visit's company — change it if different", systemImage: "link")
+                    .font(.caption).foregroundColor(.secondary)
+            } else if linked {
                 Label("Linked to CRM company", systemImage: "link")
                     .font(.caption).foregroundColor(.secondary)
             } else if !value.isEmpty {
@@ -745,7 +756,7 @@ struct AccountPickerField: View {
                 List {
                     if !value.isEmpty {
                         Button {
-                            value = ""; selectedName = ""; showPicker = false
+                            value = ""; selectedName = ""; fromVisit = false; showPicker = false
                         } label: {
                             Label("Clear selection", systemImage: "xmark.circle")
                                 .foregroundColor(Brand.red)
@@ -755,30 +766,28 @@ struct AccountPickerField: View {
                     if !trimmedQuery.isEmpty,
                        !accounts.contains(where: { $0.name.caseInsensitiveCompare(trimmedQuery) == .orderedSame }) {
                         Button {
-                            value = trimmedQuery; selectedName = ""; showPicker = false
+                            value = trimmedQuery; selectedName = ""; fromVisit = false; showPicker = false
                         } label: {
                             Label("Use “\(trimmedQuery)” (not in CRM)", systemImage: "square.and.pencil")
                                 .foregroundColor(Brand.red)
                         }
                     }
-                    if loading {
-                        HStack { ProgressView(); Text("Loading companies…").foregroundColor(.secondary) }
-                    } else if accounts.isEmpty {
-                        Text("No companies found").foregroundColor(.secondary)
-                    }
-                    ForEach(accounts) { acct in
-                        Button {
-                            value = acct.id
-                            selectedName = acct.name
-                            showPicker = false
-                        } label: {
-                            HStack {
-                                Text(acct.name).foregroundColor(.primary)
-                                Spacer()
-                                if acct.id == value {
-                                    Image(systemName: "checkmark").foregroundColor(Brand.red)
-                                }
+                    // The rep's last picks, offered first while the search box is empty.
+                    if trimmedQuery.isEmpty && !recents.isEmpty {
+                        Section("Recent") {
+                            ForEach(recents) { rc in
+                                companyRow(id: rc.id, name: rc.name)
                             }
+                        }
+                    }
+                    Section(trimmedQuery.isEmpty && !recents.isEmpty ? "All companies" : "") {
+                        if loading {
+                            HStack { ProgressView(); Text("Loading companies…").foregroundColor(.secondary) }
+                        } else if accounts.isEmpty {
+                            Text("No companies found").foregroundColor(.secondary)
+                        }
+                        ForEach(accounts) { acct in
+                            companyRow(id: acct.id, name: acct.name)
                         }
                     }
                 }
@@ -794,7 +803,38 @@ struct AccountPickerField: View {
                 .task(id: query) { await load(search: query) }
             }
         }
+        .task {
+            recents = RecentCompaniesStore().load(userId: userId)
+            // Pre-fill once from the visit's company, only into an empty answer.
+            if !prefillTried {
+                prefillTried = true
+                if value.isEmpty, let visitAccount = KiniAppState.shared.activeVisitContext?.accountId,
+               FormFieldLogic.isAccountId(visitAccount) {
+                    value = visitAccount.trimmingCharacters(in: .whitespacesAndNewlines)
+                    fromVisit = true
+                }
+            }
+        }
         .task(id: value) { if linked && selectedName.isEmpty { await resolveSelected() } }
+    }
+
+    /// One tappable company row: picking it links the answer to that CRM company and remembers it as a recent.
+    private func companyRow(id: String, name: String) -> some View {
+        Button {
+            value = id
+            selectedName = name
+            fromVisit = false
+            recents = RecentCompaniesStore().record(userId: userId, RecentCompany(id: id, name: name))
+            showPicker = false
+        } label: {
+            HStack {
+                Text(name).foregroundColor(.primary)
+                Spacer()
+                if id == value {
+                    Image(systemName: "checkmark").foregroundColor(Brand.red)
+                }
+            }
+        }
     }
 
     private func load(search: String) async {
