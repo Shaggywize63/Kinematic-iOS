@@ -365,6 +365,8 @@ struct ExpenseLinkForm: Decodable, Identifiable, Hashable {
     let id: String
     let title: String?
     let expense_linked: Bool?
+    /// draft / published — used to offer only active forms in the lead form picker.
+    let status: String?
 }
 
 /// One line's decision inside a decision request.

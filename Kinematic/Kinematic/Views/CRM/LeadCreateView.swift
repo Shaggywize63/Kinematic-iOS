@@ -88,9 +88,14 @@ struct LeadCreateView: View {
     // the backend links lead contacts for that client).
     @State private var selectedAccountId: String? = nil
     @State private var leadContacts: [LeadContactDraft] = [LeadContactDraft()]
+    /// Active builder forms a requirement can be connected to (Spark & Ray).
+    @State private var leadForms: [ExpenseLinkForm] = []
     private var isSparkClient: Bool {
         (CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId
     }
+    /// A Spark & Ray B2B lead is company-centric: person fields dropped, name
+    /// taken from the Company. Only for a B2B lead (not B2C) on the Spark client.
+    private var companyLead: Bool { isSparkClient && !isB2C }
 
     /// Tata Tiscon affordance — checkbox in the create form that asks
     /// the backend to echo back an `auto_log_site_visit_prefill` block
@@ -222,7 +227,8 @@ struct LeadCreateView: View {
     private func firstProblem() -> String? {
         LeadCreateRules.firstProblem(
             overrides: fieldOverrides, isB2C: isB2C, firstName: firstName, lastName: lastName, phone: phone,
-            company: company, addressLine1: addressLine1, visitAt: visitAt, now: Date()
+            company: company, addressLine1: addressLine1, visitAt: visitAt, now: Date(),
+            companyLead: companyLead
         )
     }
 
@@ -306,6 +312,11 @@ struct LeadCreateView: View {
                     }
                 }
 
+                // Company-centric Spark & Ray B2B lead: the lead IS the company and
+                // the people live in "Contacts & requirements", so the lead's own
+                // person fields (name / mobile / email) are dropped and its name is
+                // taken from the Company on submit.
+                if !companyLead {
                 Section("Identity") {
                     if !fieldOverrides.isHidden("first_name", isB2C: isB2C) {
                         labelledField(
@@ -323,11 +334,12 @@ struct LeadCreateView: View {
                         )
                     }
                 }
+                }
                 Section("Contact") {
                     // Email field hidden for Tata Tiscon — their FE walk-in
                     // flow doesn't collect email; prompting just to skip it
                     // adds friction. Admin override stacks on top.
-                    if !ClientFeatures.isTataTiscon && !fieldOverrides.isHidden("email", isB2C: isB2C) {
+                    if !companyLead && !ClientFeatures.isTataTiscon && !fieldOverrides.isHidden("email", isB2C: isB2C) {
                         labelledField(
                             label: fieldOverrides.labelFor("email", defaultLabel: "Email", isB2C: isB2C),
                             required: fieldOverrides.requiredFor("email", defaultRequired: false, isB2C: isB2C),
@@ -336,7 +348,7 @@ struct LeadCreateView: View {
                             autocapitalize: false,
                         )
                     }
-                    if !fieldOverrides.isHidden("phone", isB2C: isB2C) {
+                    if !companyLead && !fieldOverrides.isHidden("phone", isB2C: isB2C) {
                         labelledField(
                             label: fieldOverrides.labelFor("phone", defaultLabel: "Primary Mobile", isB2C: isB2C),
                             required: fieldOverrides.requiredFor("phone", defaultRequired: true, isB2C: isB2C),
@@ -348,7 +360,7 @@ struct LeadCreateView: View {
                     // primary mobile (mirrors the web AlternateMobiles chip
                     // editor). Gated on the same override contract as every
                     // other built-in field.
-                    if !fieldOverrides.isHidden("alternate_mobiles", isB2C: isB2C) {
+                    if !companyLead && !fieldOverrides.isHidden("alternate_mobiles", isB2C: isB2C) {
                         alternateNumbersEditor(
                             label: fieldOverrides.labelFor("alternate_mobiles", defaultLabel: "Alternate Number", isB2C: isB2C),
                             required: fieldOverrides.requiredFor("alternate_mobiles", defaultRequired: false, isB2C: isB2C),
@@ -421,7 +433,9 @@ struct LeadCreateView: View {
                                 text: $title,
                             )
                         }
-                        if !fieldOverrides.isHidden("industry", isB2C: false) {
+                        // Industry dropped for Spark & Ray (the company's account
+                        // carries it); every other tenant keeps the field.
+                        if !isSparkClient && !fieldOverrides.isHidden("industry", isB2C: false) {
                             labelledField(
                                 label: fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false),
                                 required: fieldOverrides.requiredFor("industry", defaultRequired: false, isB2C: false),
@@ -431,9 +445,10 @@ struct LeadCreateView: View {
                     }
                     // Multiple contacts + requirements (Spark & Ray). Each becomes a
                     // crm_contact linked to the lead's account; a picked existing company's
-                    // known contacts show under the company field above.
+                    // known contacts show under the company field above. Each requirement
+                    // can connect a builder form (leadForms).
                     if isSparkClient {
-                        LeadContactsSection(contacts: $leadContacts)
+                        LeadContactsSection(contacts: $leadContacts, forms: leadForms)
                     }
                     // A Dealer's Location (address search + fields) — only for clients that turned it on
                     // (`lead_form.address_on_b2b`). Deferred until the settings have loaded.
@@ -715,6 +730,11 @@ struct LeadCreateView: View {
             .task { await productLines.load() }
             .task { await fieldOverrides.load() }
             .task { sources = await CRMService.shared.listLeadSources() }
+            // Connected-B2B (Spark & Ray): active builder forms for the
+            // per-requirement form picker. Loaded once; best-effort.
+            .task {
+                if isSparkClient { leadForms = (try? await ExpensesAPI.shared.activeForms()) ?? [] }
+            }
             .task {
                 // Only load the owner list when the Owner picker can appear —
                 // saves a call for reps who can't reassign.
@@ -1183,7 +1203,10 @@ struct LeadCreateView: View {
         // Admin override can flip it optional — keep the empty-body guard
         // in line with whatever requirement the form rendered.
         // A hidden Last name is never required (there is no field to fill in).
-        let lastNameRequired = !fieldOverrides.isHidden("last_name", isB2C: isB2C)
+        // A company-centric Spark lead has no Last name field — it is named from
+        // the Company below, so the empty-body guard never applies to it.
+        let lastNameRequired = !companyLead
+            && !fieldOverrides.isHidden("last_name", isB2C: isB2C)
             && fieldOverrides.requiredFor("last_name", defaultRequired: true, isB2C: isB2C)
         let trimmedLast = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
         if lastNameRequired && trimmedLast.isEmpty { return [:] }
@@ -1204,6 +1227,12 @@ struct LeadCreateView: View {
             body["owner_id"] = ownerId
         }
         if !trimmedLast.isEmpty { body["last_name"] = trimmedLast }
+        // Company-centric Spark lead: name the lead from the Company (person
+        // fields are hidden, so first_name/phone/email aren't sent).
+        if companyLead {
+            let co = company.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !co.isEmpty { body["last_name"] = co }
+        }
         put("first_name", firstName, into: &body)
         put("email",      email,     into: &body)
         put("phone",      phone,     into: &body)
