@@ -46,7 +46,7 @@ enum FormFieldLogic {
     /// The control a question is rendered with. `.other` = an unknown `field_type`: the plain text box it always got.
     enum Kind: Equatable {
         case text, longText, email, phone, number, checkbox, multiSelect, dropdown, yesNo, radio
-        case photo, file, signature, cardScan, rating, date, time, dateTime, location, section, other
+        case photo, file, signature, cardScan, rating, date, time, dateTime, location, section, company, other
     }
 
     /// The control for a question of builder type `fieldType`. `hasOptions`: the question carries answer options, which
@@ -63,6 +63,8 @@ enum FormFieldLogic {
         case "checkbox":                return hasOptions ? .multiSelect : .checkbox
         case "multi_select":            return .multiSelect
         case "select", "dropdown":      return .dropdown
+        // A company/account question: pick a CRM account; the submission links to it by the stored account id.
+        case "company", "account":      return .company
         case "yes_no":                  return .yesNo
         case "radio":                   return .radio
         case "photo", "image":          return .photo

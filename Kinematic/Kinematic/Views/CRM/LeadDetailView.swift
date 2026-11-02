@@ -14,15 +14,6 @@ import UIKit
 ///
 /// Visual style: single accent — `Brand.red`. No more purple / blue / green
 /// per-card themes; every highlight, badge, icon and active button is red.
-/// A resolved "fill this connected form" request: the fillable template plus the
-/// CRM context to stamp on the submission. Identifiable so it drives `.sheet(item:)`.
-private struct FillFormTarget: Identifiable {
-    let id: String
-    let template: FormTemplate
-    let accountId: String?
-    let contactId: String?
-}
-
 struct LeadDetailView: View {
     @StateObject var vm: LeadDetailViewModel
     /// Admin field-overrides for built-in lead columns. The detail
@@ -81,7 +72,6 @@ struct LeadDetailView: View {
     @State private var shareBusy = false
     @State private var shareImage: UIImage? = nil
     @State private var showShareSheet = false
-    @State private var showProposal = false
 
     // MARK: Conversation Intelligence (Record call)
     // Whole feature is gated on `ClientFeatures.hasConversationIntel`
@@ -95,17 +85,6 @@ struct LeadDetailView: View {
     @State private var openingConversation = false
     /// Non-nil drives the insight drill-in sheet (`.sheet(item:)`).
     @State private var conversationDetail: ConversationDetail? = nil
-
-    // MARK: Connected-form fill (Spark & Ray)
-    /// A contact's "Contacts & requirements" row can carry a connected builder
-    /// form; tapping "Fill form" opens that form pre-stamped with the contact's
-    /// account_id + contact_id so the submission connects to the lead's account.
-    /// form_id → title (for the button label) and the fillable templates, loaded
-    /// only when a contact actually has a connected form.
-    @State private var formTitles: [String: String] = [:]
-    @State private var formTemplates: [FormTemplate] = []
-    /// Non-nil presents the form filler (carries the resolved template + context).
-    @State private var fillTarget: FillFormTarget? = nil
 
     init(leadId: String) {
         _vm = StateObject(wrappedValue: LeadDetailViewModel(leadId: leadId))
@@ -220,17 +199,6 @@ struct LeadDetailView: View {
                     Button("Edit") { editing = true }.tint(Brand.red)
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                // Generate an AI-tailored, branded proposal PDF from the lead's
-                // interested products, then share (WhatsApp / email) or save to phone.
-                if vm.lead != nil {
-                    Button { showProposal = true } label: {
-                        Image(systemName: "doc.badge.plus")
-                    }
-                    .tint(Brand.red)
-                    .accessibilityLabel("Generate proposal")
-                }
-            }
         }
         .sheet(isPresented: $editing) {
             if let lead = vm.lead {
@@ -239,9 +207,6 @@ struct LeadDetailView: View {
                     Task { await vm.load() }
                 }
             }
-        }
-        .sheet(isPresented: $showProposal) {
-            if let lead = vm.lead { GenerateProposalView(lead: lead) }
         }
         .sheet(isPresented: $converting) {
             if let lead = vm.lead {
@@ -295,15 +260,6 @@ struct LeadDetailView: View {
         // Drill-in from a completed conversation card → full insights.
         .sheet(item: $conversationDetail) { detail in
             ConversationDetailSheet(detail: detail)
-        }
-        // Fill a connected builder form, pre-stamped with the contact's account +
-        // contact so the submission connects to the lead's account. Clear the
-        // visit context on dismiss so it never leaks into a later ad-hoc form.
-        .sheet(item: $fillTarget, onDismiss: { KiniAppState.shared.clearVisitContext() }) { target in
-            NavigationStack {
-                AdHocFormFillView(template: target.template)
-                    .environmentObject(KiniAppState.shared)
-            }
         }
         .sheet(
             isPresented: $loggingActivity,
@@ -386,18 +342,6 @@ struct LeadDetailView: View {
         .task { await vm.load() }
         .task { await fieldOverrides.load() }
         .task { await loadConversations() }
-        // Load the connected forms' titles + fillable templates once, only when a
-        // contact actually carries a connected form (so non-B2B leads add no calls).
-        .task(id: vm.contacts.count) {
-            guard vm.contacts.contains(where: { !($0.formId ?? "").isEmpty }) else { return }
-            if formTemplates.isEmpty {
-                formTemplates = await KinematicRepository.shared.getAllFormTemplates()
-            }
-            if formTitles.isEmpty {
-                let forms = (try? await ExpensesAPI.shared.activeForms()) ?? []
-                formTitles = Dictionary(forms.map { ($0.id, $0.title ?? "form") }, uniquingKeysWith: { a, _ in a })
-            }
-        }
         // Tell KINI which record is on screen so the chat answers in context.
         .onAppear {
             KiniContextHolder.shared.set(
@@ -1087,22 +1031,6 @@ struct LeadDetailView: View {
                         }
                         if let r = c.requirement, !r.isEmpty {
                             profileRow(fieldOverrides.labelFor(entity: "contact", "requirement", "Requirement"), value: r)
-                        }
-                        // Connected builder form — open to fill, stamping this
-                        // contact + its account so the submission lands under the
-                        // lead's account. Shown once the fillable template is loaded.
-                        if let fid = c.formId, !fid.isEmpty,
-                           let tmpl = formTemplates.first(where: { $0.id == fid }) {
-                            Button {
-                                KiniAppState.shared.setVisitContext(VisitContext(
-                                    accountId: c.accountId, siteId: nil, contactId: c.id, visitId: nil))
-                                fillTarget = FillFormTarget(id: fid, template: tmpl, accountId: c.accountId, contactId: c.id)
-                            } label: {
-                                Label("Fill \(formTitles[fid] ?? "form")", systemImage: "square.and.pencil")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(Brand.red)
-                            }
-                            .padding(.top, 2)
                         }
                     }
                 }
