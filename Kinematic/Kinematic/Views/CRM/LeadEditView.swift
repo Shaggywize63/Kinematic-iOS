@@ -56,6 +56,17 @@ struct LeadEditView: View {
     @State private var saving = false
     @State private var errorMessage: String?
 
+    // Connected-B2B (Spark & Ray): company→account link + contacts-with-
+    // requirements captured on a revisit, each connectable to a builder form.
+    @State private var selectedAccountId: String? = nil
+    @State private var leadContacts: [LeadContactDraft] = []
+    @State private var leadForms: [ExpenseLinkForm] = []
+    private var isSparkClient: Bool {
+        (CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId
+    }
+    /// Company-centric lead: person fields dropped, name from Company. B2B Spark only.
+    private var companyLead: Bool { isSparkClient && !isB2C }
+
     /// See LeadCreateView for why we also OR in business_type=="b2c":
     /// Session.currentUser.clientId can be stale on iOS so the Tata-only
     /// affordances (Products of Interest section + site-visit toggle)
@@ -129,6 +140,10 @@ struct LeadEditView: View {
                 // Each row is guarded by fieldOverrides.isHidden so the
                 // tenant's admin can hide a built-in field for the rep's
                 // org-role — same policy the create form honours.
+                // Company-centric Spark & Ray B2B lead: the people live in
+                // "Contacts & requirements", so the lead's own person fields are
+                // dropped (existing values are preserved on save).
+                if !companyLead {
                 Section("Contact") {
                     if !fieldOverrides.isHidden("first_name", isB2C: isB2C) {
                         TextField(fieldOverrides.labelFor("first_name", defaultLabel: "First name", isB2C: isB2C), text: $firstName)
@@ -171,21 +186,38 @@ struct LeadEditView: View {
                         }
                     }
                 }
+                }
 
                 // ── Business (B2B only) ────────────────────────────
                 if !isB2C {
                     Section("Business Details") {
                         if !fieldOverrides.isHidden("company", isB2C: false) {
-                            TextField(fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: false), text: $company)
-                                .textContentType(.organizationName)
+                            if isSparkClient {
+                                // Typeahead: link an existing customer account + reveal its contacts.
+                                CompanyPickerField(
+                                    company: $company,
+                                    selectedAccountId: $selectedAccountId,
+                                    label: fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: false),
+                                )
+                            } else {
+                                TextField(fieldOverrides.labelFor("company", defaultLabel: "Company", isB2C: false), text: $company)
+                                    .textContentType(.organizationName)
+                            }
                         }
                         if !fieldOverrides.isHidden("title", isB2C: false) {
                             TextField(fieldOverrides.labelFor("title", defaultLabel: "Job title", isB2C: false), text: $title)
                                 .textContentType(.jobTitle)
                         }
-                        if !fieldOverrides.isHidden("industry", isB2C: false) {
+                        // Industry dropped for Spark & Ray; every other tenant keeps it.
+                        if !isSparkClient && !fieldOverrides.isHidden("industry", isB2C: false) {
                             TextField(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false), text: $industry)
                         }
+                    }
+                    // Contacts & requirements captured on this revisit (Spark & Ray),
+                    // each connectable to a builder form. Resolved to crm_contacts
+                    // under the lead's account on save.
+                    if isSparkClient {
+                        LeadContactsSection(contacts: $leadContacts, forms: leadForms)
                     }
                 }
 
@@ -380,6 +412,11 @@ struct LeadEditView: View {
             .navigationTitle("Edit Lead")
             .navigationBarTitleDisplayMode(.inline)
             .task { await loadPickerOptions() }
+            // Connected-B2B (Spark & Ray): active builder forms for the
+            // per-requirement form picker. Best-effort.
+            .task {
+                if isSparkClient { leadForms = (try? await ExpensesAPI.shared.activeForms()) ?? [] }
+            }
             // Scope the custom-field section to the current lead segment (B2C
             // farmer vs B2B distributor). initial:true seeds it; it re-filters
             // if the rep flips the type picker.
@@ -526,6 +563,23 @@ struct LeadEditView: View {
             body["company"] = company.isEmpty ? NSNull() : company
             body["title"]   = title.isEmpty   ? NSNull() : title
             if !industry.isEmpty { body["industry"] = industry }
+            // Connected-B2B (Spark & Ray): link the picked account and the people
+            // captured on this revisit (each with its optional connected form).
+            // The backend PATCH resolves contacts[] to crm_contacts under the
+            // lead's account (same path as create).
+            if isSparkClient {
+                if let accId = selectedAccountId { body["account_id"] = accId }
+                let contactPayloads = leadContacts.compactMap { $0.asPayload }
+                if !contactPayloads.isEmpty { body["contacts"] = contactPayloads }
+                // A company-centric lead has no person fields — keep a name by
+                // falling back to the Company when both name parts are empty.
+                if companyLead,
+                   firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   !company.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    body["last_name"] = company
+                }
+            }
         } else {
             // Business fields persist on B2C only when an admin has
             // explicitly un-hidden them (so the value the rep typed saves).

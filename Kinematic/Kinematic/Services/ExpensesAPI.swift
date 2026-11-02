@@ -102,6 +102,12 @@ struct ExpensesAPI {
         let all: [ExpenseLinkForm] = try decode(try await request("/builder/forms"))
         return all.filter { $0.expense_linked == true }
     }
+    /// All ACTIVE builder forms (drafts filtered out) — the lead "Contacts &
+    /// requirements" form picker offers every usable form, not just expense-linked.
+    func activeForms() async throws -> [ExpenseLinkForm] {
+        let all: [ExpenseLinkForm] = try decode(try await request("/builder/forms"))
+        return all.filter { ($0.status ?? "published") != "draft" }
+    }
     /// Dry-run the policy against unsaved lines so problems show before submitting.
     func check(items: [ExpenseClaimItemInput], claimId: String?) async throws -> ExpenseClaimCheck {
         try decode(try await request("/expenses/claims/check", method: "POST", body: ExpenseClaimCheckInput(items: items, claim_id: claimId)))

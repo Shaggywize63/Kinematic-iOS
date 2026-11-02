@@ -294,18 +294,22 @@ enum LeadCreateRules {
         company: String,
         addressLine1: String,
         visitAt: Date?,
-        now: Date
+        now: Date,
+        // Connected-B2B (Spark & Ray) company-centric lead: the person fields are
+        // dropped and the lead is named from the Company, so their required checks
+        // never apply. Defaulted so existing callers (and tests) are unchanged.
+        companyLead: Bool = false
     ) -> String? {
         func blank(_ s: String) -> Bool { s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         let form = o.leadForm
-        if !o.isHidden("first_name", isB2C: isB2C), o.explicitlyRequired("first_name", isB2C: isB2C), blank(firstName) {
+        if !companyLead, !o.isHidden("first_name", isB2C: isB2C), o.explicitlyRequired("first_name", isB2C: isB2C), blank(firstName) {
             return "\(o.labelFor("first_name", defaultLabel: "First name", isB2C: isB2C)) is required."
         }
         // A hidden Last name never blocks (it used to: the button stayed disabled with no field to fill).
-        if !o.isHidden("last_name", isB2C: isB2C), o.requiredFor("last_name", defaultRequired: true, isB2C: isB2C), blank(lastName) {
+        if !companyLead, !o.isHidden("last_name", isB2C: isB2C), o.requiredFor("last_name", defaultRequired: true, isB2C: isB2C), blank(lastName) {
             return "\(o.labelFor("last_name", defaultLabel: "Last name", isB2C: isB2C)) is required."
         }
-        if !o.isHidden("phone", isB2C: isB2C) {
+        if !companyLead, !o.isHidden("phone", isB2C: isB2C) {
             let label = o.labelFor("phone", defaultLabel: "Primary mobile", isB2C: isB2C)
             if o.explicitlyRequired("phone", isB2C: isB2C), blank(phone) { return "\(label) is required." }
             if !blank(phone), phone.filter({ $0.isNumber }).count != 10 { return "\(label) must be a 10-digit number." }
