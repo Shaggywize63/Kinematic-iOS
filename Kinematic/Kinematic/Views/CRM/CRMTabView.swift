@@ -158,6 +158,8 @@ struct CRMMoreMenu: View {
     var onExit: (() -> Void)? = nil
     @EnvironmentObject var appState: KiniAppState
     @State private var showLogoutConfirm: Bool = false
+    /// Master-admin "View as User" read-only impersonation search sheet.
+    @State private var showImpersonate: Bool = false
 
     /// Field executives see their own target ticker; everyone above them can
     /// set targets, so the Targets admin row is gated to non-FE roles.
@@ -231,6 +233,18 @@ struct CRMMoreMenu: View {
                 NavigationLink {
                     ChangePasswordView()
                 } label: { MoreRow(icon: "key.fill", title: "Change password", tint: Brand.red) }
+            }
+
+            // Master admin only: open a read-only mirror of any user's app.
+            if Session.currentUser?.isMasterAdmin == true {
+                Section("Platform admin") {
+                    Button { showImpersonate = true } label: {
+                        MoreRow(icon: "eye.fill", title: "View as User", tint: .purple)
+                    }
+                    .sheet(isPresented: $showImpersonate) {
+                        ImpersonationSearchView()
+                    }
+                }
             }
 
             // Activities — the rep's scheduled calls / meetings / tasks.

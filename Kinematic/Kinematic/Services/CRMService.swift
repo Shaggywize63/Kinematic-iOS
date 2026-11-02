@@ -1059,6 +1059,11 @@ final class CRMService {
 
     private func makeRequest(path: String, method: String, body: Data?, query: [String: String] = [:]) throws -> URLRequest {
         guard let token = authToken else { throw CRMServiceError.missingAuth }
+        // Read-only "View as User" session: refuse writes locally (the backend
+        // also 403s them) so the master sees a clean message, not a server error.
+        if ImpersonationState.readOnly, ["POST", "PUT", "PATCH", "DELETE"].contains(method.uppercased()) {
+            throw CRMServiceError.server("You're viewing as another user (read-only). You can't make changes in this mode.")
+        }
         // Auto-attach the global CRM city picker to GETs on the
         // analytics / dashboard surfaces so every chart, summary, and
         // report respects the picker the same way it does on web.

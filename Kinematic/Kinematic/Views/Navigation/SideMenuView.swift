@@ -12,6 +12,8 @@ struct SideMenuView: View {
     /// (mirrors `showCRM`) so the self-contained `PlanogramCaptureView` isn't
     /// double-wrapped in a navigation chrome.
     @State private var showPlanogram = false
+    /// Master-admin "View as User" read-only impersonation search sheet.
+    @State private var showImpersonate = false
 
     /// The entries below Dashboard in the order the built-in menu has always drawn them. Dashboard (first) and Settings (last)
     /// are fixed and not part of the list. Each entry's package / module / tenant gate and hide flag live in
@@ -163,6 +165,9 @@ struct SideMenuView: View {
             // exact capture pipeline used inside a store visit.
             PlanogramCaptureView(storeId: nil, visitId: nil, planogramId: nil)
         }
+        .sheet(isPresented: $showImpersonate) {
+            ImpersonationSearchView()
+        }
     }
     
     private var sidebarContent: some View {
@@ -195,6 +200,14 @@ struct SideMenuView: View {
                     ForEach(orderedMenuIds, id: \.self) { id in
                         menuRow(id)
                     }
+
+                // Master admin only: open a read-only mirror of any user's app.
+                if Session.currentUser?.isMasterAdmin == true {
+                    MenuButton(icon: "eye.fill", title: "View as User", isSelected: false, color: .purple) {
+                        withAnimation { isOpen = false }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showImpersonate = true }
+                    }
+                }
 
                 MenuButton(icon: "gearshape.fill", title: "Settings", isSelected: false, color: .gray) {
                     withAnimation { isOpen = false }
