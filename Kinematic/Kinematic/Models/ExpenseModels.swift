@@ -175,6 +175,11 @@ struct ExpenseClaim: Codable, Identifiable {
     let form_id: String?
     let account_name: String?
     let form_title: String?
+    // The filled form entry this expense is linked to (supersedes the form_id template link): its unique
+    // reference (e.g. "SRPR2627-1") and when it was submitted, stamped by the server for display.
+    let form_submission_id: String?
+    let form_ref_no: String?
+    let form_submitted_at: String?
     let created_at: String?
     let user_name: String?
     let employee_id: String?
@@ -350,8 +355,26 @@ struct ExpenseClaimInput: Encodable {
     // nil for every other tenant (the backend ignores them for non-B2B clients).
     var clarification: String? = nil
     var account_id: String? = nil
-    var form_id: String? = nil
+    /// The filled form entry (form_submissions id) this expense is linked to.
+    var form_submission_id: String? = nil
+    /// True on a connected-B2B save with no entry picked: sends `"form_submission_id": null` so an edit can
+    /// clear a link that was set before. Never encoded as a key of its own.
+    var clearFormSubmission = false
     let items: [ExpenseClaimItemInput]
+
+    private enum CodingKeys: String, CodingKey {
+        case title, clarification, account_id, form_submission_id, items
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(title, forKey: .title)
+        try c.encodeIfPresent(clarification, forKey: .clarification)
+        try c.encodeIfPresent(account_id, forKey: .account_id)
+        if let sub = form_submission_id { try c.encode(sub, forKey: .form_submission_id) }
+        else if clearFormSubmission { try c.encodeNil(forKey: .form_submission_id) }
+        try c.encode(items, forKey: .items)
+    }
 }
 
 struct ExpenseClaimCheckInput: Encodable {
@@ -359,14 +382,17 @@ struct ExpenseClaimCheckInput: Encodable {
     let claim_id: String?
 }
 
-/// A builder form an admin marked "expense-linked" — an option in the expense
-/// form picker (connected-B2B). Read from /api/v1/builder/forms.
-struct ExpenseLinkForm: Decodable, Identifiable, Hashable {
+/// A filled form entry an expense can be linked to (connected-B2B): shown by its unique reference + date
+/// (`FormRefDisplay.title`). Read from GET /api/v1/expenses/linkable-submissions, newest first.
+struct ExpenseLinkSubmission: Decodable, Identifiable, Hashable {
     let id: String
-    let title: String?
-    let expense_linked: Bool?
-    /// draft / published — used to offer only active forms in the lead form picker.
-    let status: String?
+    /// e.g. "SRPR2627-1" (prefix + financial-year code + running number).
+    let ref_no: String?
+    /// ISO-8601, with or without fractional seconds.
+    let submitted_at: String?
+    let form_title: String?
+    let account_id: String?
+    let account_name: String?
 }
 
 /// One line's decision inside a decision request.

@@ -16,12 +16,14 @@ struct ExpenseClaimEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var title: String
-    // Connected-B2B (Spark & Ray): a mandatory clarification and the linked account / form.
+    // Connected-B2B (Spark & Ray): a mandatory clarification and the linked account / filled form entry.
     @State private var clarification: String
     @State private var companyText: String
     @State private var selectedAccountId: String?
-    @State private var formId: String
-    @State private var linkForms: [ExpenseLinkForm] = []
+    /// The linked filled form entry (form_submissions id); "" = none.
+    @State private var formSubmissionId: String
+    @State private var linkSubmissions: [ExpenseLinkSubmission] = []
+    @State private var linkSubmissionsLoaded = false
     @State private var lines: [EditorLine]
     /// Once a draft has been created from this form, a retry updates it instead of creating a second one.
     @State private var savedId: String?
@@ -76,7 +78,7 @@ struct ExpenseClaimEditorView: View {
         _clarification = State(initialValue: claim?.clarification ?? "")
         _companyText = State(initialValue: claim?.account_name ?? "")
         _selectedAccountId = State(initialValue: claim?.account_id)
-        _formId = State(initialValue: claim?.form_id ?? "")
+        _formSubmissionId = State(initialValue: claim?.form_submission_id ?? "")
         _savedId = State(initialValue: claim?.id)
         var seeded: [EditorLine] = []
         // The policy's only vehicle (if it lists exactly one) is pre-selected on mileage lines that have none.
@@ -155,12 +157,21 @@ struct ExpenseClaimEditorView: View {
                             Text("Required before you can submit.").font(.caption).foregroundColor(.secondary)
                         }
                         CompanyPickerField(company: $companyText, selectedAccountId: $selectedAccountId, label: "Linked company")
-                        Picker("Linked form", selection: $formId) {
+                        Picker("Linked form entry", selection: $formSubmissionId) {
                             Text("None").tag("")
-                            ForEach(linkForms) { f in Text(f.title ?? "Form").tag(f.id) }
+                            ForEach(submissionOptions) { s in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(Self.submissionTitle(s))
+                                    if let cap = Self.submissionCaption(s) {
+                                        Text(cap).font(.caption).foregroundColor(.secondary)
+                                    }
+                                }
+                                .tag(s.id)
+                            }
                         }
-                        if linkForms.isEmpty {
-                            Text("No forms are marked for expense linking yet — turn it on for a form in the Form Builder.")
+                        .pickerStyle(.navigationLink)
+                        if linkSubmissionsLoaded && submissionOptions.isEmpty {
+                            Text("No filled forms with a reference yet — fill a form first.")
                                 .font(.caption).foregroundColor(.secondary)
                         }
                     }
@@ -206,8 +217,9 @@ struct ExpenseClaimEditorView: View {
             .onChange(of: soleVehicleKey, initial: true) { applySoleVehicle() }
             // Vehicle flow: fetch the odometer history for the "last reading" hint (best effort).
             .task(id: byVehicle) { if byVehicle { await vm.loadOdometerHistory() } }
-            // Connected-B2B: the forms an admin marked expense-linked (the form picker's options).
-            .task(id: isSpark) { if isSpark { linkForms = (try? await ExpensesAPI.shared.linkableForms()) ?? [] } }
+            // Connected-B2B: the filled form entries (reference + date) the picker offers; reloaded when the
+            // chosen company changes so the list narrows to that company's entries.
+            .task(id: selectedAccountId) { await loadSubmissions() }
             // Work from the policy as it is now, not the one fetched when the Expenses screen first opened: the
             // vehicles offered are its vehicles. A late arrival is caught up by the two onChange handlers above.
             .task { await vm.loadPolicy() }
@@ -650,6 +662,46 @@ struct ExpenseClaimEditorView: View {
         if lines[j].f.description.isEmpty { lines[j].f.description = "\(ExpenseLogic.trimNumber(r.distance_km)) km from your GPS trail" }
     }
 
+    // ── linked form entry (connected-B2B) ───────────────────────────────────
+
+    /// The picker's options: the loaded entries, plus the entry this claim was already linked to when it is
+    /// not among them (an older entry, or one outside the chosen company) so the picker never shows blank.
+    private var submissionOptions: [ExpenseLinkSubmission] {
+        guard !formSubmissionId.isEmpty,
+              !linkSubmissions.contains(where: { $0.id == formSubmissionId }),
+              let c = claim, c.form_submission_id == formSubmissionId else { return linkSubmissions }
+        let current = ExpenseLinkSubmission(id: formSubmissionId, ref_no: c.form_ref_no, submitted_at: c.form_submitted_at,
+                                            form_title: c.form_title, account_id: c.account_id, account_name: c.account_name)
+        return [current] + linkSubmissions
+    }
+
+    /// "SRPR2627-1 · 02 Nov 2026" (the form's name when the entry has neither reference nor date).
+    private static func submissionTitle(_ s: ExpenseLinkSubmission) -> String {
+        let t = FormRefDisplay.title(refNo: s.ref_no, submittedAt: s.submitted_at)
+        if !t.isEmpty { return t }
+        return s.form_title ?? "Form entry"
+    }
+
+    /// "form title · company" under the row; nil when the entry has neither.
+    private static func submissionCaption(_ s: ExpenseLinkSubmission) -> String? {
+        let parts = [s.form_title, s.account_name].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private func loadSubmissions() async {
+        guard isSpark else { return }
+        let loaded = (try? await ExpensesAPI.shared.linkableSubmissions(accountId: selectedAccountId)) ?? []
+        // A newer company choice cancels this task; do not let the stale answer overwrite the list.
+        if Task.isCancelled { return }
+        linkSubmissions = loaded
+        linkSubmissionsLoaded = true
+        // A pick that belongs to the previous company is dropped (the claim's own saved link is kept).
+        if !formSubmissionId.isEmpty, !loaded.contains(where: { $0.id == formSubmissionId }),
+           formSubmissionId != claim?.form_submission_id {
+            formSubmissionId = ""
+        }
+    }
+
     // ── save / submit ───────────────────────────────────────────────────────
 
     private func save(submit: Bool) async {
@@ -678,7 +730,8 @@ struct ExpenseClaimEditorView: View {
             items: filled.map { $0.f.toInput(byVehicle: byVehicle, routeFields: routeFields, gpsDistance: gpsDistance) }, submit: submit,
             clarification: isSpark ? (clar.isEmpty ? nil : clar) : nil,
             accountId: isSpark ? selectedAccountId : nil,
-            formId: isSpark ? (formId.isEmpty ? nil : formId) : nil)
+            formSubmissionId: isSpark ? (formSubmissionId.isEmpty ? nil : formSubmissionId) : nil,
+            clearFormSubmission: isSpark && formSubmissionId.isEmpty)
         if let id = out.savedId { savedId = id }
         if let e = out.error { errorText = e; return }
         if let id = out.savedId { onDone(id, out.submitted); dismiss() }

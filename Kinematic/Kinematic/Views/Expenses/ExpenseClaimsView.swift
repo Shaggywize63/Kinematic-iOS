@@ -76,10 +76,12 @@ final class ExpensesViewModel: ObservableObject {
     /// If saving works but submitting is refused (a "block" policy, say), the outcome still carries the
     /// saved id so the editor keeps working on that claim instead of creating a duplicate.
     func save(claimId: String?, title: String?, items: [ExpenseClaimItemInput], submit: Bool,
-              clarification: String? = nil, accountId: String? = nil, formId: String? = nil) async -> SaveOutcome {
-        // clarification/account_id/form_id are the connected-B2B links (nil for every
+              clarification: String? = nil, accountId: String? = nil, formSubmissionId: String? = nil,
+              clearFormSubmission: Bool = false) async -> SaveOutcome {
+        // clarification/account_id/form_submission_id are the connected-B2B links (nil for every
         // other tenant; the backend ignores them for non-B2B clients).
-        let input = ExpenseClaimInput(title: title, clarification: clarification, account_id: accountId, form_id: formId, items: items)
+        let input = ExpenseClaimInput(title: title, clarification: clarification, account_id: accountId,
+                                      form_submission_id: formSubmissionId, clearFormSubmission: clearFormSubmission, items: items)
         var id = claimId
         do {
             if let existing = claimId { _ = try await api.updateClaim(id: existing, input) }

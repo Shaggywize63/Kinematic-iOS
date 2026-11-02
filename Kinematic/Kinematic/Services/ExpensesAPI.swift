@@ -95,18 +95,16 @@ struct ExpensesAPI {
     func cancel(id: String) async throws {
         _ = try await request("/expenses/claims/\(id)/cancel", method: "PATCH", body: EmptyBody())
     }
-    /// Builder forms an admin marked "expense-linked" — the options for the expense
-    /// form picker (connected-B2B). Reads the shared builder-forms list and keeps the
-    /// flagged ones; empty until at least one form is marked.
-    func linkableForms() async throws -> [ExpenseLinkForm] {
-        let all: [ExpenseLinkForm] = try decode(try await request("/builder/forms"))
-        return all.filter { $0.expense_linked == true }
-    }
-    /// All ACTIVE builder forms (drafts filtered out) — the lead "Contacts &
-    /// requirements" form picker offers every usable form, not just expense-linked.
-    func activeForms() async throws -> [ExpenseLinkForm] {
-        let all: [ExpenseLinkForm] = try decode(try await request("/builder/forms"))
-        return all.filter { ($0.status ?? "published") != "draft" }
+    /// Filled form entries (each with a unique reference) an expense can be linked to — the options for the
+    /// expense form-entry picker (connected-B2B), newest first, at most 50. `accountId` narrows them to one
+    /// company; nil lists every entry. Empty for non-B2B clients.
+    func linkableSubmissions(accountId: String?) async throws -> [ExpenseLinkSubmission] {
+        var path = "/expenses/linkable-submissions"
+        if let id = accountId, !id.isEmpty {
+            let enc = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
+            path += "?account_id=\(enc)"
+        }
+        return try decode(try await request(path))
     }
     /// Dry-run the policy against unsaved lines so problems show before submitting.
     func check(items: [ExpenseClaimItemInput], claimId: String?) async throws -> ExpenseClaimCheck {

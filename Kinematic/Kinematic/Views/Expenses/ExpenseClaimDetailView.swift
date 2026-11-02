@@ -138,9 +138,13 @@ struct ExpenseClaimDetailView: View {
         var rows: [(String, String)] = []
         if let d = c.submitted_at { rows.append(("Submitted", String(d.prefix(10)))) }
         if let p = c.policy_name { rows.append(("Policy", p)) }
-        // Connected-B2B links (shown only when set): the company + the form's name.
+        // Connected-B2B links (shown only when set): the company + the linked filled form entry, by its
+        // reference and date (the form's name when the entry has no reference).
         if let a = c.account_name, !a.isEmpty { rows.append(("Company", a)) }
-        if let f = c.form_title, !f.isEmpty { rows.append(("Form", f)) }
+        let entry = FormRefDisplay.title(refNo: c.form_ref_no, submittedAt: c.form_submitted_at)
+        let hasRef = !(c.form_ref_no ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if hasRef && !entry.isEmpty { rows.append(("Form entry", entry)) }
+        else if let f = c.form_title, !f.isEmpty { rows.append(("Form", f)) }
         if let cl = c.clarification, !cl.isEmpty { rows.append(("Clarification", cl)) }
         rows.append(("Claimed", expenseMoney(c.total_amount, c.currency)))
         if let a = c.approved_amount, (c.status ?? "") != "rejected" { rows.append(("Approved", expenseMoney(a, c.currency))) }
