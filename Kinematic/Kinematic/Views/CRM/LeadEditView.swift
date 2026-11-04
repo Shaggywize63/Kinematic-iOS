@@ -97,7 +97,11 @@ struct LeadEditView: View {
         _ownerId = State(initialValue: lead.ownerId ?? "")
         _company = State(initialValue: lead.company ?? "")
         _title = State(initialValue: lead.title ?? "")
-        _industry = State(initialValue: "")
+        // Spark & Ray shows Industry as a dropdown seeded from the lead; every other
+        // tenant's free-text field starts blank as before.
+        _industry = State(initialValue:
+            ((CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId && !(lead.isB2c ?? false))
+                ? (lead.industry ?? "") : "")
         _isB2C = State(initialValue: lead.isB2c ?? false)
         _dateOfBirth = State(initialValue: lead.dateOfBirth ?? "")
         _gender = State(initialValue: lead.gender ?? "")
@@ -207,8 +211,19 @@ struct LeadEditView: View {
                             TextField(fieldOverrides.labelFor("title", defaultLabel: "Job title", isB2C: false), text: $title)
                                 .textContentType(.jobTitle)
                         }
-                        // Industry dropped for Spark & Ray; every other tenant keeps it.
-                        if !isSparkClient && !fieldOverrides.isHidden("industry", isB2C: false) {
+                        // Industry: a fixed dropdown for Spark & Ray (deferred until the
+                        // admin overrides have loaded); every other tenant keeps the
+                        // free-text field.
+                        if isSparkClient {
+                            if fieldOverrides.didLoad && !fieldOverrides.isHidden("industry", isB2C: false) {
+                                Picker(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false), selection: $industry) {
+                                    Text("— Select —").tag("")
+                                    ForEach(SparkIndustries.pickerOptions(including: industry), id: \.self) { opt in
+                                        Text(opt).tag(opt)
+                                    }
+                                }
+                            }
+                        } else if !fieldOverrides.isHidden("industry", isB2C: false) {
                             TextField(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false), text: $industry)
                         }
                     }

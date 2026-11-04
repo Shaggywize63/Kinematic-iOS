@@ -431,9 +431,21 @@ struct LeadCreateView: View {
                                 text: $title,
                             )
                         }
-                        // Industry dropped for Spark & Ray (the company's account
-                        // carries it); every other tenant keeps the field.
-                        if !isSparkClient && !fieldOverrides.isHidden("industry", isB2C: false) {
+                        // Industry: a fixed dropdown for Spark & Ray (deferred until
+                        // the admin overrides have loaded); every other tenant keeps
+                        // the free-text field.
+                        if isSparkClient {
+                            if fieldOverrides.didLoad && !fieldOverrides.isHidden("industry", isB2C: false) {
+                                let industryLabel = fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false)
+                                    + (fieldOverrides.requiredFor("industry", defaultRequired: false, isB2C: false) ? " *" : "")
+                                Picker(industryLabel, selection: $industry) {
+                                    Text("— Select —").tag("")
+                                    ForEach(SparkIndustries.pickerOptions(including: industry), id: \.self) { opt in
+                                        Text(opt).tag(opt)
+                                    }
+                                }
+                            }
+                        } else if !fieldOverrides.isHidden("industry", isB2C: false) {
                             labelledField(
                                 label: fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false),
                                 required: fieldOverrides.requiredFor("industry", defaultRequired: false, isB2C: false),
