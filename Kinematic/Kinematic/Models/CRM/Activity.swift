@@ -58,6 +58,16 @@ struct Activity: Codable, Identifiable, Hashable {
     /// `metadata.campaign` here; app-logged calls may omit it. Read the
     /// campaign via `metadata["campaign"]?.value`.
     let metadata: [String: AnyCodable]?
+    // Spark & Ray journey fields. The backend only stamps these for that
+    // client, so every one is optional and decodes to nil elsewhere.
+    /// People the task is assigned to, primary first (`[{id,name}]`).
+    let assignees: [SparkNamedRef]?
+    /// Serial of the linked product-form submission (e.g. `SRPR2627-12`).
+    let formRefNo: String?
+    let formSubmissionId: String?
+    /// "Product interested" — catalogue ids + resolved names.
+    let productIds: [String]?
+    let products: [SparkNamedRef]?
 
     /// The remarks note for display — the persisted `body`, falling back to
     /// the legacy `description` echo.
@@ -107,5 +117,10 @@ struct Activity: Codable, Identifiable, Hashable {
         case dealName = "deal_name"
         case directoryName = "directory_name"
         case directoryPhone = "directory_phone"
+        case assignees
+        case formRefNo = "form_ref_no"
+        case formSubmissionId = "form_submission_id"
+        case productIds = "product_ids"
+        case products
     }
 }
