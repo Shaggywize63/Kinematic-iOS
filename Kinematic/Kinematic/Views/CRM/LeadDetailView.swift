@@ -127,6 +127,24 @@ struct LeadDetailView: View {
         return author == me
     }
 
+    /// Spark & Ray: the "New deal" sheet for this lead. Kept out of `body` so the long modifier chain
+    /// stays within the type-checker's budget.
+    @ViewBuilder
+    private var newDealSheet: some View {
+        DealCreateView(prefillLeadId: vm.leadId) { body in
+            do {
+                _ = try await CRMService.shared.createDeal(body)
+                await vm.load()
+            } catch {
+                vm.errorMessage = error.localizedDescription
+            }
+        }
+        .sparkSubmit { body in
+            _ = try await CRMService.shared.createDeal(body)
+            await vm.load()
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -246,20 +264,7 @@ struct LeadDetailView: View {
         .sheet(isPresented: $showAssignSheet) {
             assignSheet
         }
-        .sheet(isPresented: $creatingDeal) {
-            DealCreateView(prefillLeadId: vm.leadId) { body in
-                do {
-                    _ = try await CRMService.shared.createDeal(body)
-                    await vm.load()
-                } catch {
-                    vm.errorMessage = error.localizedDescription
-                }
-            }
-            .sparkSubmit { body in
-                _ = try await CRMService.shared.createDeal(body)
-                await vm.load()
-            }
-        }
+        .sheet(isPresented: $creatingDeal) { newDealSheet }
         // System share sheet for the rendered lead card image.
         .sheet(isPresented: $showShareSheet) {
             if let img = shareImage {
