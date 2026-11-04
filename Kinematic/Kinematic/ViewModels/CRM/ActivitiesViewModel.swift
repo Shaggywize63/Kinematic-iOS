@@ -186,6 +186,29 @@ final class ActivitiesViewModel: ObservableObject {
         }
     }
 
+    // MARK: Spark & Ray (throwing — the composer shows the server's message inline)
+
+    /// Create an activity from the composer's result, including the Spark extras
+    /// (assignees / product interested / form serial). Throws so a bad form serial
+    /// (HTTP 400) stays on the sheet next to the field instead of being swallowed.
+    func createSpark(_ result: ActivityComposeResult, scheduled: Bool) async throws {
+        let links: [String: String] = result.leadId.map { ["lead_id": $0] } ?? [:]
+        let body = SparkActivityBody.createBody(result, scheduled: scheduled, links: links)
+        let created = try await api.createActivity(body, spark: result.extras)
+        activities.insert(created, at: 0)
+    }
+
+    /// PATCH an existing activity from the edit sheet, sending only the Spark extras that changed.
+    func updateSpark(existing: Activity, _ result: ActivityComposeResult) async throws {
+        let body = SparkActivityBody.updateBody(result, existing: existing)
+        let updated = try await api.updateActivity(
+            id: existing.id, body: body, spark: result.extras, previous: existing.sparkExtras
+        )
+        if let idx = activities.firstIndex(where: { $0.id == existing.id }) {
+            activities[idx] = updated
+        }
+    }
+
     /// "Mark complete" (`completed == true`) / "Reopen" (`false`) from the
     /// activity card. PATCHes status + completed_at, then flips that row's
     /// completion state in place from the response — the list keeps the row's
