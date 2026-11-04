@@ -21,6 +21,14 @@ struct DealCard: View {
                     .lineLimit(1)
             }
 
+            // Spark & Ray quotation number (nil for every other tenant → nothing shown).
+            if let quote = deal.quotationNo?.trimmingCharacters(in: .whitespacesAndNewlines), !quote.isEmpty {
+                Text("Quotation \(quote)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
             HStack(spacing: 6) {
                 Image(systemName: "indianrupeesign.circle.fill")
                     .font(.system(size: 11))
