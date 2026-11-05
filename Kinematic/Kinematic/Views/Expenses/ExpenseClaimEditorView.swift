@@ -103,7 +103,7 @@ struct ExpenseClaimEditorView: View {
 
     private var status: String { (claim?.status ?? "draft").lowercased() }
     /// Connected-B2B flow (Spark & Ray): show the clarification + account/form links.
-    private var isSpark: Bool { (CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId }
+    private var isSpark: Bool { SparkJourney.isActive }
     private var currency: String { vm.policy?.currency ?? claim?.currency ?? "INR" }
     private var rate: Double { vm.policy?.rules?.mileage_rate ?? vm.policy?.mileage_rate ?? 0 }
     /// Where the policy pays mileage by vehicle, a mileage line takes the vehicle + odometer readings instead of a

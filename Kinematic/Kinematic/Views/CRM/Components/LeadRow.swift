@@ -21,6 +21,9 @@ import SwiftUI
  */
 struct LeadRow: View {
     let lead: Lead
+    /// Show the Spark & Ray industry badge. The host decides (Spark client AND the admin has not hidden Industry),
+    /// so the row itself never reads tenant state per cell.
+    var showIndustry: Bool = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -47,6 +50,10 @@ struct LeadRow: View {
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
+                }
+                // Spark & Ray: the lead's industry as a coloured badge.
+                if showsIndustryBadge {
+                    SparkIndustryBadge(industry: lead.industry, compact: true)
                 }
                 // Inline meta row — keeps the card height compact while
                 // still surfacing status + source.
@@ -90,6 +97,11 @@ struct LeadRow: View {
     }
 
     // MARK: - Derived
+
+    /// Industry badge: when the host asked for it and the lead has an industry.
+    private var showsIndustryBadge: Bool {
+        showIndustry && !(lead.industry ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var subtitle: String? {
         let candidates: [String?] = [lead.company, lead.email, lead.phone, lead.city]

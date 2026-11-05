@@ -176,22 +176,42 @@ final class CustomFieldsModel: ObservableObject {
 /// `CustomFieldsModel` the parent reads `jsonValues` from at submit.
 struct CustomFieldsSection: View {
     @ObservedObject var model: CustomFieldsModel
+    /// Field keys left out of the generic "Additional details" block because a form renders them itself
+    /// (Spark & Ray draws `industry_category` right after Industry).
+    var excludingKeys: Set<String> = []
+    /// When set, renders ONLY this field's row (no Section wrapper) so a form can place it inline.
+    var onlyKey: String? = nil
+    /// Display-label replacements by field key (e.g. `industry_category` -> "Sub-industry").
+    var labelOverrides: [String: String] = [:]
 
     var body: some View {
-        if !model.visibleDefs.isEmpty {
-            Section("Additional details") {
-                ForEach(model.visibleDefs) { d in
-                    row(d)
+        if let only = onlyKey {
+            if let d = model.visibleDefs.first(where: { $0.fieldKey == only }) {
+                row(d)
+            }
+        } else {
+            let defs = model.visibleDefs.filter { !excludingKeys.contains($0.fieldKey) }
+            if !defs.isEmpty {
+                Section("Additional details") {
+                    ForEach(defs) { d in
+                        row(d)
+                    }
                 }
             }
         }
+    }
+
+    /// The row label: an override when the form asked for one, else the def's own (with the required marker).
+    private func rowLabel(_ d: CRMCustomFieldDef) -> String {
+        guard let o = labelOverrides[d.fieldKey], !o.isEmpty else { return d.formLabel }
+        return d.required == true ? o + " *" : o
     }
 
     @ViewBuilder
     private func row(_ d: CRMCustomFieldDef) -> some View {
         switch d.fieldType {
         case "boolean":
-            Toggle(d.formLabel, isOn: Binding(
+            Toggle(rowLabel(d), isOn: Binding(
                 get: { model.bool[d.fieldKey] ?? false },
                 set: { model.bool[d.fieldKey] = $0 }))
         case "select" where CustomFieldOptions.isSearchable(d.options):
@@ -199,14 +219,14 @@ struct CustomFieldsSection: View {
             // are never shown as choices.
             let fromProducts = CustomFieldOptions.isProductSource(d.options)
             SearchableOptionRow(
-                label: d.formLabel,
+                label: rowLabel(d),
                 value: model.text[d.fieldKey] ?? "",
                 options: fromProducts ? model.productNames : CustomFieldOptions.visible(d.options),
                 emptyHint: fromProducts ? "No products added yet." : "No options configured.",
                 onPick: { model.text[d.fieldKey] = $0 }
             )
         case "select", "radio":
-            Picker(d.formLabel, selection: Binding(
+            Picker(rowLabel(d), selection: Binding(
                 get: { model.text[d.fieldKey] ?? "" },
                 set: { model.text[d.fieldKey] = $0 })) {
                     Text("—").tag("")
@@ -236,7 +256,7 @@ struct CustomFieldsSection: View {
             )
         case "multiselect":
             VStack(alignment: .leading, spacing: 6) {
-                Text(d.formLabel).font(.caption).foregroundColor(.secondary)
+                Text(rowLabel(d)).font(.caption).foregroundColor(.secondary)
                 ForEach(CustomFieldOptions.visible(d.options), id: \.self) { opt in
                     Toggle(opt, isOn: Binding(
                         get: { model.multi[d.fieldKey]?.contains(opt) ?? false },
@@ -252,7 +272,7 @@ struct CustomFieldsSection: View {
             // into custom_fields on save. We show the most recent value
             // (from hydrate()) read-only so the rep can preview it.
             HStack {
-                Text(d.formLabel)
+                Text(rowLabel(d))
                 Spacer()
                 let stored = model.text[d.fieldKey] ?? ""
                 Text(stored.isEmpty ? "—" : stored)
@@ -274,7 +294,7 @@ struct CustomFieldsSection: View {
         case "longtext", "long_text", "textarea":
             // A long answer gets a multi-line box.
             VStack(alignment: .leading, spacing: 4) {
-                Text(d.formLabel).font(.caption).foregroundColor(.secondary)
+                Text(rowLabel(d)).font(.caption).foregroundColor(.secondary)
                 TextField("", text: Binding(get: { model.text[d.fieldKey] ?? "" },
                                             set: { model.text[d.fieldKey] = $0 }),
                           axis: .vertical)
@@ -283,7 +303,7 @@ struct CustomFieldsSection: View {
         default:
             // text / number / currency / url / email / phone
             HStack {
-                Text(d.formLabel)
+                Text(rowLabel(d))
                 Spacer()
                 TextField(CustomFieldInput.isNumeric(d.fieldType) ? "0" : "", text: textBinding(for: d))
                     .multilineTextAlignment(.trailing)
@@ -306,7 +326,7 @@ struct CustomFieldsSection: View {
     @ViewBuilder
     private func momentRow(_ d: CRMCustomFieldDef, mode: FormMomentMode, storage: FormMomentStorage, placeholder: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(d.formLabel).font(.caption).foregroundColor(.secondary)
+            Text(rowLabel(d)).font(.caption).foregroundColor(.secondary)
             FormMomentField(
                 mode: mode,
                 storage: storage,

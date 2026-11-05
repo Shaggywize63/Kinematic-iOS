@@ -67,10 +67,12 @@ enum SparkJourney {
         (clientId ?? "").lowercased() == LeadB2B.sparkClientId
     }
 
-    /// The live gate: is the signed-in / selected client Spark & Ray? Reads the
-    /// same selection the lead create / edit forms use.
+    /// The live gate: is the effective client Spark & Ray? Goes through
+    /// `CRMClientScope.effectiveClientId()` (picker selection first, else the signed-in
+    /// user's own client) so a client admin pinned to Spark by their login is covered.
+    /// EVERY Spark gate (lead / deal / activity / expense forms) must use this.
     static var isActive: Bool {
-        isSpark(clientId: CRMClientScope.selectedClientId())
+        isSpark(clientId: CRMClientScope.effectiveClientId())
     }
 
     // MARK: Account updates

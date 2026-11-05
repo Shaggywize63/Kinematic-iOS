@@ -29,16 +29,29 @@ struct CRMPlaceDetail: Codable, Hashable {
 
 /// Google-Places address search (via the backend proxy). Type an address, pick
 /// a suggestion, and the bound address fields fill in. The lead's GPS pin is
-/// left untouched — it stays the rep's captured submission location.
+/// left untouched unless the caller handles `onPicked` (Spark & Ray does).
 struct AddressSearchField: View {
     @Binding var addressLine1: String
     @Binding var city: String
     @Binding var state: String
     @Binding var postalCode: String
+    /// Called with the resolved place after the address fields were filled (Spark & Ray uses it to take the
+    /// pin's coordinates from the picked address). Optional — other callers ignore it.
+    var onPicked: ((CRMPlaceDetail) -> Void)? = nil
 
     @State private var query = ""
     @State private var results: [CRMPlacePrediction] = []
     @State private var searching = false
+
+    // Explicit, because a private stored property (`query`, ...) makes the synthesized memberwise init private.
+    init(addressLine1: Binding<String>, city: Binding<String>, state: Binding<String>, postalCode: Binding<String>,
+         onPicked: ((CRMPlaceDetail) -> Void)? = nil) {
+        _addressLine1 = addressLine1
+        _city = city
+        _state = state
+        _postalCode = postalCode
+        self.onPicked = onPicked
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -86,6 +99,7 @@ struct AddressSearchField: View {
         if let c = d.city, !c.isEmpty { city = c }
         if let s = d.state, !s.isEmpty { state = s }
         if let pc = d.postalCode, !pc.isEmpty { postalCode = pc }
+        onPicked?(d)
         query = ""
         results = []
     }

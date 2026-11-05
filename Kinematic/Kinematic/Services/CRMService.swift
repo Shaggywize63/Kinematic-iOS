@@ -95,10 +95,12 @@ final class CRMService {
         try await get("/api/v1/crm/home")
     }
 
-    func listLeadsGeo(city: String? = nil, state: String? = nil) async throws -> [Lead] {
+    func listLeadsGeo(city: String? = nil, state: String? = nil, industry: String? = nil) async throws -> [Lead] {
         var q: [String: String] = [:]
         if let city, !city.isEmpty { q["city"] = city }
         if let state, !state.isEmpty { q["state"] = state }
+        // Spark & Ray: exact (case-insensitive) industry, or `__none__` for leads without one.
+        if let industry, !industry.isEmpty { q["industry"] = industry }
         return try await get("/api/v1/crm/leads/geo", query: q)
     }
     /// Outcome of an offline-aware lead create.
@@ -442,6 +444,11 @@ final class CRMService {
         if let from, !from.isEmpty { q["from"] = from }
         if let to, !to.isEmpty { q["to"] = to }
         return try await get("/api/v1/crm/activities", query: q)
+    }
+    /// The org's activity types — built-ins (`builtin:<slug>`) plus custom ones from Settings. nil on any failure
+    /// (the caller keeps its built-in fallback).
+    func listActivityTypes() async -> [ActivityTypeDef]? {
+        try? await get("/api/v1/crm/activity-types")
     }
     func createActivity(_ body: [String: Any]) async throws -> Activity {
         try await postJSON("/api/v1/crm/activities", body: body)

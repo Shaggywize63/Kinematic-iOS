@@ -29,6 +29,22 @@ enum CRMClientScope {
         return isUUID(raw) ? raw : nil
     }
 
+    /// Pure precedence rule behind `effectiveClientId()`: the picker / acting-as selection wins, else the signed-in
+    /// user's own client id. Blank values count as absent. Kept free of UserDefaults / Session so it is unit-testable.
+    static func effectiveClientId(selected: String?, userClientId: String?) -> String? {
+        let s = (selected ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !s.isEmpty { return s }
+        let u = (userClientId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return u.isEmpty ? nil : u
+    }
+
+    /// The client every client-specific gate (Spark & Ray, ...) must use: the picker selection first, else the
+    /// signed-in user's own `client_id`. A client admin is pinned to their login and never touches the picker, so
+    /// reading only `selectedClientId()` hid every Spark feature from them.
+    static func effectiveClientId() -> String? {
+        effectiveClientId(selected: selectedClientId(), userClientId: Session.currentUser?.clientId)
+    }
+
     /// Update the picker selection. Pass nil to clear (e.g. when the admin
     /// switches back to the org-wide view).
     static func setSelectedClientId(_ value: String?) {

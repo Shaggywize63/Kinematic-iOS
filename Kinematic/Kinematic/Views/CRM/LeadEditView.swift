@@ -61,10 +61,13 @@ struct LeadEditView: View {
     @State private var selectedAccountId: String? = nil
     @State private var leadContacts: [LeadContactDraft] = []
     private var isSparkClient: Bool {
-        (CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId
+        SparkJourney.isActive
     }
     /// Company-centric lead: person fields dropped, name from Company. B2B Spark only.
     private var companyLead: Bool { isSparkClient && !isB2C }
+    /// Spark & Ray: coordinates of a Google address picked in this edit session. Editing the address through the
+    /// search moves the lead's pin to the new address (nil = coordinates untouched).
+    @State private var pickedAddressCoordinate: LeadCoordinate? = nil
 
     /// See LeadCreateView for why we also OR in business_type=="b2c":
     /// Session.currentUser.clientId can be stale on iOS so the Tata-only
@@ -100,7 +103,7 @@ struct LeadEditView: View {
         // Spark & Ray shows Industry as a dropdown seeded from the lead; every other
         // tenant's free-text field starts blank as before.
         _industry = State(initialValue:
-            ((CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId && !(lead.isB2c ?? false))
+            (SparkJourney.isActive && !(lead.isB2c ?? false))
                 ? (lead.industry ?? "") : "")
         _isB2C = State(initialValue: lead.isB2c ?? false)
         _dateOfBirth = State(initialValue: lead.dateOfBirth ?? "")
@@ -219,10 +222,12 @@ struct LeadEditView: View {
                                 Picker(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false), selection: $industry) {
                                     Text("— Select —").tag("")
                                     ForEach(SparkIndustries.pickerOptions(including: industry), id: \.self) { opt in
-                                        Text(opt).tag(opt)
+                                        sparkIndustryOption(opt).tag(opt)
                                     }
                                 }
                             }
+                            // Sub-industry (the `industry_category` custom field) right after Industry.
+                            sparkSubIndustryRow
                         } else if !fieldOverrides.isHidden("industry", isB2C: false) {
                             TextField(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false), text: $industry)
                         }
@@ -281,6 +286,13 @@ struct LeadEditView: View {
                 // ── Address — shown for both B2B and B2C so reps can
                 //    geo-target every lead.
                 Section("Address") {
+                    // Spark & Ray: pick the address from Google; its coordinates become the lead's pin.
+                    if isSparkClient && fieldOverrides.didLoad && showsAddressSearch {
+                        AddressSearchField(
+                            addressLine1: $addressLine1, city: $city, state: $state, postalCode: $postalCode,
+                            onPicked: { addressPicked($0) }
+                        )
+                    }
                     if !fieldOverrides.isHidden("address_line1", isB2C: isB2C) {
                         TextField(fieldOverrides.labelFor("address_line1", defaultLabel: "Line 1", isB2C: isB2C), text: $addressLine1)
                     }
@@ -307,11 +319,11 @@ struct LeadEditView: View {
                     if !fieldOverrides.isHidden("country", isB2C: isB2C) {
                         TextField(fieldOverrides.labelFor("country", defaultLabel: "Country", isB2C: isB2C), text: $country)
                     }
-                    if let lat = lead.latitude, let lng = lead.longitude {
+                    if let coords = shownCoordinates {
                         HStack {
                             Text("Coordinates")
                             Spacer()
-                            Text(String(format: "%.4f, %.4f", lat, lng))
+                            Text(String(format: "%.4f, %.4f", coords.latitude, coords.longitude))
                                 .font(.system(.footnote, design: .monospaced))
                                 .foregroundStyle(.secondary)
                         }
@@ -395,7 +407,7 @@ struct LeadEditView: View {
                 // ── Custom Fields — admin-defined per-tenant fields ──
                 //     (e.g. Tata Tiscon's "First Visit Date", "Brand").
                 //     Hidden when no defs apply to the rep's role.
-                CustomFieldsSection(model: customFields)
+                CustomFieldsSection(model: customFields, excludingKeys: genericCustomFieldExclusions)
 
                 // ── Products of Interest — multi-row picker that drives
                 //     custom_fields.product_lines plus the four legacy
@@ -452,6 +464,56 @@ struct LeadEditView: View {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorMessage ?? "") }
         }
+    }
+
+    /// The coordinates shown read-only: the freshly picked address's, else the lead's stored ones.
+    private var shownCoordinates: LeadCoordinate? {
+        if let c = pickedAddressCoordinate { return c }
+        if let lat = lead.latitude, let lng = lead.longitude { return LeadCoordinate(latitude: lat, longitude: lng) }
+        return nil
+    }
+
+    /// The Google address search fills address line 1 / city / state, so it is offered only when one is visible.
+    private var showsAddressSearch: Bool {
+        !fieldOverrides.isHidden("address_line1", isB2C: isB2C)
+            || !fieldOverrides.isHidden("city", isB2C: isB2C)
+            || !fieldOverrides.isHidden("state", isB2C: isB2C)
+    }
+
+    /// A Google address was picked: its coordinates replace the lead's pin on save.
+    private func addressPicked(_ detail: CRMPlaceDetail) {
+        guard isSparkClient else { return }
+        pickedAddressCoordinate = LeadAddressCoordinates.coordinate(from: detail)
+        // The State picker clears City when State changes (the cascade), which would wipe the city the search
+        // just filled: put it back once that has run.
+        if let pickedCity = detail.city, !pickedCity.isEmpty {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                city = pickedCity
+            }
+        }
+    }
+
+    /// A Spark industry option with its colour dot.
+    private func sparkIndustryOption(_ name: String) -> some View {
+        HStack(spacing: 8) {
+            SparkIndustryDot(industry: name)
+            Text(name)
+        }
+    }
+
+    /// Spark & Ray's sub-industry (`industry_category` custom field), drawn inline after Industry.
+    private var sparkSubIndustryRow: some View {
+        CustomFieldsSection(
+            model: customFields,
+            onlyKey: SparkIndustries.subIndustryFieldKey,
+            labelOverrides: [SparkIndustries.subIndustryFieldKey: SparkIndustries.subIndustryLabel]
+        )
+    }
+
+    /// Custom fields the generic "Additional details" block must skip because the form draws them itself.
+    private var genericCustomFieldExclusions: Set<String> {
+        (isSparkClient && !isB2C) ? [SparkIndustries.subIndustryFieldKey] : []
     }
 
     /// Multi-value editor for `alternate_mobiles`: a header row carrying the
@@ -555,6 +617,11 @@ struct LeadEditView: View {
                 return merged
             })(),
         ]
+        // Spark & Ray: a picked address moves the pin with it.
+        if let c = LeadAddressCoordinates.pickedOverride(isSpark: isSparkClient, picked: pickedAddressCoordinate) {
+            body["latitude"] = c.latitude
+            body["longitude"] = c.longitude
+        }
         // owner_id is sent as always — except by a non-admin of a client that reserves owner assignment for
         // admins (`lead_form.owner_assignment`): their edit carries no owner at all, so the server can never
         // see a change (it answers 403 OWNER_ASSIGN_FORBIDDEN to one).
