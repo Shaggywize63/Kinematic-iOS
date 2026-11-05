@@ -16,6 +16,10 @@ struct AccountEditView: View {
     @State private var errorMessage: String?
     /// Built-in field overrides (hide / relabel / require) for account columns.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
+    /// Owner picker: the chosen user id (starts as the current owner) and who can be picked. Only admins /
+    /// managers may change an owner (`RecordOwnerRules`), so the list is only fetched for them.
+    @State private var ownerId: String
+    @State private var owners: [AssignableUser] = []
 
     init(account: CRMAccount, onSaved: @escaping (CRMAccount) -> Void) {
         self.account = account
@@ -27,6 +31,31 @@ struct AccountEditView: View {
         _revenue = State(initialValue: account.annualRevenue.map { String(Int($0)) } ?? "")
         _employees = State(initialValue: account.employees.map { String($0) } ?? "")
         _description = State(initialValue: account.description ?? "")
+        _ownerId = State(initialValue: account.ownerId ?? "")
+    }
+
+    /// Built-in field contract: wait for the admin's overrides, honour a hidden `owner_id`. On top of that
+    /// only an admin / manager (not a data-scope "own" user) may change an owner at all.
+    private var showsOwnerPicker: Bool {
+        fieldOverrides.didLoad
+            && RecordOwnerRules.currentUserCanChange
+            && !fieldOverrides.isHidden(entity: "account", "owner_id")
+            && !owners.isEmpty
+    }
+
+    @ViewBuilder
+    private var ownerSection: some View {
+        if showsOwnerPicker {
+            Section("Ownership") {
+                RecordOwnerPickerRow(
+                    label: fieldOverrides.labelFor(entity: "account", "owner_id", "Owner"),
+                    users: owners,
+                    currentOwnerId: account.ownerId,
+                    currentOwnerName: account.ownerName,
+                    selectedId: $ownerId
+                )
+            }
+        }
     }
 
     var body: some View {
@@ -71,11 +100,17 @@ struct AccountEditView: View {
                         }
                     }
                 }
+                ownerSection
                 Section("About") {
                     TextEditor(text: $description).frame(minHeight: 100)
                 }
             }
             .task { await fieldOverrides.load() }
+            .task {
+                if RecordOwnerRules.currentUserCanChange {
+                    owners = await CRMService.shared.listAssignableUsers()
+                }
+            }
             .navigationTitle("Edit Account")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -99,6 +134,11 @@ struct AccountEditView: View {
         body["annual_revenue"] = Double(revenue) ?? NSNull()
         body["employees"] = Int(employees) ?? NSNull()
         body["description"] = description.isEmpty ? NSNull() : description
+        // The owner rides the PATCH only when an allowed person actually picked someone else — never
+        // otherwise (the server also drops it for anyone who may not reassign).
+        if showsOwnerPicker {
+            RecordOwnerRules.applyOwner(original: account.ownerId, selected: ownerId, to: &body)
+        }
         do {
             let updated = try await CRMService.shared.patchAccount(id: account.id, body: body)
             onSaved(updated)
