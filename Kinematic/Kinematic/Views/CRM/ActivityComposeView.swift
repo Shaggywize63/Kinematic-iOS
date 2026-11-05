@@ -46,6 +46,17 @@ struct ActivityComposeView: View {
     /// (or without) the pickers' lists loading.
     var sparkNames: [String: String] = [:]
 
+    // MARK: Assignee on an existing activity (opt-in)
+    // Set through `editingAssignment(...)` by the host that edits an EXISTING activity. Creating keeps today's
+    // behaviour for everyone. Editing: only admins / managers (`RecordOwnerRules`) can change who it is
+    // assigned to — Spark & Ray's multi-assignee picker is then read-only (names only) for everyone else, and
+    // every other client gets a single "Assigned to" picker for admins / managers (read-only name otherwise).
+    var editsExisting = false
+    var existingAssignedToId: String? = nil
+    var existingAssignedToName: String? = nil
+    /// The user id picked in the single "Assigned to" picker; nil = unchanged. The host reads it on save.
+    var assigneeSelection: Binding<String?>? = nil
+
     @State private var type: String
     @State private var subject: String
     @State private var desc: String
@@ -82,6 +93,8 @@ struct ActivityComposeView: View {
     @State private var sparkSerialError: String? = nil
     @State private var sparkGeneralError: String? = nil
     @State private var submitting = false
+    /// People for the single "Assigned to" picker (non-Spark edit by an admin / manager).
+    @State private var assignableUsers: [AssignableUser] = []
 
     init(
         initialType: String = "meeting",
@@ -165,9 +178,83 @@ struct ActivityComposeView: View {
         return copy
     }
 
+    /// Opt this composer into "editing an existing activity": the assignee control is then changeable only for
+    /// admins / managers. `selection` receives the single picker's choice (nil = unchanged).
+    func editingAssignment(
+        assignedToId: String?,
+        assignedToName: String?,
+        selection: Binding<String?>
+    ) -> ActivityComposeView {
+        var copy = self
+        copy.editsExisting = true
+        copy.existingAssignedToId = assignedToId
+        copy.existingAssignedToName = assignedToName
+        copy.assigneeSelection = selection
+        return copy
+    }
+
     /// The Spark extras show only for the Spark & Ray client, and only when the host handles them.
     private var showsSparkExtras: Bool {
         onSparkSubmit != nil && SparkJourney.isActive
+    }
+
+    /// Creating: anyone, as before. Editing an existing activity: admins / managers only.
+    private var canChangeAssignees: Bool {
+        !editsExisting || RecordOwnerRules.currentUserCanChange
+    }
+
+    /// Save stays off until the Spark extras are seeded from the activity being edited — saving earlier would
+    /// look like "everyone removed" and clear the assignees.
+    private var saveDisabled: Bool {
+        if uploading || submitting { return true }
+        if showsSparkExtras && !sparkSeeded { return true }
+        return allowLeadPicker && selectedLead == nil && !hasDirectoryLink
+    }
+
+    private var singleAssigneeBinding: Binding<String> {
+        Binding(
+            get: { assigneeSelection?.wrappedValue ?? existingAssignedToId ?? "" },
+            set: { picked in
+                if let sel = assigneeSelection {
+                    sel.wrappedValue = RecordOwnerRules.selectionAfterPick(picked, original: existingAssignedToId)
+                }
+            }
+        )
+    }
+
+    private var existingAssigneeLabel: String {
+        let n = (existingAssignedToName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? "Current assignee" : n
+    }
+
+    /// Non-Spark edit: one "Assigned to" picker for an admin / manager, the plain name for everyone else.
+    @ViewBuilder
+    private var singleAssigneeSection: some View {
+        if editsExisting && !showsSparkExtras && assigneeSelection != nil {
+            let current = (existingAssignedToId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if RecordOwnerRules.currentUserCanChange && !assignableUsers.isEmpty {
+                Section("Assignment") {
+                    Picker("Assigned to", selection: singleAssigneeBinding) {
+                        if current.isEmpty {
+                            Text("Unassigned").tag("")
+                        } else if !assignableUsers.contains(where: { $0.id == current }) {
+                            Text(existingAssigneeLabel).tag(current)
+                        }
+                        ForEach(assignableUsers) { u in
+                            Text(u.displayName).tag(u.id)
+                        }
+                    }
+                }
+            } else if !RecordOwnerRules.currentUserCanChange && !current.isEmpty {
+                Section("Assignment") {
+                    HStack {
+                        Text("Assigned to")
+                        Spacer()
+                        Text(existingAssigneeLabel).foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
     }
 
     private func sparkPersonName(_ id: String) -> String {
@@ -228,9 +315,24 @@ struct ActivityComposeView: View {
         dismiss()
     }
 
+    /// "Assigned to" names, primary first, for the activity as it was loaded (never changes while editing).
+    private var sparkLoadedAssigneeSummary: String {
+        let ids = sparkInitial.cleaned.assigneeIds
+        if ids.isEmpty { return "Unassigned" }
+        var parts: [String] = []
+        for (i, id) in ids.enumerated() {
+            let n = sparkPersonName(id)
+            parts.append(i == 0 && ids.count > 1 ? "\(n) (Primary)" : n)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    /// The assignee rows of the Spark section. Changeable when creating and for admins / managers on an
+    /// edit (they can replace or remove people — removing all leaves it unassigned); a plain list of names
+    /// for everyone else on an edit.
     @ViewBuilder
-    private var sparkExtrasSection: some View {
-        Section {
+    private var sparkAssigneeRows: some View {
+        if canChangeAssignees {
             Button {
                 showAssigneePicker = true
             } label: {
@@ -247,6 +349,21 @@ struct ActivityComposeView: View {
                     .font(.footnote)
                     .foregroundColor(.secondary)
             }
+        } else {
+            HStack(alignment: .top) {
+                Text("Assigned to")
+                Spacer()
+                Text(sparkLoadedAssigneeSummary)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.trailing)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sparkExtrasSection: some View {
+        Section {
+            sparkAssigneeRows
 
             Button {
                 showProductPicker = true
@@ -381,6 +498,8 @@ struct ActivityComposeView: View {
                 if showsSparkExtras {
                     sparkExtrasSection
                 }
+                // Every other client, editing: one "Assigned to" picker for admins / managers.
+                singleAssigneeSection
                 // Admin-defined activity custom fields (Dealer lookup, Visit
                 // kind, First visit, …). Renders through the same section the
                 // lead form uses; it self-gates on loaded defs (renders
@@ -432,7 +551,7 @@ struct ActivityComposeView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(scheduled ? "Schedule" : "Log") {
                         Task { await submit() }
-                    }.disabled(uploading || submitting || (allowLeadPicker && selectedLead == nil && !hasDirectoryLink))
+                    }.disabled(saveDisabled)
                 }
             }
             .confirmationDialog("Attach image", isPresented: $showSourceSheet, titleVisibility: .visible) {
@@ -460,6 +579,11 @@ struct ActivityComposeView: View {
                 SparkProductPickerSheet(products: sparkProducts, selectedIds: $sparkExtras.productIds)
             }
             .task { await customFields.load(entity: "activity") }
+            .task {
+                // Editing, not Spark, admin / manager: who can be picked as the assignee.
+                guard editsExisting, !showsSparkExtras, RecordOwnerRules.currentUserCanChange else { return }
+                assignableUsers = await CRMService.shared.listAssignableUsers()
+            }
             .task {
                 // Spark extras: seed once (edit prefill), then load the people + catalogue pickers.
                 guard showsSparkExtras else { return }

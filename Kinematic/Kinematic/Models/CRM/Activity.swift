@@ -22,6 +22,11 @@ struct Activity: Codable, Identifiable, Hashable {
     let dealId: String?
     let ownerId: String?
     let ownerName: String?
+    /// The person the activity is assigned to (`crm_activities.assigned_to`) and their name (stamped by the
+    /// backend). Activities usually carry the person here with `owner_id` null; for Spark & Ray this is the
+    /// primary assignee.
+    let assignedTo: String?
+    let assignedToName: String?
     /// Workflow state stamped by the backend: open / in_progress / completed / cancelled.
     /// The CRM Activities list pill renders this directly (matches the web
     /// dashboard); when nil, the row falls back to "completed" if
@@ -104,6 +109,8 @@ struct Activity: Codable, Identifiable, Hashable {
         case dealId = "deal_id"
         case ownerId = "owner_id"
         case ownerName = "owner_name"
+        case assignedTo = "assigned_to"
+        case assignedToName = "assigned_to_name"
         case dueAt = "due_at"
         case completedAt = "completed_at"
         case direction

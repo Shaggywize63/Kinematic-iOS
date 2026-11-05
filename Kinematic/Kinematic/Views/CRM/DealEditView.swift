@@ -41,6 +41,10 @@ struct DealEditView: View {
     @StateObject private var customFields = CustomFieldsModel()
     /// Built-in field overrides (hide / relabel / require) for deal columns.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
+    /// Owner picker: the chosen user id (starts as the current owner) and who can be picked. Only admins /
+    /// managers may change an owner (`RecordOwnerRules`), so the list is only fetched for them.
+    @State private var ownerId: String
+    @State private var owners: [AssignableUser] = []
 
     init(deal: Deal, stages: [Stage], onSaved: @escaping (Deal) -> Void) {
         self.deal = deal
@@ -54,9 +58,34 @@ struct DealEditView: View {
         _editStages = State(initialValue: stages)
         _probability = State(initialValue: deal.probability.map { String(Int($0 * 100)) } ?? "")
         _closeDate = State(initialValue: deal.expectedCloseDate.map { String($0.prefix(10)) } ?? "")
+        _ownerId = State(initialValue: deal.ownerId ?? "")
         let cf = deal.customFields ?? [:]
         _nextActionType = State(initialValue: (cf["next_action_type"]?.raw?.any as? String) ?? "")
         _nextActionDate = State(initialValue: (cf["next_action_at"]?.raw?.any as? String).map { String($0.prefix(10)) } ?? "")
+    }
+
+    /// Built-in field contract: wait for the admin's overrides, honour a hidden `owner_id`. On top of that
+    /// only an admin / manager (not a data-scope "own" user) may change an owner at all.
+    private var showsOwnerPicker: Bool {
+        fieldOverrides.didLoad
+            && RecordOwnerRules.currentUserCanChange
+            && !fieldOverrides.isHidden(entity: "deal", "owner_id")
+            && !owners.isEmpty
+    }
+
+    @ViewBuilder
+    private var ownerSection: some View {
+        if showsOwnerPicker {
+            Section("Ownership") {
+                RecordOwnerPickerRow(
+                    label: fieldOverrides.labelFor(entity: "deal", "owner_id", "Owner"),
+                    users: owners,
+                    currentOwnerId: deal.ownerId,
+                    currentOwnerName: deal.ownerName,
+                    selectedId: $ownerId
+                )
+            }
+        }
     }
 
     private var currentPipeline: Pipeline? {
@@ -135,6 +164,8 @@ struct DealEditView: View {
                     }
                 }
 
+                ownerSection
+
                 // Admin-defined deal custom fields (Dealer lookup, …).
                 // Self-gates on loaded defs; renders nothing when none exist.
                 CustomFieldsSection(model: customFields)
@@ -179,6 +210,11 @@ struct DealEditView: View {
                 customFields.hydrate(from: deal.customFields)
             }
             .task { await fieldOverrides.load() }
+            .task {
+                if RecordOwnerRules.currentUserCanChange {
+                    owners = await CRMService.shared.listAssignableUsers()
+                }
+            }
             .task { await loadPipelines() }
             .alert("Update failed", isPresented: .init(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -234,6 +270,11 @@ struct DealEditView: View {
         var mergedCf = customFields.jsonValues
         for (k, v) in followUp { mergedCf[k] = v }
         body["custom_fields"] = mergedCf
+        // The owner rides the PATCH only when an allowed person actually picked someone else — never
+        // otherwise (the server also drops it for anyone who may not reassign).
+        if showsOwnerPicker {
+            RecordOwnerRules.applyOwner(original: deal.ownerId, selected: ownerId, to: &body)
+        }
         do {
             let updated = try await CRMService.shared.patchDeal(id: deal.id, body: body)
             onSaved(updated)
