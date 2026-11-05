@@ -49,6 +49,18 @@ struct DealCreateView: View {
 
     let onSubmit: ([String: Any]) async -> Void
 
+    /// Explicit init: the private `onSparkSubmit` stored property would otherwise make the synthesized
+    /// memberwise initializer private, breaking every call site.
+    init(
+        prefillAccount: CRMAccount? = nil,
+        prefillLeadId: String? = nil,
+        onSubmit: @escaping ([String: Any]) async -> Void
+    ) {
+        self.prefillAccount = prefillAccount
+        self.prefillLeadId = prefillLeadId
+        self.onSubmit = onSubmit
+    }
+
     private var isSpark: Bool { SparkJourney.isActive }
 
     /// Opt in to the throwing save path (Spark & Ray only; ignored for other clients).
