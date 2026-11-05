@@ -78,8 +78,7 @@ final class ActivitiesViewModel: ObservableObject {
         leadId: String?,
         imageUrl: String? = nil,
         completedAt: Date? = nil,
-        customFields: [String: Any] = [:],
-        assignment: [String: Any] = [:]
+        customFields: [String: Any] = [:]
     ) async {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return }
@@ -158,7 +157,8 @@ final class ActivitiesViewModel: ObservableObject {
         description: String,
         imageUrl: String? = nil,
         completedAt: Date? = nil,
-        customFields: [String: Any] = [:]
+        customFields: [String: Any] = [:],
+        assignment: [String: Any] = [:]
     ) async {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return }
