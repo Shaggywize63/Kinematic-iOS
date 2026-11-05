@@ -57,9 +57,14 @@ struct ActivityComposeView: View {
     /// The user id picked in the single "Assigned to" picker; nil = unchanged. The host reads it on save.
     var assigneeSelection: Binding<String?>? = nil
 
+    /// The photo already on the activity being edited (shown, and kept unless a new one replaces it).
+    var existingImageUrl: String? = nil
+
     @State private var type: String
     @State private var subject: String
     @State private var desc: String
+    /// The org's activity types (built-ins + custom ones from Settings). Falls back to the built-ins until loaded.
+    @ObservedObject private var typeStore = ActivityTypesStore.shared
     /// Picked lead (only when allowLeadPicker). Its phone shows in the row.
     @State private var selectedLead: Lead? = nil
     @State private var showLeadPicker = false
@@ -75,6 +80,8 @@ struct ActivityComposeView: View {
     @State private var uploading: Bool = false
     @State private var imageUrl: String? = nil
     @State private var showSourceSheet: Bool = false
+    /// The last photo upload failed while online — Save stays off until it is retried or the photo removed.
+    @State private var uploadFailed: Bool = false
 
     /// Admin-defined custom fields for activities (e.g. a Dealer lookup,
     /// Visit kind select, First visit toggle), scoped to the user's org
@@ -149,10 +156,7 @@ struct ActivityComposeView: View {
     /// ("meeting" → "Meeting"); "site_visit" is special-cased so it doesn't
     /// render as "Site_visit".
     private func labelForType(_ t: String) -> String {
-        switch t {
-        case "site_visit": return "Site Visit"
-        default: return t.capitalized
-        }
+        typeStore.name(for: t)
     }
 
     /// The subject we persist. A caller-supplied subject wins (the call button
@@ -193,6 +197,13 @@ struct ActivityComposeView: View {
         return copy
     }
 
+    /// Show the photo already attached to the activity being edited.
+    func withExistingPhoto(_ url: String?) -> ActivityComposeView {
+        var copy = self
+        copy.existingImageUrl = url
+        return copy
+    }
+
     /// The Spark extras show only for the Spark & Ray client, and only when the host handles them.
     private var showsSparkExtras: Bool {
         onSparkSubmit != nil && SparkJourney.isActive
@@ -207,6 +218,7 @@ struct ActivityComposeView: View {
     /// look like "everyone removed" and clear the assignees.
     private var saveDisabled: Bool {
         if uploading || submitting { return true }
+        if !ActivityPhotoRules.canSave(hasPickedPhoto: pickedImage != nil, imageUrl: imageUrl, uploading: uploading) { return true }
         if showsSparkExtras && !sparkSeeded { return true }
         return allowLeadPicker && selectedLead == nil && !hasDirectoryLink
     }
@@ -407,6 +419,29 @@ struct ActivityComposeView: View {
         }
     }
 
+    /// The types on offer: loaded from /crm/activity-types (built-ins + custom, e.g. "Industry Visit"), with the
+    /// built-in set as the fallback. Scheduling drops "note" (it never reminds).
+    private var typeChoices: [ActivityTypeDef] {
+        typeStore.composerTypes(scheduled: scheduled, ensuring: type)
+    }
+
+    /// The type picker: segmented for the classic handful, a menu once custom types make it longer.
+    @ViewBuilder
+    private var typePicker: some View {
+        let choices = typeChoices
+        if choices.count <= 5 {
+            Picker("Type", selection: $type) {
+                ForEach(choices) { t in Text(t.name).tag(t.slug) }
+            }
+            .pickerStyle(.segmented)
+        } else {
+            Picker("Type", selection: $type) {
+                ForEach(choices) { t in Text(t.name).tag(t.slug) }
+            }
+            .pickerStyle(.menu)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -420,15 +455,7 @@ struct ActivityComposeView: View {
                             Image(systemName: "checkmark").foregroundColor(.secondary)
                         }
                     } else {
-                        Picker("Type", selection: $type) {
-                            // "Meeting" leads — matches field-force usage. Order
-                            // mirrors the web dashboard's activity type picker.
-                            // When scheduling, "note" is dropped — a note never
-                            // reminds, so it isn't a schedulable shape.
-                            ForEach(scheduled ? ["task", "meeting", "call", "email"] : ["meeting", "call", "email", "note", "task"], id: \.self) {
-                                Text($0.capitalized).tag($0)
-                            }
-                        }.pickerStyle(.segmented)
+                        typePicker
                     }
                 }
                 if allowLeadPicker {
@@ -506,44 +533,7 @@ struct ActivityComposeView: View {
                 // nothing until /crm/custom-fields resolves), so there's no
                 // flash of fields the admin never configured.
                 CustomFieldsSection(model: customFields)
-                Section("Attachment") {
-                    if let img = pickedImage {
-                        Image(uiImage: img)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(height: 160)
-                            .frame(maxWidth: .infinity)
-                            .clipped()
-                            .cornerRadius(10)
-                            .overlay(alignment: .topTrailing) {
-                                Button {
-                                    pickedImage = nil
-                                    imageUrl = nil
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 22))
-                                        .foregroundColor(.white)
-                                        .padding(6)
-                                        .background(Circle().fill(Color.black.opacity(0.55)))
-                                }
-                                .padding(8)
-                            }
-                            .overlay {
-                                if uploading {
-                                    ZStack {
-                                        Color.black.opacity(0.35).cornerRadius(10)
-                                        ProgressView().tint(.white)
-                                    }
-                                }
-                            }
-                    } else {
-                        Button {
-                            showSourceSheet = true
-                        } label: {
-                            Label("Attach image", systemImage: "photo.badge.plus")
-                        }
-                    }
-                }
+                attachmentSection
             }
             .navigationTitle(scheduled ? "Schedule Activity" : "Log Activity")
             .toolbar {
@@ -579,6 +569,7 @@ struct ActivityComposeView: View {
                 SparkProductPickerSheet(products: sparkProducts, selectedIds: $sparkExtras.productIds)
             }
             .task { await customFields.load(entity: "activity") }
+            .task { await typeStore.load() }
             .task {
                 // Editing, not Spark, admin / manager: who can be picked as the assignee.
                 guard editsExisting, !showsSparkExtras, RecordOwnerRules.currentUserCanChange else { return }
@@ -602,18 +593,99 @@ struct ActivityComposeView: View {
         }
     }
 
+    /// The photo attachment section (camera / library, thumbnail, upload failure + retry). Kept out of `body`
+    /// so its modifier chain stays within the type-checker budget.
+    @ViewBuilder
+    private var attachmentSection: some View {
+        Section("Attachment") {
+            if let img = pickedImage {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 160)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .cornerRadius(10)
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            pickedImage = nil
+                            imageUrl = nil
+                            uploadFailed = false
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.white)
+                                .padding(6)
+                                .background(Circle().fill(Color.black.opacity(0.55)))
+                        }
+                        .padding(8)
+                    }
+                    .overlay {
+                        if uploading {
+                            ZStack {
+                                Color.black.opacity(0.35).cornerRadius(10)
+                                ProgressView().tint(.white)
+                            }
+                        }
+                    }
+            } else {
+                existingPhotoRow
+                Button {
+                    showSourceSheet = true
+                } label: {
+                    Label((existingImageUrl ?? "").isEmpty ? "Attach image" : "Replace image", systemImage: "photo.badge.plus")
+                }
+            }
+            if uploadFailed, let img = pickedImage {
+                Text("Couldn't upload the photo. Check your connection and retry, or remove it.")
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                Button("Retry upload") { Task { await upload(image: img) } }
+            }
+        }
+    }
+
+    /// The photo already on the activity being edited, as a thumbnail (private-bucket URLs are signed).
+    @ViewBuilder
+    private var existingPhotoRow: some View {
+        if let url = existingImageUrl, !url.isEmpty {
+            SignedAsyncImage(urlString: url) { phase in
+                if let image = phase.image {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 120)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .cornerRadius(10)
+                } else {
+                    Label("Current photo", systemImage: "photo").foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
     private func upload(image: UIImage) async {
         uploading = true
+        uploadFailed = false
+        imageUrl = nil
         defer { uploading = false }
-        // Try the live upload first. On success → public URL stamped
-        // on the activity. On failure (network down, transient 5xx →
-        // returns nil today) fall back to OfflineImageCache so the
-        // rep can still log the activity in the field — the queue
-        // re-uploads + swaps the URL when MutationSyncWorker drains.
-        if let url = await KinematicRepository.shared.uploadImage(image: image, type: "activity_form") {
+        // Live upload first -> the public URL goes on the activity as `image_url`. With no network the picture is
+        // kept on the device and the offline queue re-uploads + swaps the URL when MutationSyncWorker drains. An
+        // upload that fails while ONLINE is surfaced (and blocks Save until retried or removed) instead of saving
+        // the activity without — or with a placeholder for — the photo the rep attached.
+        let uploaded = await KinematicRepository.shared.uploadImage(image: image, type: "activity_form")
+        switch ActivityPhotoRules.outcome(uploadedUrl: uploaded, online: AttendanceCache.shared.isOnline) {
+        case .uploaded(let url):
             imageUrl = url
-        } else if let data = image.jpegData(compressionQuality: 0.85) {
-            imageUrl = OfflineImageCache.save(data, ext: "jpg")
+        case .keepOnDevice:
+            if let data = image.jpegData(compressionQuality: 0.85) {
+                imageUrl = OfflineImageCache.save(data, ext: "jpg")
+            } else {
+                uploadFailed = true
+            }
+        case .failed:
+            uploadFailed = true
         }
     }
 }

@@ -31,6 +31,12 @@ struct LeadsListView: View {
     /// the hardcoded defaults below when no custom set is configured.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
+    /// Spark & Ray: rows carry a coloured industry badge (unless the admin hid Industry). Evaluated once per
+    /// render of the list, not per row.
+    private var showsIndustryBadge: Bool {
+        SparkJourney.isActive && fieldOverrides.didLoad && !fieldOverrides.isHidden("industry", isB2C: false)
+    }
+
     /// "all" sentinel prepended to the resolved statuses. Chips send
     /// `.value` to `vm.statusFilter` and display `.label`.
     private var statusOptions: [LeadStatusOption] {
@@ -241,7 +247,7 @@ struct LeadsListView: View {
                     } else {
                         ForEach(vm.filtered) { lead in
                             NavigationLink(destination: LeadDetailView(leadId: lead.id)) {
-                                LeadRow(lead: lead)
+                                LeadRow(lead: lead, showIndustry: showsIndustryBadge)
                             }
                             .buttonStyle(.plain)
                             .spotlightAnchor(SpotlightKeys.leadsRow, if: lead.id == vm.filtered.first?.id)

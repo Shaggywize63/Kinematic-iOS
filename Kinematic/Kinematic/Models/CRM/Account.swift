@@ -18,6 +18,8 @@ struct CRMAccount: Codable, Identifiable, Hashable {
     let territoryId: String?
     let tags: [String]?
     let description: String?
+    /// Spark & Ray: the account's required "Outcome" (nil for every other tenant / older rows).
+    let outcome: String?
     let createdAt: String?
     let updatedAt: String?
 
@@ -35,6 +37,7 @@ struct CRMAccount: Codable, Identifiable, Hashable {
         case territoryId = "territory_id"
         case tags
         case description
+        case outcome
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

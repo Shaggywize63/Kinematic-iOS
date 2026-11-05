@@ -30,7 +30,10 @@ struct DealCreateView: View {
     // form is exactly as it was.
     @State private var selectedAccount: CRMAccount? = nil
     @State private var showAccountPicker = false
-    @State private var quotationNo = ""
+    /// Quotation number + Pricing + Product trial + Approvals (Spark only), shown in the admin's order.
+    @State private var sparkDraft = SparkDealSectionsDraft()
+    @State private var sparkUsers: [AssignableUser] = []
+    @StateObject private var dealSections = DealSectionsModel()
     @State private var lines: [DealLineDraft] = [DealLineDraft()]
     @State private var catalogue: [Product] = []
     @State private var pickingLineId: UUID? = nil
@@ -100,6 +103,7 @@ struct DealCreateView: View {
 
                 if isSpark {
                     sparkProductsSection
+                    sparkDealSectionsForm
                 }
 
                 // Spark picks the pipeline + stage on the server.
@@ -168,7 +172,7 @@ struct DealCreateView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task { await save() }
-                    }.disabled(submitting || (!fieldOverrides.isHidden(entity: "deal", "name") && name.isEmpty))
+                    }.disabled(submitting || sparkSectionError != nil || (!fieldOverrides.isHidden(entity: "deal", "name") && name.isEmpty))
                 }
             }
             .sheet(isPresented: $showAccountPicker) {
@@ -199,6 +203,7 @@ struct DealCreateView: View {
             .task { if !isSpark { await loadPipelines() } }
             .task { await customFields.load(entity: "deal") }
             .task { await fieldOverrides.load() }
+            .task { await loadSparkSections() }
             .task { await productLines.load() }
             .task {
                 if isSpark {
@@ -211,8 +216,8 @@ struct DealCreateView: View {
 
     // MARK: Spark & Ray rows
 
-    /// Customer (account) picker + quotation number. Both are built-in deal columns, so they are
-    /// gated through the field overrides (and held back until the overrides have loaded).
+    /// Customer (account) picker. A built-in deal column, so it is gated through the field overrides
+    /// (and held back until the overrides have loaded). The quotation number lives in the Quotation section.
     @ViewBuilder
     private var sparkCustomerRows: some View {
         if fieldOverrides.didLoad {
@@ -236,11 +241,37 @@ struct DealCreateView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            if !fieldOverrides.isHidden(entity: "deal", "quotation_no") {
-                TextField(fieldOverrides.labelFor(entity: "deal", "quotation_no", "Quotation number"), text: $quotationNo)
-                    .autocorrectionDisabled()
-            }
         }
+    }
+
+    /// Quotation number, Pricing, Product trial and Approvals — in the order / with the labels the admin
+    /// configured (`config.deal_sections`); a disabled section is neither shown nor sent.
+    private var sparkDealSectionsForm: some View {
+        SparkDealSectionsForm(
+            model: dealSections,
+            fieldOverrides: fieldOverrides,
+            draft: $sparkDraft,
+            users: sparkUsers
+        )
+    }
+
+    /// Spark & Ray: the section config (enabled / label / order) and the org's users for the people pickers.
+    private func loadSparkSections() async {
+        guard isSpark else { return }
+        async let people = CRMService.shared.listAssignableUsers()
+        await dealSections.load()
+        sparkUsers = await people
+    }
+
+    /// The keys the admin hid on the deal form (not shown, not sent).
+    private var sparkHiddenKeys: Set<String> {
+        SparkDealSectionsDraft.hiddenKeys { fieldOverrides.isHidden(entity: "deal", $0) }
+    }
+
+    /// A problem in the Spark sections that blocks Save (a bad discount, trial end before start).
+    private var sparkSectionError: String? {
+        guard isSpark, dealSections.didLoad else { return nil }
+        return sparkDraft.validationError(config: dealSections.config, hidden: sparkHiddenKeys)
     }
 
     /// Product lines editor: add / remove rows, product picker prefills name + price, qty and unit
@@ -319,6 +350,10 @@ struct DealCreateView: View {
                 submitError = problem
                 return
             }
+            if let problem = sparkSectionError {
+                submitError = problem
+                return
+            }
             submitError = nil
         }
         let body = buildBody()
@@ -381,9 +416,11 @@ struct DealCreateView: View {
                 to: &body,
                 accountId: selectedAccount?.id,
                 leadId: prefillLeadId,
-                quotationNo: quotationNo,
+                quotationNo: "",
                 lines: lines
             )
+            // Quotation number, pricing, trial and people — enabled + visible sections only.
+            sparkDraft.apply(to: &body, config: dealSections.config, hidden: sparkHiddenKeys)
         }
         return body
     }

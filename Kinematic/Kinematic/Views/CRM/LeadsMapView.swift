@@ -10,7 +10,14 @@ struct DashboardLeadsMapCard: View {
         let id: String
         let name: String
         let coord: CLLocationCoordinate2D
+        /// The lead's industry (the geo payload carries it). Spark & Ray colours the pin by it.
+        let industry: String?
     }
+
+    /// Spark & Ray only: pins are coloured by industry and an industry filter is offered.
+    private var isSpark: Bool { SparkJourney.isActive }
+    /// Selected industry filter: nil = all, `SparkIndustries.noIndustryFilter` = leads without one.
+    @State private var industryFilter: String? = nil
 
     @State private var pins: [LeadPin] = []
     @State private var loading = true
@@ -29,6 +36,7 @@ struct DashboardLeadsMapCard: View {
                 if !pins.isEmpty {
                     Text("\(pins.count) located").font(.caption).foregroundColor(.secondary)
                 }
+                if isSpark { industryFilterMenu }
             }
             if loading {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 240)
@@ -48,7 +56,7 @@ struct DashboardLeadsMapCard: View {
                             Button { selectedLeadId = p.id } label: {
                                 Image(systemName: "mappin.circle.fill")
                                     .font(.title2)
-                                    .foregroundStyle(.white, Brand.red)
+                                    .foregroundStyle(.white, pinColor(p))
                             }
                             .buttonStyle(.plain)
                         }
@@ -64,17 +72,47 @@ struct DashboardLeadsMapCard: View {
         .navigationDestination(item: $selectedLeadId) { id in
             LeadDetailView(leadId: id)
         }
-        .task { await load() }
+        .task(id: industryFilter) { await load() }
+    }
+
+    /// Pin colour: the industry colour for Spark & Ray, brand red for everyone else.
+    private func pinColor(_ p: LeadPin) -> Color {
+        isSpark ? Color.sparkIndustry(p.industry) : Brand.red
+    }
+
+    /// Menu to narrow the map to one industry (with a colour dot per option).
+    private var industryFilterMenu: some View {
+        Menu {
+            Button { industryFilter = nil } label: {
+                Label("All industries", systemImage: industryFilter == nil ? "checkmark" : "circle")
+            }
+            ForEach(SparkIndustries.options, id: \.self) { name in
+                Button { industryFilter = name } label: {
+                    Label(name, systemImage: industryFilter == name ? "checkmark.circle.fill" : "circle.fill")
+                }
+            }
+            Button { industryFilter = SparkIndustries.noIndustryFilter } label: {
+                Label("No industry", systemImage: industryFilter == SparkIndustries.noIndustryFilter ? "checkmark" : "circle")
+            }
+        } label: {
+            Label(industryFilterTitle, systemImage: "line.3.horizontal.decrease.circle")
+                .font(.caption)
+        }
+    }
+
+    private var industryFilterTitle: String {
+        guard let f = industryFilter else { return "Industry" }
+        return f == SparkIndustries.noIndustryFilter ? "No industry" : f
     }
 
     private func load() async {
         loading = true
         defer { loading = false }
-        let leads = (try? await CRMService.shared.listLeadsGeo(city: CRMLocationStore.shared.city, state: CRMLocationStore.shared.state)) ?? []
+        let leads = (try? await CRMService.shared.listLeadsGeo(city: CRMLocationStore.shared.city, state: CRMLocationStore.shared.state, industry: isSpark ? industryFilter : nil)) ?? []
         let built: [LeadPin] = leads.compactMap { lead in
             guard let lat = lead.latitude, let lon = lead.longitude,
                   !(lat == 0 && lon == 0) else { return nil }
-            return LeadPin(id: lead.id, name: lead.displayName, coord: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+            return LeadPin(id: lead.id, name: lead.displayName, coord: CLLocationCoordinate2D(latitude: lat, longitude: lon), industry: lead.industry)
         }
         await MainActor.run {
             pins = built

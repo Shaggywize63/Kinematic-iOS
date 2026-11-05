@@ -307,6 +307,8 @@ struct NearbyLeadsView: View {
         // Show the rep + the top-10 visible leads. Non-interactive — the
         // user taps a row to navigate; the map is purely orientational.
         let coords = Array(vm.visibleLeads.prefix(10))
+        // Spark & Ray: pins take the lead's industry colour (everyone else keeps brand red).
+        let colourByIndustry = SparkJourney.isActive
         return ZStack(alignment: .topTrailing) {
             Map(position: $mapCameraPos) {
                 if let origin = vm.origin {
@@ -323,7 +325,7 @@ struct NearbyLeadsView: View {
                         Annotation(row.lead.displayName, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)) {
                             Image(systemName: "mappin.circle.fill")
                                 .font(.system(size: 22))
-                                .foregroundStyle(Brand.red, .white)
+                                .foregroundStyle(colourByIndustry ? Color.sparkIndustry(row.lead.industry) : Brand.red, .white)
                                 .shadow(radius: 1)
                         }
                     }

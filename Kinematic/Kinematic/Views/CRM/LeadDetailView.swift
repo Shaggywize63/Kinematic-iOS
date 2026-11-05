@@ -387,6 +387,10 @@ struct LeadDetailView: View {
             if lead.isB2c != true, let c = lead.company, !c.isEmpty {
                 Text(c).foregroundColor(.secondary)
             }
+            // Spark & Ray: the industry as a coloured badge (gated like every built-in field).
+            if lead.isB2c != true, SparkJourney.isActive, fieldOverrides.didLoad, !fieldOverrides.isHidden("industry", isB2C: false) {
+                SparkIndustryBadge(industry: lead.industry)
+            }
             HStack(spacing: 12) {
                 if let e = lead.email, !e.isEmpty {
                     Label(e, systemImage: "envelope.fill")

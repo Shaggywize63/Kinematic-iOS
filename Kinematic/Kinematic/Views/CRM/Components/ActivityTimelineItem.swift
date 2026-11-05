@@ -19,6 +19,8 @@ struct ActivityTimelineItem: View {
     var onSetComplete: ((Activity, Bool) async -> Void)? = nil
     @Environment(\.openURL) private var openURL
 
+    /// The org's activity types, so a custom type ("Industry Visit") shows its own name, emoji and colour.
+    @ObservedObject private var typeStore = ActivityTypesStore.shared
     @State private var shareBusy = false
     @State private var shareItem: ShareImageItem?
 
@@ -30,9 +32,7 @@ struct ActivityTimelineItem: View {
                     Circle()
                         .fill(typeAccent.opacity(0.16))
                         .frame(width: 38, height: 38)
-                    Image(systemName: typeIcon)
-                        .foregroundColor(typeAccent)
-                        .font(.system(size: 15, weight: .bold))
+                    typeGlyph
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(activity.subject ?? activity.type?.capitalized ?? "Activity")
@@ -40,7 +40,7 @@ struct ActivityTimelineItem: View {
                         .foregroundColor(Color(uiColor: .label))
                         .lineLimit(2)
                     HStack(spacing: 6) {
-                        TypeChip(label: (activity.type ?? "activity").replacingOccurrences(of: "_", with: " ").capitalized, tint: typeAccent)
+                        TypeChip(label: typeStore.name(for: activity.type), tint: typeAccent)
                         StatusPill(status: activity.effectiveStatus)
                     }
                 }
@@ -67,7 +67,9 @@ struct ActivityTimelineItem: View {
             }
 
             // ── Body: description + optional photo ──────────────────────
-            if let d = activity.description, !d.isEmpty {
+            // The persisted note lives in `body` (the backend folds a POSTed description into it), so read the
+            // remarks, not just `description`, or logged notes never showed on the row.
+            if let d = activity.remarksText {
                 Text(d)
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
@@ -189,6 +191,7 @@ struct ActivityTimelineItem: View {
         .sheet(item: $shareItem) { item in
             LeadShareActivitySheet(items: [item.image])
         }
+        .task { await typeStore.load() }
     }
 
     // MARK: Share
@@ -242,21 +245,28 @@ struct ActivityTimelineItem: View {
         return f.string(from: date)
     }
 
-    private var typeIcon: String {
-        switch (activity.type ?? "").lowercased() {
-        case "call":         return "phone.fill"
-        case "email":        return "envelope.fill"
-        case "meeting":      return "person.2.fill"
-        case "note":         return "note.text"
-        case "task":         return "checkmark.square.fill"
-        case "whatsapp":     return "bubble.left.and.bubble.right.fill"
-        case "site_visit", "visit": return "mappin.and.ellipse"
-        default:             return "circle.fill"
+    /// The type's glyph: an SF Symbol for the known types, the admin's emoji for a custom type, else a tag.
+    @ViewBuilder
+    private var typeGlyph: some View {
+        if let emoji = ActivityTypes.emoji(for: typeStore.def(for: activity.type)) {
+            Text(emoji).font(.system(size: 16))
+        } else {
+            Image(systemName: typeIcon)
+                .foregroundColor(typeAccent)
+                .font(.system(size: 15, weight: .bold))
         }
     }
 
-    /// Per-type accent so the badge / type chip read at a glance.
+    private var typeIcon: String {
+        ActivityTypes.symbol(for: activity.type)
+    }
+
+    /// Per-type accent so the badge / type chip read at a glance: the colour an admin set for the type, else the
+    /// built-in palette.
     private var typeAccent: Color {
+        if let c = ActivityTypes.rgb(hex: typeStore.def(for: activity.type)?.color) {
+            return Color(red: c.r, green: c.g, blue: c.b)
+        }
         switch (activity.type ?? "").lowercased() {
         case "call":     return Color(red: 0.20, green: 0.55, blue: 0.95)
         case "email":    return Color(red: 0.55, green: 0.30, blue: 0.95)
@@ -265,7 +275,11 @@ struct ActivityTimelineItem: View {
         case "task":     return Brand.red
         case "whatsapp": return Color(red: 0.145, green: 0.827, blue: 0.4)
         case "site_visit", "visit": return Color(red: 0.16, green: 0.74, blue: 0.50)
-        default:         return Color(red: 0.55, green: 0.55, blue: 0.55)
+        default:
+            // A custom visit-style type reads as a visit; anything else stays neutral.
+            return (activity.type ?? "").lowercased().contains("visit")
+                ? Color(red: 0.16, green: 0.74, blue: 0.50)
+                : Color(red: 0.55, green: 0.55, blue: 0.55)
         }
     }
 }

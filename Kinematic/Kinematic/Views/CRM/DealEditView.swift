@@ -46,6 +46,13 @@ struct DealEditView: View {
     @State private var ownerId: String
     @State private var owners: [AssignableUser] = []
 
+    // Spark & Ray deal sections (Pricing / Product trial / Approvals). `originalSpark` is what the deal
+    // held when the form opened, so only what changed rides the PATCH.
+    private let originalSpark: SparkDealSectionsDraft
+    @State private var sparkDraft: SparkDealSectionsDraft
+    @State private var sparkUsers: [AssignableUser] = []
+    @StateObject private var dealSections = DealSectionsModel()
+
     init(deal: Deal, stages: [Stage], onSaved: @escaping (Deal) -> Void) {
         self.deal = deal
         self.stages = stages
@@ -59,6 +66,9 @@ struct DealEditView: View {
         _probability = State(initialValue: deal.probability.map { String(Int($0 * 100)) } ?? "")
         _closeDate = State(initialValue: deal.expectedCloseDate.map { String($0.prefix(10)) } ?? "")
         _ownerId = State(initialValue: deal.ownerId ?? "")
+        let sparkSeed = SparkDealSectionsDraft(deal: deal)
+        self.originalSpark = sparkSeed
+        _sparkDraft = State(initialValue: sparkSeed)
         let cf = deal.customFields ?? [:]
         _nextActionType = State(initialValue: (cf["next_action_type"]?.raw?.any as? String) ?? "")
         _nextActionDate = State(initialValue: (cf["next_action_at"]?.raw?.any as? String).map { String($0.prefix(10)) } ?? "")
@@ -86,6 +96,42 @@ struct DealEditView: View {
                 )
             }
         }
+    }
+
+    private var isSpark: Bool { SparkJourney.isActive }
+
+    /// Pricing / Product trial / Approvals in the admin's order and labels (Spark only; the quotation number
+    /// is set when the deal is created).
+    @ViewBuilder
+    private var sparkSectionsForm: some View {
+        if isSpark {
+            SparkDealSectionsForm(
+                model: dealSections,
+                fieldOverrides: fieldOverrides,
+                draft: $sparkDraft,
+                users: sparkUsers,
+                knownNames: SparkDealSectionsDraft.knownNames(deal: deal),
+                includeQuotation: false
+            )
+        }
+    }
+
+    /// Spark & Ray: the section config (enabled / label / order) and the org's users for the people pickers.
+    private func loadSparkSections() async {
+        guard isSpark else { return }
+        async let people = CRMService.shared.listAssignableUsers()
+        await dealSections.load()
+        sparkUsers = await people
+    }
+
+    private var sparkHiddenKeys: Set<String> {
+        SparkDealSectionsDraft.hiddenKeys { fieldOverrides.isHidden(entity: "deal", $0) }
+    }
+
+    /// A problem in the Spark sections that blocks Save (a bad discount, trial end before start).
+    private var sparkSectionError: String? {
+        guard isSpark, dealSections.didLoad else { return nil }
+        return sparkDraft.validationError(config: dealSections.config, hidden: sparkHiddenKeys)
     }
 
     private var currentPipeline: Pipeline? {
@@ -166,6 +212,8 @@ struct DealEditView: View {
 
                 ownerSection
 
+                sparkSectionsForm
+
                 // Admin-defined deal custom fields (Dealer lookup, …).
                 // Self-gates on loaded defs; renders nothing when none exist.
                 CustomFieldsSection(model: customFields)
@@ -202,7 +250,7 @@ struct DealEditView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { Task { await save() } } label: { if saving { ProgressView() } else { Text("Save") } }
-                        .disabled(saving || (!fieldOverrides.isHidden(entity: "deal", "name") && name.trimmingCharacters(in: .whitespaces).isEmpty))
+                        .disabled(saving || sparkSectionError != nil || (!fieldOverrides.isHidden(entity: "deal", "name") && name.trimmingCharacters(in: .whitespaces).isEmpty))
                 }
             }
             .task {
@@ -216,6 +264,7 @@ struct DealEditView: View {
                 }
             }
             .task { await loadPipelines() }
+            .task { await loadSparkSections() }
             .alert("Update failed", isPresented: .init(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorMessage ?? "") }
@@ -274,6 +323,15 @@ struct DealEditView: View {
         // otherwise (the server also drops it for anyone who may not reassign).
         if showsOwnerPicker {
             RecordOwnerRules.applyOwner(original: deal.ownerId, selected: ownerId, to: &body)
+        }
+        // Spark & Ray: pricing / trial / people — only enabled, visible sections, and only what changed.
+        if isSpark {
+            if let problem = sparkSectionError {
+                errorMessage = problem
+                return
+            }
+            sparkDraft.apply(to: &body, config: dealSections.config, hidden: sparkHiddenKeys,
+                             previous: originalSpark, includeQuotation: false)
         }
         do {
             let updated = try await CRMService.shared.patchDeal(id: deal.id, body: body)

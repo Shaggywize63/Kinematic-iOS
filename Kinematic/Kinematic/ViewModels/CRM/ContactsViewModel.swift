@@ -56,6 +56,18 @@ final class ContactsViewModel: ObservableObject {
         }
     }
 
+    /// Spark & Ray: put `contact` on `account` (PATCH /crm/contacts/:id { account_id }) and swap the row in
+    /// the list. Returns the server's message on failure, nil on success.
+    func setAccount(contact: Contact, account: CRMAccount) async -> String? {
+        do {
+            let updated = try await api.patchContact(id: contact.id, body: ["account_id": account.id])
+            if let i = contacts.firstIndex(where: { $0.id == contact.id }) { contacts[i] = updated }
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     func create(body: [String: Any]) async {
         do {
             let c = try await api.createContact(body)

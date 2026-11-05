@@ -89,11 +89,18 @@ struct LeadCreateView: View {
     @State private var selectedAccountId: String? = nil
     @State private var leadContacts: [LeadContactDraft] = [LeadContactDraft()]
     private var isSparkClient: Bool {
-        (CRMClientScope.selectedClientId() ?? "").lowercased() == LeadB2B.sparkClientId
+        SparkJourney.isActive
     }
     /// A Spark & Ray B2B lead is company-centric: person fields dropped, name
     /// taken from the Company. Only for a B2B lead (not B2C) on the Spark client.
     private var companyLead: Bool { isSparkClient && !isB2C }
+    /// Spark & Ray: coordinates of the Google address the rep PICKED. While set, the pin comes from it and the
+    /// device GPS fix never overwrites it (the rep is not at the customer's plant when filling the form).
+    @State private var pickedAddressCoordinate: LeadCoordinate? = nil
+    /// The B2B address block: on when the client enabled it, and always for Spark & Ray.
+    private var b2bAddressEnabled: Bool {
+        LeadAddressCoordinates.b2bAddressShown(addressOnB2b: fieldOverrides.leadForm.addressOnB2b, isSpark: isSparkClient)
+    }
 
     /// Tata Tiscon affordance — checkbox in the create form that asks
     /// the backend to echo back an `auto_log_site_visit_prefill` block
@@ -441,10 +448,12 @@ struct LeadCreateView: View {
                                 Picker(industryLabel, selection: $industry) {
                                     Text("— Select —").tag("")
                                     ForEach(SparkIndustries.pickerOptions(including: industry), id: \.self) { opt in
-                                        Text(opt).tag(opt)
+                                        sparkIndustryOption(opt).tag(opt)
                                     }
                                 }
                             }
+                            // Sub-industry (the `industry_category` custom field) right after Industry.
+                            sparkSubIndustryRow
                         } else if !fieldOverrides.isHidden("industry", isB2C: false) {
                             labelledField(
                                 label: fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false),
@@ -461,7 +470,7 @@ struct LeadCreateView: View {
                     }
                     // A Dealer's Location (address search + fields) — only for clients that turned it on
                     // (`lead_form.address_on_b2b`). Deferred until the settings have loaded.
-                    if fieldOverrides.didLoad && fieldOverrides.leadForm.showsAddress(isB2C: false) {
+                    if fieldOverrides.didLoad && b2bAddressEnabled {
                         addressSection
                     }
                 } else {
@@ -566,7 +575,7 @@ struct LeadCreateView: View {
                 }
 
                 // Admin-defined custom fields for this user's hierarchy role.
-                CustomFieldsSection(model: customFields)
+                CustomFieldsSection(model: customFields, excludingKeys: genericCustomFieldExclusions)
 
                 // Schedule visit — only for the lead types the client enabled it for (e.g. a Dealer). The visit
                 // is created with the lead and the owner is reminded ~30 minutes before.
@@ -603,7 +612,7 @@ struct LeadCreateView: View {
                         Image(systemName: "location.fill").foregroundColor(.accentColor)
                         if hasValidCoords {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Location captured").font(.subheadline)
+                                Text(pickedAddressCoordinate != nil ? "Location set from address" : "Location captured").font(.subheadline)
                                 Text("\(latitude), \(longitude)").font(.caption).foregroundColor(.secondary)
                             }
                             Spacer()
@@ -628,6 +637,8 @@ struct LeadCreateView: View {
                 }
                 .onReceive(locator.$coordinate) { coord in
                     guard let c = coord else { return }
+                    // Spark & Ray: a picked Google address owns the pin; the device fix must not move it.
+                    guard LeadAddressCoordinates.deviceFixMayApply(isSpark: isSparkClient, picked: pickedAddressCoordinate) else { return }
                     latitude = String(format: "%.6f", c.latitude)
                     longitude = String(format: "%.6f", c.longitude)
                     // Auto-populate address / city / state / postal
@@ -840,12 +851,61 @@ struct LeadCreateView: View {
         }
     }
 
+    /// A Spark industry option with its colour dot.
+    private func sparkIndustryOption(_ name: String) -> some View {
+        HStack(spacing: 8) {
+            SparkIndustryDot(industry: name)
+            Text(name)
+        }
+    }
+
+    /// Spark & Ray's sub-industry (`industry_category` custom field), drawn inline after Industry.
+    private var sparkSubIndustryRow: some View {
+        CustomFieldsSection(
+            model: customFields,
+            onlyKey: SparkIndustries.subIndustryFieldKey,
+            labelOverrides: [SparkIndustries.subIndustryFieldKey: SparkIndustries.subIndustryLabel]
+        )
+    }
+
+    /// Custom fields the generic "Additional details" block must skip because the form draws them itself.
+    private var genericCustomFieldExclusions: Set<String> {
+        (isSparkClient && !isB2C) ? [SparkIndustries.subIndustryFieldKey] : []
+    }
+
+    /// The Google address search fills address line 1 / city / state, so it is offered only when at least one is visible.
+    private var showsAddressSearch: Bool {
+        !fieldOverrides.isHidden("address_line1", isB2C: isB2C)
+            || !fieldOverrides.isHidden("city", isB2C: isB2C)
+            || !fieldOverrides.isHidden("state", isB2C: isB2C)
+    }
+
+    /// A Google address was picked (Spark & Ray): the pin follows the address, not the rep's device. A place
+    /// without usable coordinates clears the override so the device fix (existing behaviour) applies again.
+    private func addressPicked(_ detail: CRMPlaceDetail) {
+        guard isSparkClient else { return }
+        guard let c = LeadAddressCoordinates.coordinate(from: detail) else {
+            pickedAddressCoordinate = nil
+            return
+        }
+        pickedAddressCoordinate = c
+        let f = LeadAddressCoordinates.formFields(c)
+        latitude = f.latitude
+        longitude = f.longitude
+    }
+
     /// Address search + address lines + city / state / postal code / country. B2C always had it; B2B gets it when
     /// the client turned it on (`lead_form.address_on_b2b` — e.g. a Dealer's Location).
     @ViewBuilder
     private var addressSection: some View {
         Section("Address") {
-            AddressSearchField(addressLine1: $addressLine1, city: $city, state: $state, postalCode: $postalCode)
+            // The search fills line 1 / city / state, so it shows only while one of them is not hidden by the admin.
+            if showsAddressSearch {
+                AddressSearchField(
+                    addressLine1: $addressLine1, city: $city, state: $state, postalCode: $postalCode,
+                    onPicked: { addressPicked($0) }
+                )
+            }
             if !fieldOverrides.isHidden("address_line1", isB2C: isB2C) {
                 labelledField(
                     label: fieldOverrides.labelFor("address_line1", defaultLabel: "Address line 1", isB2C: isB2C),
@@ -1267,7 +1327,7 @@ struct LeadCreateView: View {
             }
             // The address block shows on B2B when the client turned it on (`lead_form.address_on_b2b`) — it
             // used to be dropped for every B2B lead. Hidden built-ins are not sent.
-            if fieldOverrides.leadForm.addressOnB2b {
+            if b2bAddressEnabled {
                 if !fieldOverrides.isHidden("address_line1", isB2C: false) { put("address_line1", addressLine1, into: &body) }
                 if !fieldOverrides.isHidden("address_line2", isB2C: false) { put("address_line2", addressLine2, into: &body) }
                 if !fieldOverrides.isHidden("city",          isB2C: false) { put("city",          city,         into: &body) }
@@ -1306,6 +1366,11 @@ struct LeadCreateView: View {
         // valid numbers, so a half-typed value never reaches the API.
         if let lat = Double(latitude.trimmingCharacters(in: .whitespaces)) { body["latitude"] = lat }
         if let lon = Double(longitude.trimmingCharacters(in: .whitespaces)) { body["longitude"] = lon }
+        // Spark & Ray: a picked address's coordinates always win over whatever the device fix left in the fields.
+        if let c = LeadAddressCoordinates.pickedOverride(isSpark: isSparkClient, picked: pickedAddressCoordinate) {
+            body["latitude"] = c.latitude
+            body["longitude"] = c.longitude
+        }
         // Admin-defined custom fields (scoped to the user's role) merged
         // with the product-lines block. ProductLinesModel.jsonValues
         // contains product_lines + the mirrored legacy keys; merging it

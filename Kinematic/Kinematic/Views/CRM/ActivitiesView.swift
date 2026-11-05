@@ -27,7 +27,15 @@ struct ActivitiesView: View {
     }()
     // Meeting first — matches the field-force usage pattern and the
     // web dashboard's reordered activity type picker.
-    let typeOptions = ["all", "meeting", "call", "email", "note", "task"]
+    /// The org's activity types (built-ins + custom ones such as "Industry Visit"); the built-in set until loaded.
+    @ObservedObject private var typeStore = ActivityTypesStore.shared
+    /// Filter chips: "all" + the offered types (the active filter is always kept on the strip).
+    private var typeOptions: [String] {
+        ["all"] + ActivityTypes.filterSlugs(typeStore.types, ensuring: vm.typeFilter)
+    }
+    private func chipTitle(_ slug: String) -> String {
+        slug == "all" ? "ALL" : typeStore.name(for: slug).uppercased()
+    }
     @State private var showLeadPicker = false
 
     enum Layout: String, CaseIterable, Identifiable { case list, calendar; var id: String { rawValue } }
@@ -55,7 +63,7 @@ struct ActivitiesView: View {
                 HStack(spacing: 8) {
                     ForEach(typeOptions, id: \.self) { t in
                         Button { vm.typeFilter = t } label: {
-                            Text(t.uppercased())
+                            Text(chipTitle(t))
                                 .font(.system(size: 11, weight: .bold))
                                 .padding(.horizontal, 12).padding(.vertical, 6)
                                 .background(vm.typeFilter == t ? Brand.red : Color(uiColor: .secondarySystemBackground))
@@ -244,6 +252,7 @@ struct ActivitiesView: View {
             }
         }
         .task { await vm.refresh(); await vm.loadOwners() }
+        .task { await typeStore.load() }
         // Concurrent with the load above, so a non-admin's filter row is not held up behind the list.
         .task { await fieldOverrides.load() }
     }
@@ -270,6 +279,8 @@ struct ActivitiesView: View {
                 assignment: RecordOwnerRules.assignedToPatch(original: act.assignedTo, selected: editAssignedTo)
             )
         }
+        // Show the activity's current photo; a newly attached one replaces it.
+        .withExistingPhoto(act.imageUrl)
         // Spark & Ray: edit the assignees / product interested / form serial too.
         .sparkSubmit(initial: act.sparkExtras, names: act.sparkNames) { result in
             try await vm.updateSpark(existing: act, result)

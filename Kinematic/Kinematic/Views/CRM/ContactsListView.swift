@@ -4,6 +4,9 @@ struct ContactsListView: View {
     @StateObject var vm = ContactsViewModel()
     @State private var showCreate = false
     @State private var showDateFilter = false
+    /// Spark & Ray: the contact whose account is being set / changed (context menu on a row), and any error.
+    @State private var accountPickerContact: Contact? = nil
+    @State private var accountAssignError: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,16 +38,22 @@ struct ContactsListView: View {
                         emptyState
                     } else {
                         ForEach(vm.filtered) { c in
-                            NavigationLink(destination: ContactDetailView(contact: c)) {
-                                contactRow(c)
-                            }
-                            .buttonStyle(.plain)
+                            contactLink(c)
                         }
                     }
                 }
                 .padding()
             }
             .refreshable { await vm.refresh() }
+            .sheet(item: $accountPickerContact) { c in
+                accountPicker(for: c)
+            }
+            .alert("Couldn't update", isPresented: Binding(
+                get: { accountAssignError != nil },
+                set: { if !$0 { accountAssignError = nil } }
+            )) {
+                Button("OK", role: .cancel) { accountAssignError = nil }
+            } message: { Text(accountAssignError ?? "") }
         }
         .navigationTitle("Contacts")
         .toolbar {
@@ -61,6 +70,32 @@ struct ContactsListView: View {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Created date") {}
         }
         .task { await vm.refresh() }
+    }
+
+    private func contactLink(_ c: Contact) -> some View {
+        NavigationLink(destination: ContactDetailView(contact: c)) {
+            contactRow(c)
+        }
+        .buttonStyle(.plain)
+        .contextMenu { accountMenu(for: c) }
+    }
+
+    /// Spark & Ray: "Add to an account" / "Change account" for a business contact.
+    @ViewBuilder
+    private func accountMenu(for c: Contact) -> some View {
+        if SparkJourney.isActive && c.isB2c != true {
+            Button {
+                accountPickerContact = c
+            } label: {
+                Label((c.accountId ?? "").isEmpty ? "Add to an account" : "Change account", systemImage: "building.2")
+            }
+        }
+    }
+
+    private func accountPicker(for c: Contact) -> some View {
+        SparkAccountPickerSheet { account in
+            Task { accountAssignError = await vm.setAccount(contact: c, account: account) }
+        }
     }
 
     private func contactRow(_ c: Contact) -> some View {

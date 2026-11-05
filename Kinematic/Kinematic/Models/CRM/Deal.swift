@@ -40,6 +40,26 @@ struct Deal: Codable, Identifiable, Hashable {
     let ownerName: String?
     /// Spark & Ray quotation number — nil for every other tenant.
     let quotationNo: String?
+    // Spark & Ray deal sections (nil for every other tenant). Dates are "YYYY-MM-DD".
+    let pricingQuoted: Double?
+    let pricingDiscountPct: Double?
+    let pricingFinal: Double?
+    let pricingValidTill: String?
+    let trialRequired: Bool?
+    let trialStart: String?
+    let trialEnd: String?
+    /// "pending" | "successful" | "failed".
+    let trialResult: String?
+    let trialNotes: String?
+    /// People: user ids, plus the names the backend stamps on reads (read-only; never sent back).
+    let technicalApprovalBy: String?
+    let preparedBy: String?
+    let checkedBy: String?
+    let supervisorId: String?
+    let technicalApprovalByName: String?
+    let preparedByName: String?
+    let checkedByName: String?
+    let supervisorIdName: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -69,5 +89,22 @@ struct Deal: Codable, Identifiable, Hashable {
         case leadPhone = "lead_phone"
         case ownerName = "owner_name"
         case quotationNo = "quotation_no"
+        case pricingQuoted = "pricing_quoted"
+        case pricingDiscountPct = "pricing_discount_pct"
+        case pricingFinal = "pricing_final"
+        case pricingValidTill = "pricing_valid_till"
+        case trialRequired = "trial_required"
+        case trialStart = "trial_start"
+        case trialEnd = "trial_end"
+        case trialResult = "trial_result"
+        case trialNotes = "trial_notes"
+        case technicalApprovalBy = "technical_approval_by"
+        case preparedBy = "prepared_by"
+        case checkedBy = "checked_by"
+        case supervisorId = "supervisor_id"
+        case technicalApprovalByName = "technical_approval_by_name"
+        case preparedByName = "prepared_by_name"
+        case checkedByName = "checked_by_name"
+        case supervisorIdName = "supervisor_id_name"
     }
 }

@@ -107,7 +107,9 @@ enum NotificationRoute {
 
         switch kind {
         // A task / activity opens the thing it is about; a bare one opens Activities.
-        case "activity_assigned", "crm_task_overdue":
+        // `activity_upcoming` (the 7 / 3 / 1-day reminder before an activity's due date) carries the activity id
+        // and its lead / deal: it opens that record (whose timeline holds the activity), else the Activities list.
+        case "activity_assigned", "crm_task_overdue", "activity_upcoming":
             return byId(leadId, dealId) ?? NotificationTarget.activities
 
         // Automation: `entity` + `entity_id`, or the dynamic `<entity>_id` key.
