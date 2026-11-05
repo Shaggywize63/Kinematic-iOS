@@ -143,6 +143,13 @@ struct ActivityTimelineItem: View {
                 .padding(.leading, 50)
             }
 
+            // ── Spark & Ray: assignees, product interested, form serial ──
+            // Renders nothing unless the backend stamped them (Spark only).
+            let sparkMeta = SparkActivityMeta(activity: activity)
+            if sparkMeta.hasContent {
+                sparkMeta.padding(.leading, 50)
+            }
+
             // ── Linked record: lead / contact / deal name ───────────────
             // Backend stamps lead_name, contact_name, deal_name on every
             // activity response so we can surface context inline without a

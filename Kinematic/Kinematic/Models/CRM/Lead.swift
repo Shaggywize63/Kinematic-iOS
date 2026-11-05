@@ -39,6 +39,9 @@ struct Lead: Codable, Identifiable, Hashable {
     let alternateMobiles: [String]?
     let company: String?
     let title: String?
+    /// Free-text industry persisted on the lead (`industry` column). Only the
+    /// Spark & Ray edit form reads it, to seed its Industry dropdown.
+    let industry: String?
     let source: String?
     let status: String?
     let score: Double?
@@ -114,6 +117,7 @@ struct Lead: Codable, Identifiable, Hashable {
         case alternateMobiles = "alternate_mobiles"
         case company
         case title
+        case industry
         case source
         case status
         case score

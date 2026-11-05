@@ -969,6 +969,47 @@ final class CRMService {
         let _: EmptyAck = try await delete("/api/v1/crm/leads/\(leadId)/updates/\(updateId)")
     }
 
+    // MARK: - Account Updates (Spark & Ray "Recent updates" on an account)
+    // Backend: /crm/accounts/:id/updates — Spark accounts only. Newest first;
+    // each row can name one of the account's contacts.
+
+    func listAccountUpdates(accountId: String) async throws -> [AccountUpdate] {
+        try await get("/api/v1/crm/accounts/\(accountId)/updates")
+    }
+
+    /// Post a note on an account. `contactId` (optional) must be a contact of the
+    /// account — the backend rejects anything else with a readable message.
+    @discardableResult
+    func addAccountUpdate(accountId: String, body: String, contactId: String? = nil) async throws -> AccountUpdate {
+        var payload: [String: Any] = ["body": body]
+        if let contactId, !contactId.isEmpty { payload["contact_id"] = contactId }
+        return try await postJSON("/api/v1/crm/accounts/\(accountId)/updates", body: payload)
+    }
+
+    /// Delete a note. Backend allows the author or an admin (else 403).
+    func deleteAccountUpdate(accountId: String, updateId: String) async throws {
+        let _: EmptyAck = try await delete("/api/v1/crm/accounts/\(accountId)/updates/\(updateId)")
+    }
+
+    // MARK: - Spark activity extras (assignees / products / form serial)
+
+    /// Create an activity carrying the Spark extras (`assignee_ids`, `product_ids`,
+    /// `form_serial`). A bad serial comes back as a thrown `CRMServiceError.server`
+    /// with the backend's readable message.
+    func createActivity(_ body: [String: Any], spark: SparkActivityExtras) async throws -> Activity {
+        var merged = body
+        spark.apply(to: &merged)
+        return try await createActivity(merged)
+    }
+
+    /// PATCH an activity with the Spark extras. Pass `previous` (the values it had
+    /// before editing) so only changed extras are sent.
+    func updateActivity(id: String, body: [String: Any], spark: SparkActivityExtras, previous: SparkActivityExtras?) async throws -> Activity {
+        var merged = body
+        spark.apply(to: &merged, previous: previous)
+        return try await updateActivity(id: id, body: merged)
+    }
+
     /// ✨ Suggest — asks KINI to read a draft Update and propose the next CRM
     /// action (an activity to log, a follow-up to draft, quick next steps).
     /// Lightweight single-shot helper that does NOT touch the monthly KINI

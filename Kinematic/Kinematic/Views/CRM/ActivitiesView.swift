@@ -202,6 +202,10 @@ struct ActivitiesView: View {
                     )
                 }
             }
+            // Spark & Ray: assignees / product interested / form serial. No effect elsewhere.
+            .sparkSubmit { result in
+                try await vm.createSpark(result, scheduled: composeScheduled)
+            }
         }
         // Edit sheet — tap a row to open the same compose view with
         // the activity's existing subject/type pre-filled, then save
@@ -210,12 +214,21 @@ struct ActivitiesView: View {
             ActivityComposeView(
                 initialType: act.type ?? "meeting",
                 initialSubject: act.subject ?? "",
+                // Spark & Ray edits start from the row's own remarks + date, so saving never
+                // wipes the description or resets the due date to "now". Other tenants keep
+                // the original (blank / now) start.
+                initialDescription: SparkJourney.isActive ? (act.remarksText ?? "") : "",
+                initialWhen: SparkJourney.isActive ? SparkJourney.parseISO(act.completedAt ?? act.dueAt) : nil,
                 allowLeadPicker: false,
             ) { type, subject, desc, imageUrl, when, _, customFields in
                 // Activity.id is non-optional in the model — pass it
                 // straight through without a guard. (Earlier draft
                 // used `if let` which the iOS 26 toolchain refused.)
                 await vm.update(id: act.id, type: type, subject: subject, description: desc, imageUrl: imageUrl, completedAt: when, customFields: customFields)
+            }
+            // Spark & Ray: edit the assignees / product interested / form serial too.
+            .sparkSubmit(initial: act.sparkExtras, names: act.sparkNames) { result in
+                try await vm.updateSpark(existing: act, result)
             }
         }
         // Delete confirmation — guards against an accidental long-press.

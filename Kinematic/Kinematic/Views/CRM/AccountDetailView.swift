@@ -15,8 +15,17 @@ struct AccountDetailView: View {
     @State private var pendingCallActivityId: String?
     /// Server message from a failed Mark complete / Reopen; drives the alert.
     @State private var completionError: String?
+    // Spark & Ray account journey: assign a task / activity and start a deal from the account.
+    @State private var assigningActivity = false
+    @State private var creatingDeal = false
+    /// Server message from a failed assign-task / New deal; drives the alert.
+    @State private var journeyError: String?
 
     private let api = CRMService.shared
+
+    /// Spark & Ray only — same client gate as the Spark lead forms. Everything the account
+    /// journey adds is behind this; other tenants see the screen exactly as before.
+    private var isSpark: Bool { SparkJourney.isActive }
 
     var body: some View {
         ScrollView {
@@ -28,7 +37,12 @@ struct AccountDetailView: View {
                 if let phone = account.phone, !phone.isEmpty { phoneRow(phone) }
                 if let site = account.website { detailRow("Website", site, icon: "globe", color: Brand.red) }
 
+                if isSpark { sparkActionsRow }
+
                 contactsSection
+                if isSpark {
+                    SparkAccountUpdatesSection(accountId: account.id, contacts: contacts)
+                }
                 dealsSection
                 activitiesSection
             }
@@ -57,6 +71,41 @@ struct AccountDetailView: View {
                 )
             }
         }
+        // Spark & Ray: assign a task / activity to one or more people from this account.
+        .sheet(isPresented: $assigningActivity) {
+            ActivityComposeView(initialType: "task", scheduled: true) { type, subject, description, imageUrl, when, _, customFields in
+                // Only reached if the Spark extras are unavailable; still creates the activity.
+                let result = ActivityComposeResult(
+                    type: type, subject: subject, description: description, imageUrl: imageUrl,
+                    when: when, leadId: nil, customFields: customFields, extras: SparkActivityExtras()
+                )
+                do { try await createAssignedActivity(result) } catch { journeyError = error.localizedDescription }
+            }
+            .sparkSubmit { result in
+                try await createAssignedActivity(result)
+            }
+        }
+        // Spark & Ray: New deal for this customer (account preselected).
+        .sheet(isPresented: $creatingDeal) {
+            DealCreateView(prefillAccount: account) { body in
+                do {
+                    let created = try await api.createDeal(body)
+                    deals.insert(created, at: 0)
+                } catch {
+                    journeyError = error.localizedDescription
+                }
+            }
+            .sparkSubmit { body in
+                let created = try await api.createDeal(body)
+                deals.insert(created, at: 0)
+            }
+        }
+        .alert("Couldn't save", isPresented: Binding(
+            get: { journeyError != nil },
+            set: { if !$0 { journeyError = nil } }
+        )) {
+            Button("OK", role: .cancel) { journeyError = nil }
+        } message: { Text(journeyError ?? "") }
         .task { await loadRelations() }
         .refreshable { await loadRelations() }
         .activityCompletionAlert($completionError)
@@ -94,6 +143,45 @@ struct AccountDetailView: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    // MARK: - Spark & Ray actions
+
+    /// "Assign task / activity" + "New deal" for this customer.
+    private var sparkActionsRow: some View {
+        HStack(spacing: 10) {
+            Button {
+                assigningActivity = true
+            } label: {
+                Label("Assign task / activity", systemImage: "person.badge.plus")
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Brand.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+            }
+            Button {
+                creatingDeal = true
+            } label: {
+                Label("New deal", systemImage: "briefcase.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Brand.red.opacity(0.10))
+                    .foregroundColor(Brand.red)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.30), lineWidth: 1))
+                    .cornerRadius(10)
+            }
+        }
+    }
+
+    /// Create an open, assigned activity on this account from the composer's result.
+    /// Throws so the composer can show the server's message (e.g. a bad form serial) inline.
+    private func createAssignedActivity(_ result: ActivityComposeResult) async throws {
+        let body = SparkActivityBody.createBody(result, scheduled: true, links: ["account_id": account.id])
+        let created = try await api.createActivity(body, spark: result.extras)
+        activities.insert(created, at: 0)
     }
 
     // MARK: - Relation sections

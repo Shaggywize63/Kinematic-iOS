@@ -38,6 +38,8 @@ struct Deal: Codable, Identifiable, Hashable {
     let leadName: String?
     let leadPhone: String?
     let ownerName: String?
+    /// Spark & Ray quotation number — nil for every other tenant.
+    let quotationNo: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -66,5 +68,6 @@ struct Deal: Codable, Identifiable, Hashable {
         case leadName = "lead_name"
         case leadPhone = "lead_phone"
         case ownerName = "owner_name"
+        case quotationNo = "quotation_no"
     }
 }

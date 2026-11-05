@@ -103,7 +103,12 @@ extension Activity {
             directoryName: directoryName,
             directoryPhone: directoryPhone,
             customFields: customFields,
-            metadata: metadata
+            metadata: metadata,
+            assignees: assignees,
+            formRefNo: formRefNo,
+            formSubmissionId: formSubmissionId,
+            productIds: productIds,
+            products: products
         )
     }
 }

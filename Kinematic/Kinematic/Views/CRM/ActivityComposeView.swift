@@ -33,6 +33,19 @@ struct ActivityComposeView: View {
     /// none configured). Mirrors how the lead form threads `custom_fields`.
     let onSubmit: (String, String, String, String?, Date, String?, [String: Any]) async -> Void
 
+    // MARK: Spark & Ray extras (opt-in)
+    // Set through `sparkSubmit(...)` — never through `init`, so every existing call site is
+    // untouched. When a host opts in AND the client is Spark & Ray, the composer adds
+    // "Assign to (multiple)", "Product interested" and "Form serial", and on save calls this
+    // throwing handler (with the extras) INSTEAD of `onSubmit`. A throw keeps the sheet open and
+    // shows the server's message by the field (a bad form serial comes back as HTTP 400).
+    var onSparkSubmit: ((ActivityComposeResult) async throws -> Void)? = nil
+    /// Extras to start from when editing an existing activity.
+    var sparkInitial = SparkActivityExtras()
+    /// id -> name for people / products already on the activity being edited, shown before
+    /// (or without) the pickers' lists loading.
+    var sparkNames: [String: String] = [:]
+
     @State private var type: String
     @State private var subject: String
     @State private var desc: String
@@ -58,6 +71,17 @@ struct ActivityComposeView: View {
     /// payload under `custom_fields`. Same model + section the lead
     /// create form uses.
     @StateObject private var customFields = CustomFieldsModel()
+
+    // Spark extras state (only used when `showsSparkExtras`).
+    @State private var sparkExtras = SparkActivityExtras()
+    @State private var sparkSeeded = false
+    @State private var sparkUsers: [AssignableUser] = []
+    @State private var sparkProducts: [Product] = []
+    @State private var showAssigneePicker = false
+    @State private var showProductPicker = false
+    @State private var sparkSerialError: String? = nil
+    @State private var sparkGeneralError: String? = nil
+    @State private var submitting = false
 
     init(
         initialType: String = "meeting",
@@ -124,6 +148,146 @@ struct ActivityComposeView: View {
     private var effectiveSubject: String {
         let s = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         return s.isEmpty ? labelForType(type) : s
+    }
+
+    /// Opt this composer into the Spark & Ray extras. `handler` replaces `onSubmit` for Spark
+    /// users (it may throw — the sheet then stays open and shows the message); for every other
+    /// client `onSubmit` runs exactly as before. `initial` / `names` seed an edit.
+    func sparkSubmit(
+        initial: SparkActivityExtras = SparkActivityExtras(),
+        names: [String: String] = [:],
+        _ handler: @escaping (ActivityComposeResult) async throws -> Void
+    ) -> ActivityComposeView {
+        var copy = self
+        copy.onSparkSubmit = handler
+        copy.sparkInitial = initial
+        copy.sparkNames = names
+        return copy
+    }
+
+    /// The Spark extras show only for the Spark & Ray client, and only when the host handles them.
+    private var showsSparkExtras: Bool {
+        onSparkSubmit != nil && SparkJourney.isActive
+    }
+
+    private func sparkPersonName(_ id: String) -> String {
+        if let u = sparkUsers.first(where: { $0.id == id }) { return u.displayName }
+        if let n = sparkNames[id], !n.isEmpty { return n }
+        return "User"
+    }
+
+    private func sparkProductName(_ id: String) -> String {
+        if let p = sparkProducts.first(where: { $0.id == id }) { return p.name }
+        if let n = sparkNames[id], !n.isEmpty { return n }
+        return "Product"
+    }
+
+    /// "Asha (Primary), Ravi" — the first person picked is the Primary assignee.
+    private var sparkAssigneeSummary: String {
+        var parts: [String] = []
+        for (i, id) in sparkExtras.assigneeIds.enumerated() {
+            let n = sparkPersonName(id)
+            parts.append(i == 0 ? "\(n) (Primary)" : n)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Save. Spark hosts get the throwing handler (errors stay inline); everyone else the
+    /// original fire-and-dismiss `onSubmit`.
+    @MainActor
+    private func submit() async {
+        if showsSparkExtras, let handler = onSparkSubmit {
+            submitting = true
+            sparkSerialError = nil
+            sparkGeneralError = nil
+            defer { submitting = false }
+            let result = ActivityComposeResult(
+                type: type,
+                subject: effectiveSubject,
+                description: desc,
+                imageUrl: imageUrl,
+                when: when,
+                leadId: selectedLead?.id,
+                customFields: customFields.jsonValues,
+                extras: sparkExtras.cleaned
+            )
+            do {
+                try await handler(result)
+                dismiss()
+            } catch {
+                let message = error.localizedDescription
+                if SparkJourney.isSerialError(message) {
+                    sparkSerialError = message
+                } else {
+                    sparkGeneralError = message
+                }
+            }
+            return
+        }
+        await onSubmit(type, effectiveSubject, desc, imageUrl, when, selectedLead?.id, customFields.jsonValues)
+        dismiss()
+    }
+
+    @ViewBuilder
+    private var sparkExtrasSection: some View {
+        Section {
+            Button {
+                showAssigneePicker = true
+            } label: {
+                HStack {
+                    Text("Assign to (multiple)").foregroundColor(.primary)
+                    Spacer()
+                    Text(sparkExtras.assigneeIds.isEmpty ? "Optional" : "\(sparkExtras.assigneeIds.count) selected")
+                        .foregroundColor(.secondary)
+                    Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                }
+            }
+            if !sparkExtras.assigneeIds.isEmpty {
+                Text(sparkAssigneeSummary)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+
+            Button {
+                showProductPicker = true
+            } label: {
+                HStack {
+                    Text("Product interested").foregroundColor(.primary)
+                    Spacer()
+                    Text(sparkExtras.productIds.isEmpty ? "Optional" : "\(sparkExtras.productIds.count) selected")
+                        .foregroundColor(.secondary)
+                    Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                }
+            }
+            if !sparkExtras.productIds.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(sparkExtras.productIds, id: \.self) { pid in
+                            SparkChip(icon: "shippingbox.fill", text: sparkProductName(pid), tint: Brand.red)
+                        }
+                    }
+                }
+            }
+
+            TextField("Form serial (e.g. SRPR2627-12)", text: $sparkExtras.formSerial)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
+                .onChange(of: sparkExtras.formSerial) { _, newValue in
+                    // Keep the field upper-case as the rep types; whitespace is stripped on save.
+                    let upper = newValue.uppercased()
+                    if upper != newValue { sparkExtras.formSerial = upper }
+                    sparkSerialError = nil
+                }
+            if let err = sparkSerialError {
+                Text(err).font(.footnote).foregroundColor(.red)
+            }
+            if let err = sparkGeneralError {
+                Text(err).font(.footnote).foregroundColor(.red)
+            }
+        } header: {
+            Text("Assign & link")
+        }
     }
 
     var body: some View {
@@ -213,6 +377,10 @@ struct ActivityComposeView: View {
                             .foregroundColor(.secondary)
                     }
                 }
+                // Spark & Ray only: multi-assignee, product interested, form serial.
+                if showsSparkExtras {
+                    sparkExtrasSection
+                }
                 // Admin-defined activity custom fields (Dealer lookup, Visit
                 // kind, First visit, …). Renders through the same section the
                 // lead form uses; it self-gates on loaded defs (renders
@@ -263,11 +431,8 @@ struct ActivityComposeView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(scheduled ? "Schedule" : "Log") {
-                        Task {
-                            await onSubmit(type, effectiveSubject, desc, imageUrl, when, selectedLead?.id, customFields.jsonValues)
-                            dismiss()
-                        }
-                    }.disabled(uploading || (allowLeadPicker && selectedLead == nil && !hasDirectoryLink))
+                        Task { await submit() }
+                    }.disabled(uploading || submitting || (allowLeadPicker && selectedLead == nil && !hasDirectoryLink))
                 }
             }
             .confirmationDialog("Attach image", isPresented: $showSourceSheet, titleVisibility: .visible) {
@@ -284,7 +449,28 @@ struct ActivityComposeView: View {
             .sheet(isPresented: $showLeadPicker) {
                 LeadSearchPickerSheet { lead in selectedLead = lead }
             }
+            .sheet(isPresented: $showAssigneePicker) {
+                SparkAssigneePickerSheet(
+                    users: sparkUsers,
+                    knownNames: sparkNames,
+                    selectedIds: $sparkExtras.assigneeIds
+                )
+            }
+            .sheet(isPresented: $showProductPicker) {
+                SparkProductPickerSheet(products: sparkProducts, selectedIds: $sparkExtras.productIds)
+            }
             .task { await customFields.load(entity: "activity") }
+            .task {
+                // Spark extras: seed once (edit prefill), then load the people + catalogue pickers.
+                guard showsSparkExtras else { return }
+                if !sparkSeeded {
+                    sparkExtras = sparkInitial
+                    sparkSeeded = true
+                }
+                sparkUsers = await CRMService.shared.listAssignableUsers()
+                let catalogue = (try? await CRMService.shared.listProducts()) ?? []
+                sparkProducts = catalogue.filter { $0.isActive != false }
+            }
             .onChange(of: pickedImage) { _, newImage in
                 guard let img = newImage else { return }
                 Task { await upload(image: img) }

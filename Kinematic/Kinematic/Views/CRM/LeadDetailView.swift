@@ -35,6 +35,8 @@ struct LeadDetailView: View {
     @State private var showNbaHow = false
     @State private var converting = false
     @State private var showAssignSheet = false
+    /// Spark & Ray: "New deal" from this lead (sends `lead_id`).
+    @State private var creatingDeal = false
     @State private var confirmDeactivate = false
     @State private var confirmDelete = false
     /// Lifecycle-step-2 sheet. Driven by both header buttons (Mark
@@ -123,6 +125,24 @@ struct LeadDetailView: View {
         if isCRMAdmin { return true }
         guard let me = Session.currentUser?.id, let author = u.authorId else { return false }
         return author == me
+    }
+
+    /// Spark & Ray: the "New deal" sheet for this lead. Kept out of `body` so the long modifier chain
+    /// stays within the type-checker's budget.
+    @ViewBuilder
+    private var newDealSheet: some View {
+        DealCreateView(prefillLeadId: vm.leadId) { body in
+            do {
+                _ = try await CRMService.shared.createDeal(body)
+                await vm.load()
+            } catch {
+                vm.errorMessage = error.localizedDescription
+            }
+        }
+        .sparkSubmit { body in
+            _ = try await CRMService.shared.createDeal(body)
+            await vm.load()
+        }
     }
 
     var body: some View {
@@ -244,6 +264,7 @@ struct LeadDetailView: View {
         .sheet(isPresented: $showAssignSheet) {
             assignSheet
         }
+        .sheet(isPresented: $creatingDeal) { newDealSheet }
         // System share sheet for the rendered lead card image.
         .sheet(isPresented: $showShareSheet) {
             if let img = shareImage {
@@ -663,6 +684,13 @@ struct LeadDetailView: View {
                     // off the lead form); the sheet holds create-account at
                     // false so their flow stays deal-only.
                     converting = true
+                }
+            }
+            // Spark & Ray: start a deal from this lead. Many deals per lead are allowed; a converted
+            // lead's customer account is attached by the backend.
+            if SparkJourney.isActive && !vm.isDisqualified {
+                secondaryAction("New deal", icon: "briefcase.fill", busy: false) {
+                    creatingDeal = true
                 }
             }
             // AI Score is a Champion-hidden manager affordance — mirrors
@@ -1481,6 +1509,10 @@ struct LeadDetailView: View {
                             Text(d.name).font(.system(size: 14, weight: .semibold)).foregroundColor(.primary)
                             if let stage = d.stageName, let status = d.status {
                                 Text("\(stage) · \(status)").font(.caption2).foregroundColor(.secondary)
+                            }
+                            // Spark & Ray quotation number (nil elsewhere).
+                            if let quote = d.quotationNo?.trimmingCharacters(in: .whitespacesAndNewlines), !quote.isEmpty {
+                                Text("Quotation \(quote)").font(.caption2).foregroundColor(.secondary)
                             }
                         }
                         Spacer()
