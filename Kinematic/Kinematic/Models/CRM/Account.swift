@@ -12,6 +12,8 @@ struct CRMAccount: Codable, Identifiable, Hashable {
     let billingAddress: String?
     let shippingAddress: String?
     let ownerId: String?
+    /// The owner's name, stamped by the backend on GET / PATCH (read-only; never sent back).
+    let ownerName: String?
     let parentAccountId: String?
     let territoryId: String?
     let tags: [String]?
@@ -28,6 +30,7 @@ struct CRMAccount: Codable, Identifiable, Hashable {
         case billingAddress = "billing_address"
         case shippingAddress = "shipping_address"
         case ownerId = "owner_id"
+        case ownerName = "owner_name"
         case parentAccountId = "parent_account_id"
         case territoryId = "territory_id"
         case tags

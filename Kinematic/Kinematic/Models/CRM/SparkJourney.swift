@@ -193,11 +193,14 @@ struct SparkActivityExtras: Equatable {
     /// wire: on create (`previous == nil`) the non-empty values; on edit only the
     /// values that differ from `previous`, so an untouched edit never re-sends (and
     /// re-notifies) assignees. Clearing products sends `[]`; clearing the serial
-    /// sends `""` (the backend's clear signal). Assignees are never cleared.
+    /// sends `""` (the backend's clear signal). Removing every assignee on an edit
+    /// sends `assignee_ids: []`, which the backend turns into "no assignee" (it
+    /// clears `assigned_to`); on create an empty list is simply left out.
     func apply(to body: inout [String: Any], previous: SparkActivityExtras? = nil) {
         let now = cleaned
         let before = previous?.cleaned
-        if !now.assigneeIds.isEmpty, now.assigneeIds != before?.assigneeIds {
+        let assigneesChanged = before == nil ? !now.assigneeIds.isEmpty : now.assigneeIds != before?.assigneeIds
+        if assigneesChanged {
             body["assignee_ids"] = now.assigneeIds
         }
         if now.productIds != (before?.productIds ?? []) {
@@ -350,7 +353,10 @@ extension Activity {
     /// This activity's Spark extras as they came from the server: assignees (primary
     /// first), product ids and the linked form serial.
     var sparkExtras: SparkActivityExtras {
-        let people = (assignees ?? []).map { $0.id }
+        var people = (assignees ?? []).map { $0.id }
+        // An activity assigned before the assignee list existed carries only `assigned_to` (the primary).
+        // Treat that person as the one assignee so the edit form shows them and removing them clears it.
+        if people.isEmpty, let primary = assignedTo, !primary.isEmpty { people = [primary] }
         let productIdList = productIds ?? (products ?? []).map { $0.id }
         return SparkActivityExtras(
             assigneeIds: SparkJourney.deduped(people),
@@ -364,6 +370,10 @@ extension Activity {
         var out: [String: String] = [:]
         for ref in (assignees ?? []) + (products ?? []) where !ref.id.isEmpty && !ref.name.isEmpty {
             out[ref.id] = ref.name
+        }
+        if let primary = assignedTo, !primary.isEmpty, out[primary] == nil,
+           let n = assignedToName, !n.isEmpty {
+            out[primary] = n
         }
         return out
     }

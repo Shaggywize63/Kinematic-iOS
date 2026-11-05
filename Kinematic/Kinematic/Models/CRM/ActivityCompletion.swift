@@ -88,6 +88,8 @@ extension Activity {
             dealId: dealId,
             ownerId: ownerId,
             ownerName: ownerName,
+            assignedTo: assignedTo,
+            assignedToName: assignedToName,
             status: updated.status,
             dueAt: dueAt,
             completedAt: updated.completedAt,
