@@ -78,7 +78,8 @@ final class ActivitiesViewModel: ObservableObject {
         leadId: String?,
         imageUrl: String? = nil,
         completedAt: Date? = nil,
-        customFields: [String: Any] = [:]
+        customFields: [String: Any] = [:],
+        assignment: [String: Any] = [:]
     ) async {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return }
@@ -177,6 +178,11 @@ final class ActivitiesViewModel: ObservableObject {
             // them over the existing blob, so an empty map (nothing typed)
             // is omitted and never wipes stored values.
             if !customFields.isEmpty { body["custom_fields"] = customFields }
+            // A changed assignee (`assigned_to`, from `RecordOwnerRules.assignedToPatch`) — only admins /
+            // managers may change it, so anyone else's request never carries one. Empty = untouched.
+            if RecordOwnerRules.currentUserCanChange {
+                for (key, value) in assignment { body[key] = value }
+            }
             let updated = try await api.updateActivity(id: id, body: body)
             if let idx = activities.firstIndex(where: { $0.id == id }) {
                 activities[idx] = updated
@@ -201,8 +207,15 @@ final class ActivitiesViewModel: ObservableObject {
     /// PATCH an existing activity from the edit sheet, sending only the Spark extras that changed.
     func updateSpark(existing: Activity, _ result: ActivityComposeResult) async throws {
         let body = SparkActivityBody.updateBody(result, existing: existing)
+        let previous = existing.sparkExtras
+        // Only an admin / manager can change who it is assigned to; for anyone else the existing assignees
+        // stay whatever the form held. Removing every assignee sends `assignee_ids: []` (clears the activity).
+        let extras = RecordOwnerRules.extrasForEdit(
+            edited: result.extras, previous: previous,
+            canChangeAssignees: RecordOwnerRules.currentUserCanChange
+        )
         let updated = try await api.updateActivity(
-            id: existing.id, body: body, spark: result.extras, previous: existing.sparkExtras
+            id: existing.id, body: body, spark: extras, previous: previous
         )
         if let idx = activities.firstIndex(where: { $0.id == existing.id }) {
             activities[idx] = updated

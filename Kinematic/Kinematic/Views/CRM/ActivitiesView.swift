@@ -14,6 +14,9 @@ struct ActivitiesView: View {
     /// Reps wanted to open an existing activity to enrich notes or change
     /// status — the row was a static badge before, now it's tappable.
     @State private var editingActivity: Activity? = nil
+    /// The single "Assigned to" picker's choice while an activity is being edited (non-Spark clients,
+    /// admins / managers). nil = unchanged, so the PATCH carries no `assigned_to`.
+    @State private var editAssignedTo: String? = nil
     /// Activity pending deletion confirmation; nil hides the alert.
     @State private var deletingActivity: Activity? = nil
     @State private var layout: Layout = .list
@@ -211,25 +214,7 @@ struct ActivitiesView: View {
         // the activity's existing subject/type pre-filled, then save
         // patches the row instead of creating a new one.
         .sheet(item: $editingActivity) { act in
-            ActivityComposeView(
-                initialType: act.type ?? "meeting",
-                initialSubject: act.subject ?? "",
-                // Spark & Ray edits start from the row's own remarks + date, so saving never
-                // wipes the description or resets the due date to "now". Other tenants keep
-                // the original (blank / now) start.
-                initialDescription: SparkJourney.isActive ? (act.remarksText ?? "") : "",
-                initialWhen: SparkJourney.isActive ? SparkJourney.parseISO(act.completedAt ?? act.dueAt) : nil,
-                allowLeadPicker: false,
-            ) { type, subject, desc, imageUrl, when, _, customFields in
-                // Activity.id is non-optional in the model — pass it
-                // straight through without a guard. (Earlier draft
-                // used `if let` which the iOS 26 toolchain refused.)
-                await vm.update(id: act.id, type: type, subject: subject, description: desc, imageUrl: imageUrl, completedAt: when, customFields: customFields)
-            }
-            // Spark & Ray: edit the assignees / product interested / form serial too.
-            .sparkSubmit(initial: act.sparkExtras, names: act.sparkNames) { result in
-                try await vm.updateSpark(existing: act, result)
-            }
+            editSheet(for: act)
         }
         // Delete confirmation — guards against an accidental long-press.
         .alert("Delete this activity?", isPresented: .init(
@@ -263,6 +248,47 @@ struct ActivitiesView: View {
         .task { await fieldOverrides.load() }
     }
 
+    /// The edit sheet for a tapped activity — the compose view pre-filled from the row. Kept out of `body`
+    /// so the modifier chain there stays short.
+    private func editSheet(for act: Activity) -> ActivityComposeView {
+        ActivityComposeView(
+            initialType: act.type ?? "meeting",
+            initialSubject: act.subject ?? "",
+            // Spark & Ray edits start from the row's own remarks + date, so saving never
+            // wipes the description or resets the due date to "now". Other tenants keep
+            // the original (blank / now) start.
+            initialDescription: SparkJourney.isActive ? (act.remarksText ?? "") : "",
+            initialWhen: SparkJourney.isActive ? SparkJourney.parseISO(act.completedAt ?? act.dueAt) : nil,
+            allowLeadPicker: false
+        ) { type, subject, desc, imageUrl, when, _, customFields in
+            // Activity.id is non-optional in the model — pass it
+            // straight through without a guard. (Earlier draft
+            // used `if let` which the iOS 26 toolchain refused.)
+            await vm.update(
+                id: act.id, type: type, subject: subject, description: desc, imageUrl: imageUrl,
+                completedAt: when, customFields: customFields,
+                assignment: RecordOwnerRules.assignedToPatch(original: act.assignedTo, selected: editAssignedTo)
+            )
+        }
+        // Spark & Ray: edit the assignees / product interested / form serial too.
+        .sparkSubmit(initial: act.sparkExtras, names: act.sparkNames) { result in
+            try await vm.updateSpark(existing: act, result)
+        }
+        // Who it is assigned to can be changed (or, for Spark, cleared) by admins / managers only;
+        // everyone else sees the names without a picker.
+        .editingAssignment(
+            assignedToId: act.assignedTo,
+            assignedToName: act.assignedToName,
+            selection: $editAssignedTo
+        )
+    }
+
+    /// Open the edit sheet for `a` with no pending assignee change left over from an earlier edit.
+    private func beginEditing(_ a: Activity) {
+        editAssignedTo = nil
+        editingActivity = a
+    }
+
     /// Activity row with tap-to-edit and long-press context menu.
     /// The row itself stays read-only at-a-glance; tap opens the
     /// compose view pre-filled for editing, long-press surfaces a
@@ -277,9 +303,9 @@ struct ActivitiesView: View {
             onSetComplete: { act, done in await vm.setCompleted(act, completed: done) }
         )
             .contentShape(Rectangle())
-            .onTapGesture { editingActivity = a }
+            .onTapGesture { beginEditing(a) }
             .contextMenu {
-                Button { editingActivity = a } label: { Label("Edit", systemImage: "pencil") }
+                Button { beginEditing(a) } label: { Label("Edit", systemImage: "pencil") }
                 Button(role: .destructive) { deletingActivity = a } label: { Label("Delete", systemImage: "trash") }
             }
     }
