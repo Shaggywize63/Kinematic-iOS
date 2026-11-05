@@ -20,5 +20,6 @@ struct CRMNotification: Codable, Identifiable {
 
     var leadId: String? { data?["lead_id"]?.value }
     var dealId: String? { data?["deal_id"]?.value }
+    var activityId: String? { data?["activity_id"]?.value }
     var kind: String? { data?["kind"]?.value }
 }

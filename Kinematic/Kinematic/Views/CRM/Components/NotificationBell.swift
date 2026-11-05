@@ -103,6 +103,13 @@ private struct NotificationCenterView: View {
                                 NotificationRow(n: n)
                             }
                             .simultaneousGesture(TapGesture().onEnded { onRead(n.id) })
+                        } else if n.kind == "activity_upcoming" {
+                            // An upcoming-activity reminder with no lead / deal (e.g. an account's activity):
+                            // open the Activities list, where it sits.
+                            NavigationLink(destination: ActivitiesView()) {
+                                NotificationRow(n: n)
+                            }
+                            .simultaneousGesture(TapGesture().onEnded { onRead(n.id) })
                         } else {
                             NotificationRow(n: n)
                                 .contentShape(Rectangle())
@@ -162,6 +169,7 @@ private struct NotificationRow: View {
         case "crm_deal_closing_soon": return "calendar.badge.clock"
         case "crm_deal_overdue":      return "exclamationmark.triangle.fill"
         case "crm_task_overdue":      return "checklist"
+        case "activity_upcoming":     return "calendar.badge.clock"
         default:                       return "bell.fill"
         }
     }
