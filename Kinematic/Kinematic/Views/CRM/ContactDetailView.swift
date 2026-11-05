@@ -16,6 +16,9 @@ struct ContactDetailView: View {
     @State private var pendingCallActivityId: String?
     /// Server message from a failed Mark complete / Reopen; drives the alert.
     @State private var completionError: String?
+    /// Spark & Ray: the account picker ("Add to an account" / "Change account") and its server error.
+    @State private var pickingAccount = false
+    @State private var accountError: String?
 
     private let api = CRMService.shared
 
@@ -273,6 +276,54 @@ struct ContactDetailView: View {
     /// the section doesn't visually weigh down their detail page.
     @ViewBuilder
     private var linkedAccountSection: some View {
+        linkedAccountCard
+        accountLinkButton
+    }
+
+    /// Spark & Ray: put an existing contact on an account, or move it to another one
+    /// (PATCH /crm/contacts/:id { account_id }). Business contacts only.
+    @ViewBuilder
+    private var accountLinkButton: some View {
+        if SparkJourney.isActive && contact.isB2c != true {
+            let hasAccount = !(contact.accountId ?? "").isEmpty
+            Button {
+                pickingAccount = true
+            } label: {
+                Label(hasAccount ? "Change account" : "Add to an account", systemImage: "building.2")
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Brand.red.opacity(0.10))
+                    .foregroundColor(Brand.red)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.30), lineWidth: 1))
+                    .cornerRadius(10)
+            }
+            .sheet(isPresented: $pickingAccount) {
+                SparkAccountPickerSheet { account in
+                    Task { await assignAccount(account) }
+                }
+            }
+            .alert("Couldn't update", isPresented: Binding(
+                get: { accountError != nil },
+                set: { if !$0 { accountError = nil } }
+            )) {
+                Button("OK", role: .cancel) { accountError = nil }
+            } message: { Text(accountError ?? "") }
+        }
+    }
+
+    private func assignAccount(_ account: CRMAccount) async {
+        do {
+            let updated = try await api.patchContact(id: contact.id, body: ["account_id": account.id])
+            contact = updated
+            linkedAccount = account
+        } catch {
+            accountError = error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private var linkedAccountCard: some View {
         if let account = linkedAccount {
             VStack(alignment: .leading, spacing: 10) {
                 sectionHeader("ACCOUNT", count: 1)

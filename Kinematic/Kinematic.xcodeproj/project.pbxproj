@@ -32,6 +32,7 @@
 		AB000000000000000000005D /* RecordOwnerChangeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000004D /* RecordOwnerChangeTests.swift */; };
 		AB000000000000000000005E /* SparkJourneyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000004E /* SparkJourneyTests.swift */; };
 		AB000000000000000000005F /* SparkIndustriesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000004F /* SparkIndustriesTests.swift */; };
+		AB0000000000000000000B01 /* SparkDealSectionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000A01 /* SparkDealSectionsTests.swift */; };
 		AB0000000000000000000055 /* ExpenseSoleVehicleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000045 /* ExpenseSoleVehicleTests.swift */; };
 		AB0000000000000000000056 /* OwnerAssignmentFailClosedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000046 /* OwnerAssignmentFailClosedTests.swift */; };
 		AB0000000000000000000057 /* SessionCleanupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000047 /* SessionCleanupTests.swift */; };
@@ -105,6 +106,7 @@
 		AB000000000000000000004D /* RecordOwnerChangeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordOwnerChangeTests.swift; sourceTree = "<group>"; };
 		AB000000000000000000004E /* SparkJourneyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkJourneyTests.swift; sourceTree = "<group>"; };
 		AB000000000000000000004F /* SparkIndustriesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkIndustriesTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000A01 /* SparkDealSectionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkDealSectionsTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000045 /* ExpenseSoleVehicleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseSoleVehicleTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000046 /* OwnerAssignmentFailClosedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OwnerAssignmentFailClosedTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000047 /* SessionCleanupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCleanupTests.swift; sourceTree = "<group>"; };
@@ -233,6 +235,7 @@
 				AB000000000000000000004D /* RecordOwnerChangeTests.swift */,
 				AB000000000000000000004E /* SparkJourneyTests.swift */,
 				AB000000000000000000004F /* SparkIndustriesTests.swift */,
+				AB0000000000000000000A01 /* SparkDealSectionsTests.swift */,
 			);
 			path = KinematicTests;
 			sourceTree = "<group>";
@@ -418,6 +421,7 @@
 				AB000000000000000000005D /* RecordOwnerChangeTests.swift in Sources */,
 				AB000000000000000000005E /* SparkJourneyTests.swift in Sources */,
 				AB000000000000000000005F /* SparkIndustriesTests.swift in Sources */,
+				AB0000000000000000000B01 /* SparkDealSectionsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

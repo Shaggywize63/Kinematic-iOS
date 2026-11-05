@@ -9,10 +9,51 @@ struct AccountCreateView: View {
     @State private var annualRevenue: Double = 0
     @State private var employees: Int = 0
     @State private var description = ""
+    /// Spark & Ray: the account's required "Outcome". Blank blocks Save with an inline error.
+    @State private var outcome = ""
+    @State private var showOutcomeError = false
     /// Built-in field overrides (hide / relabel / require) for account columns.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     let onSubmit: ([String: Any]) async -> Void
+
+    /// Outcome is a built-in account column, so it is gated like every other one: Spark & Ray only, held
+    /// back until the overrides loaded, and hideable / relabelable by the admin.
+    private var showsOutcome: Bool {
+        SparkJourney.isActive
+            && fieldOverrides.didLoad
+            && !fieldOverrides.isHidden(entity: "account", "outcome")
+    }
+
+    private var outcomeError: String? {
+        showsOutcome ? SparkAccountOutcome.validationError(outcome) : nil
+    }
+
+    @ViewBuilder
+    private var outcomeSection: some View {
+        if showsOutcome {
+            Section {
+                TextField("What is the outcome?", text: $outcome, axis: .vertical)
+                    .lineLimit(2...5)
+                if showOutcomeError, let err = outcomeError {
+                    Text(err).font(.footnote).foregroundColor(.red)
+                }
+            } header: {
+                Text(fieldOverrides.labelFor(entity: "account", "outcome", "Outcome") + " (required)")
+            }
+        }
+    }
+
+    private func saveTapped() {
+        if outcomeError != nil {
+            showOutcomeError = true
+            return
+        }
+        Task {
+            await onSubmit(buildBody())
+            dismiss()
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -59,6 +100,7 @@ struct AccountCreateView: View {
                         }
                     }
                 }
+                outcomeSection
                 Section("Description") {
                     TextField("Notes about this account…", text: $description, axis: .vertical)
                         .lineLimit(3...6)
@@ -69,12 +111,7 @@ struct AccountCreateView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task {
-                            await onSubmit(buildBody())
-                            dismiss()
-                        }
-                    }.disabled(!fieldOverrides.isHidden(entity: "account", "name") && name.isEmpty)
+                    Button("Save") { saveTapped() }.disabled(!fieldOverrides.isHidden(entity: "account", "name") && name.isEmpty)
                 }
             }
         }
@@ -88,6 +125,7 @@ struct AccountCreateView: View {
         if annualRevenue > 0 { body["annual_revenue"] = annualRevenue }
         if employees > 0     { body["employees"] = employees }
         if !description.isEmpty { body["description"] = description }
+        if showsOutcome { SparkAccountOutcome.apply(to: &body, outcome: outcome) }
         return body
     }
 }

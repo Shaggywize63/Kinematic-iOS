@@ -36,6 +36,12 @@ struct DealDetailView: View {
     /// so DealHistorySection re-fetches without needing the whole detail
     /// screen to reload.
     @State private var historyRefreshTick = 0
+    /// Spark & Ray deal sections (Quotation / Pricing / Product trial / Approvals): the admin's
+    /// enabled / label / order, and the built-in field overrides that gate each row.
+    @StateObject private var dealSections = DealSectionsModel()
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
+
+    private var isSpark: Bool { SparkJourney.isActive }
 
     var body: some View {
         ScrollView {
@@ -54,7 +60,7 @@ struct DealDetailView: View {
                             onStageChanged: { historyRefreshTick &+= 1 }
                         )
                     }
-                    summarySection(d)
+                    summaryAndSpark(d)
                     actionsRow(d)
                     linkedSection(d)
                     // Win Probability + Next Best Action are manager-tier
@@ -142,7 +148,7 @@ struct DealDetailView: View {
         }
         .sheet(isPresented: $editing) {
             if let d = initialDeal {
-                DealEditView(deal: d, stages: stages) { updated in initialDeal = updated }
+                DealEditView(deal: d, stages: stages) { updated in dealEdited(updated) }
             }
         }
         .sheet(isPresented: $closingDeal) {
@@ -198,6 +204,7 @@ struct DealDetailView: View {
             if let aid = initialDeal?.accountId, linkedAccount == nil {
                 linkedAccount = try? await CRMService.shared.getAccount(id: aid)
             }
+            await loadSparkSections()
         }
         // Tell KINI which record is on screen so the chat answers in context.
         .onAppear {
@@ -290,6 +297,34 @@ struct DealDetailView: View {
             }
             shareImage = image
             showShareSheet = true
+        }
+    }
+
+    // MARK: - Spark & Ray sections
+
+    /// The summary card, then (Spark only) the Quotation / Pricing / Product trial / Approvals cards in the
+    /// admin's order. One builder so the detail's main stack keeps its child count.
+    @ViewBuilder
+    private func summaryAndSpark(_ d: Deal) -> some View {
+        summarySection(d)
+        if isSpark {
+            SparkDealSectionsDetail(deal: d, model: dealSections, fieldOverrides: fieldOverrides)
+        }
+    }
+
+    private func loadSparkSections() async {
+        guard isSpark else { return }
+        await fieldOverrides.load()
+        await dealSections.load()
+    }
+
+    /// After an edit: show the saved deal, then (Spark) re-read it, because the PATCH reply may not carry
+    /// the people's names the detail shows.
+    private func dealEdited(_ updated: Deal) {
+        initialDeal = updated
+        guard isSpark else { return }
+        Task {
+            if let fresh = try? await CRMService.shared.getDeal(id: dealId) { initialDeal = fresh }
         }
     }
 

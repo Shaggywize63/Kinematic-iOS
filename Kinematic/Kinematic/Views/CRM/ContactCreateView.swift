@@ -31,8 +31,74 @@ struct ContactCreateView: View {
     /// Built-in field overrides (hide / relabel / require) for contact
     /// columns, scoped by the contact's B2B/B2C mode like the lead form.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
+    /// Spark & Ray: the account picked for this contact (the picker replaces the free-text account id).
+    @State private var selectedAccount: CRMAccount? = nil
+    @State private var showAccountPicker = false
 
+    /// Account to link the contact to from the start (launched from an account's "Add contact"). It is
+    /// shown but cannot be changed, and is always sent as `account_id`.
+    let prefillAccount: CRMAccount?
     let onSubmit: ([String: Any]) async -> Void
+
+    /// Explicit init so `prefillAccount` stays optional at every call site.
+    init(prefillAccount: CRMAccount? = nil, onSubmit: @escaping ([String: Any]) async -> Void) {
+        self.prefillAccount = prefillAccount
+        self.onSubmit = onSubmit
+    }
+
+    private var isSpark: Bool { SparkJourney.isActive }
+
+    /// The account the contact is created under: the locked prefill, else (Spark) the picked account,
+    /// else the typed id (other clients, unchanged).
+    private var effectiveAccountId: String? {
+        if let prefillAccount { return prefillAccount.id }
+        if isSpark { return selectedAccount?.id }
+        return accountId.isEmpty ? nil : accountId
+    }
+
+    @ViewBuilder
+    private var accountSection: some View {
+        if !fieldOverrides.isHidden(entity: "contact", "account_id", isB2C: isB2C) {
+            let label = fieldOverrides.labelFor(entity: "contact", "account_id", "Account", isB2C: isB2C)
+            if let locked = prefillAccount {
+                Section("Account") {
+                    HStack {
+                        Text(label)
+                        Spacer()
+                        Text(locked.name).foregroundColor(.secondary).lineLimit(1)
+                        Image(systemName: "lock.fill").font(.caption).foregroundColor(.secondary)
+                    }
+                }
+            } else if isSpark {
+                Section("Account") {
+                    sparkAccountPickerRow(label)
+                }
+            } else {
+                Section("Account") {
+                    TextField(fieldOverrides.labelFor(entity: "contact", "account_id", "Account ID (optional)", isB2C: isB2C), text: $accountId)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sparkAccountPickerRow(_ label: String) -> some View {
+        Button {
+            showAccountPicker = true
+        } label: {
+            HStack {
+                Text(label).foregroundColor(.primary)
+                Spacer()
+                Text(selectedAccount?.name ?? "Select")
+                    .foregroundColor(selectedAccount == nil ? .secondary : .primary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+            }
+        }
+        if selectedAccount != nil {
+            Button("Remove account", role: .destructive) { selectedAccount = nil }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -60,11 +126,7 @@ struct ContactCreateView: View {
                         TextField(fieldOverrides.labelFor(entity: "contact", "phone", "Phone", isB2C: isB2C), text: $phone).keyboardType(.phonePad)
                     }
                 }
-                if !fieldOverrides.isHidden(entity: "contact", "account_id", isB2C: isB2C) {
-                    Section("Account") {
-                        TextField(fieldOverrides.labelFor(entity: "contact", "account_id", "Account ID (optional)", isB2C: isB2C), text: $accountId)
-                    }
-                }
+                accountSection
 
                 if !isB2C {
                     if !fieldOverrides.isHidden(entity: "contact", "title", isB2C: isB2C) {
@@ -123,6 +185,9 @@ struct ContactCreateView: View {
                 }
             }
             .task { await fieldOverrides.load() }
+            .sheet(isPresented: $showAccountPicker) {
+                SparkAccountPickerSheet { account in selectedAccount = account }
+            }
             .navigationTitle("New Contact")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -147,7 +212,7 @@ struct ContactCreateView: View {
             "phone":      phone,
             "is_b2c":     isB2C,
         ]
-        if !accountId.isEmpty { body["account_id"] = accountId }
+        if let linkedAccountId = effectiveAccountId { body["account_id"] = linkedAccountId }
         if !isB2C {
             body["title"] = title
         } else {

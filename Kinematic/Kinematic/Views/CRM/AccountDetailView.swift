@@ -20,6 +20,10 @@ struct AccountDetailView: View {
     @State private var creatingDeal = false
     /// Server message from a failed assign-task / New deal; drives the alert.
     @State private var journeyError: String?
+    /// Spark & Ray: the "Add contact" sheet (contact create, pre-linked to this account).
+    @State private var addingContact = false
+    /// Built-in field overrides — gate the Spark "Outcome" row (hide / relabel).
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     private let api = CRMService.shared
 
@@ -35,7 +39,7 @@ struct AccountDetailView: View {
                 Text("DETAILS").font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
                 if let addr = account.billingAddress { detailRow("Billing", addr, icon: "mappin.and.ellipse", color: Brand.red) }
                 if let phone = account.phone, !phone.isEmpty { phoneRow(phone) }
-                if let site = account.website { detailRow("Website", site, icon: "globe", color: Brand.red) }
+                websiteAndOutcomeRows
 
                 if isSpark { sparkActionsRow }
 
@@ -106,7 +110,11 @@ struct AccountDetailView: View {
         )) {
             Button("OK", role: .cancel) { journeyError = nil }
         } message: { Text(journeyError ?? "") }
-        .task { await loadRelations() }
+        .task {
+            async let overrides: Void = loadOverrides()
+            await loadRelations()
+            await overrides
+        }
         .refreshable { await loadRelations() }
         .activityCompletionAlert($completionError)
         // Tell KINI which record is on screen so the chat answers in context.
@@ -186,9 +194,59 @@ struct AccountDetailView: View {
 
     // MARK: - Relation sections
 
+    /// Website, then (Spark) the Outcome — one builder so the detail's main stack keeps its child count.
+    @ViewBuilder
+    private var websiteAndOutcomeRows: some View {
+        if let site = account.website { detailRow("Website", site, icon: "globe", color: Brand.red) }
+        outcomeRow
+    }
+
+    /// Spark & Ray: the account's Outcome (Spark only, once the overrides loaded, not hidden, and set).
+    @ViewBuilder
+    private var outcomeRow: some View {
+        if isSpark, fieldOverrides.didLoad, !fieldOverrides.isHidden(entity: "account", "outcome"),
+           let outcome = account.outcome?.trimmingCharacters(in: .whitespacesAndNewlines), !outcome.isEmpty {
+            detailRow(
+                fieldOverrides.labelFor(entity: "account", "outcome", "Outcome"),
+                outcome, icon: "target", color: Brand.red
+            )
+        }
+    }
+
+    /// "Add contact" (Spark only): opens the contact form with this account already chosen.
+    @ViewBuilder
+    private var addContactButton: some View {
+        if isSpark {
+            Button {
+                addingContact = true
+            } label: {
+                Label("Add contact", systemImage: "person.badge.plus")
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Brand.red.opacity(0.10))
+                    .foregroundColor(Brand.red)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.red.opacity(0.30), lineWidth: 1))
+                    .cornerRadius(10)
+            }
+        }
+    }
+
+    private var addContactSheet: some View {
+        ContactCreateView(prefillAccount: account) { body in
+            do {
+                let created = try await api.createContact(body)
+                contacts.insert(created, at: 0)
+            } catch {
+                journeyError = error.localizedDescription
+            }
+        }
+    }
+
     private var contactsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader("CONTACTS", count: contacts.count)
+            addContactButton
             if contacts.isEmpty {
                 emptyRow("No contacts linked", icon: "person.2")
             } else {
@@ -200,6 +258,7 @@ struct AccountDetailView: View {
                 }
             }
         }
+        .sheet(isPresented: $addingContact) { addContactSheet }
     }
 
     private var dealsSection: some View {
@@ -381,6 +440,12 @@ struct AccountDetailView: View {
     }
 
     // MARK: - Loading
+
+    /// The admin's field overrides — only the Spark "Outcome" row reads them.
+    private func loadOverrides() async {
+        guard isSpark else { return }
+        await fieldOverrides.load()
+    }
 
     private func loadRelations() async {
         isLoadingRelations = true
