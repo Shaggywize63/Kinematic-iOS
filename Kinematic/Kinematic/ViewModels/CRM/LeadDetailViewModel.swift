@@ -186,6 +186,18 @@ final class LeadDetailViewModel: ObservableObject {
         }
     }
 
+    /// Spark & Ray: create a deal from this lead (`lead_id` is in `body`). With `converting` the body carries
+    /// `convert_lead: true`, so the server also converts the lead (creating / reusing the account + contact);
+    /// either way the lead is re-fetched afterwards so the detail screen shows its converted state, linked
+    /// account / contact / deal and related deals. Throws the server's message so the form stays open on it.
+    func createDealFromLead(_ body: [String: Any], converting: Bool) async throws {
+        convertBusy = converting
+        defer { convertBusy = false }
+        _ = try await api.createDeal(body)
+        await load()
+        if converting { successMessage = "Lead converted" }
+    }
+
     func assign(toUser user: AssignableUser) async {
         assignBusy = true
         defer { assignBusy = false }

@@ -35,8 +35,11 @@ struct LeadDetailView: View {
     @State private var showNbaHow = false
     @State private var converting = false
     @State private var showAssignSheet = false
-    /// Spark & Ray: "New deal" from this lead (sends `lead_id`).
+    /// Spark & Ray: "New deal" / "Convert" from this lead (sends `lead_id`; Convert also sends `convert_lead`).
     @State private var creatingDeal = false
+    /// True when the deal sheet was opened by Convert (the lead is converted by the deal), false for a plain
+    /// "New deal". Set before `creatingDeal` is raised, so it stays fixed while the sheet is up.
+    @State private var dealConvertsLead = false
     @State private var confirmDeactivate = false
     @State private var confirmDelete = false
     /// Lifecycle-step-2 sheet. Driven by both header buttons (Mark
@@ -127,21 +130,32 @@ struct LeadDetailView: View {
         return author == me
     }
 
-    /// Spark & Ray: the "New deal" sheet for this lead. Kept out of `body` so the long modifier chain
-    /// stays within the type-checker's budget.
+    /// Spark & Ray: the deal sheet for this lead — our own deal form (Quotation / Pricing / Product trial /
+    /// people sections) prefilled from the lead. Opened by "New deal" (a plain deal) and by "Convert"
+    /// (`dealConvertsLead`: the deal also converts the lead and creates / links its customer account).
+    /// Kept out of `body` so the long modifier chain stays within the type-checker's budget.
     @ViewBuilder
     private var newDealSheet: some View {
-        DealCreateView(prefillLeadId: vm.leadId) { body in
+        // Fixed when the sheet was opened (not re-derived from the lead), so the form does not change under the
+        // rep while the save re-fetches the now-converted lead.
+        let converts = dealConvertsLead
+        let dealName: String? = converts ? vm.lead.map { SparkLeadConversion.defaultDealName(for: $0) } : nil
+        DealCreateView(
+            prefillAccount: vm.convertedAccount,
+            prefillLeadId: vm.leadId,
+            prefillDealName: dealName,
+            prefillContactId: vm.lead?.convertedContactId,
+            convertLead: converts,
+            leadName: vm.lead?.displayName
+        ) { body in
             do {
-                _ = try await CRMService.shared.createDeal(body)
-                await vm.load()
+                try await vm.createDealFromLead(body, converting: converts)
             } catch {
                 vm.errorMessage = error.localizedDescription
             }
         }
         .sparkSubmit { body in
-            _ = try await CRMService.shared.createDeal(body)
-            await vm.load()
+            try await vm.createDealFromLead(body, converting: converts)
         }
     }
 
@@ -683,17 +697,25 @@ struct LeadDetailView: View {
         FlexibleHStack(spacing: 10) {
             if !vm.isConverted && !vm.isDisqualified {
                 primaryAction("Convert", icon: "arrow.triangle.branch", busy: vm.convertBusy) {
-                    // Every tenant goes through the Convert options sheet. Tata
-                    // captures the Products of Interest basket there now (moved
-                    // off the lead form); the sheet holds create-account at
-                    // false so their flow stays deal-only.
-                    converting = true
+                    if SparkJourney.isActive {
+                        // Spark & Ray: Convert opens the full deal form, prefilled from this lead; saving it
+                        // converts the lead and creates / links the customer account.
+                        dealConvertsLead = SparkLeadConversion.shouldConvert(requested: true, leadAlreadyConverted: vm.isConverted)
+                        creatingDeal = true
+                    } else {
+                        // Every other tenant goes through the Convert options sheet. Tata
+                        // captures the Products of Interest basket there now (moved
+                        // off the lead form); the sheet holds create-account at
+                        // false so their flow stays deal-only.
+                        converting = true
+                    }
                 }
             }
             // Spark & Ray: start a deal from this lead. Many deals per lead are allowed; a converted
             // lead's customer account is attached by the backend.
             if SparkJourney.isActive && !vm.isDisqualified {
                 secondaryAction("New deal", icon: "briefcase.fill", busy: false) {
+                    dealConvertsLead = false
                     creatingDeal = true
                 }
             }

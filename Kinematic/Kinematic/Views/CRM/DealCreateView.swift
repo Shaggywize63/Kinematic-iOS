@@ -49,19 +49,37 @@ struct DealCreateView: View {
     /// Lead this deal comes from (launched from a lead's "New deal") — sent as `lead_id`. A
     /// converted lead's customer account is attached by the backend.
     var prefillLeadId: String? = nil
+    /// Known contact of the lead / customer, sent as `primary_contact_id` (Spark only).
+    var prefillContactId: String? = nil
+    /// Lead -> deal conversion (Spark only): the lead is not converted yet, so this deal creates / links the
+    /// customer account. Shows a note and sends `convert_lead: true` with the normal deal body.
+    var convertsLead: Bool = false
+    /// The lead's name, for the conversion note.
+    var leadName: String? = nil
 
     let onSubmit: ([String: Any]) async -> Void
 
     /// Explicit init: the private `onSparkSubmit` stored property would otherwise make the synthesized
-    /// memberwise initializer private, breaking every call site.
+    /// memberwise initializer private, breaking every call site. `prefillDealName` seeds the (editable)
+    /// deal name; `convertLead` / `leadName` switch on the conversion flow.
     init(
         prefillAccount: CRMAccount? = nil,
         prefillLeadId: String? = nil,
+        prefillDealName: String? = nil,
+        prefillContactId: String? = nil,
+        convertLead: Bool = false,
+        leadName: String? = nil,
         onSubmit: @escaping ([String: Any]) async -> Void
     ) {
         self.prefillAccount = prefillAccount
         self.prefillLeadId = prefillLeadId
+        self.prefillContactId = prefillContactId
+        self.convertsLead = convertLead
+        self.leadName = leadName
         self.onSubmit = onSubmit
+        if let prefillDealName, !prefillDealName.isEmpty {
+            _name = State(initialValue: prefillDealName)
+        }
     }
 
     private var isSpark: Bool { SparkJourney.isActive }
@@ -166,7 +184,7 @@ struct DealCreateView: View {
                     ProductLinesSection(model: productLines)
                 }
             }
-            .navigationTitle("New Deal")
+            .navigationTitle(SparkLeadConversion.formTitle(converting: convertsLead && isSpark))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -220,7 +238,12 @@ struct DealCreateView: View {
     /// (and held back until the overrides have loaded). The quotation number lives in the Quotation section.
     @ViewBuilder
     private var sparkCustomerRows: some View {
-        if fieldOverrides.didLoad {
+        if convertsLead {
+            // Converting a lead: the server creates / links the customer account, so there is nothing to pick.
+            Text(SparkLeadConversion.note(leadName: leadName))
+                .font(.footnote)
+                .foregroundColor(.secondary)
+        } else if fieldOverrides.didLoad {
             if !fieldOverrides.isHidden(entity: "deal", "account_id") {
                 Button {
                     showAccountPicker = true
@@ -416,9 +439,12 @@ struct DealCreateView: View {
                 to: &body,
                 accountId: selectedAccount?.id,
                 leadId: prefillLeadId,
+                primaryContactId: prefillContactId,
                 quotationNo: "",
                 lines: lines
             )
+            // Lead -> deal conversion: the server converts the lead and attaches this deal to it.
+            SparkLeadConversion.applyConversion(to: &body, convert: convertsLead, leadId: prefillLeadId)
             // Quotation number, pricing, trial and people — enabled + visible sections only.
             sparkDraft.apply(to: &body, config: dealSections.config, hidden: sparkHiddenKeys)
         }
