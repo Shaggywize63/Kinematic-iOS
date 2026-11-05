@@ -160,29 +160,14 @@ final class ActivitiesViewModel: ObservableObject {
         customFields: [String: Any] = [:],
         assignment: [String: Any] = [:]
     ) async {
-        let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedSubject.isEmpty else { return }
+        // Shared with the account detail's edit path. Only touched custom fields are sent (the backend merges
+        // them over the stored blob); a changed assignee (`assigned_to`) only for admins / managers.
+        guard let body = ActivityEditBody.patch(
+            type: type, subject: subject, description: description, imageUrl: imageUrl,
+            completedAt: completedAt, customFields: customFields, assignment: assignment,
+            canChangeAssignee: RecordOwnerRules.currentUserCanChange
+        ) else { return }
         do {
-            var body: [String: Any] = ["type": type, "subject": trimmedSubject]
-            let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
-            body["description"] = trimmedDesc.isEmpty ? NSNull() : trimmedDesc
-            if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
-            if type != "task" {
-                let stamp = completedAt ?? Date()
-                body["completed_at"] = ISO8601DateFormatter().string(from: stamp)
-                body["status"] = "completed"
-            } else if let due = completedAt {
-                body["due_at"] = ISO8601DateFormatter().string(from: due)
-            }
-            // Only send touched custom fields — the backend PATCH merges
-            // them over the existing blob, so an empty map (nothing typed)
-            // is omitted and never wipes stored values.
-            if !customFields.isEmpty { body["custom_fields"] = customFields }
-            // A changed assignee (`assigned_to`, from `RecordOwnerRules.assignedToPatch`) — only admins /
-            // managers may change it, so anyone else's request never carries one. Empty = untouched.
-            if RecordOwnerRules.currentUserCanChange {
-                for (key, value) in assignment { body[key] = value }
-            }
             let updated = try await api.updateActivity(id: id, body: body)
             if let idx = activities.firstIndex(where: { $0.id == id }) {
                 activities[idx] = updated
@@ -206,16 +191,14 @@ final class ActivitiesViewModel: ObservableObject {
 
     /// PATCH an existing activity from the edit sheet, sending only the Spark extras that changed.
     func updateSpark(existing: Activity, _ result: ActivityComposeResult) async throws {
-        let body = SparkActivityBody.updateBody(result, existing: existing)
-        let previous = existing.sparkExtras
         // Only an admin / manager can change who it is assigned to; for anyone else the existing assignees
         // stay whatever the form held. Removing every assignee sends `assignee_ids: []` (clears the activity).
-        let extras = RecordOwnerRules.extrasForEdit(
-            edited: result.extras, previous: previous,
+        let parts = ActivityEditBody.sparkPatch(
+            existing: existing, result: result,
             canChangeAssignees: RecordOwnerRules.currentUserCanChange
         )
         let updated = try await api.updateActivity(
-            id: existing.id, body: body, spark: extras, previous: previous
+            id: existing.id, body: parts.body, spark: parts.extras, previous: parts.previous
         )
         if let idx = activities.firstIndex(where: { $0.id == existing.id }) {
             activities[idx] = updated

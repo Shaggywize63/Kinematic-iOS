@@ -22,6 +22,10 @@ struct AccountDetailView: View {
     @State private var journeyError: String?
     /// Spark & Ray: the "Add contact" sheet (contact create, pre-linked to this account).
     @State private var addingContact = false
+    /// The activity being edited (every row has an Edit entry). Drives the edit sheet; nil hides it.
+    @State private var editingActivity: Activity? = nil
+    /// The single "Assigned to" picker's choice while an activity is being edited (nil = unchanged).
+    @State private var editAssignedTo: String? = nil
     /// Built-in field overrides — gate the Spark "Outcome" row (hide / relabel).
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
@@ -284,12 +288,111 @@ struct AccountDetailView: View {
                 emptyRow("No activity logged", icon: "clock")
             } else {
                 ForEach(activities.prefix(10)) { a in
-                    ActivityTimelineItem(
-                        activity: a,
-                        onSetComplete: { act, done in await setActivityCompleted(act, completed: done) }
-                    )
+                    activityRow(a)
                 }
             }
+        }
+        // Edit sheet — the same compose view the Activities list edits with (Spark extras, owner / assignee
+        // rules and all). Attached here, not to the main chain, to keep `body`'s modifier chain short.
+        .sheet(item: $editingActivity) { act in
+            editActivitySheet(for: act)
+        }
+    }
+
+    /// One activity row with a direct Edit: tap the card, the Edit button under it, or long-press for the menu.
+    /// The card's own Mark complete / Reopen button is a real Button, so it does not also open the editor.
+    private func activityRow(_ a: Activity) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            ActivityTimelineItem(
+                activity: a,
+                onSetComplete: { act, done in await setActivityCompleted(act, completed: done) }
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { beginEditingActivity(a) }
+            Button {
+                beginEditingActivity(a)
+            } label: {
+                Label("Edit", systemImage: "pencil")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Brand.red)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Edit activity")
+        }
+        .contextMenu {
+            Button { beginEditingActivity(a) } label: { Label("Edit", systemImage: "pencil") }
+        }
+    }
+
+    /// Open the edit sheet for `a` (the freshest copy in the list) with no assignee change left over from an
+    /// earlier edit.
+    private func beginEditingActivity(_ a: Activity) {
+        guard let target = ActivityEditRouting.target(id: a.id, in: activities) else { return }
+        editAssignedTo = nil
+        editingActivity = target
+    }
+
+    private func editActivitySheet(for act: Activity) -> ActivityComposeView {
+        ActivityComposeView.editing(
+            act,
+            assignedToSelection: $editAssignedTo,
+            onSave: { type, subject, desc, imageUrl, when, customFields, assignment in
+                await saveActivityEdit(
+                    act, type: type, subject: subject, description: desc, imageUrl: imageUrl,
+                    when: when, customFields: customFields, assignment: assignment
+                )
+            },
+            onSparkSave: { result in
+                try await saveSparkActivityEdit(act, result)
+            }
+        )
+    }
+
+    /// Generic edit: PATCH the activity, then refresh the account's activity list. The server decides who may
+    /// edit; its message is shown in the "Couldn't save" alert.
+    private func saveActivityEdit(
+        _ act: Activity,
+        type: String,
+        subject: String,
+        description: String,
+        imageUrl: String?,
+        when: Date,
+        customFields: [String: Any],
+        assignment: [String: Any]
+    ) async {
+        guard let body = ActivityEditBody.patch(
+            type: type, subject: subject, description: description, imageUrl: imageUrl,
+            completedAt: when, customFields: customFields, assignment: assignment,
+            canChangeAssignee: RecordOwnerRules.currentUserCanChange
+        ) else { return }
+        do {
+            let updated = try await api.updateActivity(id: act.id, body: body)
+            activities = ActivityEditRouting.replacing(updated, in: activities)
+            await refreshActivities()
+        } catch {
+            journeyError = error.localizedDescription
+        }
+    }
+
+    /// Spark edit (assignees / product interested / form serial): throws so the composer shows the server's
+    /// message by the field. Refreshes the account's activity list after a save.
+    private func saveSparkActivityEdit(_ act: Activity, _ result: ActivityComposeResult) async throws {
+        let parts = ActivityEditBody.sparkPatch(
+            existing: act, result: result,
+            canChangeAssignees: RecordOwnerRules.currentUserCanChange
+        )
+        let updated = try await api.updateActivity(
+            id: act.id, body: parts.body, spark: parts.extras, previous: parts.previous
+        )
+        activities = ActivityEditRouting.replacing(updated, in: activities)
+        await refreshActivities()
+    }
+
+    /// Re-fetch just the account's activities (keeps the current list if the request fails).
+    private func refreshActivities() async {
+        if let fresh = try? await api.accountActivities(id: account.id) {
+            activities = fresh
         }
     }
 

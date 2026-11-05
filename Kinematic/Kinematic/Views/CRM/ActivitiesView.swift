@@ -259,38 +259,21 @@ struct ActivitiesView: View {
 
     /// The edit sheet for a tapped activity — the compose view pre-filled from the row. Kept out of `body`
     /// so the modifier chain there stays short.
+    /// Built through `ActivityComposeView.editing` — the same sheet the account detail uses for its rows.
     private func editSheet(for act: Activity) -> ActivityComposeView {
-        ActivityComposeView(
-            initialType: act.type ?? "meeting",
-            initialSubject: act.subject ?? "",
-            // Spark & Ray edits start from the row's own remarks + date, so saving never
-            // wipes the description or resets the due date to "now". Other tenants keep
-            // the original (blank / now) start.
-            initialDescription: SparkJourney.isActive ? (act.remarksText ?? "") : "",
-            initialWhen: SparkJourney.isActive ? SparkJourney.parseISO(act.completedAt ?? act.dueAt) : nil,
-            allowLeadPicker: false
-        ) { type, subject, desc, imageUrl, when, _, customFields in
-            // Activity.id is non-optional in the model — pass it
-            // straight through without a guard. (Earlier draft
-            // used `if let` which the iOS 26 toolchain refused.)
-            await vm.update(
-                id: act.id, type: type, subject: subject, description: desc, imageUrl: imageUrl,
-                completedAt: when, customFields: customFields,
-                assignment: RecordOwnerRules.assignedToPatch(original: act.assignedTo, selected: editAssignedTo)
-            )
-        }
-        // Show the activity's current photo; a newly attached one replaces it.
-        .withExistingPhoto(act.imageUrl)
-        // Spark & Ray: edit the assignees / product interested / form serial too.
-        .sparkSubmit(initial: act.sparkExtras, names: act.sparkNames) { result in
-            try await vm.updateSpark(existing: act, result)
-        }
-        // Who it is assigned to can be changed (or, for Spark, cleared) by admins / managers only;
-        // everyone else sees the names without a picker.
-        .editingAssignment(
-            assignedToId: act.assignedTo,
-            assignedToName: act.assignedToName,
-            selection: $editAssignedTo
+        ActivityComposeView.editing(
+            act,
+            assignedToSelection: $editAssignedTo,
+            onSave: { type, subject, desc, imageUrl, when, customFields, assignment in
+                // Activity.id is non-optional in the model — pass it straight through without a guard.
+                await vm.update(
+                    id: act.id, type: type, subject: subject, description: desc, imageUrl: imageUrl,
+                    completedAt: when, customFields: customFields, assignment: assignment
+                )
+            },
+            onSparkSave: { result in
+                try await vm.updateSpark(existing: act, result)
+            }
         )
     }
 
