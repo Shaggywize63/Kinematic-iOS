@@ -2935,6 +2935,10 @@ class KinematicRepository {
         }
     }
 
+    /// When the last successful refresh finished. A caller that 401s on the OLD access token just after that point
+    /// replays with the current one instead of rotating the refresh token again (see AuthRefreshPolicy).
+    private static var lastRefreshSuccessAt: Date?
+
     func refreshAccessToken() async -> Bool {
         let saved = Session.refreshToken
         guard !saved.isEmpty else {
@@ -2950,6 +2954,12 @@ class KinematicRepository {
         if let inflight = Self.refreshInFlight {
             Self.refreshLock.unlock()
             return await inflight.value
+        }
+        // A refresh finished a moment ago: this caller's request carried the token it replaced. The current access
+        // token is already good — do not rotate the refresh token a second time.
+        if AuthRefreshPolicy.shouldReuseRecentRefresh(lastSuccess: Self.lastRefreshSuccessAt) {
+            Self.refreshLock.unlock()
+            return true
         }
         let task = Task<Bool, Never> {
             defer {
@@ -2968,43 +2978,47 @@ class KinematicRepository {
                 req.setValue(proj, forHTTPHeaderField: "X-Kinematic-Project")
             }
             req.httpBody = try? JSONEncoder().encode(["refresh_token": saved])
+
+            // The server rotates the refresh token the moment it answers. If iOS suspends the app between the server
+            // answering and us storing the new token, the next refresh would present a token the server has already
+            // used and revoke the whole session. A background task keeps the app running long enough to finish.
+            let bgTask = await MainActor.run {
+                UIApplication.shared.beginBackgroundTask(withName: "auth-refresh", expirationHandler: nil)
+            }
+            defer {
+                if bgTask != .invalid { Task { @MainActor in UIApplication.shared.endBackgroundTask(bgTask) } }
+            }
+
             do {
                 let (data, response) = try await URLSession.shared.data(for: req)
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                guard code == 200 else {
-                    print("🚩 REFRESH_FAILED: status \(code)")
-                    // 4xx = the refresh token itself was rejected (revoked /
-                    // expired / rotated) → dead session, tear down and route to
-                    // Login. 5xx = a server hiccup → transient, keep the session.
-                    if (400..<500).contains(code) { await self.endDeadSession() }
+                switch AuthRefreshPolicy.outcome(status: code, body: data) {
+                case .rejected:
+                    // 400 / 401: the refresh token itself was rejected (revoked / expired / already used) -> dead
+                    // session, tear down and route to Login. This is the ONLY outcome that signs the user out.
+                    print("🚩 REFRESH_REJECTED: status \(code)")
+                    // Only if it is still the session we refreshed for (a new login may have replaced it meanwhile).
+                    if Session.refreshToken == saved { await self.endDeadSession() }
                     return false
-                }
-                struct Body: Codable {
-                    let success: Bool
-                    let data: Inner?
-                    struct Inner: Codable {
-                        let accessToken: String
-                        let refreshToken: String?
-                        enum CodingKeys: String, CodingKey {
-                            case accessToken = "access_token"
-                            case refreshToken = "refresh_token"
-                        }
-                    }
-                }
-                let parsed = try JSONDecoder().decode(Body.self, from: data)
-                guard parsed.success, let newAccess = parsed.data?.accessToken else {
-                    // Reachable + 200 but no fresh session minted = a definitive
-                    // rejection → dead session.
-                    await self.endDeadSession()
+                case .transient:
+                    // 429 / 403 / 5xx / unreadable reply: we could not find out. Keep the session; the next
+                    // request tries again.
+                    print("🚩 REFRESH_FAILED (transient): status \(code)")
                     return false
+                case .refreshed(let newAccess, let newRefresh):
+                    // Signed out while we were on the wire: do not resurrect the session.
+                    guard Session.refreshToken == saved else { return false }
+                    // Refresh token first: it is the one that cannot be recovered if lost.
+                    if let newRefresh { Session.refreshToken = newRefresh }
+                    Session.sharedToken = newAccess
+                    Self.refreshLock.lock()
+                    Self.lastRefreshSuccessAt = Date()
+                    Self.refreshLock.unlock()
+                    print("✅ REFRESH_OK")
+                    return true
                 }
-                Session.sharedToken = newAccess
-                if let newRefresh = parsed.data?.refreshToken, !newRefresh.isEmpty {
-                    Session.refreshToken = newRefresh
-                }
-                print("✅ REFRESH_OK")
-                return true
             } catch {
+                // Offline / timeout / cancelled: not proof the session is dead.
                 print("🚩 REFRESH_ERROR: \(error.localizedDescription)")
                 return false
             }
@@ -3484,16 +3498,23 @@ class KinematicRepository {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Identify this as a phone, exactly like /auth/login does, so the backend claims the single-device session
+        // for it and returns a session_id. Without the platform header the reset signed the phone in with NO session
+        // id while users.active_session_id still held an earlier login's (iOS sign-out never calls /auth/logout), and
+        // the first request after the reset came back 401 DEVICE_REPLACED — "reset my password, got kicked out".
+        req.setValue("ios", forHTTPHeaderField: "X-Kinematic-Platform")
+        req.setValue(UIDevice.current.modelName, forHTTPHeaderField: "X-Device-Model")
+        req.setValue("Apple", forHTTPHeaderField: "X-Device-Brand")
+        req.setValue(UIDevice.current.systemVersion, forHTTPHeaderField: "X-OS-Version")
         req.httpBody = try? JSONEncoder().encode(payload)
         do {
             let (data, response) = try await URLSession.shared.data(for: req)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             if (200...299).contains(code) {
                 // Response mirrors /auth/login so we can reuse the same
-                // decoder + save sequence. We don't get session_id back
-                // on reset (single-device rotation only fires on login)
-                // — that's fine; the next refresh will pick up a fresh
-                // one anyway.
+                // decoder + save sequence, including the session_id the
+                // backend now issues for a phone (nil from an older backend
+                // — then no enforcement applies to this device).
                 if let result = try? JSONDecoder().decode(LoginResponseModel.self, from: data),
                    result.success, let t = result.data?.accessToken {
                     await MainActor.run {
