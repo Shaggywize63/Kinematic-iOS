@@ -9,7 +9,7 @@ struct AccountCreateView: View {
     @State private var annualRevenue: Double = 0
     @State private var employees: Int = 0
     @State private var description = ""
-    /// Address, State, City, PIN code and Country (gated per field by `AccountLocationSection`).
+    /// Address, State, PIN code and Country (gated per field by `AccountLocationSection`).
     @State private var location = AccountLocationDraft()
     /// Built-in field overrides (hide / relabel / require) for account columns.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
@@ -106,7 +106,7 @@ struct AccountCreateView: View {
         if annualRevenue > 0 { body["annual_revenue"] = annualRevenue }
         if employees > 0     { body["employees"] = employees }
         if !description.isEmpty { body["description"] = description }
-        // Address / State / City / PIN / Country: only the fields the admin left visible and the rep filled in.
+        // Address / State / PIN / Country: only the fields the admin left visible and the rep filled in.
         body.merge(location.createFields(hidden: AccountLocationDraft.hiddenKeys(fieldOverrides))) { _, new in new }
         return body
     }
