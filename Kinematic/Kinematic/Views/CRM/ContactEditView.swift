@@ -27,6 +27,11 @@ struct ContactEditView: View {
     @State private var whatsappConsent: Bool
     @State private var saving = false
     @State private var errorMessage: String?
+    /// Spark & Ray: the contact's Company (account) — the id sent on save and the name shown. Changeable with
+    /// the searchable picker and clearable.
+    @State private var companyId: String
+    @State private var companyName: String
+    @State private var showCompanyPicker = false
     /// Built-in field overrides (hide / relabel / require) for contact
     /// columns, scoped by the contact's B2B/B2C mode.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
@@ -54,6 +59,41 @@ struct ContactEditView: View {
         _referralSource = State(initialValue: contact.referralSource ?? "")
         _marketingConsent = State(initialValue: contact.marketingConsent ?? false)
         _whatsappConsent = State(initialValue: contact.whatsappConsent ?? false)
+        _companyId = State(initialValue: contact.accountId ?? "")
+        _companyName = State(initialValue: contact.accountName ?? "")
+    }
+
+    /// Spark & Ray, business contacts: the Company row (a built-in `account_id` field, so it is gated like the rest).
+    private var showsCompany: Bool {
+        SparkJourney.isActive && !isB2C && fieldOverrides.didLoad
+            && !fieldOverrides.isHidden(entity: "contact", "account_id", isB2C: isB2C)
+    }
+
+    @ViewBuilder
+    private var companySection: some View {
+        if showsCompany {
+            Section(SparkContactCompany.label(spark: true)) {
+                Button {
+                    showCompanyPicker = true
+                } label: {
+                    HStack {
+                        Text(fieldOverrides.labelFor(entity: "contact", "account_id", "Company", isB2C: isB2C))
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Text(companyId.isEmpty ? "Select" : (companyName.isEmpty ? "Company" : companyName))
+                            .foregroundColor(companyId.isEmpty ? .secondary : .primary)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                    }
+                }
+                if !companyId.isEmpty {
+                    Button("Remove company", role: .destructive) {
+                        companyId = ""
+                        companyName = ""
+                    }
+                }
+            }
+        }
     }
 
     var body: some View {
@@ -80,6 +120,7 @@ struct ContactEditView: View {
                     }
                     TextField("Mobile", text: $mobile).keyboardType(.phonePad)
                 }
+                companySection
                 if !isB2C {
                     if !fieldOverrides.isHidden(entity: "contact", "title", isB2C: isB2C) || !fieldOverrides.isHidden(entity: "contact", "department", isB2C: isB2C) {
                         Section("Work") {
@@ -134,6 +175,12 @@ struct ContactEditView: View {
                 }
             }
             .task { await fieldOverrides.load() }
+            .sheet(isPresented: $showCompanyPicker) {
+                SparkAccountPickerSheet { account in
+                    companyId = account.id
+                    companyName = account.name
+                }
+            }
             .navigationTitle("Edit Contact")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -174,6 +221,10 @@ struct ContactEditView: View {
             body["referral_source"] = referralSource.isEmpty ? NSNull() : referralSource
             body["marketing_consent"] = marketingConsent
             body["whatsapp_consent"] = whatsappConsent
+        }
+        // Spark & Ray: the Company only rides the PATCH when it actually changed (null clears it).
+        if showsCompany, companyId != (contact.accountId ?? "") {
+            for (key, value) in SparkContactCompany.accountPatch(selectedId: companyId) { body[key] = value }
         }
         do {
             let updated = try await CRMService.shared.patchContact(id: contact.id, body: body)

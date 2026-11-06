@@ -18,7 +18,8 @@ struct CRMAccount: Codable, Identifiable, Hashable {
     let territoryId: String?
     let tags: [String]?
     let description: String?
-    /// Spark & Ray: the account's required "Outcome" (nil for every other tenant / older rows).
+    /// Spark & Ray: an Outcome stored on the account before outcomes moved to activities. Read-only now (shown as
+    /// "Outcome (earlier)" on the account detail); it is no longer entered on the account forms. Nil elsewhere.
     let outcome: String?
     let createdAt: String?
     let updatedAt: String?

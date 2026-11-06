@@ -289,7 +289,7 @@ struct ContactDetailView: View {
             Button {
                 pickingAccount = true
             } label: {
-                Label(hasAccount ? "Change account" : "Add to an account", systemImage: "building.2")
+                Label(hasAccount ? "Change company" : "Add to a company", systemImage: "building.2")
                     .font(.system(size: 13, weight: .bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
@@ -326,7 +326,7 @@ struct ContactDetailView: View {
     private var linkedAccountCard: some View {
         if let account = linkedAccount {
             VStack(alignment: .leading, spacing: 10) {
-                sectionHeader("ACCOUNT", count: 1)
+                sectionHeader(SparkJourney.isActive ? "COMPANY" : "ACCOUNT", count: 1)
                 NavigationLink(destination: AccountDetailView(account: account)) {
                     HStack(spacing: 12) {
                         Image(systemName: "building.2.fill")

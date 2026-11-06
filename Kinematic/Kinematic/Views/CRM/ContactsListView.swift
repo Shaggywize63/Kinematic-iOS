@@ -72,22 +72,57 @@ struct ContactsListView: View {
         .task { await vm.refresh() }
     }
 
+    @ViewBuilder
     private func contactLink(_ c: Contact) -> some View {
-        NavigationLink(destination: ContactDetailView(contact: c)) {
-            contactRow(c)
+        if let company = SparkContactCompany.line(for: c, spark: SparkJourney.isActive) {
+            companyCard(c, company: company)
+                .contextMenu { accountMenu(for: c) }
+        } else {
+            NavigationLink(destination: ContactDetailView(contact: c)) {
+                contactRow(c)
+            }
+            .buttonStyle(.plain)
+            .contextMenu { accountMenu(for: c) }
         }
-        .buttonStyle(.plain)
-        .contextMenu { accountMenu(for: c) }
     }
 
-    /// Spark & Ray: "Add to an account" / "Change account" for a business contact.
+    /// Spark & Ray: a contact row with its Company underneath. The company is its own link to the account, so
+    /// the row's link and the company's link sit side by side (never nested) inside one card.
+    private func companyCard(_ c: Contact, company: (id: String, name: String)) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationLink(destination: ContactDetailView(contact: c)) {
+                contactRowContent(c)
+                    .padding(12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            NavigationLink(destination: AccountDetailLoader(accountId: company.id, name: company.name)) {
+                HStack(spacing: 5) {
+                    Image(systemName: "building.2.fill").font(.system(size: 10, weight: .semibold))
+                    Text("\(SparkContactCompany.label(spark: true)): \(company.name)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
+                    Spacer(minLength: 0)
+                }
+                .foregroundColor(Brand.red)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    /// Spark & Ray: "Add to a company" / "Change company" for a business contact.
     @ViewBuilder
     private func accountMenu(for c: Contact) -> some View {
         if SparkJourney.isActive && c.isB2c != true {
             Button {
                 accountPickerContact = c
             } label: {
-                Label((c.accountId ?? "").isEmpty ? "Add to an account" : "Change account", systemImage: "building.2")
+                Label((c.accountId ?? "").isEmpty ? "Add to a company" : "Change company", systemImage: "building.2")
             }
         }
     }
@@ -99,6 +134,14 @@ struct ContactsListView: View {
     }
 
     private func contactRow(_ c: Contact) -> some View {
+        contactRowContent(c)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground))
+            )
+    }
+
+    private func contactRowContent(_ c: Contact) -> some View {
         HStack(spacing: 12) {
             ZStack {
                 Circle().fill(Brand.red.opacity(0.2)).frame(width: 40, height: 40)
@@ -111,10 +154,6 @@ struct ContactsListView: View {
             Spacer()
             if c.phone != nil { Image(systemName: "phone.fill").foregroundColor(Brand.red).font(.caption) }
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground))
-        )
     }
 
     private func initials(_ c: Contact) -> String {

@@ -412,22 +412,7 @@ final class SparkDealSectionsTests: XCTestCase {
         XCTAssertEqual(draft.trialStart, "2026-11-01")
     }
 
-    // MARK: - account outcome
-
-    func testBlankOutcomeIsRejected() {
-        XCTAssertEqual(SparkAccountOutcome.validationError(""), SparkAccountOutcome.missingMessage)
-        XCTAssertEqual(SparkAccountOutcome.validationError("  \n\t "), SparkAccountOutcome.missingMessage)
-        XCTAssertNil(SparkAccountOutcome.validationError("Won the rate contract"))
-    }
-
-    func testOutcomeIsTrimmedAndSentOnlyWhenFilled() {
-        var b: [String: Any] = ["name": "Acme"]
-        SparkAccountOutcome.apply(to: &b, outcome: "  Order confirmed \n")
-        XCTAssertEqual(b["outcome"] as? String, "Order confirmed")
-        var blank: [String: Any] = [:]
-        SparkAccountOutcome.apply(to: &blank, outcome: "   ")
-        XCTAssertTrue(blank.isEmpty)
-    }
+    // MARK: - account outcome (read-only legacy value; no longer entered on accounts)
 
     func testAccountDecodesTheOutcome() throws {
         let with = try JSONDecoder().decode(CRMAccount.self, from: Data(#"{"id":"a1","name":"Acme","outcome":"Rate contract"}"#.utf8))

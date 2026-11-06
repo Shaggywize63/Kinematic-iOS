@@ -1,36 +1,12 @@
 import Foundation
 
-// Spark & Ray deal sections + account outcome: the pure logic (no UI, no network) behind
-//   - the "Outcome" an account must carry,
+// Spark & Ray deal sections: the pure logic (no UI, no network) behind
 //   - the deal's Quotation / Pricing / Product trial / Approvals sections, and the admin's
 //     `config.deal_sections` (enabled / label / position) from /crm/settings,
 //   - the request bodies the create / edit forms send for them.
 //
 // Everything built on this is shown / sent ONLY for the Spark & Ray client (`SparkJourney.isActive`);
 // other tenants never see these controls and never send these keys.
-
-// MARK: - Account outcome
-
-enum SparkAccountOutcome {
-    static let missingMessage = "Outcome is required."
-
-    /// Surrounding whitespace removed.
-    static func trimmed(_ raw: String) -> String {
-        raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// The inline error for a blank outcome (nil when it is filled in).
-    static func validationError(_ raw: String) -> String? {
-        trimmed(raw).isEmpty ? missingMessage : nil
-    }
-
-    /// Merge `outcome` into a POST / PATCH accounts body. Blank is never sent: the backend rejects it
-    /// (400 "Outcome is required"), and a PATCH can never clear it.
-    static func apply(to body: inout [String: Any], outcome: String) {
-        let t = trimmed(outcome)
-        if !t.isEmpty { body["outcome"] = t }
-    }
-}
 
 // MARK: - Section config
 
