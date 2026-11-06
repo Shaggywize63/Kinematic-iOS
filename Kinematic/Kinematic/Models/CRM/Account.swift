@@ -11,6 +11,14 @@ struct CRMAccount: Codable, Identifiable, Hashable {
     let annualRevenue: Double?
     let billingAddress: String?
     let shippingAddress: String?
+    /// Structured location columns (the account create / edit form's Address block). All optional: an account
+    /// created before they were persisted simply has none.
+    let addressLine1: String?
+    let addressLine2: String?
+    let city: String?
+    let state: String?
+    let postalCode: String?
+    let country: String?
     let ownerId: String?
     /// The owner's name, stamped by the backend on GET / PATCH (read-only; never sent back).
     let ownerName: String?
@@ -32,6 +40,11 @@ struct CRMAccount: Codable, Identifiable, Hashable {
         case annualRevenue = "annual_revenue"
         case billingAddress = "billing_address"
         case shippingAddress = "shipping_address"
+        case addressLine1 = "address_line1"
+        case addressLine2 = "address_line2"
+        case city, state
+        case postalCode = "postal_code"
+        case country
         case ownerId = "owner_id"
         case ownerName = "owner_name"
         case parentAccountId = "parent_account_id"

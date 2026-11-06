@@ -42,6 +42,7 @@ struct AccountDetailView: View {
 
                 Text("DETAILS").font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(.gray)
                 if let addr = account.billingAddress { detailRow("Billing", addr, icon: "mappin.and.ellipse", color: Brand.red) }
+                locationRow
                 if let phone = account.phone, !phone.isEmpty { phoneRow(phone) }
                 websiteAndOutcomeRows
 
@@ -207,6 +208,21 @@ struct AccountDetailView: View {
     private var websiteAndOutcomeRows: some View {
         if let site = account.website { detailRow("Website", site, icon: "globe", color: Brand.red) }
         outcomeRow
+    }
+
+    /// The saved Address / City / State / PIN / Country, one row. Waits for the admin's overrides (so a hidden
+    /// part never flashes), drops hidden and blank parts, and is absent when nothing is left.
+    @ViewBuilder
+    private var locationRow: some View {
+        if fieldOverrides.didLoad {
+            let lines = AccountLocationDraft(account: account)
+                .displayLines(hidden: AccountLocationDraft.hiddenKeys(fieldOverrides))
+            if !lines.isEmpty {
+                detailRow(
+                    fieldOverrides.labelFor(entity: "account", "address_line1", "Address"),
+                    lines.joined(separator: "\n"), icon: "mappin.and.ellipse", color: Brand.red)
+            }
+        }
     }
 
     /// Spark & Ray: an Outcome stored on the account BEFORE it moved to activities, shown read-only as
@@ -552,7 +568,7 @@ struct AccountDetailView: View {
 
     /// The admin's field overrides — only the Spark "Outcome" row reads them.
     private func loadOverrides() async {
-        guard isSpark else { return }
+        // Every tenant: the address row below is gated by the same overrides (the Outcome row stays Spark-only).
         await fieldOverrides.load()
     }
 

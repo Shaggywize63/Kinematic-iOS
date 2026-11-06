@@ -9,6 +9,8 @@ struct AccountCreateView: View {
     @State private var annualRevenue: Double = 0
     @State private var employees: Int = 0
     @State private var description = ""
+    /// Address, State, City, PIN code and Country (gated per field by `AccountLocationSection`).
+    @State private var location = AccountLocationDraft()
     /// Built-in field overrides (hide / relabel / require) for account columns.
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
@@ -54,6 +56,7 @@ struct AccountCreateView: View {
                         TextField(fieldOverrides.labelFor(entity: "account", "phone", "Phone"), text: $phone).keyboardType(.phonePad)
                     }
                 }
+                AccountLocationSection(draft: $location, fieldOverrides: fieldOverrides)
                 Section("Profile") {
                     if !fieldOverrides.isHidden(entity: "account", "annual_revenue") {
                         HStack {
@@ -85,10 +88,14 @@ struct AccountCreateView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { saveTapped() }.disabled(!fieldOverrides.isHidden(entity: "account", "name") && name.isEmpty)
+                    Button("Save") { saveTapped() }.disabled(saveDisabled)
                 }
             }
         }
+    }
+
+    private var saveDisabled: Bool {
+        (!fieldOverrides.isHidden(entity: "account", "name") && name.isEmpty) || location.isIncomplete(fieldOverrides)
     }
 
     private func buildBody() -> [String: Any] {
@@ -99,6 +106,8 @@ struct AccountCreateView: View {
         if annualRevenue > 0 { body["annual_revenue"] = annualRevenue }
         if employees > 0     { body["employees"] = employees }
         if !description.isEmpty { body["description"] = description }
+        // Address / State / City / PIN / Country: only the fields the admin left visible and the rep filled in.
+        body.merge(location.createFields(hidden: AccountLocationDraft.hiddenKeys(fieldOverrides))) { _, new in new }
         return body
     }
 }
