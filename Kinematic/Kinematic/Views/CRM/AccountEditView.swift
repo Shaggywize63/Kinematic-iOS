@@ -12,7 +12,7 @@ struct AccountEditView: View {
     @State private var revenue: String
     @State private var employees: String
     @State private var description: String
-    /// Saved Address / State / City / PIN / Country, preloaded (gated per field by `AccountLocationSection`).
+    /// Saved Address / State / PIN / Country, preloaded (gated per field by `AccountLocationSection`).
     @State private var location: AccountLocationDraft
     @State private var saving = false
     @State private var errorMessage: String?
@@ -153,7 +153,7 @@ struct AccountEditView: View {
         body["annual_revenue"] = Double(revenue) ?? NSNull()
         body["employees"] = Int(employees) ?? NSNull()
         body["description"] = description.isEmpty ? NSNull() : description
-        // Address / State / City / PIN / Country: a visible field the rep cleared goes as null; a hidden one is
+        // Address / State / PIN / Country: a visible field the rep cleared goes as null; a hidden one is
         // left out so hiding it never wipes what is saved.
         body.merge(location.patchFields(hidden: AccountLocationDraft.hiddenKeys(fieldOverrides))) { _, new in new }
         // The owner rides the PATCH only when an allowed person actually picked someone else — never

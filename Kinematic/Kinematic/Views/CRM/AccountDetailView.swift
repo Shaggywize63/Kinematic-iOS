@@ -210,7 +210,7 @@ struct AccountDetailView: View {
         outcomeRow
     }
 
-    /// The saved Address / City / State / PIN / Country, one row. Waits for the admin's overrides (so a hidden
+    /// The saved Address / State / PIN / Country, one row. Waits for the admin's overrides (so a hidden
     /// part never flashes), drops hidden and blank parts, and is absent when nothing is left.
     @ViewBuilder
     private var locationRow: some View {

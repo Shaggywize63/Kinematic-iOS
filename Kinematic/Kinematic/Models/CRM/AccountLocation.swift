@@ -1,7 +1,7 @@
 import Foundation
 
-/// The account's structured location (`crm_accounts.address_line1`, `address_line2`, `city`, `state`,
-/// `postal_code`, `country`) as the create / edit forms hold it, plus the payload and display rules.
+/// The account's structured location (`crm_accounts.address_line1`, `address_line2`, `state`,
+/// `postal_code`, `country`; accounts have no City) as the create / edit forms hold it, plus the payload and display rules.
 ///
 /// Pure logic, no UI: the forms bind to its fields and the tests drive the builders directly.
 ///
@@ -11,13 +11,12 @@ import Foundation
 struct AccountLocationDraft: Equatable {
     var addressLine1 = ""
     var addressLine2 = ""
-    var city = ""
     var state = ""
     var postalCode = ""
     var country = "India"
 
     /// Field-override keys (`account.<key>`) of the location block, in form order.
-    static let keys = ["address_line1", "address_line2", "state", "city", "postal_code", "country"]
+    static let keys = ["address_line1", "address_line2", "state", "postal_code", "country"]
 
     /// New account: everything blank except the Country, which defaults to India.
     init() {}
@@ -27,7 +26,6 @@ struct AccountLocationDraft: Equatable {
     init(account: CRMAccount) {
         addressLine1 = account.addressLine1 ?? ""
         addressLine2 = account.addressLine2 ?? ""
-        city = account.city ?? ""
         state = account.state ?? ""
         postalCode = account.postalCode ?? ""
         country = account.country ?? ""
@@ -41,7 +39,7 @@ struct AccountLocationDraft: Equatable {
     private func pairs(hidden: Set<String>) -> [(String, String)] {
         let all: [(String, String)] = [
             ("address_line1", addressLine1), ("address_line2", addressLine2), ("state", state),
-            ("city", city), ("postal_code", postalCode), ("country", country),
+            ("postal_code", postalCode), ("country", country),
         ]
         return all.filter { !hidden.contains($0.0) }.map { ($0.0, Self.clean($0.1)) }
     }
@@ -54,7 +52,7 @@ struct AccountLocationDraft: Equatable {
     }
 
     /// `PATCH /crm/accounts/:id` fields: every visible field, a cleared one sent as an explicit null so it
-    /// really clears on the server.
+    /// really clears on the server. Never carries `city`, so a city already stored on the account is untouched.
     func patchFields(hidden: Set<String> = []) -> [String: Any] {
         var out: [String: Any] = [:]
         for (key, value) in pairs(hidden: hidden) { out[key] = value.isEmpty ? NSNull() : value }
@@ -67,12 +65,12 @@ struct AccountLocationDraft: Equatable {
         pairs(hidden: hidden).filter { required.contains($0.0) && $0.1.isEmpty }.map { $0.0 }
     }
 
-    /// The detail screen's address block: street lines, then "City, State PIN", then the country. Hidden
+    /// The detail screen's address block: street lines, then "State PIN", then the country. Hidden
     /// parts and blank parts are dropped; empty when nothing is left (the row is then not shown at all).
     func displayLines(hidden: Set<String> = []) -> [String] {
         func value(_ key: String, _ raw: String) -> String { hidden.contains(key) ? "" : Self.clean(raw) }
-        let cityState = [value("city", city), value("state", state)].filter { !$0.isEmpty }.joined(separator: ", ")
-        let locality = [cityState, value("postal_code", postalCode)].filter { !$0.isEmpty }.joined(separator: " ")
+        let locality = [value("state", state), value("postal_code", postalCode)]
+            .filter { !$0.isEmpty }.joined(separator: " ")
         return [value("address_line1", addressLine1), value("address_line2", addressLine2),
                 locality, value("country", country)].filter { !$0.isEmpty }
     }

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The account create / edit forms' "Address" block: Address line 1 / 2, State → City (the same cascading
-/// `LocationPicker` the lead forms use, with a typed City allowed), PIN code and Country.
+/// The account create / edit forms' "Address" block: Address line 1 / 2, State (the shared `LocationPicker` in
+/// state-only mode; accounts have no City), PIN code and Country.
 ///
 /// Field-override contract: every row is gated by `account.<key>` (hide / relabel / required) and nothing is
 /// drawn until the admin's overrides have loaded, so a hidden field never flashes.
@@ -45,17 +45,16 @@ struct AccountLocationSection: View {
         }
     }
 
-    /// State and City are gated independently: hiding one never drops the other.
+    /// State only: accounts have no City. The picker's City binding is a throwaway constant.
     @ViewBuilder
     private var locationRows: some View {
-        if !isHidden("state") || !isHidden("city") {
+        if !isHidden("state") {
             LocationPicker(
                 state: $draft.state,
-                city: $draft.city,
-                showState: !isHidden("state"),
-                showCity: !isHidden("city"),
+                city: .constant(""),
+                showState: true,
+                showCity: false,
                 stateLabel: label("state", "State"),
-                cityLabel: label("city", "City"),
                 allowTypedCity: true
             )
         }
