@@ -16,17 +16,95 @@ enum ExpenseErrors {
         return nil
     }
 
+    /// Production answers every 5xx with a stock line ("Internal server error") and a proxy answers with a page of
+    /// HTML: neither is a message for a person, so both fall through to the plain line for the status.
+    static func isStockServerText(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if t.isEmpty || t.hasPrefix("<") { return true }
+        return ["internal server error", "bad gateway", "service unavailable", "gateway timeout", "server error", "request failed", "error"].contains(t)
+    }
+
     /// What to show: the server's own words (written for the user), else a plain line per status.
     static func message(serverMessage: String?, status: Int) -> String {
-        if let m = serverMessage?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty { return m }
+        if let m = serverMessage?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty, !isStockServerText(m) { return m }
         switch status {
+        case 400, 422: return "Some of the details aren't valid. Check the amounts and dates and try again."
         case 401: return "Your session has expired — sign in again."
         case 403: return "You don't have permission to do that."
         case 404: return "That claim could not be found."
+        case 408, 504: return "The server took too long to answer. Try again in a moment."
+        case 409: return "That conflicts with what is already saved. Refresh your claims and try again."
         case 413: return "That file is too large (10 MB maximum)."
+        case 415: return "That file type isn't supported. Use a JPG, PNG, WebP, HEIC or PDF."
+        case 429: return "Too many requests. Wait a moment and try again."
         case 500...599: return "The server had a problem. Try again in a moment."
         default: return "Request failed (\(status))"
         }
+    }
+
+    /// The reply was 2xx but not readable. A create may well have gone through, so say so before the person adds it again.
+    static let unreadableReply = "The server's reply wasn't what the app expected. Your claim may have been saved — check your claims list before adding it again."
+
+    /// A request that never got an answer, in words a person can act on.
+    static func transportMessage(_ code: URLError.Code) -> String {
+        switch code {
+        case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff:
+            return "No internet connection. Check your connection and try again."
+        case .timedOut:
+            return "The request timed out. Check your connection and try again — if you were saving a claim, look in your claims list first so you don't add it twice."
+        default:
+            return "Couldn't reach the server. Try again in a moment."
+        }
+    }
+}
+
+// MARK: - Numbers and days typed by a person
+
+enum ExpenseNumber {
+    /// A number the way a person writes it: "1,250.50", "99,50" (comma as the decimal mark), "12,34,567", "₹ 300",
+    /// "Rs. 45", "٣٠٠". Nil when it is blank or not a number. The server reads the same shapes (expenseInput.ts).
+    static func parse(_ raw: String) -> Double? {
+        var ascii = ""
+        for sc in raw.unicodeScalars {
+            switch sc.value {
+            case 0x0660...0x0669: ascii.unicodeScalars.append(Unicode.Scalar(sc.value - 0x0660 + 0x30)!)
+            case 0x06F0...0x06F9: ascii.unicodeScalars.append(Unicode.Scalar(sc.value - 0x06F0 + 0x30)!)
+            case 0x0966...0x096F: ascii.unicodeScalars.append(Unicode.Scalar(sc.value - 0x0966 + 0x30)!)
+            default: ascii.unicodeScalars.append(sc)
+            }
+        }
+        var s = ascii.components(separatedBy: .whitespacesAndNewlines).joined()
+        for mark in ["₹", "$", "€", "£"] { s = s.replacingOccurrences(of: mark, with: "") }
+        for word in ["rs.", "rs", "inr"] { s = s.replacingOccurrences(of: word, with: "", options: .caseInsensitive) }
+        if s.isEmpty { return nil }
+        let lastComma = s.lastIndex(of: ",")
+        let lastDot = s.lastIndex(of: ".")
+        if let c = lastComma, let d = lastDot {
+            if c > d { s = s.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".") }
+            else { s = s.replacingOccurrences(of: ",", with: "") }
+        } else if let c = lastComma {
+            let commas = s.filter { $0 == "," }.count
+            let after = s.distance(from: c, to: s.endIndex) - 1
+            if commas == 1 && (1...2).contains(after) { s = s.replacingOccurrences(of: ",", with: ".") }
+            else { s = s.replacingOccurrences(of: ",", with: "") }
+        } else if s.filter({ $0 == "." }).count > 1 {
+            s = s.replacingOccurrences(of: ".", with: "")
+        }
+        guard s.range(of: "^-?[0-9]+(\\.[0-9]+)?$", options: .regularExpression) != nil, let v = Double(s), v.isFinite else { return nil }
+        return v
+    }
+
+    /// `yyyy-MM-dd` for a real calendar day (2026-02-31 is not one) in a plausible year, else nil. The server applies the same rule.
+    static func validDay(_ s: String?) -> String? {
+        guard let s = s, s.range(of: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", options: .regularExpression) != nil else { return nil }
+        let parts = s.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3, (2000...2100).contains(parts[0]) else { return nil }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        var c = DateComponents(); c.year = parts[0]; c.month = parts[1]; c.day = parts[2]
+        guard let d = cal.date(from: c) else { return nil }
+        let back = cal.dateComponents([.year, .month, .day], from: d)
+        return back.year == parts[0] && back.month == parts[1] && back.day == parts[2] ? s : nil
     }
 }
 
@@ -286,11 +364,11 @@ enum ExpenseLogic {
     // MARK: Odometer history
 
     private static let dayIn: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian)
         f.timeZone = TimeZone(secondsFromGMT: 0); f.dateFormat = "yyyy-MM-dd"; return f
     }()
     private static let dayOut: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian)
         f.timeZone = TimeZone(secondsFromGMT: 0); f.dateFormat = "d MMM yyyy"; return f
     }()
 
@@ -377,13 +455,13 @@ struct ExpenseLineFields: Equatable {
     var hadOdoEndPhoto: Bool = false
 
     private static func positive(_ s: String) -> Double? {
-        guard let v = Double(s.trimmingCharacters(in: .whitespaces)), v > 0 else { return nil }
+        guard let v = ExpenseNumber.parse(s), v > 0 else { return nil }
         return v
     }
 
     /// An odometer reading: any number from 0 up (a new bike can read 0).
     private static func reading(_ s: String) -> Double? {
-        guard let v = Double(s.trimmingCharacters(in: .whitespaces)), v >= 0, v.isFinite else { return nil }
+        guard let v = ExpenseNumber.parse(s), v >= 0 else { return nil }
         return v
     }
 
@@ -510,7 +588,8 @@ struct ExpenseLineFields: Equatable {
         if let scan = scan { out.ocr = scan }
         if amount.isEmpty, let a = scan?.amount { out.amount = ExpenseLogic.trimNumber(a) }
         if merchant.isEmpty, let m = scan?.merchant, !m.isEmpty { out.merchant = m }
-        if fresh, let d = scan?.txn_date, !d.isEmpty { out.itemDate = String(d.prefix(10)) }
+        // Only a real day: a date the reader wrote in another shape would fail the whole claim's save.
+        if fresh, let d = ExpenseNumber.validDay(scan?.txn_date.map { String($0.prefix(10)) }) { out.itemDate = d }
         if fresh, category != "mileage", let c = scan?.category, (allowedCategories ?? ExpenseLogic.categories).contains(c) { out.category = c }
         return out
     }

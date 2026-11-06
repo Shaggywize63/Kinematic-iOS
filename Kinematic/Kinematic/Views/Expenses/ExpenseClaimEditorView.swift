@@ -66,7 +66,7 @@ struct ExpenseClaimEditorView: View {
 
     /// Dates are local calendar days ("yyyy-MM-dd"), so the date picker and the stored string agree.
     private static let localDay: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"; return f
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd"; return f
     }()
     private static func today() -> String { localDay.string(from: Date()) }
 
@@ -629,7 +629,12 @@ struct ExpenseClaimEditorView: View {
             if let i = lines.firstIndex(where: { $0.id == id }) { lines[i].uploading = false }
             errorText = "That file is larger than 10 MB."; return
         }
-        let (result, error) = await vm.uploadReceipt(data: data, filename: filename, mime: mime)
+        var (result, error) = await vm.uploadReceipt(data: data, filename: filename, mime: mime)
+        if result == nil {
+            // The receipt matters more than its read: if the upload failed while the server was reading the photo
+            // (a slow or timed-out read), store the file without the read and let the person type the figures.
+            (result, error) = await vm.uploadReceipt(data: data, filename: filename, mime: mime, scan: .storeOnly)
+        }
         guard let i = lines.firstIndex(where: { $0.id == id }) else { return }
         lines[i].uploading = false
         guard let r = result else { errorText = error ?? "Couldn't upload the receipt."; return }

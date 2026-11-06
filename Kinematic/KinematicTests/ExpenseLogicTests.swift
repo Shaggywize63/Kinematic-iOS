@@ -292,7 +292,8 @@ final class ExpenseLogicTests: XCTestCase {
         XCTAssertEqual(ExpenseErrors.serverMessage(in: nested), "Nope")
         XCTAssertEqual(ExpenseErrors.message(serverMessage: nil, status: 403), "You don't have permission to do that.")
         XCTAssertTrue(ExpenseErrors.message(serverMessage: nil, status: 413).contains("10 MB"))
-        XCTAssertEqual(ExpenseErrors.message(serverMessage: "  ", status: 400), "Request failed (400)")
+        XCTAssertEqual(ExpenseErrors.message(serverMessage: "  ", status: 400), "Some of the details aren't valid. Check the amounts and dates and try again.")
+        XCTAssertEqual(ExpenseErrors.message(serverMessage: "  ", status: 418), "Request failed (418)")
     }
 
     // MARK: - Per-client policy switches (all optional: absent = today)
