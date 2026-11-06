@@ -73,6 +73,11 @@ struct Activity: Codable, Identifiable, Hashable {
     /// "Product interested" — catalogue ids + resolved names.
     let productIds: [String]?
     let products: [SparkNamedRef]?
+    /// Spark & Ray "Company" of the activity (backend stamp on list / detail / timelines): the activity's own
+    /// account, else its lead's account, else the lead's company text (then `companyId` is nil). Both nil
+    /// elsewhere.
+    var companyId: String?
+    var companyName: String?
 
     /// The remarks note for display — the persisted `body`, falling back to
     /// the legacy `description` echo.
@@ -129,5 +134,7 @@ struct Activity: Codable, Identifiable, Hashable {
         case formSubmissionId = "form_submission_id"
         case productIds = "product_ids"
         case products
+        case companyId = "company_id"
+        case companyName = "company_name"
     }
 }

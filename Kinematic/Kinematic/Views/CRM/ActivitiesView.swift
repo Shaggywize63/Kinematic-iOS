@@ -76,7 +76,8 @@ struct ActivitiesView: View {
 
             // Owner + date-range filters (city/state come from the global scope).
             HStack(spacing: 8) {
-                if fieldOverrides.mayChooseLeadOwner && !vm.owners.isEmpty {
+                // Spark & Ray replace this menu with the User filter below (visible to everyone who can open the page).
+                if !SparkJourney.isActive && fieldOverrides.mayChooseLeadOwner && !vm.owners.isEmpty {
                     Menu {
                         Button("All owners") { vm.ownerFilter = "all"; Task { await vm.refresh() } }
                         ForEach(vm.owners) { u in
@@ -128,6 +129,9 @@ struct ActivitiesView: View {
                 Spacer()
             }
             .padding(.horizontal).padding(.bottom, 4)
+
+            // Spark & Ray: Account + User filters.
+            if SparkJourney.isActive { SparkActivityFilterBar(vm: vm) }
 
             if layout == .list {
                 ScrollView {

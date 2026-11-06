@@ -81,7 +81,8 @@ extension Activity {
             subject: subject,
             description: description,
             body: body,
-            outcome: outcome,
+            // A completion that carried the Spark outcome (the prompt saves it first) comes back on the response.
+            outcome: updated.outcome ?? outcome,
             leadId: leadId,
             contactId: contactId,
             accountId: accountId,
@@ -110,7 +111,10 @@ extension Activity {
             formRefNo: formRefNo,
             formSubmissionId: formSubmissionId,
             productIds: productIds,
-            products: products
+            products: products,
+            // The PATCH response is not enriched with the company, so the row keeps its own.
+            companyId: companyId,
+            companyName: companyName
         )
     }
 }

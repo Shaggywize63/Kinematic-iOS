@@ -72,7 +72,7 @@ enum ActivityEditRouting {
     static func replacing(_ updated: Activity, in list: [Activity]) -> [Activity] {
         guard let index = list.firstIndex(where: { $0.id == updated.id }) else { return list }
         var out = list
-        out[index] = updated
+        out[index] = updated.keepingCompany(of: list[index])
         return out
     }
 

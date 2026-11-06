@@ -364,6 +364,19 @@ final class CRMService {
         let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         return try await postJSON("/api/v1/crm/visit-intake", body: dict)
     }
+    // MARK: Account addresses (sites)
+    func accountSites(id: String) async throws -> [AccountSite] {
+        try await get("/api/v1/crm/accounts/\(id)/sites")
+    }
+    func createSite(_ body: [String: Any]) async throws -> AccountSite {
+        try await postJSON("/api/v1/crm/sites", body: body)
+    }
+    func updateSite(id: String, body: [String: Any]) async throws -> AccountSite {
+        try await sendJSON("/api/v1/crm/sites/\(id)", method: "PATCH", body: body)
+    }
+    func deleteSite(id: String) async throws {
+        let _: EmptyAck = try await delete("/api/v1/crm/sites/\(id)")
+    }
     func accountDeals(id: String) async throws -> [Deal] {
         try await get("/api/v1/crm/accounts/\(id)/deals")
     }
@@ -434,15 +447,12 @@ final class CRMService {
         return try await get("/api/v1/crm/activities/calendar", query: q)
     }
 
-    func listActivities(dealId: String? = nil, leadId: String? = nil, ownerId: String? = nil, city: String? = nil, state: String? = nil, from: String? = nil, to: String? = nil) async throws -> [Activity] {
-        var q: [String: String] = [:]
-        if let dealId { q["deal_id"] = dealId }
-        if let leadId { q["lead_id"] = leadId }
-        if let ownerId, !ownerId.isEmpty { q["owner_id"] = ownerId }
-        if let city, !city.isEmpty { q["city"] = city }
-        if let state, !state.isEmpty { q["state"] = state }
-        if let from, !from.isEmpty { q["from"] = from }
-        if let to, !to.isEmpty { q["to"] = to }
+    func listActivities(dealId: String? = nil, leadId: String? = nil, ownerId: String? = nil, accountId: String? = nil, city: String? = nil, state: String? = nil, from: String? = nil, to: String? = nil) async throws -> [Activity] {
+        // `owner_id` matches owner OR assignee OR co-assignee, `account_id` the account or any of its leads.
+        let q = ActivityQuery.params(
+            dealId: dealId, leadId: leadId, ownerId: ownerId, accountId: accountId,
+            city: city, state: state, from: from, to: to
+        )
         return try await get("/api/v1/crm/activities", query: q)
     }
     /// The org's activity types — built-ins (`builtin:<slug>`) plus custom ones from Settings. nil on any failure

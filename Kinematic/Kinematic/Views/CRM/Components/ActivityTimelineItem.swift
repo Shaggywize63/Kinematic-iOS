@@ -152,6 +152,12 @@ struct ActivityTimelineItem: View {
                 sparkMeta.padding(.leading, 50)
             }
 
+            // ── Spark & Ray: Company (links to the account) + Outcome ──
+            let sparkCompany = SparkActivityCompanyOutcome(activity: activity)
+            if sparkCompany.hasContent {
+                sparkCompany.padding(.leading, 50)
+            }
+
             // ── Linked record: lead / contact / deal name ───────────────
             // Backend stamps lead_name, contact_name, deal_name on every
             // activity response so we can surface context inline without a
@@ -173,10 +179,8 @@ struct ActivityTimelineItem: View {
             // Only when the host opted in; hidden for cancelled activities.
             if let handler = onSetComplete,
                let kind = ActivityCompletion.action(for: activity) {
-                ActivityCompletionButton(kind: kind) {
-                    await handler(activity, kind.targetCompleted)
-                }
-                .padding(.leading, 50)
+                SparkAwareCompletionButton(activity: activity, kind: kind, handler: handler)
+                    .padding(.leading, 50)
             }
         }
         .padding(14)
