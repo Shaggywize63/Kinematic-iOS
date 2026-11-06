@@ -12,11 +12,14 @@ extension Color {
 struct SparkIndustryDot: View {
     let industry: String?
     var size: CGFloat = 10
+    /// Observed so the dot repaints when the tenant's industries list (colours) arrives.
+    @ObservedObject var store = IndustriesStore.shared
 
     var body: some View {
         Circle()
             .fill(Color.sparkIndustry(industry))
             .frame(width: size, height: size)
+            .task { await store.loadIfNeeded() }
     }
 }
 
@@ -25,6 +28,8 @@ struct SparkIndustryDot: View {
 struct SparkIndustryBadge: View {
     let industry: String?
     var compact: Bool = false
+    /// Observed so the badge repaints when the tenant's industries list (colours) arrives.
+    @ObservedObject var store = IndustriesStore.shared
 
     private var text: String { (industry ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -42,6 +47,7 @@ struct SparkIndustryBadge: View {
             .padding(.vertical, compact ? 2 : 3)
             .background(Capsule().fill(tint.opacity(0.14)))
             .accessibilityLabel("Industry \(text)")
+            .task { await store.loadIfNeeded() }
         }
     }
 }

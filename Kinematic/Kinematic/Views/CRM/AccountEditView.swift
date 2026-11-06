@@ -12,9 +12,6 @@ struct AccountEditView: View {
     @State private var revenue: String
     @State private var employees: String
     @State private var description: String
-    /// Spark & Ray: the account's required "Outcome" (can never be saved blank).
-    @State private var outcome: String
-    @State private var showOutcomeError = false
     @State private var saving = false
     @State private var errorMessage: String?
     /// Built-in field overrides (hide / relabel / require) for account columns.
@@ -34,7 +31,6 @@ struct AccountEditView: View {
         _revenue = State(initialValue: account.annualRevenue.map { String(Int($0)) } ?? "")
         _employees = State(initialValue: account.employees.map { String($0) } ?? "")
         _description = State(initialValue: account.description ?? "")
-        _outcome = State(initialValue: account.outcome ?? "")
         _ownerId = State(initialValue: account.ownerId ?? "")
     }
 
@@ -47,31 +43,12 @@ struct AccountEditView: View {
             && !owners.isEmpty
     }
 
-    /// Outcome is a built-in account column: Spark & Ray only, held back until the overrides loaded, and
-    /// hideable / relabelable by the admin.
-    private var showsOutcome: Bool {
-        SparkJourney.isActive
-            && fieldOverrides.didLoad
-            && !fieldOverrides.isHidden(entity: "account", "outcome")
-    }
+    /// Spark & Ray: the Industry choices come from the tenant's `config.industries` list (a stored value that is
+    /// not in it stays selectable); everyone else keeps the curated generic list.
+    @ObservedObject private var industries = IndustriesStore.shared
 
-    private var outcomeError: String? {
-        showsOutcome ? SparkAccountOutcome.validationError(outcome) : nil
-    }
-
-    @ViewBuilder
-    private var outcomeSection: some View {
-        if showsOutcome {
-            Section {
-                TextField("What is the outcome?", text: $outcome, axis: .vertical)
-                    .lineLimit(2...5)
-                if showOutcomeError, let err = outcomeError {
-                    Text(err).font(.footnote).foregroundColor(.red)
-                }
-            } header: {
-                Text(fieldOverrides.labelFor(entity: "account", "outcome", "Outcome") + " (required)")
-            }
-        }
+    private var industryChoices: [String] {
+        SparkJourney.isActive ? SparkIndustries.pickerOptions(including: industry) : CRM_INDUSTRIES
     }
 
     @ViewBuilder
@@ -104,10 +81,10 @@ struct AccountEditView: View {
                     if !fieldOverrides.isHidden(entity: "account", "industry") {
                         Picker(fieldOverrides.labelFor(entity: "account", "industry", "Industry"), selection: $industry) {
                             Text("— Select industry —").tag("")
-                            if !industry.isEmpty && !CRM_INDUSTRIES.contains(industry) {
+                            if !industry.isEmpty && !industryChoices.contains(industry) {
                                 Text(industry).tag(industry)
                             }
-                            ForEach(CRM_INDUSTRIES, id: \.self) { i in
+                            ForEach(industryChoices, id: \.self) { i in
                                 Text(i).tag(i)
                             }
                         }
@@ -132,12 +109,12 @@ struct AccountEditView: View {
                     }
                 }
                 ownerSection
-                outcomeSection
                 Section("About") {
                     TextEditor(text: $description).frame(minHeight: 100)
                 }
             }
             .task { await fieldOverrides.load() }
+            .task { if SparkJourney.isActive { await industries.loadIfNeeded() } }
             .task {
                 if RecordOwnerRules.currentUserCanChange {
                     owners = await CRMService.shared.listAssignableUsers()
@@ -158,10 +135,6 @@ struct AccountEditView: View {
     }
 
     private func save() async {
-        if outcomeError != nil {
-            showOutcomeError = true
-            return
-        }
         saving = true; defer { saving = false }
         var body: [String: Any] = ["name": name]
         body["industry"] = industry.isEmpty ? NSNull() : industry
@@ -170,7 +143,6 @@ struct AccountEditView: View {
         body["annual_revenue"] = Double(revenue) ?? NSNull()
         body["employees"] = Int(employees) ?? NSNull()
         body["description"] = description.isEmpty ? NSNull() : description
-        if showsOutcome { SparkAccountOutcome.apply(to: &body, outcome: outcome) }
         // The owner rides the PATCH only when an allowed person actually picked someone else — never
         // otherwise (the server also drops it for anyone who may not reassign).
         if showsOwnerPicker {

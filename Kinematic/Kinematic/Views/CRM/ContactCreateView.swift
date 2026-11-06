@@ -59,9 +59,11 @@ struct ContactCreateView: View {
     @ViewBuilder
     private var accountSection: some View {
         if !fieldOverrides.isHidden(entity: "contact", "account_id", isB2C: isB2C) {
-            let label = fieldOverrides.labelFor(entity: "contact", "account_id", "Account", isB2C: isB2C)
+            // Spark & Ray call the link "Company" everywhere; every other client keeps "Account".
+            let companyWord = SparkContactCompany.label(spark: isSpark)
+            let label = fieldOverrides.labelFor(entity: "contact", "account_id", companyWord, isB2C: isB2C)
             if let locked = prefillAccount {
-                Section("Account") {
+                Section(companyWord) {
                     HStack {
                         Text(label)
                         Spacer()
@@ -70,7 +72,7 @@ struct ContactCreateView: View {
                     }
                 }
             } else if isSpark {
-                Section("Account") {
+                Section(companyWord) {
                     sparkAccountPickerRow(label)
                 }
             } else {
@@ -96,7 +98,7 @@ struct ContactCreateView: View {
             }
         }
         if selectedAccount != nil {
-            Button("Remove account", role: .destructive) { selectedAccount = nil }
+            Button("Remove company", role: .destructive) { selectedAccount = nil }
         }
     }
 

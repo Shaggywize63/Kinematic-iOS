@@ -188,6 +188,8 @@ private extension Double {
 struct NearbyLeadsView: View {
     @StateObject private var vm = NearbyLeadsViewModel()
     @State private var mapCameraPos: MapCameraPosition = .automatic
+    /// Spark & Ray: pin colours come from the tenant's industries list (repaints when it loads).
+    @ObservedObject private var industries = IndustriesStore.shared
 
     var body: some View {
         Group {
@@ -236,6 +238,7 @@ struct NearbyLeadsView: View {
             }
         }
         .onAppear { vm.start() }
+        .task { if SparkJourney.isActive { await industries.loadIfNeeded() } }
     }
 
     // MARK: Header

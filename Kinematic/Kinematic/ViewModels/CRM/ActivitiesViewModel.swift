@@ -13,6 +13,9 @@ final class ActivitiesViewModel: ObservableObject {
     // these; the backend list endpoint is filtered via .eq('lead_id',…).
     @Published var leadFilterId: String? = nil
     @Published var leadFilterLabel: String? = nil
+    // Spark & Ray "Account" filter — activities on that account or on any of its leads (`?account_id=`).
+    @Published var accountFilterId: String? = nil
+    @Published var accountFilterLabel: String? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
     /// Set when a Mark complete / Reopen PATCH fails (the server's own message,
@@ -53,13 +56,33 @@ final class ActivitiesViewModel: ObservableObject {
         owners = await api.listAssignableUsers()
     }
 
+    /// Pick (or, with nil, clear) the Account filter and reload.
+    func setAccountFilter(_ account: CRMAccount?) async {
+        accountFilterId = account?.id
+        accountFilterLabel = account?.name
+        await refresh()
+    }
+
+    /// Pick (or, with nil, clear) the User filter and reload. `ownerFilter` stays "all" when cleared.
+    func setUserFilter(_ userId: String?) async {
+        ownerFilter = (userId ?? "").isEmpty ? "all" : (userId ?? "all")
+        await refresh()
+    }
+
+    /// The name shown on the User chip: the picked person, else "User".
+    var userFilterTitle: String {
+        guard ownerFilter != "all" else { return "User" }
+        return owners.first { $0.id == ownerFilter }?.displayName ?? "User"
+    }
+
     func refresh() async {
         isLoading = true
         defer { isLoading = false }
         do {
             activities = try await api.listActivities(
                 leadId: leadFilterId,
-                ownerId: ownerFilter == "all" ? nil : ownerFilter,
+                ownerId: ActivityQuery.ownerParam(ownerFilter),
+                accountId: accountFilterId,
                 city: location.city,
                 state: location.state,
                 from: dateFrom.map { Self.isoTimestamp.string(from: $0) },
@@ -170,7 +193,7 @@ final class ActivitiesViewModel: ObservableObject {
         do {
             let updated = try await api.updateActivity(id: id, body: body)
             if let idx = activities.firstIndex(where: { $0.id == id }) {
-                activities[idx] = updated
+                activities[idx] = updated.keepingCompany(of: activities[idx])
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -201,7 +224,7 @@ final class ActivitiesViewModel: ObservableObject {
             id: existing.id, body: parts.body, spark: parts.extras, previous: parts.previous
         )
         if let idx = activities.firstIndex(where: { $0.id == existing.id }) {
-            activities[idx] = updated
+            activities[idx] = updated.keepingCompany(of: activities[idx])
         }
     }
 

@@ -175,11 +175,13 @@ enum SparkJourney {
 // MARK: - Activity extras
 
 /// The Spark-only values on an activity: who it is assigned to (first = primary),
-/// "Product interested" ids, and the linked product-form serial.
+/// "Product interested" ids, the linked product-form serial and the activity's Outcome.
 struct SparkActivityExtras: Equatable {
     var assigneeIds: [String] = []
     var productIds: [String] = []
     var formSerial: String = ""
+    /// The activity's Outcome text (<= 500 characters; required once the activity is completed).
+    var outcome: String = ""
 
     /// The extras as they will be sent: no blanks / repeats, at most 20 assignees,
     /// the serial normalised.
@@ -187,7 +189,8 @@ struct SparkActivityExtras: Equatable {
         SparkActivityExtras(
             assigneeIds: Array(SparkJourney.deduped(assigneeIds).prefix(SparkJourney.maxAssignees)),
             productIds: SparkJourney.deduped(productIds),
-            formSerial: SparkJourney.normalizedSerial(formSerial)
+            formSerial: SparkJourney.normalizedSerial(formSerial),
+            outcome: SparkActivityOutcome.clamped(outcome)
         )
     }
 
@@ -210,6 +213,11 @@ struct SparkActivityExtras: Equatable {
         }
         if now.formSerial != (before?.formSerial ?? "") {
             body["form_serial"] = now.formSerial
+        }
+        // The outcome: on create only when filled (blank is left out); on edit only when it changed, and a
+        // cleared one goes out as an explicit null.
+        if now.outcome != (before?.outcome ?? "") {
+            body["outcome"] = now.outcome.isEmpty ? NSNull() : now.outcome
         }
     }
 }
@@ -363,7 +371,8 @@ extension Activity {
         return SparkActivityExtras(
             assigneeIds: SparkJourney.deduped(people),
             productIds: SparkJourney.deduped(productIdList),
-            formSerial: formRefNo ?? ""
+            formSerial: formRefNo ?? "",
+            outcome: outcome ?? ""
         )
     }
 

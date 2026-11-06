@@ -34,6 +34,8 @@ extension ActivityComposeView {
         }
         // Show the activity's current photo; a newly attached one replaces it.
         .withExistingPhoto(activity.imageUrl)
+        // Spark & Ray: an already-completed activity must keep an Outcome.
+        .withExistingCompletion(SparkActivityOutcome.isCompleted(activity))
         // Spark & Ray: edit the assignees / product interested / form serial too.
         .sparkSubmit(initial: activity.sparkExtras, names: activity.sparkNames, onSparkSave)
         // Who it is assigned to can be changed (or, for Spark, cleared) by admins / managers only;

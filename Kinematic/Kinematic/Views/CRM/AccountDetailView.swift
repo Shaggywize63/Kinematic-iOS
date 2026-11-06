@@ -45,7 +45,11 @@ struct AccountDetailView: View {
                 if let phone = account.phone, !phone.isEmpty { phoneRow(phone) }
                 websiteAndOutcomeRows
 
-                if isSpark { sparkActionsRow }
+                // Spark & Ray: assign / new deal actions, then the account's addresses (sites).
+                if isSpark {
+                    sparkActionsRow
+                    SparkAccountAddressesSection(accountId: account.id)
+                }
 
                 contactsSection
                 if isSpark {
@@ -205,13 +209,15 @@ struct AccountDetailView: View {
         outcomeRow
     }
 
-    /// Spark & Ray: the account's Outcome (Spark only, once the overrides loaded, not hidden, and set).
+    /// Spark & Ray: an Outcome stored on the account BEFORE it moved to activities, shown read-only as
+    /// "Outcome (earlier)" (Spark only, once the overrides loaded, not hidden, and set). It is no longer
+    /// entered on the account create / edit forms.
     @ViewBuilder
     private var outcomeRow: some View {
         if isSpark, fieldOverrides.didLoad, !fieldOverrides.isHidden(entity: "account", "outcome"),
            let outcome = account.outcome?.trimmingCharacters(in: .whitespacesAndNewlines), !outcome.isEmpty {
             detailRow(
-                fieldOverrides.labelFor(entity: "account", "outcome", "Outcome"),
+                fieldOverrides.labelFor(entity: "account", "outcome", "Outcome (earlier)"),
                 outcome, icon: "target", color: Brand.red
             )
         }
@@ -224,7 +230,7 @@ struct AccountDetailView: View {
             Button {
                 addingContact = true
             } label: {
-                Label("Add contact", systemImage: "person.badge.plus")
+                Label("Add contact", systemImage: "plus.circle.fill")
                     .font(.system(size: 13, weight: .bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)

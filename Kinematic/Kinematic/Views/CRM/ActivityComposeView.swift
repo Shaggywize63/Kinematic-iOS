@@ -60,6 +60,9 @@ struct ActivityComposeView: View {
     /// The photo already on the activity being edited (shown, and kept unless a new one replaces it).
     var existingImageUrl: String? = nil
 
+    /// Editing only: the activity being edited is already completed (so its Spark Outcome is required).
+    var existingCompleted = false
+
     @State private var type: String
     @State private var subject: String
     @State private var desc: String
@@ -204,6 +207,13 @@ struct ActivityComposeView: View {
         return copy
     }
 
+    /// Editing an existing activity: whether it is already completed, which makes the Spark Outcome required.
+    func withExistingCompletion(_ completed: Bool) -> ActivityComposeView {
+        var copy = self
+        copy.existingCompleted = completed
+        return copy
+    }
+
     /// The Spark extras show only for the Spark & Ray client, and only when the host handles them.
     private var showsSparkExtras: Bool {
         onSparkSubmit != nil && SparkJourney.isActive
@@ -214,12 +224,27 @@ struct ActivityComposeView: View {
         !editsExisting || RecordOwnerRules.currentUserCanChange
     }
 
+    /// Spark: the Outcome must be filled in when the activity is being logged / is completed (see
+    /// `SparkActivityOutcome.isRequired`); optional while it is only scheduled.
+    private var outcomeRequired: Bool {
+        showsSparkExtras && SparkActivityOutcome.isRequired(
+            creating: !editsExisting, scheduled: scheduled, type: type, existingCompleted: existingCompleted
+        )
+    }
+
+    private var outcomeError: String? {
+        // Not before the extras are seeded: an edit starts empty for a moment and must not flash the error.
+        (showsSparkExtras && sparkSeeded)
+            ? SparkActivityOutcome.validationError(sparkExtras.outcome, required: outcomeRequired) : nil
+    }
+
     /// Save stays off until the Spark extras are seeded from the activity being edited — saving earlier would
     /// look like "everyone removed" and clear the assignees.
     private var saveDisabled: Bool {
         if uploading || submitting { return true }
         if !ActivityPhotoRules.canSave(hasPickedPhoto: pickedImage != nil, imageUrl: imageUrl, uploading: uploading) { return true }
         if showsSparkExtras && !sparkSeeded { return true }
+        if outcomeError != nil { return true }
         return allowLeadPicker && selectedLead == nil && !hasDirectoryLink
     }
 
@@ -372,6 +397,34 @@ struct ActivityComposeView: View {
         }
     }
 
+    /// Spark: the Outcome text area (required once the activity is completed, optional while scheduled).
+    @ViewBuilder
+    private var sparkOutcomeSection: some View {
+        Section {
+            TextField("What was the outcome?", text: $sparkExtras.outcome, axis: .vertical)
+                .lineLimit(2...5)
+                .onChange(of: sparkExtras.outcome) { _, newValue in
+                    if newValue.count > SparkActivityOutcome.maxLength {
+                        sparkExtras.outcome = String(newValue.prefix(SparkActivityOutcome.maxLength))
+                    }
+                }
+            if let err = outcomeError {
+                Text(err).font(.footnote).foregroundColor(.red)
+            }
+        } header: {
+            Text(outcomeRequired ? "Outcome (required)" : "Outcome")
+        }
+    }
+
+    /// Everything Spark adds to the composer: the Outcome, then the assignees / product / serial.
+    @ViewBuilder
+    private var sparkSections: some View {
+        if showsSparkExtras {
+            sparkOutcomeSection
+            sparkExtrasSection
+        }
+    }
+
     @ViewBuilder
     private var sparkExtrasSection: some View {
         Section {
@@ -521,10 +574,8 @@ struct ActivityComposeView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                // Spark & Ray only: multi-assignee, product interested, form serial.
-                if showsSparkExtras {
-                    sparkExtrasSection
-                }
+                // Spark & Ray only: outcome, multi-assignee, product interested, form serial.
+                sparkSections
                 // Every other client, editing: one "Assigned to" picker for admins / managers.
                 singleAssigneeSection
                 // Admin-defined activity custom fields (Dealer lookup, Visit
