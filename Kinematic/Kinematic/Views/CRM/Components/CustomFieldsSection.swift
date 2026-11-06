@@ -183,6 +183,10 @@ struct CustomFieldsSection: View {
     var onlyKey: String? = nil
     /// Display-label replacements by field key (e.g. `industry_category` -> "Sub-industry").
     var labelOverrides: [String: String] = [:]
+    /// Dropdown choices that replace a field's own input by field key (Spark & Ray: the Sub-industry list of
+    /// the chosen industry). A key present here renders a Picker of exactly these options (the stored value is
+    /// kept selectable by the caller including it); a key absent keeps its normal input.
+    var optionOverrides: [String: [String]] = [:]
 
     var body: some View {
         if let only = onlyKey {
@@ -207,8 +211,27 @@ struct CustomFieldsSection: View {
         return d.required == true ? o + " *" : o
     }
 
+    /// A Picker over `options` bound to the field's text value ("—" clears it).
+    private func optionOverrideRow(_ d: CRMCustomFieldDef, _ options: [String]) -> some View {
+        Picker(rowLabel(d), selection: Binding(
+            get: { model.text[d.fieldKey] ?? "" },
+            set: { model.text[d.fieldKey] = $0 })) {
+                Text("—").tag("")
+                ForEach(options, id: \.self) { Text($0).tag($0) }
+            }
+    }
+
     @ViewBuilder
     private func row(_ d: CRMCustomFieldDef) -> some View {
+        if let options = optionOverrides[d.fieldKey] {
+            optionOverrideRow(d, options)
+        } else {
+            standardRow(d)
+        }
+    }
+
+    @ViewBuilder
+    private func standardRow(_ d: CRMCustomFieldDef) -> some View {
         switch d.fieldType {
         case "boolean":
             Toggle(rowLabel(d), isOn: Binding(

@@ -18,6 +18,8 @@ struct DashboardLeadsMapCard: View {
     private var isSpark: Bool { SparkJourney.isActive }
     /// Selected industry filter: nil = all, `SparkIndustries.noIndustryFilter` = leads without one.
     @State private var industryFilter: String? = nil
+    /// The tenant's industries (`config.industries`): the filter options, the pin colours and the legend.
+    @ObservedObject var industries = IndustriesStore.shared
 
     @State private var pins: [LeadPin] = []
     @State private var loading = true
@@ -64,6 +66,7 @@ struct DashboardLeadsMapCard: View {
                 }
                 .frame(height: 280)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
+                if isSpark { industryLegend }
             }
         }
         .padding(16)
@@ -73,6 +76,26 @@ struct DashboardLeadsMapCard: View {
             LeadDetailView(leadId: id)
         }
         .task(id: industryFilter) { await load() }
+        .task { if isSpark { await industries.loadIfNeeded() } }
+    }
+
+    /// Spark & Ray: a colour key for the configured industries (plus grey for leads without / outside the list).
+    private var industryLegend: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(industries.config.names, id: \.self) { name in
+                    legendItem(name)
+                }
+                legendItem("No industry / other")
+            }
+        }
+    }
+
+    private func legendItem(_ name: String) -> some View {
+        HStack(spacing: 5) {
+            SparkIndustryDot(industry: name, size: 8)
+            Text(name).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+        }
     }
 
     /// Pin colour: the industry colour for Spark & Ray, brand red for everyone else.
@@ -86,7 +109,7 @@ struct DashboardLeadsMapCard: View {
             Button { industryFilter = nil } label: {
                 Label("All industries", systemImage: industryFilter == nil ? "checkmark" : "circle")
             }
-            ForEach(SparkIndustries.options, id: \.self) { name in
+            ForEach(industries.config.names, id: \.self) { name in
                 Button { industryFilter = name } label: {
                     Label(name, systemImage: industryFilter == name ? "checkmark.circle.fill" : "circle.fill")
                 }

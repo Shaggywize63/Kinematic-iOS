@@ -44,6 +44,8 @@ struct LeadEditView: View {
     /// Admin-defined custom fields scoped to the rep's org role. Loaded
     /// (and hydrated from `lead.customFields`) inside `.task`.
     @StateObject private var customFields = CustomFieldsModel()
+    /// Spark & Ray: the tenant's industries (names, colours, sub-industries) from `config.industries`.
+    @ObservedObject private var industries = IndustriesStore.shared
     @StateObject private var productLines = ProductLinesModel()
     /// Admin-defined per-tenant overrides — visibility / label / required
     /// for built-in lead fields. Mirrors LeadCreateView so editing honours
@@ -219,7 +221,7 @@ struct LeadEditView: View {
                         // free-text field.
                         if isSparkClient {
                             if fieldOverrides.didLoad && !fieldOverrides.isHidden("industry", isB2C: false) {
-                                Picker(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false), selection: $industry) {
+                                Picker(fieldOverrides.labelFor("industry", defaultLabel: "Industry", isB2C: false), selection: sparkIndustryBinding) {
                                     Text("— Select —").tag("")
                                     ForEach(SparkIndustries.pickerOptions(including: industry), id: \.self) { opt in
                                         sparkIndustryOption(opt).tag(opt)
@@ -438,6 +440,7 @@ struct LeadEditView: View {
             .navigationTitle("Edit Lead")
             .navigationBarTitleDisplayMode(.inline)
             .task { await loadPickerOptions() }
+            .task { await industries.loadIfNeeded() }
             // Scope the custom-field section to the current lead segment (B2C
             // farmer vs B2B distributor). initial:true seeds it; it re-filters
             // if the rep flips the type picker.
@@ -503,11 +506,36 @@ struct LeadEditView: View {
     }
 
     /// Spark & Ray's sub-industry (`industry_category` custom field), drawn inline after Industry.
+    /// When the chosen industry lists sub-industries (`config.industries`) the row is a dropdown of them (the
+    /// stored value stays selectable); otherwise it is today's free-text field.
     private var sparkSubIndustryRow: some View {
         CustomFieldsSection(
             model: customFields,
             onlyKey: SparkIndustries.subIndustryFieldKey,
-            labelOverrides: [SparkIndustries.subIndustryFieldKey: SparkIndustries.subIndustryLabel]
+            labelOverrides: [SparkIndustries.subIndustryFieldKey: SparkIndustries.subIndustryLabel],
+            optionOverrides: sparkSubIndustryOptions
+        )
+    }
+
+    private var sparkSubIndustryOptions: [String: [String]] {
+        let key = SparkIndustries.subIndustryFieldKey
+        let choices = industries.config.subIndustryChoices(for: industry, current: customFields.text[key] ?? "")
+        return choices.isEmpty ? [:] : [key: choices]
+    }
+
+    /// The Industry picker's binding: choosing an industry also clears a Sub-industry that does not belong to it.
+    /// Done in the setter (a person's choice), not an onChange, so loading a stored industry never clears anything.
+    private var sparkIndustryBinding: Binding<String> {
+        Binding(
+            get: { industry },
+            set: { newValue in
+                let old = industry
+                industry = newValue
+                let key = SparkIndustries.subIndustryFieldKey
+                let current = customFields.text[key] ?? ""
+                let next = industries.config.subIndustryAfterIndustryChange(current: current, from: old, to: newValue)
+                if next != current { customFields.text[key] = next }
+            }
         )
     }
 
