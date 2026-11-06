@@ -227,7 +227,9 @@ struct ContactCreateView: View {
             body["referral_source"] = referralSource
             body["address_line1"] = addressLine1
             body["address_line2"] = addressLine2
-            body["city"] = city
+            // A blank city is left out: the server rejects an empty string ("City is required"), and the field may be hidden.
+            let trimmedCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedCity.isEmpty { body["city"] = trimmedCity }
             body["state"] = state
             body["postal_code"] = postalCode
             body["country"] = country
