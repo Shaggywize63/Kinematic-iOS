@@ -20,7 +20,7 @@ func expenseStatusColor(_ status: String?) -> Color {
 let expenseCategories = ExpenseLogic.categories
 
 let expenseDayFmt: DateFormatter = {
-    let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+    let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian)
     f.timeZone = TimeZone(secondsFromGMT: 0); f.dateFormat = "yyyy-MM-dd"; return f
 }()
 

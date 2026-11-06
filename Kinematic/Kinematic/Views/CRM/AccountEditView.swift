@@ -12,6 +12,8 @@ struct AccountEditView: View {
     @State private var revenue: String
     @State private var employees: String
     @State private var description: String
+    /// Saved Address / State / City / PIN / Country, preloaded (gated per field by `AccountLocationSection`).
+    @State private var location: AccountLocationDraft
     @State private var saving = false
     @State private var errorMessage: String?
     /// Built-in field overrides (hide / relabel / require) for account columns.
@@ -32,6 +34,7 @@ struct AccountEditView: View {
         _employees = State(initialValue: account.employees.map { String($0) } ?? "")
         _description = State(initialValue: account.description ?? "")
         _ownerId = State(initialValue: account.ownerId ?? "")
+        _location = State(initialValue: AccountLocationDraft(account: account))
     }
 
     /// Built-in field contract: wait for the admin's overrides, honour a hidden `owner_id`. On top of that
@@ -108,6 +111,7 @@ struct AccountEditView: View {
                         }
                     }
                 }
+                AccountLocationSection(draft: $location, fieldOverrides: fieldOverrides)
                 ownerSection
                 Section("About") {
                     TextEditor(text: $description).frame(minHeight: 100)
@@ -125,13 +129,19 @@ struct AccountEditView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { Task { await save() } } label: { if saving { ProgressView() } else { Text("Save") } }
-                        .disabled(saving || (!fieldOverrides.isHidden(entity: "account", "name") && name.trimmingCharacters(in: .whitespaces).isEmpty))
+                        .disabled(saveDisabled)
                 }
             }
             .alert("Update failed", isPresented: .init(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorMessage ?? "") }
         }
+    }
+
+    private var saveDisabled: Bool {
+        saving
+            || (!fieldOverrides.isHidden(entity: "account", "name") && name.trimmingCharacters(in: .whitespaces).isEmpty)
+            || location.isIncomplete(fieldOverrides)
     }
 
     private func save() async {
@@ -143,6 +153,9 @@ struct AccountEditView: View {
         body["annual_revenue"] = Double(revenue) ?? NSNull()
         body["employees"] = Int(employees) ?? NSNull()
         body["description"] = description.isEmpty ? NSNull() : description
+        // Address / State / City / PIN / Country: a visible field the rep cleared goes as null; a hidden one is
+        // left out so hiding it never wipes what is saved.
+        body.merge(location.patchFields(hidden: AccountLocationDraft.hiddenKeys(fieldOverrides))) { _, new in new }
         // The owner rides the PATCH only when an allowed person actually picked someone else — never
         // otherwise (the server also drops it for anyone who may not reassign).
         if showsOwnerPicker {

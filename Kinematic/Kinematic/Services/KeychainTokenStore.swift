@@ -49,10 +49,17 @@ enum KeychainTokenStore {
 
         if let cached = cache[key] { return cached }
 
-        if let fromKeychain = readKeychain(account: key) {
+        let read = readKeychain(account: key)
+        if let fromKeychain = read.value {
             cache[key] = fromKeychain
             return fromKeychain
         }
+
+        // A failed read is only "absent" when the Keychain says the item does not exist. Before the first unlock
+        // after a boot (a background launch for location / push) the read fails with errSecInteractionNotAllowed;
+        // caching "" for that would keep a signed-in user logged out until the process died. Answer "" for now and
+        // look again on the next call.
+        guard KeychainReadPolicy.shouldCacheAbsence(status: read.status) else { return "" }
 
         // Legacy plaintext migration: move it into the Keychain, then delete
         // the unencrypted copy. Runs at most once per key (afterwards the
@@ -105,7 +112,7 @@ enum KeychainTokenStore {
         ]
     }
 
-    private static func readKeychain(account: String) -> String? {
+    private static func readKeychain(account: String) -> (value: String?, status: OSStatus) {
         var query = baseQuery(account: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -115,9 +122,9 @@ enum KeychainTokenStore {
         guard status == errSecSuccess,
               let data = result as? Data,
               let string = String(data: data, encoding: .utf8) else {
-            return nil
+            return (nil, status)
         }
-        return string
+        return (string, status)
     }
 
     private static func writeKeychain(account: String, value: String) {

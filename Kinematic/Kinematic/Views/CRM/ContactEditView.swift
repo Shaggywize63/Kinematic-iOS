@@ -154,8 +154,16 @@ struct ContactEditView: View {
                     }
                     Section("Address") {
                         TextField("Address line 1", text: $addressLine1)
-                        if !fieldOverrides.isHidden(entity: "contact", "city", isB2C: isB2C) {
-                            LocationPicker(state: $state, city: $city)
+                        // State and City are gated independently (hiding one never drops the other).
+                        if !fieldOverrides.isHidden(entity: "contact", "city", isB2C: isB2C) || !fieldOverrides.isHidden(entity: "contact", "state", isB2C: isB2C) {
+                            LocationPicker(
+                                state: $state,
+                                city: $city,
+                                showState: !fieldOverrides.isHidden(entity: "contact", "state", isB2C: isB2C),
+                                showCity: !fieldOverrides.isHidden(entity: "contact", "city", isB2C: isB2C),
+                                stateLabel: fieldOverrides.labelFor(entity: "contact", "state", "State", isB2C: isB2C),
+                                cityLabel: fieldOverrides.labelFor(entity: "contact", "city", "City", isB2C: isB2C)
+                            )
                         }
                         TextField("Postal code", text: $postalCode)
                         if !fieldOverrides.isHidden(entity: "contact", "country", isB2C: isB2C) {

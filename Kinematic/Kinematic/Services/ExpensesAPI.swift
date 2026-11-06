@@ -12,11 +12,17 @@ import Foundation
 enum ExpensesAPIError: Error, LocalizedError {
     case http(Int, String?)
     case noResponse
+    /// The request never got an answer (offline, timed out, host unreachable): the text is already written for the person.
+    case network(String)
+    /// The server answered 2xx but the reply is not the shape the app reads.
+    case unreadable
 
     var errorDescription: String? {
         switch self {
         case .http(let s, let m): return ExpenseErrors.message(serverMessage: m, status: s)
         case .noResponse:         return "No response"
+        case .network(let text):  return text
+        case .unreadable:         return ExpenseErrors.unreadableReply
         }
     }
 }
@@ -41,7 +47,10 @@ struct ExpensesAPI {
     }
 
     private func send(_ req: URLRequest) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let data: Data
+        let response: URLResponse
+        do { (data, response) = try await URLSession.shared.data(for: req) }
+        catch let e as URLError where e.code != .cancelled { throw ExpensesAPIError.network(ExpenseErrors.transportMessage(e.code)) }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(status) {
             throw ExpensesAPIError.http(status, ExpenseErrors.serverMessage(in: data))
@@ -64,7 +73,10 @@ struct ExpensesAPI {
     private func decode<T: Decodable>(_ data: Data) throws -> T {
         let decoder = JSONDecoder()
         do { return try decoder.decode(Envelope<T>.self, from: data).data }
-        catch { return try decoder.decode(T.self, from: data) }
+        catch {
+            do { return try decoder.decode(T.self, from: data) }
+            catch { throw ExpensesAPIError.unreadable }
+        }
     }
 
     // ── Policy ────────────────────────────────────────────────────────────────
