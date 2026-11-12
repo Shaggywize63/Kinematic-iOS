@@ -20,6 +20,8 @@ struct LeadEditView: View {
     /// the same override contract as every other built-in field.
     @State private var alternateMobiles: [String]
     @State private var status: String
+    /// Spark & Ray lead type; nil = None. Seeded from `lead.leadType`; only sent when changed.
+    @State private var leadType: LeadType?
     @State private var sourceId: String
     @State private var ownerId: String
     @State private var company: String
@@ -98,6 +100,7 @@ struct LeadEditView: View {
         _phone = State(initialValue: lead.phone ?? "")
         _alternateMobiles = State(initialValue: lead.alternateMobiles ?? [])
         _status = State(initialValue: lead.status ?? "new")
+        _leadType = State(initialValue: LeadType(raw: lead.leadType))
         _sourceId = State(initialValue: lead.source ?? "")
         _ownerId = State(initialValue: lead.ownerId ?? "")
         _company = State(initialValue: lead.company ?? "")
@@ -345,11 +348,24 @@ struct LeadEditView: View {
                         // silently snapping to the first option.
                         let resolvedStatuses = fieldOverrides.statusOptions(default: ["new", "working", "qualified", "unqualified", "converted", "lost"])
                         let statusChoices: [LeadStatusOption] = (!status.isEmpty && !resolvedStatuses.contains(where: { $0.value == status }))
-                            ? resolvedStatuses + [LeadStatusOption(value: status, label: status.capitalized, color: nil, isWon: false, isLost: false)]
+                            ? resolvedStatuses + [LeadStatusOption(value: status, label: LeadStatusDisplay.prettify(status), color: nil, isWon: false, isLost: false)]
                             : resolvedStatuses
                         Picker(fieldOverrides.labelFor("status", defaultLabel: "Status", isB2C: isB2C), selection: $status) {
                             ForEach(statusChoices) { opt in
                                 Text(opt.label).tag(opt.value)
+                            }
+                        }
+                    }
+                    // Lead type (Spark & Ray): Requirement / Discussion / None. Built-in field -> held until the
+                    // overrides have loaded, dropped when the admin hid it, relabelled / required from the same settings.
+                    if isSparkClient && fieldOverrides.didLoad && !fieldOverrides.isHidden("lead_type", isB2C: isB2C) {
+                        let leadTypeRequired = fieldOverrides.requiredFor("lead_type", defaultRequired: false, isB2C: isB2C)
+                        let leadTypeLabel = fieldOverrides.labelFor("lead_type", defaultLabel: LeadNumberAndType.defaultLabel, isB2C: isB2C)
+                            + (leadTypeRequired ? " *" : "")
+                        Picker(leadTypeLabel, selection: $leadType) {
+                            Text(LeadNumberAndType.noneLabel).tag(LeadType?.none)
+                            ForEach(LeadType.allCases) { t in
+                                Text(t.label).tag(LeadType?.some(t))
                             }
                         }
                     }
@@ -610,7 +626,23 @@ struct LeadEditView: View {
         productLines.hydrate(from: lead.customFields)
     }
 
+    /// Is the Lead Type picker on screen (Spark & Ray, overrides loaded, not hidden by the admin)? A hidden or
+    /// absent picker never sends `lead_type`.
+    private var showsLeadType: Bool {
+        LeadNumberAndType.isShown(isSpark: isSparkClient, didLoad: fieldOverrides.didLoad,
+                                  hidden: fieldOverrides.isHidden("lead_type", isB2C: isB2C))
+    }
+
     private func save() async {
+        if let problem = LeadNumberAndType.requiredProblem(
+            shown: showsLeadType,
+            required: fieldOverrides.explicitlyRequired("lead_type", isB2C: isB2C),
+            label: fieldOverrides.labelFor("lead_type", defaultLabel: LeadNumberAndType.defaultLabel, isB2C: isB2C),
+            selection: leadType
+        ) {
+            errorMessage = problem
+            return
+        }
         saving = true
         defer { saving = false }
         // alternate_mobiles is a text[]; we always send the (trimmed,
@@ -645,6 +677,8 @@ struct LeadEditView: View {
                 return merged
             })(),
         ]
+        // lead_type: omitted when untouched, the new value when changed, explicit null when set back to None.
+        body.merge(LeadNumberAndType.editFields(original: lead.leadType, selection: leadType, shown: showsLeadType)) { _, new in new }
         // Spark & Ray: a picked address moves the pin with it.
         if let c = LeadAddressCoordinates.pickedOverride(isSpark: isSparkClient, picked: pickedAddressCoordinate) {
             body["latitude"] = c.latitude

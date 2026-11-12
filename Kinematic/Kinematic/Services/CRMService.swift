@@ -1179,7 +1179,7 @@ final class CRMService {
                        from: String? = nil, to: String? = nil, scoreGrade: String? = nil, scoreGte: Int? = nil,
                        lifecycle: String? = nil, isConverted: Bool? = nil, ownerId: String? = nil,
                        sourceId: String? = nil, sort: String? = nil, order: String? = nil,
-                       campaign: String? = nil) async throws -> (leads: [Lead], total: Int) {
+                       campaign: String? = nil, leadType: String? = nil) async throws -> (leads: [Lead], total: Int) {
         var q: [String: String] = ["page": String(page), "limit": "200"]
         if let status { q["status"] = status }
         if let search { q["q"] = search }
@@ -1199,6 +1199,8 @@ final class CRMService {
         // `custom_fields->>campaign` (exact match). Value is one of
         // "General Calls" / "App & DigiGold" / "After-Sales"; omit for "All".
         if let campaign, !campaign.isEmpty { q["campaign"] = campaign }
+        // Spark & Ray lead-type filter ("requirement" | "discussion"); omitted for everyone else.
+        if let leadType, !leadType.isEmpty { q["lead_type"] = leadType }
         let req = try makeRequest(path: "/api/v1/crm/leads", method: "GET", body: nil, query: q)
         let data = try await fetchData(req)
         let env = try decoder.decode(APIEnvelope<[Lead]>.self, from: data)

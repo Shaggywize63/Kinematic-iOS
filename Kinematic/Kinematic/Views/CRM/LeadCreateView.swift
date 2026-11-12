@@ -42,6 +42,8 @@ struct LeadCreateView: View {
     @State private var status: String = "new"
     @State private var ownerId: String = ""
     @State private var owners: [AssignableUser] = []
+    /// Spark & Ray lead type (`lead_type`); nil = None. Only sent while the (gated) picker is on screen.
+    @State private var leadType: LeadType? = nil
     // Default to B2C. Fail-safe: if the /crm/settings business_type hasn't
     // resolved yet, failed (401 on a dead session / offline), or the client_id
     // is missing so `isTata` reads false, we must NOT leak the B2B option or
@@ -236,7 +238,19 @@ struct LeadCreateView: View {
             overrides: fieldOverrides, isB2C: isB2C, firstName: firstName, lastName: lastName, phone: phone,
             company: company, addressLine1: addressLine1, visitAt: visitAt, now: Date(),
             companyLead: companyLead
+        ) ?? LeadNumberAndType.requiredProblem(
+            shown: showsLeadType,
+            required: fieldOverrides.explicitlyRequired("lead_type", isB2C: isB2C),
+            label: fieldOverrides.labelFor("lead_type", defaultLabel: LeadNumberAndType.defaultLabel, isB2C: isB2C),
+            selection: leadType
         )
+    }
+
+    /// Is the Lead Type picker on screen right now (Spark & Ray, overrides loaded, not hidden by the admin)?
+    /// Mirrors the `if` around the picker, so what is sent always matches what the rep could see.
+    private var showsLeadType: Bool {
+        LeadNumberAndType.isShown(isSpark: isSparkClient, didLoad: fieldOverrides.didLoad,
+                                  hidden: fieldOverrides.isHidden("lead_type", isB2C: isB2C))
     }
 
     var body: some View {
@@ -380,6 +394,20 @@ struct LeadCreateView: View {
                         Picker(fieldOverrides.labelFor("status", defaultLabel: "Status", isB2C: isB2C), selection: $status) {
                             ForEach(fieldOverrides.statusOptions(default: ["new", "working", "qualified", "unqualified", "converted", "lost"])) { opt in
                                 Text(opt.label).tag(opt.value)
+                            }
+                        }
+                    }
+                    // Lead type (Spark & Ray): Requirement / Discussion / None. A built-in lead field, so it is gated
+                    // like the rest — held until the overrides have loaded, dropped when the admin hid it, relabelled
+                    // and marked required from the same settings.
+                    if isSparkClient && fieldOverrides.didLoad && !fieldOverrides.isHidden("lead_type", isB2C: isB2C) {
+                        let leadTypeRequired = fieldOverrides.requiredFor("lead_type", defaultRequired: false, isB2C: isB2C)
+                        let leadTypeLabel = fieldOverrides.labelFor("lead_type", defaultLabel: LeadNumberAndType.defaultLabel, isB2C: isB2C)
+                            + (leadTypeRequired ? " *" : "")
+                        Picker(leadTypeLabel, selection: $leadType) {
+                            Text(LeadNumberAndType.noneLabel).tag(LeadType?.none)
+                            ForEach(LeadType.allCases) { t in
+                                Text(t.label).tag(LeadType?.some(t))
                             }
                         }
                     }
@@ -751,6 +779,12 @@ struct LeadCreateView: View {
             .onChange(of: isB2C, initial: true) { customFields.segmentIsB2c = isB2C }
             .task { await productLines.load() }
             .task { await fieldOverrides.load() }
+            // A tenant with custom lead stages that do not include "new" must not start on a stage the picker
+            // does not offer: once the settings land, move to its first open stage.
+            .onChange(of: fieldOverrides.didLoad) { _, loaded in
+                guard loaded else { return }
+                status = LeadStatusDisplay.resolvedStatus(current: status, options: fieldOverrides.leadStatuses)
+            }
             .task { await industries.loadIfNeeded() }
             .task { sources = await CRMService.shared.listLeadSources() }
             .task {
@@ -1306,11 +1340,16 @@ struct LeadCreateView: View {
         // status — from the picker (defaults to "new"). When the admin has
         // hidden the Status field, fall back to "new" so a freshly captured
         // lead still lands in the right resting state.
-        let statusValue = fieldOverrides.isHidden("status", isB2C: isB2C) ? "new" : status
+        // A tenant whose custom stages do not include "new" starts on its first open stage instead.
+        let statusValue = fieldOverrides.isHidden("status", isB2C: isB2C)
+            ? LeadStatusDisplay.resolvedStatus(current: "new", options: fieldOverrides.leadStatuses)
+            : status
         var body: [String: Any] = [
             "status": statusValue,
             "is_b2c": isB2C,
         ]
+        // lead_type — only while the gated picker is on screen; None sends nothing on create.
+        body.merge(LeadNumberAndType.createFields(selection: leadType, shown: showsLeadType)) { _, new in new }
         // owner_id — from the Owner picker, when the rep may reassign and the
         // field isn't hidden. Empty = leave unassigned (omit the key). Never
         // sent by a non-admin of a client that reserves owner assignment for

@@ -15,6 +15,7 @@ final class LeadsViewModel: ObservableObject {
     @Published var convertedFilter: String = "all"  // all | yes | no
     @Published var ownerFilter: String = "all"      // "all" or an owner user id
     @Published var sourceFilter: String = "all"     // "all" or a lead-source id
+    @Published var leadTypeFilter: String = "all"   // all | requirement | discussion (Spark & Ray)
     // Sorting. sortKey "recent" = backend recent-activity order; "created"
     // (descending) = newest-added first, which is the resting default for the
     // Leads list on the web dashboard across EVERY tenant. iOS matches it, so
@@ -53,13 +54,14 @@ final class LeadsViewModel: ObservableObject {
         if convertedFilter != "all" { n += 1 }
         if ownerFilter != "all" { n += 1 }
         if sourceFilter != "all" { n += 1 }
+        if leadTypeFilter != "all" { n += 1 }
         if dateFrom != nil || dateTo != nil { n += 1 }
         return n
     }
 
     func resetFilters() {
         lifecycleFilter = "all"; convertedFilter = "all"
-        ownerFilter = "all"; sourceFilter = "all"
+        ownerFilter = "all"; sourceFilter = "all"; leadTypeFilter = "all"
         dateFrom = nil; dateTo = nil
     }
 
@@ -118,7 +120,8 @@ final class LeadsViewModel: ObservableObject {
             sourceId: sourceFilter == "all" ? nil : sourceFilter,
             sort: sortKey == "recent" ? nil : sortKey,
             order: sortKey == "recent" ? nil : (sortAscending ? "asc" : "desc"),
-            campaign: campaign
+            campaign: campaign,
+            leadType: leadTypeFilter == "all" ? nil : leadTypeFilter
         )
     }
 

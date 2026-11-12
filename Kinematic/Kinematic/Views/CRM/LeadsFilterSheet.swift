@@ -19,6 +19,11 @@ struct LeadsFilterSheet: View {
     /// (`lead_form.owner_assignment == "admin_only"`) gives everyone else no owner control, the filter included.
     /// The list passes `LeadFieldOverridesModel.mayChooseLeadOwner`.
     var showOwnerFilter: Bool = true
+    /// Spark & Ray only, and only while the admin has not hidden the built-in `lead_type` field. The list
+    /// passes `LeadNumberAndType.isShown(...)`, resolved from the loaded field overrides.
+    var showLeadTypeFilter: Bool = false
+    /// The (admin-relabelled) name of the lead-type field, resolved by the list from the field overrides.
+    var leadTypeLabel: String = LeadNumberAndType.defaultLabel
     @Environment(\.dismiss) private var dismiss
 
 
@@ -93,6 +98,14 @@ struct LeadsFilterSheet: View {
                             Text("All owners").tag("all")
                             ForEach(vm.owners) { u in Text(u.displayName).tag(u.id) }
                         }
+                    }
+                }
+                if showLeadTypeFilter {
+                    Section(leadTypeLabel) {
+                        Picker(leadTypeLabel, selection: $vm.leadTypeFilter) {
+                            Text("All").tag("all")
+                            ForEach(LeadType.allCases) { t in Text(t.label).tag(t.rawValue) }
+                        }.pickerStyle(.segmented)
                     }
                 }
                 Section("Source") {

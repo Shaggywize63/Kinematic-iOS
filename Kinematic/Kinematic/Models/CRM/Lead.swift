@@ -67,6 +67,11 @@ struct Lead: Codable, Identifiable, Hashable {
     let photoUrl: String?
     let createdAt: String?
     let updatedAt: String?
+    /// Server-assigned, read-only lead number (e.g. "SR/LD/2627-12"). Shown for Spark & Ray only;
+    /// never sent back. Nil on older rows / other clients.
+    let refNo: String?
+    /// "requirement" | "discussion" | nil. A built-in field (gated by the field overrides).
+    let leadType: String?
 
     // B2C / consumer fields
     let isB2c: Bool?
@@ -137,6 +142,8 @@ struct Lead: Codable, Identifiable, Hashable {
         case photoUrl = "photo_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case refNo = "ref_no"
+        case leadType = "lead_type"
         case isB2c = "is_b2c"
         case dateOfBirth = "date_of_birth"
         case gender

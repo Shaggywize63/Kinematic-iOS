@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 extension Notification.Name {
     /// Posted by the lead-create form when a lead lands in the offline
@@ -35,6 +36,15 @@ struct LeadsListView: View {
     /// render of the list, not per row.
     private var showsIndustryBadge: Bool {
         SparkJourney.isActive && fieldOverrides.didLoad && !fieldOverrides.isHidden("industry", isB2C: false)
+    }
+
+    /// Spark & Ray: the Lead Type filter in the filters sheet, unless the admin hid the built-in field. The list
+    /// mixes B2B and B2C leads, so it stays if either scope still shows the field.
+    private var showsLeadTypeFilter: Bool {
+        let hiddenEverywhere = fieldOverrides.isHidden(LeadNumberAndType.fieldKey, isB2C: false)
+            && fieldOverrides.isHidden(LeadNumberAndType.fieldKey, isB2C: true)
+        return LeadNumberAndType.isShown(isSpark: SparkJourney.isActive, didLoad: fieldOverrides.didLoad,
+                                         hidden: hiddenEverywhere)
     }
 
     /// "all" sentinel prepended to the resolved statuses. Chips send
@@ -128,7 +138,7 @@ struct LeadsListView: View {
             }
             HStack {
                 Image(systemName: "magnifyingglass").foregroundColor(.gray)
-                TextField("Search leads…", text: $vm.search)
+                TextField(LeadNumberAndType.searchPlaceholder(isSpark: SparkJourney.isActive), text: $vm.search)
                     .textFieldStyle(.plain)
                     .autocapitalization(.none)
                 if vm.dateFrom != nil || vm.dateTo != nil {
@@ -247,12 +257,20 @@ struct LeadsListView: View {
                     } else {
                         ForEach(vm.filtered) { lead in
                             NavigationLink(destination: LeadDetailView(leadId: lead.id)) {
-                                LeadRow(lead: lead, showIndustry: showsIndustryBadge)
+                                LeadRow(lead: lead, showIndustry: showsIndustryBadge,
+                                        statusOptions: fieldOverrides.leadStatuses,
+                                        showLeadNumber: SparkJourney.isActive)
                             }
                             .buttonStyle(.plain)
                             .spotlightAnchor(SpotlightKeys.leadsRow, if: lead.id == vm.filtered.first?.id)
                             .contextMenu {
                                 Button { editingLead = lead } label: { Label("Edit", systemImage: "pencil") }
+                                // Spark & Ray: copy the lead number without opening the lead.
+                                if SparkJourney.isActive, let ref = LeadNumberAndType.refDisplay(lead.refNo) {
+                                    Button { UIPasteboard.general.string = ref } label: {
+                                        Label("Copy lead number", systemImage: "doc.on.doc")
+                                    }
+                                }
                             }
                             .onAppear {
                                 // Infinite scroll — load the next page as the
@@ -318,7 +336,11 @@ struct LeadsListView: View {
         .sheet(isPresented: $showFilters) {
             // Admin-only-ownership clients: no Owner filter for anyone but an admin (fail closed until the
             // settings have loaded for a non-admin).
-            LeadsFilterSheet(vm: vm, showOwnerFilter: fieldOverrides.mayChooseLeadOwner)
+            LeadsFilterSheet(vm: vm, showOwnerFilter: fieldOverrides.mayChooseLeadOwner,
+                             showLeadTypeFilter: showsLeadTypeFilter,
+                             leadTypeLabel: fieldOverrides.labelFor(LeadNumberAndType.fieldKey,
+                                                                    defaultLabel: LeadNumberAndType.defaultLabel,
+                                                                    isB2C: false))
         }
         .sheet(isPresented: $showDateFilter) {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Created date") {
