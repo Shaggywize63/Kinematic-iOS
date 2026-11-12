@@ -11,6 +11,7 @@
 		AB0000000000000000000B63 /* ActivityLogPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000A63 /* ActivityLogPlanTests.swift */; };
 		AB0000000000000000000B62 /* ActivityLinkEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000A62 /* ActivityLinkEditingTests.swift */; };
 		AB0000000000000000000B61 /* ContactEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000A61 /* ContactEditingTests.swift */; };
+		AB0000000000000000000B64 /* ExpenseLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000A64 /* ExpenseLinkTests.swift */; };
 		603F42ED8CD38971163EF80B /* KinematicFaceEmbedder.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = 1DDB4F0BA787396515A14657 /* KinematicFaceEmbedder.mlmodel */; };
 		AB0000000000000000000020 /* APIEnvelopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000010 /* APIEnvelopeTests.swift */; };
 		AB0000000000000000000021 /* AnyJSONTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000011 /* AnyJSONTests.swift */; };
@@ -91,6 +92,7 @@
 		AB0000000000000000000A63 /* ActivityLogPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLogPlanTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000A62 /* ActivityLinkEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLinkEditingTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000A61 /* ContactEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactEditingTests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000A64 /* ExpenseLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseLinkTests.swift; sourceTree = "<group>"; };
 		1DDB4F0BA787396515A14657 /* KinematicFaceEmbedder.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; name = KinematicFaceEmbedder.mlmodel; path = Kinematic/KinematicFaceEmbedder.mlmodel; sourceTree = SOURCE_ROOT; };
 		8E096DC52F94AFE0003D8F01 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		8E096DC72F94AFE0003D8F01 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -269,6 +271,7 @@
 				AB0000000000000000000A63 /* ActivityLogPlanTests.swift */,
 				AB0000000000000000000A62 /* ActivityLinkEditingTests.swift */,
 				AB0000000000000000000A61 /* ContactEditingTests.swift */,
+				AB0000000000000000000A64 /* ExpenseLinkTests.swift */,
 			);
 			path = KinematicTests;
 			sourceTree = "<group>";
@@ -466,6 +469,7 @@
 				AB0000000000000000000B63 /* ActivityLogPlanTests.swift in Sources */,
 				AB0000000000000000000B62 /* ActivityLinkEditingTests.swift in Sources */,
 				AB0000000000000000000B61 /* ContactEditingTests.swift in Sources */,
+				AB0000000000000000000B64 /* ExpenseLinkTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

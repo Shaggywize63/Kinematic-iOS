@@ -141,6 +141,8 @@ struct ExpenseClaimDetailView: View {
         // Connected-B2B links (shown only when set): the company + the linked filled form entry, by its
         // reference and date (the form's name when the entry has no reference).
         if let a = c.account_name, !a.isEmpty { rows.append(("Company", a)) }
+        if let l = ExpenseLinkLogic.clean(c.lead_name) { rows.append(("Lead", l)) }
+        if let d = ExpenseLinkLogic.clean(c.deal_name) { rows.append(("Deal", d)) }
         let entry = FormRefDisplay.title(refNo: c.form_ref_no, submittedAt: c.form_submitted_at)
         let hasRef = !(c.form_ref_no ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if hasRef && !entry.isEmpty { rows.append(("Form entry", entry)) }

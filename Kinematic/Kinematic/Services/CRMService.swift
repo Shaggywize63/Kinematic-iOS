@@ -67,6 +67,8 @@ final class CRMService {
         return try await get("/api/v1/crm/leads", query: q)
     }
     func getLead(id: String) async throws -> Lead { try await get("/api/v1/crm/leads/\(id)") }
+    /// What was spent on this lead (expense claims linked to it) — connected-B2B only.
+    func leadExpenses(id: String) async throws -> ExpenseRollup { try await get("/api/v1/crm/leads/\(id)/expenses") }
     /// Contacts captured on a lead — the B2B contact-persons and each one's
     /// `requirement`. Org-scoped (not owner-filtered) so a revisit shows everyone
     /// logged on the lead, including contacts another rep added on an earlier visit.
@@ -400,6 +402,8 @@ final class CRMService {
         return try await get("/api/v1/crm/deals", query: q)
     }
     func getDeal(id: String) async throws -> Deal { try await get("/api/v1/crm/deals/\(id)") }
+    /// What was spent on this deal (expense claims linked to it) — connected-B2B only.
+    func dealExpenses(id: String) async throws -> ExpenseRollup { try await get("/api/v1/crm/deals/\(id)/expenses") }
     func createDeal(_ body: [String: Any]) async throws -> Deal {
         try await postJSON("/api/v1/crm/deals", body: body)
     }
