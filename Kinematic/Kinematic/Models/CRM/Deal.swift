@@ -60,6 +60,24 @@ struct Deal: Codable, Identifiable, Hashable {
     let preparedByName: String?
     let checkedByName: String?
     let supervisorIdName: String?
+    // Product lines roll-up (connected-B2B). Read leniently: a number may arrive as a string and a
+    // missing / odd value reads as nil, so a surprising value never fails the whole deal.
+    private let lineCountWire: LenientDouble?
+    private let quotedAmountWire: LenientDouble?
+    private let orderAmountWire: LenientDouble?
+    private let brandsWire: LenientStringList?
+
+    /// Number of product lines on the deal.
+    var lineCount: Int? {
+        guard let v = lineCountWire?.value, v >= 0, v < 1e9 else { return nil }
+        return Int(v)
+    }
+    /// Sum of the lines' quoted values (nil when the deal has no lines).
+    var quotedAmount: Double? { quotedAmountWire?.value }
+    /// Sum of the lines' order values (nil when none is set).
+    var orderAmount: Double? { orderAmountWire?.value }
+    /// Distinct brand names of the lines.
+    var brands: [String]? { brandsWire?.values }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -106,5 +124,9 @@ struct Deal: Codable, Identifiable, Hashable {
         case preparedByName = "prepared_by_name"
         case checkedByName = "checked_by_name"
         case supervisorIdName = "supervisor_id_name"
+        case lineCountWire = "line_count"
+        case quotedAmountWire = "quoted_amount"
+        case orderAmountWire = "order_amount"
+        case brandsWire = "brands"
     }
 }

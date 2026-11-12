@@ -62,6 +62,12 @@ struct DealCloseView: View {
     @State private var createBalance = true
     @State private var saving = false
     @State private var errorMessage: String?
+    /// Connected-B2B (Spark & Ray): the deal's product lines and, per line id, the ordered value being
+    /// confirmed. Only lines that still lack an order value get a field, prefilled with the quoted value.
+    @State private var lineItems: [DealLineItem] = []
+    @State private var orderTexts: [String: String] = [:]
+
+    private var isSpark: Bool { SparkJourney.isActive }
 
     init(deal: Deal, onClosed: @escaping (Deal) -> Void) {
         self.deal = deal
@@ -146,6 +152,10 @@ struct DealCloseView: View {
                         Text("Prefilled with the deal amount. Enter a lower value for a partial close.")
                             .font(.caption2)
                     }
+
+                    if isSpark && !pendingLines.isEmpty {
+                        orderConfirmSection
+                    }
                 }
 
                 Section {
@@ -156,6 +166,7 @@ struct DealCloseView: View {
             }
             .navigationTitle("Close deal")
             .navigationBarTitleDisplayMode(.inline)
+            .task { await loadLineItems() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -179,10 +190,61 @@ struct DealCloseView: View {
         }
     }
 
+    /// Lines that still lack an order value.
+    private var pendingLines: [DealLineItem] { DealLineOrderConfirm.pending(lineItems) }
+
+    private func orderBinding(_ lineId: String) -> Binding<String> {
+        Binding(
+            get: { orderTexts[lineId] ?? "" },
+            set: { orderTexts[lineId] = $0 }
+        )
+    }
+
+    /// "Confirm the ordered value": one field per line without an order value, prefilled with the line's
+    /// quoted value and editable. Saved to the lines (PATCH line-items) when the deal is closed as Won.
+    private var orderConfirmSection: some View {
+        Section {
+            ForEach(pendingLines) { line in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(line.productName)
+                            .font(.system(size: 14, weight: .semibold))
+                        if let ref = line.displayReference {
+                            Text(ref).font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer()
+                    TextField("0", text: orderBinding(line.id))
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 120)
+                }
+            }
+            if let problem = DealLineOrderConfirm.problem(items: lineItems, texts: orderTexts) {
+                Text(problem).font(.footnote).foregroundColor(.red)
+            }
+        } header: {
+            Text("Confirm the ordered value")
+        } footer: {
+            Text("Prefilled with each line's quoted value. Edit it to what was actually ordered.")
+                .font(.caption2)
+        }
+    }
+
+    private func loadLineItems() async {
+        guard isSpark else { return }
+        let rows = (try? await CRMService.shared.dealLineItems(dealId: deal.id)) ?? []
+        lineItems = rows
+        orderTexts = DealLineOrderConfirm.prefill(rows)
+    }
+
     private var canSubmit: Bool {
         switch outcome {
         case .won:
             guard !winReason.isEmpty else { return false }
+            if isSpark, DealLineOrderConfirm.problem(items: lineItems, texts: orderTexts) != nil {
+                return false
+            }
             if winReason == "Other",
                wonOther.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return false
@@ -267,6 +329,13 @@ struct DealCloseView: View {
                 // Only send create_balance_deal on a genuine partial close —
                 // it's meaningless (and ignored) for a full-amount win.
                 let isPartial = balanceRemaining != nil
+                // Connected-B2B: save the confirmed order values onto the lines first, so a failure
+                // here stops before the deal is closed.
+                if isSpark {
+                    for patch in DealLineOrderConfirm.patches(items: lineItems, texts: orderTexts) {
+                        try await CRMService.shared.updateLineItem(id: patch.lineId, body: patch.body)
+                    }
+                }
                 updated = try await CRMService.shared.winDeal(
                     id: deal.id,
                     amount: enteredAmount,

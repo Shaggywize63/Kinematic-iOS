@@ -36,6 +36,8 @@ struct DealCreateView: View {
     @StateObject private var dealSections = DealSectionsModel()
     @State private var lines: [DealLineDraft] = [DealLineDraft()]
     @State private var catalogue: [Product] = []
+    /// Make + Brand pick lists for the lines (Spark only; loaded once).
+    @StateObject private var masters = LineMastersModel()
     @State private var pickingLineId: UUID? = nil
     @State private var didSeedPrefill = false
     @State private var submitting = false
@@ -190,7 +192,7 @@ struct DealCreateView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task { await save() }
-                    }.disabled(submitting || sparkSectionError != nil || (!fieldOverrides.isHidden(entity: "deal", "name") && name.isEmpty))
+                    }.disabled(saveBlocked)
                 }
             }
             .sheet(isPresented: $showAccountPicker) {
@@ -229,6 +231,7 @@ struct DealCreateView: View {
                     catalogue = all.filter { $0.isActive != false }
                 }
             }
+            .task { if isSpark { await masters.load() } }
         }
     }
 
@@ -297,59 +300,39 @@ struct DealCreateView: View {
         return sparkDraft.validationError(config: dealSections.config, hidden: sparkHiddenKeys)
     }
 
-    /// Product lines editor: add / remove rows, product picker prefills name + price, qty and unit
-    /// price editable, per-line and grand totals.
+    /// Save is blocked while the name is missing (when shown), a Spark section is invalid, or a Spark
+    /// line breaks the MAC rule (a MAC product needs its funnel reference).
+    private var saveBlocked: Bool {
+        if submitting { return true }
+        if sparkSectionError != nil { return true }
+        if isSpark && DealLines.funnelProblem(lines) != nil { return true }
+        if !fieldOverrides.isHidden(entity: "deal", "name") && name.isEmpty { return true }
+        return false
+    }
+
+    /// Product lines editor: add / remove rows, product picker prefills name, reference, price, make and
+    /// brand (both editable), qty and unit price editable, an optional order value and the MAC funnel
+    /// reference per line, plus the quoted / ordered totals.
     @ViewBuilder
     private var sparkProductsSection: some View {
         Section {
             ForEach($lines) { $line in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 10) {
-                        TextField("Product / item", text: $line.name)
-                        Button {
-                            pickingLineId = line.id
-                        } label: {
-                            Image(systemName: "shippingbox").foregroundColor(Brand.red)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Pick from catalogue")
-                        Button(role: .destructive) {
-                            removeLine(line.id)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Remove line")
-                    }
-                    HStack(spacing: 8) {
-                        TextField("Qty", text: $line.quantityText)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 72)
-                        Text("×").foregroundColor(.secondary)
-                        TextField("Unit price (₹)", text: $line.unitPriceText)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
-                        Spacer(minLength: 4)
-                        Text(CurrencyFormatter.formatINR(line.lineTotal))
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Brand.red)
-                            .lineLimit(1)
-                    }
-                }
-                .padding(.vertical, 2)
+                lineEditor($line)
             }
             Button {
                 lines.append(DealLineDraft())
             } label: {
                 Label("Add product line", systemImage: "plus.circle.fill")
             }
-            HStack {
-                Text("Total").font(.system(size: 14, weight: .bold))
-                Spacer()
-                Text(CurrencyFormatter.formatINR(DealLines.grandTotal(lines)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(DealLineTotals.quotedText(DealLines.grandTotal(lines)))
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(Brand.red)
+                if let ordered = DealLineTotals.orderedText(DealLines.orderedTotal(lines)) {
+                    Text(ordered)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Brand.red)
+                }
             }
             if let err = submitError {
                 Text(err).font(.footnote).foregroundColor(.red)
@@ -357,6 +340,63 @@ struct DealCreateView: View {
         } header: {
             Text("Products")
         }
+    }
+
+    /// One line of the editor.
+    @ViewBuilder
+    private func lineEditor(_ line: Binding<DealLineDraft>) -> some View {
+        let value = line.wrappedValue
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                TextField("Product / item", text: line.name)
+                Button {
+                    pickingLineId = value.id
+                } label: {
+                    Image(systemName: "shippingbox").foregroundColor(Brand.red)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Pick from catalogue")
+                Button(role: .destructive) {
+                    removeLine(value.id)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove line")
+            }
+            if !value.reference.isEmpty {
+                Text("Reference \(value.reference)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            HStack(spacing: 8) {
+                TextField("Qty", text: line.quantityText)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 72)
+                Text("\u{00D7}").foregroundColor(.secondary)
+                TextField("Unit price (\u{20B9})", text: line.unitPriceText)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.roundedBorder)
+                Spacer(minLength: 4)
+                Text(CurrencyFormatter.formatINR(value.lineTotal))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Brand.red)
+                    .lineLimit(1)
+            }
+            LineAttributeFields(
+                makeId: line.makeId,
+                makeName: line.makeName,
+                brandId: line.brandId,
+                brandName: line.brandName,
+                orderValueText: line.orderValueText,
+                funnelRef: line.funnelRef,
+                makes: masters.makes,
+                brands: masters.brands,
+                validate: !value.isBlank
+            )
+        }
+        .padding(.vertical, 2)
     }
 
     private func removeLine(_ id: UUID) {

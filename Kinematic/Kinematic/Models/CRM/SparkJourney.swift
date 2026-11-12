@@ -251,14 +251,35 @@ struct DealLineDraft: Identifiable, Equatable {
     var name: String
     var quantityText: String
     var unitPriceText: String
+    /// Product reference (the catalogue sku), shown next to the name. Display only: the server derives it.
+    var reference: String
+    /// Make (manufacturer) and brand (MAC, PHD, BEKO, PIAB...). Prefilled from the picked product; both editable.
+    var makeId: String?
+    var makeName: String?
+    var brandId: String?
+    var brandName: String?
+    /// Order value as typed (optional; filled when the deal is won).
+    var orderValueText: String
+    /// MAC funnel reference as typed (required when the brand is MAC).
+    var funnelRef: String
 
     init(id: UUID = UUID(), productId: String? = nil, name: String = "",
-         quantityText: String = "1", unitPriceText: String = "") {
+         quantityText: String = "1", unitPriceText: String = "",
+         reference: String = "", makeId: String? = nil, makeName: String? = nil,
+         brandId: String? = nil, brandName: String? = nil,
+         orderValueText: String = "", funnelRef: String = "") {
         self.id = id
         self.productId = productId
         self.name = name
         self.quantityText = quantityText
         self.unitPriceText = unitPriceText
+        self.reference = reference
+        self.makeId = makeId
+        self.makeName = makeName
+        self.brandId = brandId
+        self.brandName = brandName
+        self.orderValueText = orderValueText
+        self.funnelRef = funnelRef
     }
 
     var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -289,8 +310,16 @@ struct DealLineDraft: Identifiable, Equatable {
         !trimmedName.isEmpty && quantity > 0 && hasValidPrice
     }
 
+    /// Order value typed, or nil when blank / not a number >= 0.
+    var orderValue: Double? { DealLineRules.orderValue(from: orderValueText) }
+
+    /// The MAC rule for this line: a MAC product needs a funnel reference.
+    var funnelProblem: String? {
+        DealLineRules.funnelProblem(brandName: brandName, funnelRef: funnelRef)
+    }
+
     /// The `items[]` entry: `product_id` (when from the catalogue), name, quantity,
-    /// unit_price.
+    /// unit_price, plus `make_id`, `brand_id`, `funnel_ref` and `order_value` only when set.
     var payload: [String: Any] {
         var d: [String: Any] = [
             "name": trimmedName,
@@ -298,14 +327,24 @@ struct DealLineDraft: Identifiable, Equatable {
             "unit_price": unitPrice,
         ]
         if let productId, !productId.isEmpty { d["product_id"] = productId }
+        if let makeId, !makeId.isEmpty { d["make_id"] = makeId }
+        if let brandId, !brandId.isEmpty { d["brand_id"] = brandId }
+        if let ref = DealLineRules.cleanFunnelRef(funnelRef) { d["funnel_ref"] = ref }
+        if let order = orderValue { d["order_value"] = order }
         return d
     }
 
-    /// Prefill this line from a catalogue product: name + its price.
+    /// Prefill this line from a catalogue product: name, reference (sku), price, and the product's
+    /// make and brand (the rep can change or clear both afterwards).
     mutating func apply(product: Product) {
         productId = product.id
         name = product.name
+        reference = (product.sku ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         unitPriceText = SparkJourney.priceText(product.unitPrice ?? 0)
+        makeId = product.makeId
+        makeName = product.makeName
+        brandId = product.brandId
+        brandName = product.brandName
     }
 }
 
@@ -315,9 +354,28 @@ enum DealLines {
         lines.filter { !$0.isBlank }
     }
 
-    /// Sum of the valid filled-in lines' totals.
+    /// Sum of the valid filled-in lines' totals (the quoted value).
     static func grandTotal(_ lines: [DealLineDraft]) -> Double {
         SparkJourney.round2(active(lines).reduce(0) { $0 + $1.lineTotal })
+    }
+
+    /// Sum of the filled-in lines' order values; nil when no line has one.
+    static func orderedTotal(_ lines: [DealLineDraft]) -> Double? {
+        DealLineTotals.ordered(active(lines).map { $0.orderValue })
+    }
+
+    /// "Quoted ₹X" or "Quoted ₹X · Ordered ₹Y" for the lines editor.
+    static func totalsText(_ lines: [DealLineDraft]) -> String {
+        DealLineTotals.summary(quoted: grandTotal(lines), ordered: orderedTotal(lines))
+    }
+
+    /// The first filled-in line whose MAC funnel reference is missing, as a message that names the
+    /// line; nil when every filled-in line is fine. This is what blocks Save / Create.
+    static func funnelProblem(_ lines: [DealLineDraft]) -> String? {
+        for (i, line) in lines.enumerated() where !line.isBlank {
+            if let problem = line.funnelProblem { return "Line \(i + 1): \(problem)" }
+        }
+        return nil
     }
 
     /// The `items[]` for the request — valid filled-in lines only.
@@ -333,7 +391,12 @@ enum DealLines {
             if line.quantity <= 0 { return "Line \(i + 1): quantity must be more than 0." }
             return "Line \(i + 1): unit price must be 0 or more."
         }
-        return nil
+        for (i, line) in lines.enumerated() where !line.isBlank {
+            if !DealLineRules.orderValueTextIsValid(line.orderValueText) {
+                return "Line \(i + 1): \(DealLineRules.invalidOrderValueMessage)"
+            }
+        }
+        return funnelProblem(lines)
     }
 }
 
