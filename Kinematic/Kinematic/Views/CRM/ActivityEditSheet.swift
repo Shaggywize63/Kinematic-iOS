@@ -30,7 +30,8 @@ extension ActivityComposeView {
             // The date picker starts on the activity's own completion time for every tenant (Spark also falls
             // back to its due date), so an edit never starts from "now".
             initialWhen: ActivityEditRouting.initialWhen(for: activity, spark: spark)
-                ?? ActivityDateEditing.completedAt(of: activity),
+                ?? ActivityDateEditing.completedAt(of: activity)
+                ?? (activity.type == "task" ? SparkJourney.parseISO(activity.dueAt) : nil),
             allowLeadPicker: false
         ) { type, subject, desc, imageUrl, when, _, customFields in
             let assignment = RecordOwnerRules.assignedToPatch(

@@ -741,6 +741,20 @@ struct ActivityComposeView: View {
             if let err = activityDateError {
                 Text(err).font(.footnote).foregroundColor(.red)
             }
+        } else if type == "task" {
+            // A task has no completion time yet: its date is the Due date, editable as before (and sent as
+            // `due_at` only when changed).
+            DatePicker(
+                "Due",
+                selection: Binding(
+                    get: { when },
+                    set: { newValue in
+                        when = newValue
+                        editState?.wrappedValue.dateEdited = true
+                    }
+                ),
+                displayedComponents: [.date, .hourAndMinute]
+            )
         }
     }
 
