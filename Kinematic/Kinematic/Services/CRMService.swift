@@ -407,6 +407,11 @@ final class CRMService {
     func createDeal(_ body: [String: Any]) async throws -> Deal {
         try await postJSON("/api/v1/crm/deals", body: body)
     }
+    /// Update one deal line (connected-B2B): `make_id`, `brand_id`, `funnel_ref`, `order_value`. A null clears
+    /// the value. The reply is not read: on any 2xx the change is saved, so callers re-fetch the lines.
+    func updateLineItem(id: String, body: [String: Any]) async throws {
+        let _: EmptyAck = try await sendJSON("/api/v1/crm/line-items/\(id)", method: "PATCH", body: body)
+    }
     func moveDealStage(id: String, stageId: String) async throws -> Deal {
         try await postJSON("/api/v1/crm/deals/\(id)/move-stage", body: ["stage_id": stageId])
     }

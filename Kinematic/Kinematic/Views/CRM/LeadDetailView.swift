@@ -191,7 +191,12 @@ struct LeadDetailView: View {
                     addressCard(lead: lead)
                     if lead.latitude != nil || lead.longitude != nil { locationCard(lead: lead) }
                     if !ClientFeatures.isConsumerChampion, let score = vm.score { scoreCard(score: score) }
-                    if !vm.relatedDeals.isEmpty { relatedDealsCard }
+                    if SparkJourney.isActive {
+                        // Connected-B2B: every deal of the lead (one per requirement), even when there are none yet.
+                        sparkDealsCard
+                    } else if !vm.relatedDeals.isEmpty {
+                        relatedDealsCard
+                    }
                     // Connected-B2B (Spark & Ray): what was spent on this lead — expense claims linked to it.
                     if SparkJourney.isActive { RecordExpensesCard(kind: .lead, recordId: lead.id) }
                     recentUpdatesSection
@@ -1571,6 +1576,83 @@ struct LeadDetailView: View {
                 }
             }
         }
+    }
+
+    /// Connected-B2B (Spark & Ray): the lead's deals, one per requirement. Header "N deals · ₹quoted quoted ·
+    /// ₹ordered ordered", then each deal with its stage, quoted and ordered amounts and brand chips, and a
+    /// "New deal" action. Empty state: "No deals yet. Add one for each requirement.".
+    private var sparkDealsCard: some View {
+        Card(title: "DEALS (\(vm.relatedDeals.count))") {
+            VStack(alignment: .leading, spacing: 8) {
+                if let header = LeadDealsSummary.headerText(vm.relatedDeals) {
+                    Text(header)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.secondary)
+                }
+                if vm.relatedDeals.isEmpty {
+                    Text(LeadDealsSummary.emptyText)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(vm.relatedDeals) { d in
+                        NavigationLink(destination: DealDetailView(dealId: d.id, initialDeal: d)) {
+                            sparkDealRow(d)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                if !vm.isDisqualified {
+                    Button {
+                        dealConvertsLead = false
+                        creatingDeal = true
+                    } label: {
+                        Label("New deal", systemImage: "plus.circle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(Brand.red)
+                }
+            }
+        }
+    }
+
+    private func sparkDealRow(_ d: Deal) -> some View {
+        let chips = LeadDealsSummary.brandChips(d)
+        let ordered = DealLineTotals.orderedText(d.orderAmount)
+        return HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(d.name).font(.system(size: 14, weight: .semibold)).foregroundColor(.primary)
+                if let stage = d.stageName, !stage.isEmpty {
+                    Text(stage).font(.caption2).foregroundColor(.secondary)
+                }
+                if !chips.isEmpty {
+                    FlexibleHStack(spacing: 6) {
+                        ForEach(chips, id: \.self) { chip in
+                            Text(chip)
+                                .font(.system(size: 10, weight: .bold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Brand.red.opacity(0.12)))
+                                .foregroundColor(Brand.red)
+                        }
+                    }
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(DealLineTotals.quotedText(LeadDealsSummary.quoted(d)))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Brand.red)
+                if let ordered {
+                    Text(ordered)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(uiColor: .tertiarySystemBackground))
+        .cornerRadius(10)
     }
 
     /// One-line ₹ rollup across the lead's deals — Total (everything),

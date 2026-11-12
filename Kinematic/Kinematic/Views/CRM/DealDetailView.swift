@@ -91,7 +91,13 @@ struct DealDetailView: View {
                             }
                         }
                     }
-                    DealProductsCard(dealId: dealId)
+                    // Connected-B2B (Spark & Ray): the deal's product lines (reference, make, brand, quoted /
+                    // ordered value, MAC funnel reference). Other tenants keep the product basket card.
+                    if isSpark {
+                        LineItemsCard(dealId: dealId, refreshTick: historyRefreshTick)
+                    } else {
+                        DealProductsCard(dealId: dealId)
+                    }
                     CustomFieldsDetailCard(entity: "deal", customFields: initialDeal?.customFields)
                     if !ClientFeatures.isConsumerChampion {
                         if let nba = nextAction {

@@ -38,6 +38,16 @@ extension CRMService {
         try await getList("/api/v1/crm/deals/\(dealId)/line-items")
     }
 
+    // MARK: Makes + brands (deal line pickers, connected-B2B)
+    /// Active manufacturers for the Make picker.
+    func listMakes() async throws -> [ProductMake] {
+        try await getList("/api/v1/crm/makes", query: ["is_active": "true"])
+    }
+    /// Active brands (MAC, PHD, BEKO, PIAB...) for the Brand picker.
+    func listBrands() async throws -> [ProductBrand] {
+        try await getList("/api/v1/crm/brands", query: ["is_active": "true"])
+    }
+
     // MARK: Stores (Bahwancy "Store audit" picker)
     /// Store list for the planogram "Store audit" picker. Server-gated on the
     /// `stores` module (readOpen), so a client without it gets an empty list.
