@@ -400,6 +400,23 @@ struct LeadDetailView: View {
                 badge(fieldOverrides.leadForm.segmentName(isB2C: lead.isB2c == true))
                 ScoreBadge(score: lead.score ?? 0)
             }
+            // Spark & Ray: the lead number (read-only) with a Copy action. No number -> nothing shown.
+            if let ref = LeadNumberAndType.refDisplay(lead.refNo, isSpark: SparkJourney.isActive) {
+                LeadNumberLabel(ref: ref, copyable: true)
+            }
+            // Spark & Ray: the lead type. Built-in field -> deferred until the overrides load, dropped when
+            // hidden, label through the overrides. Nothing is shown for a lead without a type.
+            if SparkJourney.isActive, fieldOverrides.didLoad,
+               !fieldOverrides.isHidden("lead_type", isB2C: lead.isB2c == true),
+               let typeName = LeadNumberAndType.label(for: lead.leadType) {
+                HStack(spacing: 6) {
+                    Text(fieldOverrides.labelFor("lead_type", defaultLabel: LeadNumberAndType.defaultLabel, isB2C: lead.isB2c == true))
+                        .font(.caption).foregroundColor(.secondary)
+                    Text(typeName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Brand.red)
+                }
+            }
             if lead.isB2c != true, let c = lead.company, !c.isEmpty {
                 Text(c).foregroundColor(.secondary)
             }
@@ -453,7 +470,8 @@ struct LeadDetailView: View {
                 let lower = status.lowercased()
                 let isTerminal = lower == "converted" || lower == "lost"
                 let chip = HStack(spacing: 4) {
-                    Text(status.uppercased())
+                    // The configured label of a custom stage ("Cold Call"), not the raw slug.
+                    Text(LeadStatusDisplay.label(for: status, options: fieldOverrides.leadStatuses).uppercased())
                         .font(.system(size: 10, weight: .heavy))
                         .tracking(0.8)
                     if !isTerminal {

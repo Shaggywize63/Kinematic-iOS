@@ -24,6 +24,11 @@ struct LeadRow: View {
     /// Show the Spark & Ray industry badge. The host decides (Spark client AND the admin has not hidden Industry),
     /// so the row itself never reads tenant state per cell.
     var showIndustry: Bool = false
+    /// The tenant's custom lead stages (`config.lead_statuses`), for the status label + colour. Empty = the
+    /// built-in stages. Passed in by the host so a row never reads tenant state itself.
+    var statusOptions: [LeadStatusOption] = []
+    /// Spark & Ray: show the lead number (`ref_no`) under the name. The host decides (Spark client only).
+    var showLeadNumber: Bool = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -45,6 +50,10 @@ struct LeadRow: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color(uiColor: .label))
                     .lineLimit(1)
+                // Spark & Ray: the lead number, small and monospaced. No number -> nothing shown.
+                if showLeadNumber, let ref = LeadNumberAndType.refDisplay(lead.refNo) {
+                    LeadNumberLabel(ref: ref)
+                }
                 if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.system(size: 12))
@@ -63,7 +72,7 @@ struct LeadRow: View {
                             Circle()
                                 .fill(statusColor)
                                 .frame(width: 7, height: 7)
-                            Text(s.capitalized)
+                            Text(LeadStatusDisplay.label(for: s, options: statusOptions))
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(statusColor)
                         }
@@ -153,6 +162,11 @@ struct LeadRow: View {
     }
 
     private var statusColor: Color {
+        // An admin-configured hex for a custom stage wins over the built-in palette.
+        if let hex = statusOptions.first(where: { $0.value == (lead.status ?? "").lowercased() })?.color,
+           let custom = Color(hex: hex) {
+            return custom
+        }
         switch (lead.status ?? "").lowercased() {
         case "new":          return Color(red: 0.055, green: 0.647, blue: 0.914)
         case "contacted":    return Color(red: 0.388, green: 0.4,   blue: 0.945)
