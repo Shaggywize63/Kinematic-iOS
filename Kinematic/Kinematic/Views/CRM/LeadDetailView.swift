@@ -192,6 +192,8 @@ struct LeadDetailView: View {
                     if lead.latitude != nil || lead.longitude != nil { locationCard(lead: lead) }
                     if !ClientFeatures.isConsumerChampion, let score = vm.score { scoreCard(score: score) }
                     if !vm.relatedDeals.isEmpty { relatedDealsCard }
+                    // Connected-B2B (Spark & Ray): what was spent on this lead — expense claims linked to it.
+                    if SparkJourney.isActive { RecordExpensesCard(kind: .lead, recordId: lead.id) }
                     recentUpdatesSection
                     recordCard(lead: lead)
                     activitiesSection

@@ -22,6 +22,12 @@ struct ExpenseClaimEditorView: View {
     @State private var selectedAccountId: String?
     /// The linked filled form entry (form_submissions id); "" = none.
     @State private var formSubmissionId: String
+    /// The linked CRM lead + deal (connected-B2B), and what the claim already had when it was opened / created
+    /// from this form — an edit sends only what changed against it.
+    @State private var link: ExpenseLinkState
+    @State private var linkBaseline: ExpenseLinkSelection
+    @State private var showLeadPicker = false
+    @State private var showDealPicker = false
     @State private var linkSubmissions: [ExpenseLinkSubmission] = []
     @State private var linkSubmissionsLoaded = false
     @State private var lines: [EditorLine]
@@ -79,6 +85,9 @@ struct ExpenseClaimEditorView: View {
         _companyText = State(initialValue: claim?.account_name ?? "")
         _selectedAccountId = State(initialValue: claim?.account_id)
         _formSubmissionId = State(initialValue: claim?.form_submission_id ?? "")
+        let initialLink = ExpenseLinkState(claim: claim)
+        _link = State(initialValue: initialLink)
+        _linkBaseline = State(initialValue: initialLink.selection)
         _savedId = State(initialValue: claim?.id)
         var seeded: [EditorLine] = []
         // The policy's only vehicle (if it lists exactly one) is pre-selected on mileage lines that have none.
@@ -157,6 +166,10 @@ struct ExpenseClaimEditorView: View {
                             Text("Required before you can submit.").font(.caption).foregroundColor(.secondary)
                         }
                         CompanyPickerField(company: $companyText, selectedAccountId: $selectedAccountId, label: "Linked company")
+                        ExpenseLinkPickRow(label: "Lead", value: link.leadDisplay, placeholder: "None",
+                                           onTap: { showLeadPicker = true }, onClear: { link.clearLead() })
+                        ExpenseLinkPickRow(label: "Deal", value: link.dealDisplay, placeholder: "None",
+                                           onTap: { showDealPicker = true }, onClear: { link.clearDeal() })
                         Picker("Linked form entry", selection: $formSubmissionId) {
                             Text("None").tag("")
                             ForEach(submissionOptions) { s in
@@ -223,6 +236,14 @@ struct ExpenseClaimEditorView: View {
             // Work from the policy as it is now, not the one fetched when the Expenses screen first opened: the
             // vehicles offered are its vehicles. A late arrival is caught up by the two onChange handlers above.
             .task { await vm.loadPolicy() }
+            .sheet(isPresented: $showLeadPicker) {
+                LeadSearchPickerSheet { lead in link.pickLead(id: lead.id, name: lead.displayName) }
+            }
+            .sheet(isPresented: $showDealPicker) {
+                ExpenseDealPickerSheet(leadId: link.leadId) { deal in
+                    link.pickDeal(id: deal.id, name: deal.name, ownerLeadId: deal.leadId, ownerLeadName: deal.leadName)
+                }
+            }
             .sheet(isPresented: $showCamera, onDismiss: handleCamera) {
                 // Camera-only odometer photos never fall back to the photo library on a phone without a camera.
                 ImagePicker(image: $cameraImage, sourceType: .camera, cameraDevice: .rear,
@@ -730,13 +751,22 @@ struct ExpenseClaimEditorView: View {
         saving = true
         defer { saving = false }
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Connected-B2B: the lead / deal links. A new claim sends what is picked; an edit only what changed
+        // (an explicit null removes a link). Nothing for any other tenant.
+        let wasUnsaved = savedId == nil
+        let linkFields = ExpenseLinkLogic.bodyFields(isSpark: isSpark, isEditing: !wasUnsaved,
+                                                     current: link.selection, baseline: linkBaseline)
         let out = await vm.save(
             claimId: savedId, title: t.isEmpty ? nil : t,
             items: filled.map { $0.f.toInput(byVehicle: byVehicle, routeFields: routeFields, gpsDistance: gpsDistance) }, submit: submit,
             clarification: isSpark ? (clar.isEmpty ? nil : clar) : nil,
             accountId: isSpark ? selectedAccountId : nil,
             formSubmissionId: isSpark ? (formSubmissionId.isEmpty ? nil : formSubmissionId) : nil,
-            clearFormSubmission: isSpark && formSubmissionId.isEmpty)
+            clearFormSubmission: isSpark && formSubmissionId.isEmpty,
+            leadId: linkFields.leadId, dealId: linkFields.dealId,
+            clearLead: linkFields.clearLead, clearDeal: linkFields.clearDeal)
+        // The claim was just created with these links: a retry from this form is an edit against them.
+        if wasUnsaved, out.savedId != nil { linkBaseline = link.selection }
         if let id = out.savedId { savedId = id }
         if let e = out.error { errorText = e; return }
         if let id = out.savedId { onDone(id, out.submitted); dismiss() }

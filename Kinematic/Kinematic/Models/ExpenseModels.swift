@@ -180,6 +180,12 @@ struct ExpenseClaim: Codable, Identifiable {
     let form_submission_id: String?
     let form_ref_no: String?
     let form_submitted_at: String?
+    // Connected-B2B: the CRM lead and deal this expense is linked to (either, both or neither), with their
+    // names stamped by the server for display. Absent (nil) for every other tenant.
+    let lead_id: String?
+    let deal_id: String?
+    let lead_name: String?
+    let deal_name: String?
     let created_at: String?
     let user_name: String?
     let employee_id: String?
@@ -360,10 +366,18 @@ struct ExpenseClaimInput: Encodable {
     /// True on a connected-B2B save with no entry picked: sends `"form_submission_id": null` so an edit can
     /// clear a link that was set before. Never encoded as a key of its own.
     var clearFormSubmission = false
+    /// The CRM lead / deal this expense is linked to (connected-B2B). The server derives the rest (a deal
+    /// fills its lead, a lead fills its account). nil is omitted ("leave as it is").
+    var lead_id: String? = nil
+    var deal_id: String? = nil
+    /// True when an edit removes the lead / deal link: sends an explicit `"lead_id": null` / `"deal_id": null`.
+    /// Never encoded as keys of their own.
+    var clearLead = false
+    var clearDeal = false
     let items: [ExpenseClaimItemInput]
 
     private enum CodingKeys: String, CodingKey {
-        case title, clarification, account_id, form_submission_id, items
+        case title, clarification, account_id, form_submission_id, lead_id, deal_id, items
     }
 
     func encode(to encoder: Encoder) throws {
@@ -373,6 +387,10 @@ struct ExpenseClaimInput: Encodable {
         try c.encodeIfPresent(account_id, forKey: .account_id)
         if let sub = form_submission_id { try c.encode(sub, forKey: .form_submission_id) }
         else if clearFormSubmission { try c.encodeNil(forKey: .form_submission_id) }
+        if let lead = lead_id { try c.encode(lead, forKey: .lead_id) }
+        else if clearLead { try c.encodeNil(forKey: .lead_id) }
+        if let deal = deal_id { try c.encode(deal, forKey: .deal_id) }
+        else if clearDeal { try c.encodeNil(forKey: .deal_id) }
         try c.encode(items, forKey: .items)
     }
 }
@@ -530,4 +548,83 @@ struct OdometerTripEndInput: Encodable {
     let odometer_end: Double
     let end_photo_url: String?
     let date: String?
+}
+
+// MARK: - Lead / deal expense roll-up
+
+/// The money totals of a roll-up. Every field falls back to 0 when the server leaves it out, so a sparse reply
+/// still reads as "nothing" instead of failing the whole card.
+struct ExpenseRollupTotals: Codable, Equatable {
+    let claim_count: Int
+    /// Approved + reimbursed claims.
+    let spent_amount: Double
+    let pending_amount: Double
+    let draft_amount: Double
+    let rejected_amount: Double
+
+    enum CodingKeys: String, CodingKey {
+        case claim_count, spent_amount, pending_amount, draft_amount, rejected_amount
+    }
+
+    init(claim_count: Int = 0, spent_amount: Double = 0, pending_amount: Double = 0,
+         draft_amount: Double = 0, rejected_amount: Double = 0) {
+        self.claim_count = claim_count; self.spent_amount = spent_amount; self.pending_amount = pending_amount
+        self.draft_amount = draft_amount; self.rejected_amount = rejected_amount
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        claim_count = (try? c.decodeIfPresent(Int.self, forKey: .claim_count)) ?? 0
+        spent_amount = (try? c.decodeIfPresent(Double.self, forKey: .spent_amount)) ?? 0
+        pending_amount = (try? c.decodeIfPresent(Double.self, forKey: .pending_amount)) ?? 0
+        draft_amount = (try? c.decodeIfPresent(Double.self, forKey: .draft_amount)) ?? 0
+        rejected_amount = (try? c.decodeIfPresent(Double.self, forKey: .rejected_amount)) ?? 0
+    }
+}
+
+/// One claim in a roll-up list (a slim claim: the caller may see only their own rows).
+struct ExpenseRollupClaim: Codable, Identifiable, Equatable {
+    let id: String
+    let claim_no: String?
+    let title: String?
+    let status: String?
+    let total_amount: Double?
+    let currency: String?
+    let created_at: String?
+    let user_id: String?
+    let user_name: String?
+    let lead_id: String?
+    let deal_id: String?
+    let deal_name: String?
+}
+
+/// `GET /crm/leads/:id/expenses` and `GET /crm/deals/:id/expenses`: what was spent on one lead or deal.
+/// `opportunity_value` and `spent_pct_of_value` are nil when the record has no value to compare against.
+struct ExpenseRollup: Codable, Equatable {
+    let currency: String?
+    let totals: ExpenseRollupTotals
+    let visit_count: Int
+    let opportunity_value: Double?
+    let spent_pct_of_value: Double?
+    let claims: [ExpenseRollupClaim]
+
+    enum CodingKeys: String, CodingKey {
+        case currency, totals, visit_count, opportunity_value, spent_pct_of_value, claims
+    }
+
+    init(currency: String? = "INR", totals: ExpenseRollupTotals = ExpenseRollupTotals(), visit_count: Int = 0,
+         opportunity_value: Double? = nil, spent_pct_of_value: Double? = nil, claims: [ExpenseRollupClaim] = []) {
+        self.currency = currency; self.totals = totals; self.visit_count = visit_count
+        self.opportunity_value = opportunity_value; self.spent_pct_of_value = spent_pct_of_value; self.claims = claims
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        currency = (try? c.decodeIfPresent(String.self, forKey: .currency)) ?? nil
+        totals = (try? c.decodeIfPresent(ExpenseRollupTotals.self, forKey: .totals)) ?? ExpenseRollupTotals()
+        visit_count = (try? c.decodeIfPresent(Int.self, forKey: .visit_count)) ?? 0
+        opportunity_value = (try? c.decodeIfPresent(Double.self, forKey: .opportunity_value)) ?? nil
+        spent_pct_of_value = (try? c.decodeIfPresent(Double.self, forKey: .spent_pct_of_value)) ?? nil
+        claims = (try? c.decodeIfPresent([ExpenseRollupClaim].self, forKey: .claims)) ?? []
+    }
 }

@@ -77,11 +77,14 @@ final class ExpensesViewModel: ObservableObject {
     /// saved id so the editor keeps working on that claim instead of creating a duplicate.
     func save(claimId: String?, title: String?, items: [ExpenseClaimItemInput], submit: Bool,
               clarification: String? = nil, accountId: String? = nil, formSubmissionId: String? = nil,
-              clearFormSubmission: Bool = false) async -> SaveOutcome {
+              clearFormSubmission: Bool = false,
+              leadId: String? = nil, dealId: String? = nil,
+              clearLead: Bool = false, clearDeal: Bool = false) async -> SaveOutcome {
         // clarification/account_id/form_submission_id are the connected-B2B links (nil for every
         // other tenant; the backend ignores them for non-B2B clients).
         let input = ExpenseClaimInput(title: title, clarification: clarification, account_id: accountId,
-                                      form_submission_id: formSubmissionId, clearFormSubmission: clearFormSubmission, items: items)
+                                      form_submission_id: formSubmissionId, clearFormSubmission: clearFormSubmission,
+                                      lead_id: leadId, deal_id: dealId, clearLead: clearLead, clearDeal: clearDeal, items: items)
         var id = claimId
         do {
             if let existing = claimId { _ = try await api.updateClaim(id: existing, input) }
@@ -308,6 +311,10 @@ private struct ClaimRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(claim.title ?? claim.claim_no ?? "Expense claim").font(.subheadline).bold()
                     Text(subtitle(status)).font(.caption).foregroundColor(.secondary)
+                    // Connected-B2B: the CRM lead / deal this expense is linked to (shown only when set).
+                    if let links = ExpenseLinkLogic.linkCaption(leadName: claim.lead_name, dealName: claim.deal_name) {
+                        Text(links).font(.caption).foregroundColor(.secondary)
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {

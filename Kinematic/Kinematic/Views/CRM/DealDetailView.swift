@@ -117,6 +117,8 @@ struct DealDetailView: View {
                             }
                         }
                     }
+                    // Connected-B2B (Spark & Ray): what was spent to win this deal — expense claims linked to it.
+                    if isSpark { RecordExpensesCard(kind: .deal, recordId: dealId) }
                     UpsellsSectionView(dealId: dealId)
                     DealHistorySection(dealId: dealId, refreshTick: historyRefreshTick)
                 } else {
