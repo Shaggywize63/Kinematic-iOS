@@ -7,6 +7,13 @@ struct ContactsListView: View {
     /// Spark & Ray: the contact whose account is being set / changed (context menu on a row), and any error.
     @State private var accountPickerContact: Contact? = nil
     @State private var accountAssignError: String? = nil
+    /// The contact awaiting delete confirmation (long-press menu on a row), and the server's message when a
+    /// delete fails (the row stays).
+    @State private var deletingContact: Contact? = nil
+    @State private var deleteError: String? = nil
+    /// Built-in field overrides: the Company / Account line is the contact's `account_id` field, so it is gated
+    /// (hidden / relabelled by the admin) and only rendered once the settings have loaded.
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,6 +61,28 @@ struct ContactsListView: View {
             )) {
                 Button("OK", role: .cancel) { accountAssignError = nil }
             } message: { Text(accountAssignError ?? "") }
+            .confirmationDialog(
+                ContactDeletion.confirmationTitle(name: deletingContact?.displayName ?? ""),
+                isPresented: Binding(
+                    get: { deletingContact != nil },
+                    set: { if !$0 { deletingContact = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: deletingContact
+            ) { c in
+                Button("Delete", role: .destructive) {
+                    Task { deleteError = await vm.delete(contact: c) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { c in
+                Text(ContactDeletion.confirmationMessage(name: c.displayName))
+            }
+            .alert("Couldn't delete", isPresented: Binding(
+                get: { deleteError != nil },
+                set: { if !$0 { deleteError = nil } }
+            )) {
+                Button("OK", role: .cancel) { deleteError = nil }
+            } message: { Text(deleteError ?? "") }
         }
         .navigationTitle("Contacts")
         .toolbar {
@@ -70,25 +99,58 @@ struct ContactsListView: View {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Created date") {}
         }
         .task { await vm.refresh() }
+        .task { await fieldOverrides.load() }
+        // A contact deleted from its detail screen: drop the row now, then refresh.
+        .onReceive(NotificationCenter.default.publisher(for: .crmContactDeleted)) { note in
+            if let id = note.object as? String {
+                vm.contacts = ContactDeletion.removing(id: id, from: vm.contacts)
+            }
+            Task { await vm.refresh() }
+        }
     }
 
     @ViewBuilder
     private func contactLink(_ c: Contact) -> some View {
-        if let company = SparkContactCompany.line(for: c, spark: SparkJourney.isActive) {
+        if let company = companyLine(for: c) {
             companyCard(c, company: company)
-                .contextMenu { accountMenu(for: c) }
+                .contextMenu { rowMenu(for: c) }
         } else {
             NavigationLink(destination: ContactDetailView(contact: c)) {
                 contactRow(c)
             }
             .buttonStyle(.plain)
-            .contextMenu { accountMenu(for: c) }
+            .contextMenu { rowMenu(for: c) }
         }
     }
 
-    /// Spark & Ray: a contact row with its Company underneath. The company is its own link to the account, so
-    /// the row's link and the company's link sit side by side (never nested) inside one card.
-    private func companyCard(_ c: Contact, company: (id: String, name: String)) -> some View {
+    /// The row's Company (Spark & Ray) / Account line, gated through the built-in field overrides: nothing until
+    /// they have loaded, nothing when the admin hid `account_id`, and labelled as the admin named it.
+    private func companyLine(for c: Contact) -> ContactCompanyLine? {
+        guard fieldOverrides.didLoad else { return nil }
+        let isB2C = c.isB2c == true
+        guard !fieldOverrides.isHidden(entity: "contact", "account_id", isB2C: isB2C),
+              let line = ContactCompanyDisplay.line(for: c, spark: SparkJourney.isActive) else { return nil }
+        let label = fieldOverrides.labelFor(
+            entity: "contact", "account_id", SparkContactCompany.label(spark: SparkJourney.isActive), isB2C: isB2C
+        )
+        return ContactCompanyLine(id: line.id, name: line.name, label: label)
+    }
+
+    /// Long-press menu: the Spark company action (when it applies) and Delete.
+    @ViewBuilder
+    private func rowMenu(for c: Contact) -> some View {
+        accountMenu(for: c)
+        Button(role: .destructive) {
+            deletingContact = c
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+    }
+
+    /// A contact row with its Company (Spark & Ray) / Account (everyone else) underneath. When the account id is
+    /// known the line is its own link to the account, so the row's link and the company's link sit side by side
+    /// (never nested) inside one card; otherwise it is plain text.
+    private func companyCard(_ c: Contact, company: ContactCompanyLine) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationLink(destination: ContactDetailView(contact: c)) {
                 contactRowContent(c)
@@ -96,23 +158,33 @@ struct ContactsListView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            NavigationLink(destination: AccountDetailLoader(accountId: company.id, name: company.name)) {
-                HStack(spacing: 5) {
-                    Image(systemName: "building.2.fill").font(.system(size: 10, weight: .semibold))
-                    Text("\(SparkContactCompany.label(spark: true)): \(company.name)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
-                    Spacer(minLength: 0)
+            if let accountId = company.id {
+                NavigationLink(destination: AccountDetailLoader(accountId: accountId, name: company.name)) {
+                    companyLabel(company, linked: true)
                 }
-                .foregroundColor(Brand.red)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 10)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+            } else {
+                companyLabel(company, linked: false)
             }
-            .buttonStyle(.plain)
         }
         .background(RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    private func companyLabel(_ company: ContactCompanyLine, linked: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "building.2.fill").font(.system(size: 10, weight: .semibold))
+            Text(company.text)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+            if linked {
+                Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundColor(Brand.red)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 10)
+        .contentShape(Rectangle())
     }
 
     /// Spark & Ray: "Add to a company" / "Change company" for a business contact.

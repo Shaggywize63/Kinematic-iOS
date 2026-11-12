@@ -68,6 +68,19 @@ final class ContactsViewModel: ObservableObject {
         }
     }
 
+    /// Delete `contact` (DELETE /crm/contacts/:id), drop its row from the list and refresh. Returns the server's
+    /// message on failure (the row stays), nil on success.
+    func delete(contact: Contact) async -> String? {
+        do {
+            try await api.deleteContact(id: contact.id)
+            contacts = ContactDeletion.removing(id: contact.id, from: contacts)
+            await refresh()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     func create(body: [String: Any]) async {
         do {
             let c = try await api.createContact(body)

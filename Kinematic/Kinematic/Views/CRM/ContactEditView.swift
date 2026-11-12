@@ -205,35 +205,19 @@ struct ContactEditView: View {
 
     private func save() async {
         saving = true; defer { saving = false }
-        var body: [String: Any] = [
-            "first_name": firstName.isEmpty ? NSNull() : firstName,
-            "last_name": lastName.isEmpty ? NSNull() : lastName,
-            "email": email.isEmpty ? NSNull() : email,
-            "phone": phone.isEmpty ? NSNull() : phone,
-            "mobile": mobile.isEmpty ? NSNull() : mobile,
-            "is_b2c": isB2C,
-        ]
-        if !isB2C {
-            body["title"] = title.isEmpty ? NSNull() : title
-            body["department"] = department.isEmpty ? NSNull() : department
-        } else {
-            body["date_of_birth"] = dateOfBirth.isEmpty ? NSNull() : dateOfBirth
-            body["gender"] = gender.isEmpty ? NSNull() : gender
-            body["address_line1"] = addressLine1.isEmpty ? NSNull() : addressLine1
-            body["city"] = city.isEmpty ? NSNull() : city
-            body["state"] = state.isEmpty ? NSNull() : state
-            body["postal_code"] = postalCode.isEmpty ? NSNull() : postalCode
-            body["country"] = country.isEmpty ? NSNull() : country
-            body["preferred_contact_method"] = preferredContactMethod.isEmpty ? NSNull() : preferredContactMethod
-            body["loyalty_tier"] = loyaltyTier.isEmpty ? NSNull() : loyaltyTier
-            body["referral_source"] = referralSource.isEmpty ? NSNull() : referralSource
-            body["marketing_consent"] = marketingConsent
-            body["whatsapp_consent"] = whatsappConsent
-        }
-        // Spark & Ray: the Company only rides the PATCH when it actually changed (null clears it).
-        if showsCompany, companyId != (contact.accountId ?? "") {
-            for (key, value) in SparkContactCompany.accountPatch(selectedId: companyId) { body[key] = value }
-        }
+        // Body building lives in ContactEditBody (pure, unit-tested): a business contact sends no consumer-only
+        // keys, a blank city is left out (never `city: null`), and the Company rides along only when changed.
+        let draft = ContactEditDraft(
+            firstName: firstName, lastName: lastName, email: email, phone: phone, mobile: mobile,
+            isB2C: isB2C, title: title, department: department,
+            dateOfBirth: dateOfBirth, gender: gender, addressLine1: addressLine1, city: city, state: state,
+            postalCode: postalCode, country: country, preferredContactMethod: preferredContactMethod,
+            loyaltyTier: loyaltyTier, referralSource: referralSource,
+            marketingConsent: marketingConsent, whatsappConsent: whatsappConsent
+        )
+        let body = ContactEditBody.patch(
+            draft, companyEditable: showsCompany, selectedCompanyId: companyId, originalCompanyId: contact.accountId
+        )
         do {
             let updated = try await CRMService.shared.patchContact(id: contact.id, body: body)
             onSaved(updated)

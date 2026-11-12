@@ -23,6 +23,12 @@ final class ActivitiesViewModel: ObservableObject {
     /// `ActivitiesView`; kept separate from `errorMessage`, which that screen
     /// does not surface.
     @Published var completionError: String?
+    /// Shown in a "Saved" alert after logging an activity WITH a follow-up ("Activity logged + follow-up
+    /// scheduled").
+    @Published var successMessage: String?
+    /// Shown in a "Couldn't save" alert when the follow-up could not be created after the activity itself was
+    /// (the activity stays logged).
+    @Published var saveError: String?
 
     private let api = CRMService.shared
     private let location = CRMLocationStore.shared
@@ -101,7 +107,8 @@ final class ActivitiesViewModel: ObservableObject {
         leadId: String?,
         imageUrl: String? = nil,
         completedAt: Date? = nil,
-        customFields: [String: Any] = [:]
+        customFields: [String: Any] = [:],
+        followUpAt: Date? = nil
     ) async {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return }
@@ -125,8 +132,32 @@ final class ActivitiesViewModel: ObservableObject {
             if !customFields.isEmpty { body["custom_fields"] = customFields }
             let a = try await api.createActivity(body)
             activities.insert(a, at: 0)
+            // Both an Activity (done) date and a Scheduled (due) date: a second, PLANNED activity shares
+            // everything but the dates (never the photo or outcome). A task already is a due date.
+            if let due = followUpAt, type != "task" {
+                await createFollowUp(shared: body, due: due)
+            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// The planned half of "log + schedule": POST it after the completed activity exists. A failure here leaves
+    /// the logged activity in place and reports the reason (no second attempt that could duplicate it).
+    private func createFollowUp(shared: [String: Any], due: Date, spark: SparkActivityExtras? = nil) async {
+        let entry = ActivityLogEntry(kind: .planned, date: due)
+        let body = ActivityLogPlan.body(for: entry, shared: shared)
+        do {
+            let created: Activity
+            if let spark {
+                created = try await api.createActivity(body, spark: ActivityLogPlan.extras(spark, for: .planned))
+            } else {
+                created = try await api.createActivity(body)
+            }
+            activities.insert(created, at: 0)
+            successMessage = ActivityLogPlan.loggedAndScheduledMessage
+        } catch {
+            saveError = "The activity was logged, but the follow-up could not be scheduled: \(error.localizedDescription)"
         }
     }
 
@@ -181,14 +212,16 @@ final class ActivitiesViewModel: ObservableObject {
         imageUrl: String? = nil,
         completedAt: Date? = nil,
         customFields: [String: Any] = [:],
-        assignment: [String: Any] = [:]
+        assignment: [String: Any] = [:],
+        linkPatch: [String: Any] = [:]
     ) async {
         // Shared with the account detail's edit path. Only touched custom fields are sent (the backend merges
         // them over the stored blob); a changed assignee (`assigned_to`) only for admins / managers.
         guard let body = ActivityEditBody.patch(
             type: type, subject: subject, description: description, imageUrl: imageUrl,
             completedAt: completedAt, customFields: customFields, assignment: assignment,
-            canChangeAssignee: RecordOwnerRules.currentUserCanChange
+            canChangeAssignee: RecordOwnerRules.currentUserCanChange,
+            linkPatch: linkPatch
         ) else { return }
         do {
             let updated = try await api.updateActivity(id: id, body: body)
@@ -205,11 +238,17 @@ final class ActivitiesViewModel: ObservableObject {
     /// Create an activity from the composer's result, including the Spark extras
     /// (assignees / product interested / form serial). Throws so a bad form serial
     /// (HTTP 400) stays on the sheet next to the field instead of being swallowed.
-    func createSpark(_ result: ActivityComposeResult, scheduled: Bool) async throws {
+    /// With `followUpAt` (log mode, not a task) it also creates the PLANNED follow-up due then, without the
+    /// outcome; a failure of that second request is reported through `saveError` instead of throwing, so the
+    /// composer is not left open for a retry that would log the first activity twice.
+    func createSpark(_ result: ActivityComposeResult, scheduled: Bool, followUpAt: Date? = nil) async throws {
         let links: [String: String] = result.leadId.map { ["lead_id": $0] } ?? [:]
         let body = SparkActivityBody.createBody(result, scheduled: scheduled, links: links)
         let created = try await api.createActivity(body, spark: result.extras)
         activities.insert(created, at: 0)
+        if let due = followUpAt, !scheduled, result.type != "task" {
+            await createFollowUp(shared: body, due: due, spark: result.extras)
+        }
     }
 
     /// PATCH an existing activity from the edit sheet, sending only the Spark extras that changed.

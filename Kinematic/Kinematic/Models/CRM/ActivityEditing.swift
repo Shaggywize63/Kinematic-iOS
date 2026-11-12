@@ -10,8 +10,11 @@ enum ActivityEditBody {
     }
 
     /// PATCH body for the generic (non-Spark) edit, or nil when the subject is blank. Blank remarks clear the
-    /// description; a task keeps its due date while every other type is stamped completed at the chosen time.
+    /// description; a task gets its due date and every other type is stamped completed at the chosen time —
+    /// but only when `completedAt` is given: nil means the date was not edited, and an untouched date sends
+    /// no `completed_at` / `due_at` / `status` at all.
     /// `assignment` (the single "Assigned to" change) is only sent for admins / managers.
+    /// `linkPatch` is a changed "Linked entity" (see `ActivityLinkDraft.patch`); empty when untouched.
     static func patch(
         type: String,
         subject: String,
@@ -20,7 +23,8 @@ enum ActivityEditBody {
         completedAt: Date?,
         customFields: [String: Any],
         assignment: [String: Any],
-        canChangeAssignee: Bool
+        canChangeAssignee: Bool,
+        linkPatch: [String: Any] = [:]
     ) -> [String: Any]? {
         let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSubject.isEmpty else { return nil }
@@ -28,18 +32,20 @@ enum ActivityEditBody {
         let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
         body["description"] = trimmedDesc.isEmpty ? NSNull() : trimmedDesc
         if let imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
-        if type != "task" {
-            let stamp = completedAt ?? Date()
-            body["completed_at"] = iso(stamp)
-            body["status"] = "completed"
-        } else if let due = completedAt {
-            body["due_at"] = iso(due)
+        if let stamp = completedAt {
+            if type != "task" {
+                body["completed_at"] = iso(stamp)
+                body["status"] = "completed"
+            } else {
+                body["due_at"] = iso(stamp)
+            }
         }
         // Only touched custom fields are sent — the backend merges them over the stored blob.
         if !customFields.isEmpty { body["custom_fields"] = customFields }
         if canChangeAssignee {
             for (key, value) in assignment { body[key] = value }
         }
+        for (key, value) in linkPatch { body[key] = value }
         return body
     }
 
