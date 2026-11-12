@@ -78,6 +78,10 @@ struct LeadDetailView: View {
     @State private var shareImage: UIImage? = nil
     @State private var showShareSheet = false
 
+    /// Spark & Ray: the in-flight text for the Sample invoices card's "Add an
+    /// invoice number" field. Cleared the moment an add is submitted.
+    @State private var newSampleInvoice = ""
+
     // MARK: Conversation Intelligence (Record call)
     // Whole feature is gated on `ClientFeatures.hasConversationIntel`
     // (the `crm_conversation_intel` module) — Tata-only today, replicable.
@@ -199,6 +203,8 @@ struct LeadDetailView: View {
                     }
                     // Connected-B2B (Spark & Ray): what was spent on this lead — expense claims linked to it.
                     if SparkJourney.isActive { RecordExpensesCard(kind: .lead, recordId: lead.id) }
+                    // Spark & Ray: the lead's sample-invoice numbers (custom_fields.sample_invoices).
+                    if SparkJourney.isActive { sampleInvoicesCard }
                     recentUpdatesSection
                     recordCard(lead: lead)
                     activitiesSection
@@ -1191,6 +1197,79 @@ struct LeadDetailView: View {
         case "meeting": return "meeting"
         default: return "note"
         }
+    }
+
+    // MARK: - Sample invoices (Spark & Ray only)
+
+    /// Spark-only card: a plain list of sample-invoice NUMBERS kept on the lead
+    /// (`custom_fields.sample_invoices`). A text field + Add button appends a
+    /// number; each saved number is a row with a × to remove it. No invoice
+    /// generation, no delivery / product details — just the numbers.
+    ///
+    /// This is `custom_fields` jsonb, NOT a built-in column, so the field-override
+    /// contract does not apply (no `isHidden` gate); the whole card is gated once
+    /// on `SparkJourney.isActive` at its render site.
+    private var sampleInvoicesCard: some View {
+        Card(title: "SAMPLE INVOICES") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    TextField("Add an invoice number…", text: $newSampleInvoice)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.characters)
+                        .submitLabel(.done)
+                        .onSubmit { submitSampleInvoice() }
+                    Button {
+                        submitSampleInvoice()
+                    } label: {
+                        if vm.sampleInvoiceBusy {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "plus.circle.fill")
+                                .imageScale(.large)
+                                .foregroundColor(Brand.red)
+                        }
+                    }
+                    .disabled(vm.sampleInvoiceBusy || newSampleInvoice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Add invoice number")
+                }
+                if vm.sampleInvoices.isEmpty {
+                    Text("No sample invoices added yet.")
+                        .font(.caption).foregroundColor(.secondary)
+                } else {
+                    ForEach(vm.sampleInvoices, id: \.self) { number in
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc.text.fill")
+                                .font(.caption).foregroundColor(Brand.red)
+                            Text(number)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Button {
+                                Task { await vm.removeSampleInvoice(number) }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(vm.sampleInvoiceBusy)
+                            .accessibilityLabel("Remove \(number)")
+                        }
+                        .padding(.vertical, 2)
+                        if number != vm.sampleInvoices.last { Divider() }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Clear the field and add the typed number (a blank / duplicate is a no-op in
+    /// the view model).
+    private func submitSampleInvoice() {
+        let entry = newSampleInvoice
+        guard !entry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        newSampleInvoice = ""
+        Task { await vm.addSampleInvoice(entry) }
     }
 
     // MARK: - Recent Updates (web parity: append-only notes timeline)

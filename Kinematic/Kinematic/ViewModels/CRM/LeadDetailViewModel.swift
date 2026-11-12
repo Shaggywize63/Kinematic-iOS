@@ -28,6 +28,12 @@ final class LeadDetailViewModel: ObservableObject {
     @Published var assignableUsers: [AssignableUser] = []
     @Published var updates: [LeadUpdate] = []
     @Published var postingUpdate = false
+    /// Spark & Ray: the lead's sample-invoice numbers, read from
+    /// `custom_fields.sample_invoices`. Driven by the Spark-only Sample
+    /// invoices card. `sampleInvoiceBusy` blocks the add / remove controls
+    /// while a PATCH is in flight.
+    @Published var sampleInvoices: [String] = []
+    @Published var sampleInvoiceBusy = false
     @Published var isLoading = false
     @Published var aiBusy = false
     @Published var convertBusy = false
@@ -79,6 +85,7 @@ final class LeadDetailViewModel: ObservableObject {
             async let contactsTask: [Contact] = (try? await api.leadContacts(id: leadId)) ?? []
             let lead = try await leadTask
             self.lead = lead
+            self.sampleInvoices = SampleInvoices.read(from: lead)
             self.updates = await updatesTask
             self.activities = (try? await actsTask) ?? []
             self.relatedDeals = (try? await dealsTask) ?? []
@@ -279,6 +286,41 @@ final class LeadDetailViewModel: ObservableObject {
         do {
             try await api.deleteLeadUpdate(leadId: leadId, updateId: updateId)
             updates.removeAll { $0.id == updateId }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Sample invoices (Spark & Ray — custom_fields.sample_invoices)
+
+    /// Add a sample-invoice number to the lead. Normalises the list (a blank or
+    /// duplicate is a no-op), persists it by PATCHing `custom_fields` (merging so
+    /// no other key is lost), then adopts the server's lead.
+    func addSampleInvoice(_ number: String) async {
+        let next = SampleInvoices.adding(number, to: sampleInvoices)
+        guard next != sampleInvoices else { return }
+        await persistSampleInvoices(next)
+    }
+
+    /// Remove a sample-invoice number from the lead, then persist.
+    func removeSampleInvoice(_ number: String) async {
+        let next = SampleInvoices.removing(number, from: sampleInvoices)
+        guard next != sampleInvoices else { return }
+        await persistSampleInvoices(next)
+    }
+
+    /// PATCH the lead's `custom_fields` with `next` as `sample_invoices`. The whole
+    /// existing blob is re-sent (with our key set) so no other custom field is lost.
+    /// The locally-normalised `next` is the source of truth for the list on success.
+    private func persistSampleInvoices(_ next: [String]) async {
+        guard let lead else { return }
+        sampleInvoiceBusy = true
+        defer { sampleInvoiceBusy = false }
+        let body = SampleInvoices.updateBody(for: lead, invoices: next)
+        do {
+            let updated = try await api.updateLead(id: leadId, body: body)
+            self.lead = updated
+            self.sampleInvoices = next
         } catch {
             errorMessage = error.localizedDescription
         }
