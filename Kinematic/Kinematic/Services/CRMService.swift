@@ -326,6 +326,12 @@ final class CRMService {
     func updateContact(id: String, body: [String: Any]) async throws -> Contact {
         try await sendJSON("/api/v1/crm/contacts/\(id)", method: "PATCH", body: body)
     }
+    /// Soft-delete a contact (`DELETE /crm/contacts/:id` answers 204 with no body, so the response is not
+    /// decoded). A refusal surfaces as `CRMServiceError.server` with the server's own text.
+    func deleteContact(id: String) async throws {
+        let req = try makeRequest(path: "/api/v1/crm/contacts/\(id)", method: "DELETE", body: nil)
+        _ = try await fetchData(req)
+    }
     func contactDeals(id: String) async throws -> [Deal] {
         try await get("/api/v1/crm/contacts/\(id)/deals")
     }

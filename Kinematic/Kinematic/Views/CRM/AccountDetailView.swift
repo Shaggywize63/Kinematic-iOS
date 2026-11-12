@@ -26,6 +26,8 @@ struct AccountDetailView: View {
     @State private var editingActivity: Activity? = nil
     /// The single "Assigned to" picker's choice while an activity is being edited (nil = unchanged).
     @State private var editAssignedTo: String? = nil
+    /// The edit sheet's "Linked entity" draft and whether its date was edited (reset each time a sheet opens).
+    @State private var editState = ActivityEditState()
     /// Built-in field overrides — gate the Spark "Outcome" row (hide / relabel).
     @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
@@ -271,10 +273,11 @@ struct AccountDetailView: View {
 
     private var contactsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("CONTACTS", count: contacts.count)
+            // "Contacts (n)" — the count is always in the header (also "Contacts (0)").
+            countedHeader(AccountContactsDisplay.header(count: contacts.count))
             addContactButton
             if contacts.isEmpty {
-                emptyRow("No contacts linked", icon: "person.2")
+                emptyRow(AccountContactsDisplay.emptyText, icon: "person.2")
             } else {
                 ForEach(contacts) { c in
                     NavigationLink(destination: ContactDetailView(contact: c)) {
@@ -352,6 +355,7 @@ struct AccountDetailView: View {
     private func beginEditingActivity(_ a: Activity) {
         guard let target = ActivityEditRouting.target(id: a.id, in: activities) else { return }
         editAssignedTo = nil
+        editState = ActivityEditState(activity: target)
         editingActivity = target
     }
 
@@ -359,10 +363,11 @@ struct AccountDetailView: View {
         ActivityComposeView.editing(
             act,
             assignedToSelection: $editAssignedTo,
-            onSave: { type, subject, desc, imageUrl, when, customFields, assignment in
+            editState: $editState,
+            onSave: { type, subject, desc, imageUrl, when, customFields, assignment, linkPatch in
                 await saveActivityEdit(
                     act, type: type, subject: subject, description: desc, imageUrl: imageUrl,
-                    when: when, customFields: customFields, assignment: assignment
+                    when: when, customFields: customFields, assignment: assignment, linkPatch: linkPatch
                 )
             },
             onSparkSave: { result in
@@ -379,14 +384,17 @@ struct AccountDetailView: View {
         subject: String,
         description: String,
         imageUrl: String?,
-        when: Date,
+        when: Date?,
         customFields: [String: Any],
-        assignment: [String: Any]
+        assignment: [String: Any],
+        linkPatch: [String: Any]
     ) async {
+        // `when` is nil unless the date was edited; `linkPatch` is empty unless the link changed.
         guard let body = ActivityEditBody.patch(
             type: type, subject: subject, description: description, imageUrl: imageUrl,
             completedAt: when, customFields: customFields, assignment: assignment,
-            canChangeAssignee: RecordOwnerRules.currentUserCanChange
+            canChangeAssignee: RecordOwnerRules.currentUserCanChange,
+            linkPatch: linkPatch
         ) else { return }
         do {
             let updated = try await api.updateActivity(id: act.id, body: body)
@@ -429,6 +437,17 @@ struct AccountDetailView: View {
                     .foregroundColor(.secondary)
                     .clipShape(Capsule())
             }
+            Spacer()
+            if isLoadingRelations { ProgressView().controlSize(.mini) }
+        }
+    }
+
+    /// A section header whose text already carries its count (e.g. "Contacts (3)"), in the same style as the others.
+    private func countedHeader(_ title: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(Brand.red)
+                .textCase(.uppercase)
             Spacer()
             if isLoadingRelations { ProgressView().controlSize(.mini) }
         }

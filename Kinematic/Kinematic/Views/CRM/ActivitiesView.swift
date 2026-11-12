@@ -17,6 +17,10 @@ struct ActivitiesView: View {
     /// The single "Assigned to" picker's choice while an activity is being edited (non-Spark clients,
     /// admins / managers). nil = unchanged, so the PATCH carries no `assigned_to`.
     @State private var editAssignedTo: String? = nil
+    /// The edit sheet's "Linked entity" draft and whether its date was edited (reset each time a sheet opens).
+    @State private var editState = ActivityEditState()
+    /// Log mode: the optional Scheduled (follow-up) date. nil = no follow-up.
+    @State private var followUpAt: Date? = nil
     /// Activity pending deletion confirmation; nil hides the alert.
     @State private var deletingActivity: Activity? = nil
     @State private var layout: Layout = .list
@@ -191,10 +195,10 @@ struct ActivitiesView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
-                        composeScheduled = true; showCompose = true
+                        composeScheduled = true; followUpAt = nil; showCompose = true
                     } label: { Label("Schedule activity", systemImage: "calendar.badge.plus") }
                     Button {
-                        composeScheduled = false; showCompose = true
+                        composeScheduled = false; followUpAt = nil; showCompose = true
                     } label: { Label("Log activity", systemImage: "square.and.pencil") }
                 } label: {
                     Image(systemName: "plus")
@@ -213,14 +217,16 @@ struct ActivitiesView: View {
                     await vm.log(
                         type: type, subject: subject, description: desc,
                         dealId: nil, leadId: leadId, imageUrl: imageUrl, completedAt: when,
-                        customFields: customFields
+                        customFields: customFields, followUpAt: followUpAt
                     )
                 }
             }
             // Spark & Ray: assignees / product interested / form serial. No effect elsewhere.
             .sparkSubmit { result in
-                try await vm.createSpark(result, scheduled: composeScheduled)
+                try await vm.createSpark(result, scheduled: composeScheduled, followUpAt: followUpAt)
             }
+            // Log mode: optional "Schedule a follow-up" (Scheduled / due) date next to the Activity date.
+            .allowingFollowUp($followUpAt)
         }
         // Edit sheet — tap a row to open the same compose view with
         // the activity's existing subject/type pre-filled, then save
@@ -243,6 +249,8 @@ struct ActivitiesView: View {
         }
         // Mark complete / Reopen failure — shows the server's message.
         .activityCompletionAlert($vm.completionError)
+        // "Activity logged + follow-up scheduled", or the reason the follow-up could not be created.
+        .modifier(ActivitySaveAlerts(vm: vm))
         .sheet(isPresented: $showDateSheet) {
             DateRangeFilterSheet(from: $vm.dateFrom, to: $vm.dateTo, label: "Activity date") {
                 Task { await vm.refresh() }
@@ -268,11 +276,13 @@ struct ActivitiesView: View {
         ActivityComposeView.editing(
             act,
             assignedToSelection: $editAssignedTo,
-            onSave: { type, subject, desc, imageUrl, when, customFields, assignment in
+            editState: $editState,
+            onSave: { type, subject, desc, imageUrl, when, customFields, assignment, linkPatch in
                 // Activity.id is non-optional in the model — pass it straight through without a guard.
+                // `when` is nil unless the date was edited; `linkPatch` is empty unless the link changed.
                 await vm.update(
                     id: act.id, type: type, subject: subject, description: desc, imageUrl: imageUrl,
-                    completedAt: when, customFields: customFields, assignment: assignment
+                    completedAt: when, customFields: customFields, assignment: assignment, linkPatch: linkPatch
                 )
             },
             onSparkSave: { result in
@@ -284,6 +294,7 @@ struct ActivitiesView: View {
     /// Open the edit sheet for `a` with no pending assignee change left over from an earlier edit.
     private func beginEditing(_ a: Activity) {
         editAssignedTo = nil
+        editState = ActivityEditState(activity: a)
         editingActivity = a
     }
 
@@ -535,5 +546,27 @@ private struct ActivitySectionHeader: View {
             Spacer()
         }
         .padding(.top, 4)
+    }
+}
+
+/// The "Saved" (activity logged + follow-up scheduled) and "Couldn't save" alerts of the Activities screen,
+/// kept out of `ActivitiesView.body` so its modifier chain stays short.
+private struct ActivitySaveAlerts: ViewModifier {
+    @ObservedObject var vm: ActivitiesViewModel
+
+    func body(content: Content) -> some View {
+        content
+            .alert("Saved", isPresented: Binding(
+                get: { vm.successMessage != nil },
+                set: { if !$0 { vm.successMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { vm.successMessage = nil }
+            } message: { Text(vm.successMessage ?? "") }
+            .alert("Couldn't save", isPresented: Binding(
+                get: { vm.saveError != nil },
+                set: { if !$0 { vm.saveError = nil } }
+            )) {
+                Button("OK", role: .cancel) { vm.saveError = nil }
+            } message: { Text(vm.saveError ?? "") }
     }
 }

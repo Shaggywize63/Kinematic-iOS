@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContactDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @State var contact: Contact
     @State private var editing = false
     @State private var deals: [Deal] = []
@@ -19,6 +20,11 @@ struct ContactDetailView: View {
     /// Spark & Ray: the account picker ("Add to an account" / "Change account") and its server error.
     @State private var pickingAccount = false
     @State private var accountError: String?
+    /// Delete: the confirmation dialog, the in-flight flag and the server's message when it fails (the screen
+    /// stays).
+    @State private var confirmingDelete = false
+    @State private var deleting = false
+    @State private var deleteError: String?
 
     private let api = CRMService.shared
 
@@ -44,7 +50,38 @@ struct ContactDetailView: View {
             .padding()
         }
         .navigationTitle("Contact")
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true }.tint(Brand.red) } }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true }.tint(Brand.red) }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button(role: .destructive) {
+                        confirmingDelete = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .tint(Brand.red)
+                .disabled(deleting)
+            }
+        }
+        .confirmationDialog(
+            ContactDeletion.confirmationTitle(name: contact.displayName),
+            isPresented: $confirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { Task { await deleteContact() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(ContactDeletion.confirmationMessage(name: contact.displayName))
+        }
+        .alert("Couldn't delete", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK", role: .cancel) { deleteError = nil }
+        } message: { Text(deleteError ?? "") }
         .sheet(isPresented: $editing) {
             ContactEditView(contact: contact) { updated in contact = updated; Task { await loadRelations() } }
         }
@@ -73,6 +110,20 @@ struct ContactDetailView: View {
                 recordType: "contact",
                 recordId: contact.id
             )
+        }
+    }
+
+    /// DELETE /crm/contacts/:id, then pop back; the contacts list drops the row and refreshes. On failure the
+    /// server's message is shown and this screen stays.
+    private func deleteContact() async {
+        deleting = true
+        defer { deleting = false }
+        do {
+            try await api.deleteContact(id: contact.id)
+            NotificationCenter.default.post(name: .crmContactDeleted, object: contact.id)
+            dismiss()
+        } catch {
+            deleteError = error.localizedDescription
         }
     }
 

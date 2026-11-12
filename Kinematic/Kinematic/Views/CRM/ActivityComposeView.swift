@@ -63,6 +63,20 @@ struct ActivityComposeView: View {
     /// Editing only: the activity being edited is already completed (so its Spark Outcome is required).
     var existingCompleted = false
 
+    // MARK: Follow-up (Log mode, opt-in)
+    // Set through `allowingFollowUp(_:)`. Logging offers an optional "Schedule a follow-up" (Scheduled / due)
+    // date next to the Activity (done) date. The two never clear each other; with BOTH set the host creates
+    // two activities (see `ActivityLogPlan`). The host owns the binding and reads it on save.
+    var followUpAt: Binding<Date?>? = nil
+
+    // MARK: Edit extras (opt-in)
+    // Set through `editingExtras(_:showsDate:)` by the host that edits an EXISTING activity: the "Linked
+    // entity" (Lead / Contact / Deal / Account / None) and the "Activity date & time", which is shown only
+    // when the activity already has `completed_at` and cannot be in the future.
+    var editState: Binding<ActivityEditState>? = nil
+    var showsEditDate = false
+    @State private var showLinkPicker = false
+
     @State private var type: String
     @State private var subject: String
     @State private var desc: String
@@ -214,6 +228,22 @@ struct ActivityComposeView: View {
         return copy
     }
 
+    /// Log mode: offer the optional Scheduled (follow-up) date. `date` is nil until the person turns it on.
+    func allowingFollowUp(_ date: Binding<Date?>) -> ActivityComposeView {
+        var copy = self
+        copy.followUpAt = date
+        return copy
+    }
+
+    /// Editing an existing activity: the "Linked entity" control and (when `showsDate`) the "Activity date &
+    /// time". `state` is read by the host on save.
+    func editingExtras(_ state: Binding<ActivityEditState>, showsDate: Bool) -> ActivityComposeView {
+        var copy = self
+        copy.editState = state
+        copy.showsEditDate = showsDate
+        return copy
+    }
+
     /// The Spark extras show only for the Spark & Ray client, and only when the host handles them.
     private var showsSparkExtras: Bool {
         onSparkSubmit != nil && SparkJourney.isActive
@@ -238,10 +268,40 @@ struct ActivityComposeView: View {
             ? SparkActivityOutcome.validationError(sparkExtras.outcome, required: outcomeRequired) : nil
     }
 
+    /// Logging: a non-task activity is stamped done at `when`, which cannot be in the future.
+    private var logsCompletedActivity: Bool {
+        !editsExisting && !scheduled && type != "task"
+    }
+
+    /// The follow-up (Scheduled / due) control: Log mode, creating, not a task, and only when the host opted in.
+    private var followUpVisible: Bool {
+        followUpAt != nil && logsCompletedActivity
+    }
+
+    /// Inline error for the Activity date: in the future when logging, or an edited date in the future.
+    private var activityDateError: String? {
+        if logsCompletedActivity { return ActivityLogPlan.activityDateError(when) }
+        if editsExisting, showsEditDate, let state = editState?.wrappedValue, state.dateEdited {
+            return ActivityDateEditing.validationError(for: when)
+        }
+        return nil
+    }
+
+    private var followUpError: String? {
+        guard followUpVisible, let due = followUpAt?.wrappedValue else { return nil }
+        return ActivityLogPlan.scheduledDateError(due)
+    }
+
+    /// "Pick a <type> to link, or choose None." while a type is chosen without a record.
+    private var linkError: String? {
+        editState?.wrappedValue.link.validationError
+    }
+
     /// Save stays off until the Spark extras are seeded from the activity being edited — saving earlier would
     /// look like "everyone removed" and clear the assignees.
     private var saveDisabled: Bool {
         if uploading || submitting { return true }
+        if activityDateError != nil || followUpError != nil || linkError != nil { return true }
         if !ActivityPhotoRules.canSave(hasPickedPhoto: pickedImage != nil, imageUrl: imageUrl, uploading: uploading) { return true }
         if showsSparkExtras && !sparkSeeded { return true }
         if outcomeError != nil { return true }
@@ -320,6 +380,8 @@ struct ActivityComposeView: View {
     /// original fire-and-dismiss `onSubmit`.
     @MainActor
     private func submit() async {
+        // A follow-up only applies to a logged, non-task activity; never carry a stale one to the host.
+        if !followUpVisible { followUpAt?.wrappedValue = nil }
         if showsSparkExtras, let handler = onSparkSubmit {
             submitting = true
             sparkSerialError = nil
@@ -559,6 +621,21 @@ struct ActivityComposeView: View {
                             in: Date()...,
                             displayedComponents: [.date, .hourAndMinute]
                         )
+                    } else if editState != nil && editsExisting {
+                        // Editing: the date appears only for an activity that already has `completed_at`, and
+                        // an untouched date is never sent.
+                        editDateRows
+                    } else if logsCompletedActivity {
+                        DatePicker(
+                            followUpAt != nil ? "Activity date" : "When",
+                            selection: $when,
+                            in: ...Date(),
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        if let err = activityDateError {
+                            Text(err).font(.footnote).foregroundColor(.red)
+                        }
+                        followUpRows
                     } else {
                         DatePicker(
                             type == "task" ? "Due" : "When",
@@ -567,6 +644,7 @@ struct ActivityComposeView: View {
                         )
                     }
                 }
+                linkedEntitySection
                 if scheduled {
                     Section {
                         Label("You'll get a reminder around this time.", systemImage: "bell.badge")
@@ -640,6 +718,126 @@ struct ActivityComposeView: View {
             .onChange(of: pickedImage) { _, newImage in
                 guard let img = newImage else { return }
                 Task { await upload(image: img) }
+            }
+        }
+    }
+
+    /// Editing: "Activity date & time" (only when the activity already has `completed_at`; never in the future).
+    @ViewBuilder
+    private var editDateRows: some View {
+        if showsEditDate {
+            DatePicker(
+                "Activity date & time",
+                selection: Binding(
+                    get: { when },
+                    set: { newValue in
+                        when = newValue
+                        editState?.wrappedValue.dateEdited = true
+                    }
+                ),
+                in: ...Date(),
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            if let err = activityDateError {
+                Text(err).font(.footnote).foregroundColor(.red)
+            }
+        } else if type == "task" {
+            // A task has no completion time yet: its date is the Due date, editable as before (and sent as
+            // `due_at` only when changed).
+            DatePicker(
+                "Due",
+                selection: Binding(
+                    get: { when },
+                    set: { newValue in
+                        when = newValue
+                        editState?.wrappedValue.dateEdited = true
+                    }
+                ),
+                displayedComponents: [.date, .hourAndMinute]
+            )
+        }
+    }
+
+    /// Logging: the optional Scheduled (follow-up) date. Turning it on or off never touches the Activity date.
+    @ViewBuilder
+    private var followUpRows: some View {
+        if followUpVisible, let binding = followUpAt {
+            Toggle(
+                "Schedule a follow-up",
+                isOn: Binding(
+                    get: { binding.wrappedValue != nil },
+                    set: { on in binding.wrappedValue = on ? Self.defaultReminderTime() : nil }
+                )
+            )
+            if let due = binding.wrappedValue {
+                DatePicker(
+                    "Scheduled for",
+                    selection: Binding(
+                        get: { binding.wrappedValue ?? due },
+                        set: { binding.wrappedValue = $0 }
+                    ),
+                    in: Date()...,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                if let err = followUpError {
+                    Text(err).font(.footnote).foregroundColor(.red)
+                }
+                Text("Saving creates two activities: this one as done, and a planned follow-up.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private var linkTypeBinding: Binding<ActivityLinkType?> {
+        Binding(
+            get: { editState?.wrappedValue.link.type },
+            set: { newValue in editState?.wrappedValue.link.select(newValue) }
+        )
+    }
+
+    /// Editing: the "Linked entity" control — Lead / Contact / Deal / Account / None, then search and pick the
+    /// record — pre-filled from the activity's current link.
+    @ViewBuilder
+    private var linkedEntitySection: some View {
+        if editsExisting, let state = editState {
+            Section("Linked entity") {
+                Picker("Link to", selection: linkTypeBinding) {
+                    Text("None").tag(Optional<ActivityLinkType>.none)
+                    ForEach(ActivityLinkType.allCases) { t in
+                        Text(t.title).tag(Optional(t))
+                    }
+                }
+                .pickerStyle(.segmented)
+                .task {
+                    // The row did not carry the linked record's name: fetch it once.
+                    let draft = state.wrappedValue.link
+                    guard draft.needsNameLookup, let original = draft.original else { return }
+                    if let name = await ActivityLinkLookup.name(for: original) {
+                        state.wrappedValue.link.applyResolvedName(name)
+                    }
+                }
+                if let chosen = state.wrappedValue.link.type {
+                    Button {
+                        showLinkPicker = true
+                    } label: {
+                        HStack {
+                            Text(state.wrappedValue.link.displayName ?? "Select a \(chosen.rawValue)")
+                                .foregroundColor(state.wrappedValue.link.displayName == nil ? .secondary : .primary)
+                                .lineLimit(1)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                    .sheet(isPresented: $showLinkPicker) {
+                        ActivityLinkPickerSheet(type: chosen) { id, name in
+                            state.wrappedValue.link.pick(id: id, name: name)
+                        }
+                    }
+                }
+                if let err = linkError {
+                    Text(err).font(.footnote).foregroundColor(.red)
+                }
             }
         }
     }

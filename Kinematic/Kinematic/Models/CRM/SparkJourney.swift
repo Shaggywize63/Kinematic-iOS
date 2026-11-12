@@ -234,6 +234,12 @@ struct ActivityComposeResult {
     let leadId: String?
     let customFields: [String: Any]
     let extras: SparkActivityExtras
+    /// Editing only: whether the date was edited. An untouched date sends no `completed_at` / `due_at`.
+    /// Creating (and every existing caller) keeps the default: the date is sent.
+    var whenEdited: Bool = true
+    /// Editing only: the keys of a changed "Linked entity" (`<type>_id` set, the other three null); empty when
+    /// the link is untouched.
+    var linkPatch: [String: Any] = [:]
 }
 
 // MARK: - Deal lines
@@ -439,12 +445,15 @@ enum SparkActivityBody {
             body["description"] = NSNull()
         }
         if let imageUrl = r.imageUrl, !imageUrl.isEmpty { body["image_url"] = imageUrl }
-        if existing.effectiveStatus == "completed" {
-            body["completed_at"] = iso(r.when)
-        } else {
-            body["due_at"] = iso(r.when)
+        if r.whenEdited {
+            if existing.effectiveStatus == "completed" {
+                body["completed_at"] = iso(r.when)
+            } else {
+                body["due_at"] = iso(r.when)
+            }
         }
         if !r.customFields.isEmpty { body["custom_fields"] = r.customFields }
+        for (key, value) in r.linkPatch { body[key] = value }
         return body
     }
 }

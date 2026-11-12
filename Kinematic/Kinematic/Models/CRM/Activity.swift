@@ -50,6 +50,9 @@ struct Activity: Codable, Identifiable, Hashable {
     /// Denormalised name of the linked deal (fallback when neither lead nor
     /// contact is set).
     let dealName: String?
+    /// Denormalised name of the linked account (backend stamp) — pre-fills the edit sheet's "Linked entity".
+    /// `var` with a nil default so existing memberwise constructions are unaffected.
+    var accountName: String?
     /// SRS / BMW site-visits link a People-Directory dealer via
     /// custom_fields.dealer_name; the backend resolves it to the person's
     /// name + mobile so the card can show "Radha Traders · 9431188608".
@@ -127,6 +130,7 @@ struct Activity: Codable, Identifiable, Hashable {
         case leadPhone = "lead_phone"
         case contactName = "contact_name"
         case dealName = "deal_name"
+        case accountName = "account_name"
         case directoryName = "directory_name"
         case directoryPhone = "directory_phone"
         case assignees
