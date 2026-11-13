@@ -44,6 +44,20 @@ private let RAJKAMAL_CLIENT_ID = "0490f34d-d9a3-4f39-99e2-8f3adba8c583"
 /// off the client id like the other tenant gates. Mirrors Android's
 /// `Entitlements.isBahwancy` (same client id).
 private let BAHWANCY_CLIENT_ID = "c7232547-554a-4ba1-9f14-1dc027f9febd"
+/// Maa Mansha Pharma — a pharma distributor running the tele-calling "Calling
+/// Desk": a daily, operator-worked list where each customer (account or lead)
+/// is dispositioned with one of three statuses (Order Taken / Order Pending /
+/// No Order), with an order value captured on Order Taken. The desk + its
+/// backend live only for this client, so the CRM entry is gated strictly off
+/// the client id like every other tenant gate here.
+///
+/// TODO(client-id): the real Maa Mansha Pharma client UUID is not yet known in
+/// this repo — fill it in when Client Management confirms it. Left as an empty
+/// placeholder on purpose: `isMaaMansha` guards against an empty id so the
+/// feature stays hidden for EVERY tenant until the id is wired, rather than
+/// matching a nil/blank `clientId` and leaking to others. (Same safe-by-default
+/// stance the other id gates rely on — an unknown id simply never matches.)
+private let MAA_MANSHA_PHARMA_CLIENT_ID = ""
 
 enum ClientFeatures {
     /// True when the signed-in user belongs to a steel-dealer tenant — Tata
@@ -97,6 +111,16 @@ enum ClientFeatures {
     /// field-force Home and the CRM More menu. No other tenant sees them.
     static var isRajkamal: Bool {
         Session.currentUser?.clientId == RAJKAMAL_CLIENT_ID
+    }
+
+    /// True when the signed-in user belongs to Maa Mansha Pharma. Surfaces the
+    /// pharma "Calling Desk" entry in the CRM More menu (a daily tele-calling
+    /// worklist). No other tenant sees it. Guards against an empty placeholder
+    /// id — until the real client UUID is wired in `MAA_MANSHA_PHARMA_CLIENT_ID`
+    /// this is always false, so the unreleased surface never leaks.
+    static var isMaaMansha: Bool {
+        guard !MAA_MANSHA_PHARMA_CLIENT_ID.isEmpty else { return false }
+        return CRMClientScope.effectiveClientId() == MAA_MANSHA_PHARMA_CLIENT_ID
     }
 
     /// True when the signed-in user is a Consumer Champion (Tata Tiscon's
