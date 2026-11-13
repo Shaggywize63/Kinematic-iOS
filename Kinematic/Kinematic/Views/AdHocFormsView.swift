@@ -60,6 +60,14 @@ struct AdHocFormsView: View {
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("New Form")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // "My Reports": the rep's own submitted forms — view (with their form number), edit, export.
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink(destination: MyFormSubmissionsView()) {
+                        Label("My Reports", systemImage: "list.bullet.rectangle")
+                    }
+                }
+            }
             .task { await load() }
             .refreshable { await load() }
         }
