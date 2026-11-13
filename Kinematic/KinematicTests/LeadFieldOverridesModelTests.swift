@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import SwiftUI
 @testable import Kinematic
 
 @MainActor
@@ -167,5 +168,196 @@ final class LeadFieldOverridesModelTests: XCTestCase {
         m.ingest(rawOverrides: ["lead.data_consent": FO(label: nil, required: nil, hidden: true)])
         XCTAssertTrue(m.didLoad)
         XCTAssertTrue(m.isHidden("data_consent", isB2C: true))
+    }
+
+    // MARK: - Custom lead statuses (config.lead_statuses)
+    //
+    // The status / pipeline-stage pickers (create, edit, detail status menu,
+    // list filter, marketing visit, telecaller log) all source their options
+    // from `statusOptions(default:)`, which returns the tenant's custom set
+    // parsed from `config.lead_statuses` when present and falls back to the
+    // caller's hardcoded array otherwise. These exercise the parse + sort +
+    // fallback + colour/kind mapping the pickers depend on, through the real
+    // `load()` decode path (the `ingest` seam does not seed statuses).
+
+    /// Decode a `GET /crm/settings` envelope into the raw settings, as
+    /// `CRMService.getCRMSettings()` would after `perform`.
+    private func settings(_ json: String) throws -> CRMService.CRMSettingsRaw? {
+        try JSONDecoder().decode(APIEnvelope<CRMService.CRMSettingsRaw>.self, from: Data(json.utf8)).data
+    }
+
+    /// Run the real `load()` against a canned settings reply, using a
+    /// throwaway UserDefaults so no owner-assignment cache leaks between tests.
+    private func loadedModel(_ json: String) async throws -> LeadFieldOverridesModel {
+        let raw = try settings(json)
+        let suite = "LeadFieldOverridesModelTests.status." + UUID().uuidString
+        let d = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { d.removePersistentDomain(forName: suite) }
+        let m = LeadFieldOverridesModel()
+        await m.load(using: { raw }, defaults: d)
+        return m
+    }
+
+    /// A tenant's custom set, deliberately out of position order, with one
+    /// invalid slug, one label-less entry (prettify fallback), a colour, and
+    /// won/lost flags.
+    private let customStatusesSettings = #"""
+    {"success":true,"data":{"business_type":"both","config":{"lead_statuses":[
+      {"value":"qualified","label":"Qualified","color":"#10B981","position":2},
+      {"value":"cold_call","position":0},
+      {"value":"Invalid Slug","position":1},
+      {"value":"closed_won","label":"Won","color":"#3B82F6","position":4,"is_won":true},
+      {"value":"dropped","label":"Dropped","position":3,"is_lost":true}
+    ]}}}
+    """#
+
+    func testCustomStatusesParseSortedByPositionAndSkipInvalidSlugs() async throws {
+        let m = try await loadedModel(customStatusesSettings)
+        // "Invalid Slug" (space + capitals) is dropped; the rest sort by position.
+        XCTAssertEqual(m.leadStatuses.map { $0.value }, ["cold_call", "qualified", "dropped", "closed_won"])
+    }
+
+    func testCustomStatusLabelFallsBackToPrettifiedValue() async throws {
+        let m = try await loadedModel(customStatusesSettings)
+        let byValue = Dictionary(uniqueKeysWithValues: m.leadStatuses.map { ($0.value, $0) })
+        // No `label` supplied -> prettified slug.
+        XCTAssertEqual(byValue["cold_call"]?.label, "Cold Call")
+        // Supplied label is kept verbatim.
+        XCTAssertEqual(byValue["qualified"]?.label, "Qualified")
+    }
+
+    func testCustomStatusWonLostAndColourAreMapped() async throws {
+        let m = try await loadedModel(customStatusesSettings)
+        let byValue = Dictionary(uniqueKeysWithValues: m.leadStatuses.map { ($0.value, $0) })
+        XCTAssertEqual(byValue["closed_won"]?.isWon, true)
+        XCTAssertEqual(byValue["closed_won"]?.isLost, false)
+        XCTAssertEqual(byValue["dropped"]?.isLost, true)
+        XCTAssertEqual(byValue["dropped"]?.isWon, false)
+        XCTAssertEqual(byValue["qualified"]?.color, "#10B981")
+        // Absent colour stays nil so the picker uses its own fallback palette.
+        XCTAssertNil(byValue["cold_call"]?.color)
+    }
+
+    func testCustomStatusesFeedStatusOptionsAndIgnoreTheCallerDefaults() async throws {
+        let m = try await loadedModel(customStatusesSettings)
+        // The pickers pass their hardcoded list as `default:`; a configured
+        // tenant must see the custom set, not the fallback.
+        let opts = m.statusOptions(default: ["new", "working", "converted", "lost"])
+        XCTAssertEqual(opts.map { $0.value }, ["cold_call", "qualified", "dropped", "closed_won"])
+    }
+
+    func testEqualPositionsKeepOriginalArrayOrder() async throws {
+        let m = try await loadedModel(#"""
+        {"success":true,"data":{"config":{"lead_statuses":[
+          {"value":"beta","position":5},{"value":"alpha","position":5}
+        ]}}}
+        """#)
+        // Stable tiebreak: original order wins when positions tie.
+        XCTAssertEqual(m.leadStatuses.map { $0.value }, ["beta", "alpha"])
+    }
+
+    func testMissingPositionDefaultsToZero() async throws {
+        let m = try await loadedModel(#"""
+        {"success":true,"data":{"config":{"lead_statuses":[
+          {"value":"has_pos","position":3},{"value":"no_pos"}
+        ]}}}
+        """#)
+        // `no_pos` has no position -> 0 -> sorts ahead of position 3.
+        XCTAssertEqual(m.leadStatuses.map { $0.value }, ["no_pos", "has_pos"])
+    }
+
+    func testNonObjectAndValuelessEntriesAreIgnored() async throws {
+        let m = try await loadedModel(#"""
+        {"success":true,"data":{"config":{"lead_statuses":[
+          7, null, "x", [1,2], {"label":"No value here"}, {"value":"ok"}
+        ]}}}
+        """#)
+        // Only the well-formed entry survives; stray scalars/arrays/valueless objects are skipped.
+        XCTAssertEqual(m.leadStatuses.map { $0.value }, ["ok"])
+    }
+
+    func testNoCustomSetFallsBackToTheCallerBuiltInList() async throws {
+        // A tenant with no `lead_statuses` key: the picker keeps today's behaviour.
+        let m = try await loadedModel(#"{"success":true,"data":{"config":{}}}"#)
+        XCTAssertTrue(m.leadStatuses.isEmpty)
+        let opts = m.statusOptions(default: ["new", "working", "converted", "lost", "unqualified"])
+        XCTAssertEqual(opts.map { $0.value }, ["new", "working", "converted", "lost", "unqualified"])
+        // Built-in kind mapping: converted -> won; lost / unqualified -> lost.
+        let byValue = Dictionary(uniqueKeysWithValues: opts.map { ($0.value, $0) })
+        XCTAssertEqual(byValue["new"]?.isWon, false)
+        XCTAssertEqual(byValue["new"]?.isLost, false)
+        XCTAssertEqual(byValue["new"]?.label, "New")        // capitalized slug
+        XCTAssertEqual(byValue["converted"]?.isWon, true)
+        XCTAssertEqual(byValue["lost"]?.isLost, true)
+        XCTAssertEqual(byValue["unqualified"]?.isLost, true)
+    }
+
+    func testStatusOptionsFallbackOnAFreshModelNeedsNoLoad() {
+        // A brand-new model (statuses empty) still yields the built-ins so a
+        // picker that renders before `load()` returns is never empty.
+        let m = LeadFieldOverridesModel()
+        XCTAssertEqual(m.statusOptions(default: ["new", "lost"]).map { $0.value }, ["new", "lost"])
+    }
+
+    // MARK: - Per-status colour resolution
+
+    func testColorForUsesConfiguredHexElseFallback() async throws {
+        let m = try await loadedModel(customStatusesSettings)
+        // Configured hex wins.
+        XCTAssertEqual(m.color(for: "qualified", fallback: .black), Color(hex: "#10B981"))
+        XCTAssertNotEqual(m.color(for: "qualified", fallback: .black), .black)
+        // Configured option but no hex -> caller fallback.
+        XCTAssertEqual(m.color(for: "cold_call", fallback: .black), .black)
+        // Unknown value -> caller fallback.
+        XCTAssertEqual(m.color(for: "nope", fallback: .black), .black)
+    }
+
+    func testColorForFallsBackWhenNoCustomSet() {
+        let m = LeadFieldOverridesModel()
+        XCTAssertEqual(m.color(for: "new", fallback: .gray), .gray)
+    }
+
+    func testHexColorInitParsesCommonFormsAndRejectsGarbage() {
+        XCTAssertNotNil(Color(hex: "#FFF"))        // 3-digit
+        XCTAssertNotNil(Color(hex: "#3B82F6"))     // 6-digit
+        XCTAssertNotNil(Color(hex: "3B82F6"))      // no leading '#'
+        XCTAssertNotNil(Color(hex: "#3B82F6FF"))   // 8-digit with alpha
+        XCTAssertNil(Color(hex: "nope"))           // not hex
+        XCTAssertNil(Color(hex: "#12"))            // wrong length
+        XCTAssertNil(Color(hex: ""))               // empty
+    }
+
+    // MARK: - LeadStatusDisplay (label / prettify / resolvedStatus)
+
+    func testLeadStatusDisplayPrettify() {
+        XCTAssertEqual(LeadStatusDisplay.prettify("cold_call"), "Cold Call")
+        XCTAssertEqual(LeadStatusDisplay.prettify("visit planned"), "Visit Planned")
+        XCTAssertEqual(LeadStatusDisplay.prettify("new"), "New")
+    }
+
+    func testLeadStatusDisplayLabelUsesConfiguredLabelCaseInsensitively() {
+        let opts = [LeadStatusOption(value: "cold_call", label: "Custom Cold", color: nil, isWon: false, isLost: false)]
+        XCTAssertEqual(LeadStatusDisplay.label(for: "cold_call", options: opts), "Custom Cold")
+        // Lookup is case-insensitive on the incoming value.
+        XCTAssertEqual(LeadStatusDisplay.label(for: "COLD_CALL", options: opts), "Custom Cold")
+        // Unknown value -> prettified fallback, even with options present.
+        XCTAssertEqual(LeadStatusDisplay.label(for: "brand_new", options: opts), "Brand New")
+        // No options at all -> prettified.
+        XCTAssertEqual(LeadStatusDisplay.label(for: "new", options: []), "New")
+    }
+
+    func testLeadStatusDisplayResolvedStatus() {
+        let open = LeadStatusOption(value: "cold_call", label: "Cold", color: nil, isWon: false, isLost: false)
+        let won = LeadStatusOption(value: "closed_won", label: "Won", color: nil, isWon: true, isLost: false)
+        let lost = LeadStatusOption(value: "dropped", label: "Lost", color: nil, isWon: false, isLost: true)
+
+        // No custom set -> current stands unchanged.
+        XCTAssertEqual(LeadStatusDisplay.resolvedStatus(current: "new", options: []), "new")
+        // Custom set that already contains current -> current stands.
+        XCTAssertEqual(LeadStatusDisplay.resolvedStatus(current: "closed_won", options: [open, won, lost]), "closed_won")
+        // Current not in the custom set -> first OPEN (not won/lost) stage.
+        XCTAssertEqual(LeadStatusDisplay.resolvedStatus(current: "new", options: [won, open, lost]), "cold_call")
+        // Current not in set and no open stage -> first stage.
+        XCTAssertEqual(LeadStatusDisplay.resolvedStatus(current: "new", options: [won, lost]), "closed_won")
     }
 }
