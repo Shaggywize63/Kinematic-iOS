@@ -258,19 +258,12 @@ struct LeadsListView: View {
                         ForEach(vm.filtered) { lead in
                             NavigationLink(destination: LeadDetailView(leadId: lead.id)) {
                                 LeadRow(lead: lead, showIndustry: showsIndustryBadge,
-                                        statusOptions: fieldOverrides.leadStatuses,
-                                        showLeadNumber: SparkJourney.isActive)
+                                        statusOptions: fieldOverrides.leadStatuses)
                             }
                             .buttonStyle(.plain)
                             .spotlightAnchor(SpotlightKeys.leadsRow, if: lead.id == vm.filtered.first?.id)
                             .contextMenu {
                                 Button { editingLead = lead } label: { Label("Edit", systemImage: "pencil") }
-                                // Spark & Ray: copy the lead number without opening the lead.
-                                if SparkJourney.isActive, let ref = LeadNumberAndType.refDisplay(lead.refNo) {
-                                    Button { UIPasteboard.general.string = ref } label: {
-                                        Label("Copy lead number", systemImage: "doc.on.doc")
-                                    }
-                                }
                             }
                             .onAppear {
                                 // Infinite scroll — load the next page as the

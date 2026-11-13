@@ -411,10 +411,6 @@ struct LeadDetailView: View {
                 badge(fieldOverrides.leadForm.segmentName(isB2C: lead.isB2c == true))
                 ScoreBadge(score: lead.score ?? 0)
             }
-            // Spark & Ray: the lead number (read-only) with a Copy action. No number -> nothing shown.
-            if let ref = LeadNumberAndType.refDisplay(lead.refNo, isSpark: SparkJourney.isActive) {
-                LeadNumberLabel(ref: ref, copyable: true)
-            }
             // Spark & Ray: the lead type. Built-in field -> deferred until the overrides load, dropped when
             // hidden, label through the overrides. Nothing is shown for a lead without a type.
             if SparkJourney.isActive, fieldOverrides.didLoad,
