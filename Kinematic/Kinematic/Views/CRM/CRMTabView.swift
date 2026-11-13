@@ -247,6 +247,16 @@ struct CRMMoreMenu: View {
                 }
             }
 
+            // My Tasks — the signed-in user's own assigned tasks, grouped by
+            // due date and showing who assigned each. Core CRM for EVERY
+            // tenant (not feature-gated), so it sits in its own always-visible
+            // section above the module-gated "Work" one.
+            Section("My work") {
+                NavigationLink {
+                    MyTasksView()
+                } label: { MoreRow(icon: "checklist", title: "My Tasks", tint: Brand.red) }
+            }
+
             // Activities — the rep's scheduled calls / meetings / tasks.
             // Moved here from the bottom tab at the user's request; same
             // ActivitiesView, now one tap into More.
