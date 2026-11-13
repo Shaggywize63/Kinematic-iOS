@@ -22,6 +22,7 @@ struct CRMHomeView: View {
         .init(label: "Pipeline",   icon: "square.stack.3d.up.fill",        color: Color(red: 0.98, green: 0.55, blue: 0.00), destination: .pipeline),
         .init(label: "Products",   icon: "shippingbox.fill",               color: Color(red: 0.42, green: 0.11, blue: 0.58), destination: .products),
         .init(label: "Activities", icon: "clock.arrow.circlepath",         color: Color(red: 0.43, green: 0.30, blue: 0.25), destination: .activities),
+        .init(label: "My Tasks",   icon: "checklist",                      color: Color(red: 0.15, green: 0.45, blue: 0.55), destination: .myTasks),
         .init(label: "Tasks",      icon: "checkmark.square.fill",          color: Color(red: 0.22, green: 0.29, blue: 0.67), destination: .tasks),
         .init(label: "Reports",    icon: "chart.pie.fill",                 color: Color(red: 0.37, green: 0.21, blue: 0.69), destination: .reports),
     ]
@@ -118,12 +119,13 @@ private struct CRMTile: Identifiable {
 }
 
 private enum CRMDestination: Hashable {
-    case myDay, dashboard, leads, contacts, accounts, deals, pipeline, products, activities, tasks, reports, kini, messages
+    case myDay, dashboard, leads, contacts, accounts, deals, pipeline, products, activities, myTasks, tasks, reports, kini, messages
 
     @ViewBuilder
     var view: some View {
         switch self {
         case .myDay:      MyDayView()
+        case .myTasks:    MyTasksView()
         case .dashboard:  CRMDashboardView()
         case .leads:      LeadsListView()
         case .contacts:   ContactsListView()

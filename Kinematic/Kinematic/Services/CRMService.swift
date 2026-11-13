@@ -541,6 +541,24 @@ final class CRMService {
         try await sendJSON("/api/v1/crm/tasks/\(id)", method: "PATCH", body: ["status": status])
     }
 
+    // MARK: My Tasks (the caller's own assigned tasks + who assigned each)
+    /// `GET /api/v1/crm/my-tasks` — only the signed-in user's own tasks
+    /// (default view = actionable: open/upcoming). Unlike the activities list
+    /// this denormalises `assigned_by` / `assigned_by_name`, so the screen can
+    /// show "Assigned by …". Decodes `data` + `pagination` from the envelope
+    /// (via `fetchData`, like `listLeadsPage`, so the page meta survives). All
+    /// params optional; the query is built by the test-covered
+    /// `MyTasksLogic.queryParams`.
+    func myTasks(status: String? = nil, overdue: Bool = false,
+                 from: String? = nil, to: String? = nil,
+                 page: Int? = nil, limit: Int? = nil) async throws -> (tasks: [MyTask], pagination: PageMeta?) {
+        let q = MyTasksLogic.queryParams(status: status, overdue: overdue, from: from, to: to, page: page, limit: limit)
+        let req = try makeRequest(path: "/api/v1/crm/my-tasks", method: "GET", body: nil, query: q)
+        let data = try await fetchData(req)
+        let env = try decoder.decode(APIEnvelope<[MyTask]>.self, from: data)
+        return (env.data ?? [], env.pagination)
+    }
+
     // MARK: Email
     func listEmailTemplates() async throws -> [EmailTemplate] {
         try await get("/api/v1/crm/email-templates")
