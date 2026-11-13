@@ -3267,6 +3267,67 @@ class KinematicRepository {
         }
     }
 
+    // --- MY FORM SUBMISSIONS (field executive: view / edit / export own filled forms) ---
+
+    /// The signed-in rep's OWN submitted forms, newest first (`GET /forms/submissions`). One page at a time.
+    /// Returns nil on any failure so the list can show an error state instead of crashing.
+    func getMyFormSubmissions(page: Int = 1, limit: Int = 20) async -> FormSubmissionPage? {
+        do {
+            let res: ApiResponse<FormSubmissionPage>? = try await performRequest(
+                "/forms/submissions",
+                queryItems: [
+                    URLQueryItem(name: "page", value: String(max(1, page))),
+                    URLQueryItem(name: "limit", value: String(max(1, limit))),
+                ]
+            )
+            return res?.data
+        } catch {
+            print("⚠️ FETCH_MY_SUBMISSIONS_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// One submission with its answers + signed photos (`GET /forms/submissions/:id`). Nil on any failure.
+    func getFormSubmission(id: String) async -> FormSubmissionDetail? {
+        guard !id.isEmpty else { return nil }
+        do {
+            let res: ApiResponse<FormSubmissionDetail>? = try await performRequest("/forms/submissions/\(id)")
+            return res?.data
+        } catch {
+            print("⚠️ FETCH_SUBMISSION_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// The self-contained export of one submission (`GET /forms/submissions/:id/export`) — ref no, title,
+    /// submitter, every answer, and 7-day signed photo URLs. Nil on any failure.
+    func exportFormSubmission(id: String) async -> FormSubmissionExport? {
+        guard !id.isEmpty else { return nil }
+        do {
+            let res: ApiResponse<FormSubmissionExport>? = try await performRequest("/forms/submissions/\(id)/export")
+            return res?.data
+        } catch {
+            print("⚠️ EXPORT_SUBMISSION_FAILED: \(error)")
+            return nil
+        }
+    }
+
+    /// Edit the rep's OWN submission — text answers, outlet, address (`PATCH /forms/submissions/:id`). Returns
+    /// the refreshed detail on success, nil otherwise (read-only "view as user" and non-owners 403).
+    func updateFormSubmission(id: String, _ edit: FormSubmissionEditRequest) async -> FormSubmissionDetail? {
+        guard !id.isEmpty, !edit.isEmpty else { return nil }
+        do {
+            let body = try? JSONEncoder().encode(edit)
+            let res: ApiResponse<FormSubmissionDetail>? = try await performRequest(
+                "/forms/submissions/\(id)", method: "PATCH", body: body
+            )
+            return (res?.success == true) ? res?.data : nil
+        } catch {
+            print("❌ UPDATE_SUBMISSION_FAILED: \(error)")
+            return nil
+        }
+    }
+
     // --- BROADCAST ---
     func getBroadcastHistory() async -> [BroadcastQuestion] {
         do {

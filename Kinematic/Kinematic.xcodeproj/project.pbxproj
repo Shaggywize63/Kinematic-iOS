@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AB0000000000000000000B70 /* FormSubmissionLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000A70 /* FormSubmissionLogicTests.swift */; };
 		AB0000000000000000000B51 /* AccountLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000A51 /* AccountLocationTests.swift */; };
 		AB0000000000000000000B63 /* ActivityLogPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000A63 /* ActivityLogPlanTests.swift */; };
 		AB0000000000000000000B62 /* ActivityLinkEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000A62 /* ActivityLinkEditingTests.swift */; };
@@ -92,6 +93,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		AB0000000000000000000A70 /* FormSubmissionLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormSubmissionLogicTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000A51 /* AccountLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountLocationTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000A63 /* ActivityLogPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLogPlanTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000A62 /* ActivityLinkEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLinkEditingTests.swift; sourceTree = "<group>"; };
@@ -236,6 +238,7 @@
 			isa = PBXGroup;
 			children = (
 				AB0000000000000000000017 /* TestSupport.swift */,
+				AB0000000000000000000A70 /* FormSubmissionLogicTests.swift */,
 				AB0000000000000000000010 /* APIEnvelopeTests.swift */,
 				AB0000000000000000000011 /* AnyJSONTests.swift */,
 				AB0000000000000000000012 /* CRMClientScopeTests.swift */,
@@ -438,6 +441,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AB0000000000000000000027 /* TestSupport.swift in Sources */,
+				AB0000000000000000000B70 /* FormSubmissionLogicTests.swift in Sources */,
 				AB0000000000000000000020 /* APIEnvelopeTests.swift in Sources */,
 				AB0000000000000000000021 /* AnyJSONTests.swift in Sources */,
 				AB0000000000000000000022 /* CRMClientScopeTests.swift in Sources */,
