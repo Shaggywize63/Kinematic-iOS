@@ -34,4 +34,12 @@ final class AccountsViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+
+    /// Throwing create used by the New Account form so it can tell a duplicate (409) from a generic failure and
+    /// keep itself open. Inserts the created account at the top of the list and hands it back.
+    func add(body: [String: Any]) async throws -> CRMAccount {
+        let a = try await api.createAccount(body)
+        accounts.insert(a, at: 0)
+        return a
+    }
 }

@@ -22,6 +22,9 @@ enum CRMServiceError: LocalizedError {
     /// on the code (e.g. KINI's 403 v2→v1 fallback) while still surfacing the
     /// backend message. Behaves like `.server` for display purposes.
     case serverStatus(Int, String)
+    /// `POST /crm/accounts` 409: an account with this name already exists. Carries the existing account so the
+    /// create form can surface an inline notice (and offer to open it) instead of a generic error.
+    case duplicateAccount(AccountDuplicateInfo)
 
     var errorDescription: String? {
         switch self {
@@ -30,6 +33,7 @@ enum CRMServiceError: LocalizedError {
         case .decodeFailed(let m):       return "Could not read server response: \(m)"
         case .server(let msg):           return msg
         case .serverStatus(_, let msg):  return msg
+        case .duplicateAccount(let info): return AccountDuplicate.message(for: info, fallbackName: info.name)
         }
     }
 }
@@ -348,11 +352,53 @@ final class CRMService {
         return try await get("/api/v1/crm/accounts", query: q)
     }
     func getAccount(id: String) async throws -> CRMAccount { try await get("/api/v1/crm/accounts/\(id)") }
+    /// Create an account. A 409 `{ code:"DUPLICATE_ACCOUNT", existing }` is surfaced as
+    /// `CRMServiceError.duplicateAccount` (the form keeps open + links to the existing account) rather than a
+    /// generic error, so this uses its own send path instead of the shared `postJSON`.
     func createAccount(_ body: [String: Any]) async throws -> CRMAccount {
-        try await postJSON("/api/v1/crm/accounts", body: body)
+        let data = body.isEmpty
+            ? Data("{}".utf8)
+            : try JSONSerialization.data(withJSONObject: body, options: [])
+        let req = try makeRequest(path: "/api/v1/crm/accounts", method: "POST", body: data)
+        return try await performAccountCreate(req)
     }
+
+    /// Like `perform`, but a 409 duplicate is mapped to `CRMServiceError.duplicateAccount` before the generic
+    /// error path, and the 401-refresh-and-replay behaviour is preserved.
+    private func performAccountCreate(_ req: URLRequest, retryAfterRefresh: Bool = true) async throws -> CRMAccount {
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw CRMServiceError.badResponse(0) }
+        if http.statusCode == 401, retryAfterRefresh {
+            let refreshed = await KinematicRepository.shared.refreshAccessToken()
+            if refreshed {
+                var retry = req
+                retry.setValue("Bearer \(Session.sharedToken)", forHTTPHeaderField: "Authorization")
+                return try await performAccountCreate(retry, retryAfterRefresh: false)
+            }
+        }
+        if http.statusCode == 409, let dup = AccountDuplicate.parse(data) {
+            throw CRMServiceError.duplicateAccount(dup)
+        }
+        if !(200..<300).contains(http.statusCode) {
+            if let env = try? decoder.decode(APIEnvelope<EmptyAck>.self, from: data),
+               let msg = env.error ?? env.message {
+                throw CRMServiceError.server(msg)
+            }
+            throw CRMServiceError.badResponse(http.statusCode)
+        }
+        if let env = try? decoder.decode(APIEnvelope<CRMAccount>.self, from: data), let payload = env.data {
+            return payload
+        }
+        do { return try decoder.decode(CRMAccount.self, from: data) }
+        catch { throw CRMServiceError.decodeFailed(String(describing: error)) }
+    }
+
     func accountContacts(id: String) async throws -> [Contact] {
         try await get("/api/v1/crm/accounts/\(id)/contacts")
+    }
+    /// Leads whose `account_id` is this account (`GET /crm/accounts/:id/leads`). Backend #676.
+    func accountLeads(id: String) async throws -> [Lead] {
+        try await get("/api/v1/crm/accounts/\(id)/leads")
     }
 
     // MARK: - Visit bridge (plant visit → account/site/contacts/deals)

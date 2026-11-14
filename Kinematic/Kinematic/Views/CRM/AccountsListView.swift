@@ -46,7 +46,7 @@ struct AccountsListView: View {
         }
         .sheet(isPresented: $showCreate) {
             AccountCreateView { body in
-                await vm.create(body: body)
+                try await vm.add(body: body)
             }
         }
         .task { await vm.refresh() }
