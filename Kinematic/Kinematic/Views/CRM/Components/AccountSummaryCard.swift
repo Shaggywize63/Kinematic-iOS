@@ -20,16 +20,6 @@ struct AccountSummaryCard: View {
                         .cornerRadius(4)
                 }
             }
-            HStack(spacing: 16) {
-                if let employees = account.employees {
-                    Label("\(employees)", systemImage: "person.3.fill")
-                        .font(.caption).foregroundColor(.secondary)
-                }
-                if let rev = account.annualRevenue {
-                    Label(CurrencyFormatter.formatINR(rev), systemImage: "indianrupeesign.circle.fill")
-                        .font(.caption).foregroundColor(.secondary)
-                }
-            }
             if let site = account.website {
                 Text(site).font(.caption2).foregroundColor(Brand.red).lineLimit(1)
             }
