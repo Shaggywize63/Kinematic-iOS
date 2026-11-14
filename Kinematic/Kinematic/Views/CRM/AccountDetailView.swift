@@ -6,6 +6,12 @@ struct AccountDetailView: View {
     @State private var contacts: [Contact] = []
     @State private var deals: [Deal] = []
     @State private var activities: [Activity] = []
+    /// Leads linked to this account (GET /crm/accounts/:id/leads). `leadsError` tells "none yet" apart from a
+    /// failed fetch so a transient error is not read as an empty account.
+    @State private var leads: [Lead] = []
+    @State private var leadsError = false
+    /// Product catalogue, loaded once to resolve a deal line's `product_id` to a display name for the rollup.
+    @State private var products: [Product] = []
     @State private var isLoadingRelations = false
     @State private var loggingActivity = false
     @State private var composerInitialType: String = "call"
@@ -54,11 +60,14 @@ struct AccountDetailView: View {
                     SparkAccountAddressesSection(accountId: account.id)
                 }
 
+                valueSection
                 contactsSection
+                leadsSection
                 if isSpark {
                     SparkAccountUpdatesSection(accountId: account.id, contacts: contacts)
                 }
                 dealsSection
+                productsSection
                 activitiesSection
             }
             .padding()
@@ -597,8 +606,114 @@ struct AccountDetailView: View {
         async let c = (try? api.accountContacts(id: account.id)) ?? []
         async let d = (try? api.accountDeals(id: account.id)) ?? []
         async let a = (try? api.accountActivities(id: account.id)) ?? []
+        // Leads: distinguish empty from a failed fetch (nil → error) so the card can say which.
+        async let l = try? api.accountLeads(id: account.id)
+        // Product catalogue (best-effort) — only used to name the Products rollup.
+        async let p = (try? api.listProducts()) ?? []
         contacts = await c
         deals = await d
         activities = await a
+        let fetchedLeads = await l
+        leads = fetchedLeads ?? []
+        leadsError = (fetchedLeads == nil)
+        products = await p
+    }
+
+    // MARK: - Dashboard rollups (Leads / Products / Value)
+
+    /// product_id → catalogue name, for the Products rollup.
+    private var productNameMap: [String: String] {
+        Dictionary(products.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private var valueStats: AccountValueStats { AccountDealRollup.valueStats(deals) }
+
+    private var productRollup: [AccountProductRow] {
+        AccountDealRollup.products(deals) { productNameMap[$0] }
+    }
+
+    /// Total / Open pipeline / Won, computed from the account's deals.
+    private var valueSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("VALUE").font(.system(size: 11, weight: .black)).tracking(1).foregroundColor(Brand.red)
+            HStack(spacing: 10) {
+                valueStat("Total", valueStats.total)
+                valueStat("Open pipeline", valueStats.openPipeline)
+                valueStat("Won", valueStats.won)
+            }
+        }
+    }
+
+    private func valueStat(_ label: String, _ amount: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased()).font(.system(size: 9, weight: .black)).tracking(0.5).foregroundColor(.gray)
+            Text(CurrencyFormatter.formatINR(amount)).font(.system(size: 15, weight: .bold)).foregroundColor(Color(uiColor: .label))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    /// Leads linked to this account. Tells empty apart from a failed fetch, and links each row to the lead.
+    private var leadsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("LEADS", count: leads.count)
+            if leadsError {
+                emptyRow("Could not load leads", icon: "exclamationmark.triangle")
+            } else if leads.isEmpty {
+                emptyRow("No leads linked to this account", icon: "person.crop.circle.badge.questionmark")
+            } else {
+                ForEach(leads) { l in
+                    NavigationLink(destination: LeadDetailView(leadId: l.id)) {
+                        leadRow(l)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func leadRow(_ l: Lead) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.crop.circle").foregroundColor(Brand.red).frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(AccountLeadDisplay.name(l)).font(.system(size: 14, weight: .semibold)).foregroundColor(Color(uiColor: .label))
+                Text(AccountLeadDisplay.subtitle(l)).font(.caption).foregroundColor(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                if let status = l.status, !status.isEmpty {
+                    Text(status.capitalized).font(.system(size: 11)).foregroundColor(.secondary)
+                }
+                if let v = AccountLeadValue.value(l) {
+                    Text(CurrencyFormatter.formatINR(v)).font(.system(size: 13, weight: .bold)).foregroundColor(Color(uiColor: .label))
+                }
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+    }
+
+    /// Products rolled up from the account's deals' line items (one row per product, summed value).
+    private var productsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("PRODUCTS", count: productRollup.count)
+            if productRollup.isEmpty {
+                emptyRow("No product lines on this account's deals yet", icon: "shippingbox")
+            } else {
+                ForEach(productRollup) { p in
+                    HStack {
+                        Image(systemName: "shippingbox.fill").foregroundColor(Brand.red).frame(width: 24)
+                        Text(p.name).font(.system(size: 14, weight: .semibold)).foregroundColor(Color(uiColor: .label))
+                        Spacer()
+                        if p.value > 0 {
+                            Text(CurrencyFormatter.formatINR(p.value)).font(.system(size: 13, weight: .bold)).foregroundColor(Color(uiColor: .label))
+                        }
+                    }
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemBackground)))
+                }
+            }
+        }
     }
 }
