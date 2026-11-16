@@ -76,11 +76,68 @@ final class DistributionViewModel: ObservableObject {
 
     @Published var catalogue: OrderCatalogue?
 
+    // ── Dealer-direct ordering (the dealer is the customer; no outlet) ───────
+    @Published var dealers: [DistributorLite] = []
+    @Published var loadingDealers = false
+
     /// Full orderable SKU list for the outlet. Loaded lazily when the rep opens
     /// the "Browse catalogue" sheet. Selections still land in `cartQty`, so
     /// Preview/Place are unchanged.
     func loadCatalogue(outletId: String) async {
         do { catalogue = try await api.catalogue(outletId: outletId) } catch { catalogue = nil }
+    }
+
+    /// Loads the dealers assigned to this rep (the dealer-order picker).
+    func loadMyDealers() async {
+        loadingDealers = true
+        do { dealers = try await api.myDealers() } catch { dealers = [] }
+        loadingDealers = false
+    }
+
+    /// Loads a dealer's priced catalogue (no outlet).
+    func loadDealerCatalogue(distributorId: String) async {
+        do { catalogue = try await api.dealerCatalogue(distributorId: distributorId) } catch { catalogue = nil }
+    }
+
+    /// Prices the current cart against a dealer (distributor_id, no outlet).
+    func runPreviewDealer(distributorId: String) async {
+        let items = cartQty.compactMap { (skuId, qty) -> CartLineInput? in
+            guard qty > 0 else { return nil }
+            return CartLineInput(sku_id: skuId, qty: qty, uom: nil)
+        }
+        guard !items.isEmpty else { preview = nil; return }
+        previewing = true; previewError = nil
+        defer { previewing = false }
+        let input = OrderInput(outlet_id: nil, distributor_id: distributorId, visit_id: nil, items: items, gps: nil, notes: nil, client_total: nil)
+        do {
+            preview = try await api.preview(input)
+        } catch {
+            previewError = error.localizedDescription
+        }
+    }
+
+    /// Places a dealer-direct order (saved on the phone first, sent straight away,
+    /// queued when offline). Mirrors `submit` but carries distributor_id + nil outlet.
+    func submitDealer(distributorId: String, dealerName: String?, idempotencyKey: String) async -> DistributionSync.SubmitOutcome? {
+        if submitting { return nil }
+        let items = cartQty.compactMap { (skuId, qty) -> CartLineInput? in
+            guard qty > 0 else { return nil }
+            return CartLineInput(sku_id: skuId, qty: qty, uom: nil)
+        }
+        guard !items.isEmpty else { submitError = "Cart is empty"; return nil }
+        submitting = true; submitError = nil
+        defer { submitting = false }
+        let total = preview?.totals.grand_total
+        let input = OrderInput(outlet_id: nil, distributor_id: distributorId, visit_id: nil, items: items, gps: nil, notes: nil, client_total: total)
+        let outcome = await DistributionSync.shared.recordOrder(input: input, clientTotal: total ?? 0, outletName: dealerName,
+                                                                visitId: nil, idempotencyKey: idempotencyKey)
+        switch outcome {
+        case .synced, .queued:
+            clearCart()
+        case .rejected(let message):
+            submitError = message
+        }
+        return outcome
     }
 
     func setQty(skuId: String, qty: Int) {

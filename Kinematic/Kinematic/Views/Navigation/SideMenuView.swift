@@ -19,7 +19,7 @@ struct SideMenuView: View {
     /// are fixed and not part of the list. Each entry's package / module / tenant gate and hide flag live in
     /// `ClientFeatures.menuEntryAllowed`, which the bottom bar's action tabs share.
     private static let defaultMenuOrder: [String] = [
-        "crm", "plant_visit", "planogram", "book_order", "collect_payment", "my_orders", "van_load", "distributor_stock", "log_damage",
+        "crm", "plant_visit", "planogram", "book_order", "dealer_order", "collect_payment", "my_orders", "van_load", "distributor_stock", "log_damage",
         "stock_batches", "profile", "leave", "expenses", "timeline", "broadcast", "notifications",
         "leaderboard", "activity_feed", "log_visit", "stock", "grievance", "learning_hub", "emergency_sos",
     ]

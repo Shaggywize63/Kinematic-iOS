@@ -84,6 +84,9 @@ struct SecondaryScreenHost: View {
                         case .orderCart:
                             // Book Order with no outlet preselected: the outlet picker first, then the cart.
                             OrderOutletPickView()
+                        case .dealerOrder:
+                            // Dealer-direct order entry (the dealer is the customer, no outlet).
+                            DealerOrderView()
                         case .orderReview:
                             // Reached only via NavigationLink from OrderCartView; placeholder for direct opens.
                             OrderHistoryView()
