@@ -382,6 +382,7 @@ enum ClientFeatures {
         case "crm":               gate = hasCrm
         case "planogram":         gate = isMoiSoi
         case "book_order":        gate = hasDistribution && hasModule("distribution_orders")
+        case "dealer_order":      gate = hasDistribution && hasModule("distribution_orders")
         case "collect_payment":   gate = hasDistribution && hasModule("distribution_payments")
         case "my_orders":         gate = hasDistribution
         case "van_load":          gate = hasModule("distribution_van")

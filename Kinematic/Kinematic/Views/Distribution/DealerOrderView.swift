@@ -1,0 +1,268 @@
+import SwiftUI
+
+/// Dealer-direct order entry (the dealer is the customer; no outlet).
+///
+/// Solar Seeds reps sell straight to dealers, so this flow targets a dealer
+/// (distributor) instead of a retail outlet: pick an assigned dealer, browse its
+/// priced catalogue, build the cart, preview server pricing, and place. The order
+/// carries `distributor_id` and a nil `outlet_id` (see
+/// `DistributionViewModel.submitDealer`). Companion to `OrderCartView` (the
+/// outlet/beat flow); kept self-contained so it can't destabilise it.
+struct DealerOrderView: View {
+    @StateObject private var vm = DistributionViewModel()
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var dealerId: String?
+    @State private var dealerName: String?
+    @State private var query: String = ""
+    // One Idempotency-Key per confirmation; a refused order spends it (new key below).
+    @State private var draftKey = DistributionQueuePolicy.newKey(prefix: DistributionQueuePolicy.orderKeyPrefix)
+
+    var body: some View {
+        Group {
+            if let id = dealerId {
+                orderView(dealerId: id)
+            } else {
+                dealerPicker
+            }
+        }
+        .navigationTitle("Dealer order")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await vm.loadMyDealers() }
+    }
+
+    // ── Dealer picker ──────────────────────────────────────────────────────
+    private var dealerPicker: some View {
+        List {
+            if vm.loadingDealers && vm.dealers.isEmpty {
+                Text("Loading dealers…").foregroundColor(.secondary)
+            } else if vm.dealers.isEmpty {
+                Text("No dealers assigned to you yet.").foregroundColor(.secondary)
+            } else {
+                Section(header: Text("Select a dealer")) {
+                    ForEach(vm.dealers) { d in
+                        Button {
+                            dealerId = d.id
+                            dealerName = d.name ?? d.code ?? d.id
+                            vm.clearCart()
+                            Task { await vm.loadDealerCatalogue(distributorId: d.id) }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(d.name ?? d.code ?? d.id).foregroundColor(.primary)
+                                    if let c = d.code, !c.isEmpty {
+                                        Text(c).font(.caption).foregroundColor(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Catalogue + cart + preview ─────────────────────────────────────────
+    @ViewBuilder
+    private func orderView(dealerId id: String) -> some View {
+        VStack(spacing: 0) {
+            catalogueList
+            Divider()
+            footer(dealerId: id)
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if vm.preview == nil {
+                    Button(vm.previewing ? "Pricing…" : "Preview") {
+                        Task { await vm.runPreviewDealer(distributorId: id) }
+                    }
+                    .disabled(vm.previewing || cartIsEmpty)
+                } else {
+                    Button("Change") {
+                        dealerId = nil; dealerName = nil; query = ""; vm.clearCart()
+                    }
+                }
+            }
+        }
+    }
+
+    private var cartIsEmpty: Bool { vm.cartQty.values.allSatisfy { $0 <= 0 } }
+
+    private var groupedItems: [(String, [CatalogueItem])] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let items = vm.catalogue?.items ?? []
+        let filtered = q.isEmpty ? items : items.filter {
+            ($0.sku_name ?? "").lowercased().contains(q) ||
+            ($0.sku_code ?? "").lowercased().contains(q) ||
+            ($0.category ?? "").lowercased().contains(q)
+        }
+        let groups = Dictionary(grouping: filtered) { ($0.category?.isEmpty == false ? $0.category! : "Other") }
+        return groups.sorted { $0.key < $1.key }
+    }
+
+    private var catalogueList: some View {
+        List {
+            if let cc = vm.catalogue?.customer_class, !cc.isEmpty {
+                Text("Price class: \(cc)").font(.caption).foregroundColor(.secondary)
+            }
+            if (vm.catalogue?.items ?? []).isEmpty {
+                Text("No orderable SKUs for this dealer's price list.").foregroundColor(.secondary)
+            } else {
+                ForEach(groupedItems, id: \.0) { (category, rows) in
+                    Section(header: Text(category.uppercased())) {
+                        ForEach(rows) { item in
+                            catalogueRow(item)
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .searchable(text: $query, prompt: "Search by name, code or category")
+    }
+
+    private func catalogueRow(_ item: CatalogueItem) -> some View {
+        let qty = vm.cartQty[item.sku_id] ?? 0
+        let minQ = Int(item.min_qty ?? 0)
+        let maxQ = Int(item.max_qty ?? 0)
+        return HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.sku_name ?? item.sku_code ?? item.sku_id).font(.subheadline).bold()
+                Text("\(item.uom)  ·  MRP \(inr(item.mrp))  ·  \(inr(item.base_price))")
+                    .font(.caption).foregroundColor(.secondary)
+                if minQ > 0 || maxQ > 0 {
+                    Text([(minQ > 0 ? "Min \(minQ)" : nil), (maxQ > 0 ? "Max \(maxQ)" : nil)]
+                            .compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption2).foregroundColor(.orange)
+                }
+            }
+            Spacer()
+            stepper(item: item, qty: qty, minQ: minQ, maxQ: maxQ)
+        }
+    }
+
+    @ViewBuilder
+    private func stepper(item: CatalogueItem, qty: Int, minQ: Int, maxQ: Int) -> some View {
+        HStack(spacing: 10) {
+            Button {
+                let floor = minQ > 0 ? minQ : 1
+                vm.setQty(skuId: item.sku_id, qty: qty - 1 < floor ? 0 : qty - 1)
+            } label: { Image(systemName: "minus.circle") }
+            .buttonStyle(.borderless)
+            .disabled(qty <= 0)
+
+            Text("\(qty)").frame(minWidth: 24).bold()
+
+            Button {
+                let floor = minQ > 0 ? minQ : 1
+                var next = qty < floor ? floor : qty + 1
+                if maxQ > 0 { next = min(next, maxQ) }
+                vm.setQty(skuId: item.sku_id, qty: next)
+            } label: { Image(systemName: "plus.circle.fill") }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    // ── Footer: credit + totals + Preview/Place ────────────────────────────
+    @ViewBuilder
+    private func footer(dealerId id: String) -> some View {
+        VStack(spacing: 10) {
+            if let c = vm.preview?.credit, c.statusValue != "na" {
+                HStack {
+                    Image(systemName: "creditcard")
+                    Text(creditHeadline(c)).font(.caption).bold()
+                    Spacer()
+                }
+                .foregroundColor(creditColor(c.statusValue))
+            }
+            if let err = vm.submitError ?? vm.previewError {
+                Text(err).font(.caption).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let p = vm.preview {
+                totals(p.totals)
+            }
+            HStack {
+                VStack(alignment: .leading) {
+                    Text("Total").font(.caption).foregroundColor(.secondary)
+                    Text(inr(vm.preview?.totals.grand_total ?? 0)).font(.title3).bold()
+                }
+                Spacer()
+                if vm.preview == nil {
+                    Button(vm.previewing ? "Pricing…" : "Preview") {
+                        Task { await vm.runPreviewDealer(distributorId: id) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.previewing || cartIsEmpty)
+                } else {
+                    Button(vm.submitting ? "Placing…" : "Place order") {
+                        Task {
+                            guard let outcome = await vm.submitDealer(distributorId: id, dealerName: dealerName, idempotencyKey: draftKey) else { return }
+                            switch outcome {
+                            case .synced, .queued:
+                                dismiss()
+                            case .rejected:
+                                // That key is spent; a corrected order goes out under a new one.
+                                draftKey = DistributionQueuePolicy.newKey(prefix: DistributionQueuePolicy.orderKeyPrefix)
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.submitting || (vm.preview?.totals.grand_total ?? 0) <= 0)
+                }
+            }
+        }
+        .padding()
+    }
+
+    private func totals(_ t: OrderTotals) -> some View {
+        VStack(spacing: 2) {
+            totalRow("Taxable", t.taxable_value)
+            if t.discount_total > 0 { totalRow("Discount", -t.discount_total) }
+            totalRow("CGST", t.cgst)
+            totalRow("SGST", t.sgst)
+            if t.igst > 0 { totalRow("IGST", t.igst) }
+            if t.cess > 0 { totalRow("Cess", t.cess) }
+        }
+    }
+
+    private func totalRow(_ label: String, _ value: Double) -> some View {
+        HStack {
+            Text(label).font(.caption).foregroundColor(.secondary)
+            Spacer()
+            Text(inr(value)).font(.caption)
+        }
+    }
+
+    private func creditHeadline(_ c: Credit) -> String {
+        switch c.statusValue {
+        case "exceeded":
+            let over = max(0, (c.projected_balance ?? 0) - (c.credit_limit ?? 0))
+            return "Over credit limit by \(inr(over))"
+        case "warning":
+            return "Nearing credit limit · \(inr(c.available ?? 0)) left"
+        default:
+            return "Within credit limit"
+        }
+    }
+
+    private func creditColor(_ status: String) -> Color {
+        switch status {
+        case "exceeded": return .red
+        case "warning":  return .orange
+        default:         return .green
+        }
+    }
+
+    private func inr(_ v: Double) -> String {
+        let n = NSNumber(value: v)
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 2
+        f.maximumFractionDigits = 2
+        f.groupingSeparator = ","
+        f.usesGroupingSeparator = true
+        return "₹" + (f.string(from: n) ?? String(format: "%.2f", v))
+    }
+}

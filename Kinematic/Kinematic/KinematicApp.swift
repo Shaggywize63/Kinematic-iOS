@@ -232,6 +232,9 @@ enum SecondaryRoute: String, Identifiable {
     case leave
     // Distribution module
     case orderHistory, orderCart, orderReview, orderDetail
+    // Dealer-direct ordering (the dealer is the customer; no outlet). Gated on the
+    // `distribution_orders` module, like Book Order.
+    case dealerOrder
     case paymentCollect, returns, distributorStock, secondarySales
     // Van Sales Wave A — gated on their own module ids (ship OFF by default).
     case vanLoad
@@ -266,6 +269,7 @@ enum SecondaryRoute: String, Identifiable {
         case .vanLoad:          return "distribution_van"
         case .distributorStock: return "distribution_stock"
         case .damageLog:        return "distribution_damage"
+        case .dealerOrder:      return "distribution_orders"
         default:                return nil
         }
     }
@@ -287,7 +291,7 @@ enum SecondaryRoute: String, Identifiable {
             return "distribution"
         // Module-gated distribution routes — no package fallback; the module
         // gate above (`requiredModule` / `strictModule`) is the sole check.
-        case .vanLoad, .distributorStock, .damageLog, .stockBatches:
+        case .vanLoad, .distributorStock, .damageLog, .stockBatches, .dealerOrder:
             return nil
         }
     }

@@ -164,6 +164,21 @@ struct DistributionAPI {
         return try decode(data)
     }
 
+    /// Dealer-direct ordering: the dealers (distributors) assigned to this rep.
+    /// Scoped to the rep via distributors.salesman_id (unlike `distributors()`,
+    /// the admin stock-picker list).
+    func myDealers() async throws -> [DistributorLite] {
+        let data = try await request("/salesman/distributors")
+        return try decode(data)
+    }
+
+    /// Priced catalogue for an assigned dealer — same shape as `catalogue`, but
+    /// resolved from the dealer's own customer_class/region price list, no outlet.
+    func dealerCatalogue(distributorId: String) async throws -> OrderCatalogue {
+        let data = try await request("/salesman/distributors/\(distributorId)/catalogue")
+        return try decode(data)
+    }
+
     /// GST invoice document for an order. The endpoint returns 404 until the
     /// order is invoiced, so we translate that single case into `nil` and let
     /// every other error propagate for the caller to surface.

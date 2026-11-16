@@ -25,7 +25,9 @@ struct PendingOrder: Codable, Identifiable {
     let idempotencyKey: String
     /// Who queued it: "u:<user id>" — or, on rows queued by older builds, a token suffix (see QueueOwnership).
     var userKey: String
-    let outletId: String
+    /// Nil for a dealer-direct order (no outlet). Denormalized metadata; replay
+    /// resubmits the stored `input` verbatim. Codable JSON tolerates the change.
+    let outletId: String?
     let outletName: String?
     let visitId: String?
     let input: OrderInput

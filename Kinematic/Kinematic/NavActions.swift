@@ -27,6 +27,7 @@ enum NavActions {
     static let all: [NavAction] = [
         NavAction(id: "crm",             icon: "person.2.crop.square.stack.fill", defaultTitle: "CRM",             color: Brand.red, target: .crm),
         NavAction(id: "book_order",      icon: "cart.badge.plus",                 defaultTitle: "Book Order",      color: .indigo,   target: .route(.orderCart)),
+        NavAction(id: "dealer_order",    icon: "storefront.fill",                 defaultTitle: "Dealer Order",    color: .indigo,   target: .route(.dealerOrder)),
         NavAction(id: "collect_payment", icon: "indianrupeesign.circle.fill",     defaultTitle: "Collect Payment", color: .green,    target: .route(.paymentCollect)),
         NavAction(id: "my_orders",       icon: "cart.fill",                       defaultTitle: "My Orders",       color: .indigo,   target: .route(.orderHistory)),
         NavAction(id: "leave",           icon: "calendar.badge.clock",            defaultTitle: "Leave",           color: .teal,     target: .route(.leave)),

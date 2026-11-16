@@ -17,7 +17,11 @@ struct CartLineInput: Codable, Identifiable {
 }
 
 struct OrderInput: Codable {
-    let outlet_id: String
+    // Dealer-direct orders (the distributor is the customer) carry no outlet, so
+    // outlet_id is nil and distributor_id is set. Swift's synthesized encoder omits
+    // a nil optional (encodeIfPresent), so the POST simply has no outlet_id and the
+    // backend resolves the order from distributor_id. The backend requires one of them.
+    let outlet_id: String?
     let distributor_id: String?
     let visit_id: String?
     let items: [CartLineInput]
@@ -100,7 +104,9 @@ struct OrderDistributor: Codable {
 struct DistOrder: Codable, Identifiable {
     let id: String
     let order_no: String
-    let outlet_id: String
+    // Nil for a dealer-direct order (no outlet). Must be optional or strict Codable
+    // throws when the key is null and the whole order list fails to decode.
+    let outlet_id: String?
     let outlet_name: String?
     let distributor_id: String
     let salesman_id: String?
