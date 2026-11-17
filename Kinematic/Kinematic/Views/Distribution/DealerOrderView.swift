@@ -81,27 +81,86 @@ struct DealerOrderView: View {
     @ViewBuilder
     private func orderView(dealerId id: String) -> some View {
         VStack(spacing: 0) {
-            catalogueList
+            if let p = vm.preview {
+                receiptList(p)
+            } else {
+                catalogueList
+            }
             Divider()
             footer(dealerId: id)
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 if vm.preview == nil {
-                    Button(vm.previewing ? "Pricing…" : "Preview") {
-                        Task { await vm.runPreviewDealer(distributorId: id) }
-                    }
-                    .disabled(vm.previewing || cartIsEmpty)
-                } else {
                     Button("Change") {
                         dealerId = nil; dealerName = nil; query = ""; vm.clearCart()
                     }
+                } else {
+                    // Back from the order summary to the product list, quantities kept.
+                    Button("Edit") { vm.preview = nil; vm.previewError = nil }
                 }
             }
         }
     }
 
     private var cartIsEmpty: Bool { vm.cartQty.values.allSatisfy { $0 <= 0 } }
+
+    // Live order value while the rep types: qty x dealer price from the loaded
+    // catalogue. The server Preview stays the authority (schemes, GST, round-off).
+    private var estTotal: Double {
+        let price = Dictionary((vm.catalogue?.items ?? []).map { ($0.sku_id, $0.base_price) }, uniquingKeysWith: { a, _ in a })
+        return vm.cartQty.reduce(0.0) { sum, kv in kv.value > 0 ? sum + Double(kv.value) * (price[kv.key] ?? 0) : sum }
+    }
+    private var cartLines: Int { vm.cartQty.values.filter { $0 > 0 }.count }
+    private var cartUnits: Int { vm.cartQty.values.filter { $0 > 0 }.reduce(0, +) }
+
+    // ── Order summary (receipt) after Preview ─────────────────────────────
+    private func receiptList(_ p: OrderPreview) -> some View {
+        List {
+            Section {
+                ForEach(Array(p.lines.enumerated()), id: \.offset) { _, line in
+                    receiptRow(line)
+                }
+            } header: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Order summary").font(.headline).foregroundColor(.primary)
+                    Text([dealerName, "\(p.lines.count) line\(p.lines.count == 1 ? "" : "s")"].compactMap { $0 }.joined(separator: "  ·  "))
+                        .font(.caption)
+                }
+                .textCase(nil)
+            }
+            Section {
+                totals(p.totals)
+                HStack {
+                    Text("Grand total").bold()
+                    Spacer()
+                    Text(inr(p.totals.grand_total)).bold()
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+
+    private func receiptRow(_ line: PricedLine) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(line.sku_name ?? line.sku_code ?? line.sku_id).font(.subheadline).bold()
+                    if line.is_free_good == true {
+                        Text("FREE").font(.caption2).bold()
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.green.opacity(0.2)).foregroundColor(.green)
+                            .clipShape(Capsule())
+                    }
+                }
+                Text("\(line.qty) × \(inr(line.unit_price))" + (line.gst_rate > 0 ? "  ·  GST \(Int(line.gst_rate))%" : ""))
+                    .font(.caption).foregroundColor(.secondary)
+            }
+            Spacer()
+            Text(inr(line.total)).font(.subheadline).bold()
+        }
+        .padding(.vertical, 2)
+    }
 
     private var groupedItems: [(String, [CatalogueItem])] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -187,13 +246,16 @@ struct DealerOrderView: View {
             if let err = vm.submitError ?? vm.previewError {
                 Text(err).font(.caption).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let p = vm.preview {
-                totals(p.totals)
-            }
             HStack {
                 VStack(alignment: .leading) {
-                    Text("Total").font(.caption).foregroundColor(.secondary)
-                    Text(inr(vm.preview?.totals.grand_total ?? 0)).font(.title3).bold()
+                    if let p = vm.preview {
+                        Text("Grand total").font(.caption).foregroundColor(.secondary)
+                        Text(inr(p.totals.grand_total)).font(.title3).bold()
+                    } else {
+                        Text(cartLines > 0 ? "Order value · \(cartLines) item\(cartLines == 1 ? "" : "s") · \(cartUnits) qty" : "Order value")
+                            .font(.caption).foregroundColor(.secondary)
+                        Text(inr(estTotal)).font(.title3).bold()
+                    }
                 }
                 Spacer()
                 if vm.preview == nil {
