@@ -27,7 +27,7 @@ struct DealerOrderView: View {
                 dealerPicker
             }
         }
-        .navigationTitle("Dealer order")
+        .navigationTitle(ClientFeatures.labelFor("menu", "dealer_order", default: "Book Order"))
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.loadMyDealers() }
     }
