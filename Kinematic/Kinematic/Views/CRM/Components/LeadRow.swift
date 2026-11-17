@@ -48,6 +48,14 @@ struct LeadRow: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color(uiColor: .label))
                     .lineLimit(1)
+                // Lead serial number (connected-B2B / Spark leads only ever carry one): the unique, human-readable
+                // id (SR/LD/2627-12) that maps the form back to this lead.
+                if let ref = lead.refNo, !ref.isEmpty {
+                    Text(ref)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
                 if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.system(size: 12))
