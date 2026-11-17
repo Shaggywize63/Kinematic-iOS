@@ -265,6 +265,10 @@ enum CRMMoreLayout {
     /// Switch to Field Force and Sign Out stay where they are.)
     static let defaultSections: [MoreSection] = [
         MoreSection(id: "records", rows: ["accounts", "pipeline", "products", "custom_objects"], keepsEmptyHeader: true),
+        // Maa Mansha Pharma — the daily tele-calling desk. Its own section so it
+        // reads as a distinct workspace, not a record directory. Hidden for every
+        // other tenant by the row's `isMaaMansha` gate (so the section collapses).
+        MoreSection(id: "calling", rows: ["calling_desk"]),
         MoreSection(id: "field_visits", rows: ["marketing_visit"]),
         MoreSection(id: "field", rows: ["nearest_leads"]),
         MoreSection(id: "workplace", rows: ["leave"]),

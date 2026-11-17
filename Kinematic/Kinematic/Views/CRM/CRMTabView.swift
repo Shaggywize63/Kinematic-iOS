@@ -365,6 +365,7 @@ struct CRMMoreMenu: View {
     private func moreSectionTitle(_ id: String) -> String {
         switch id {
         case "records":      return "Records"
+        case "calling":      return "Calling Desk"
         case "field_visits": return "Field Visits"
         case "field":        return "Field"
         case "workplace":    return "Workplace"
@@ -383,6 +384,10 @@ struct CRMMoreMenu: View {
         case "pipeline":          return ClientFeatures.crmMoreVisible("pipeline")
         case "products":          return ClientFeatures.crmMoreVisible("products")
         case "custom_objects":    return ClientFeatures.showsCustomObjects && ClientFeatures.crmMoreVisible("custom_objects")
+        // Calling Desk (Maa Mansha Pharma) — daily tele-calling worklist.
+        // Gated strictly on the client id so no other tenant sees it; admins
+        // can still hide/relabel it via App Customization.
+        case "calling_desk":      return ClientFeatures.isMaaMansha && ClientFeatures.crmMoreVisible("calling_desk")
         // Marketing Visit (Rajkamal) — ad-hoc GPS Start → End tied to a
         // lead. Gated strictly on the client id so no other tenant sees it;
         // admins can still hide/relabel it via App Customization.
@@ -436,6 +441,10 @@ struct CRMMoreMenu: View {
             NavigationLink {
                 CustomObjectsListView()
             } label: { MoreRow(icon: "square.grid.2x2.fill", title: ClientFeatures.labelFor("crm_more", "custom_objects", default: "Custom Objects"), tint: Brand.red) }
+        case "calling_desk":
+            NavigationLink {
+                CallingDeskView()
+            } label: { MoreRow(icon: "phone.connection.fill", title: ClientFeatures.labelFor("crm_more", "calling_desk", default: "Calling Desk"), tint: Brand.red) }
         case "marketing_visit":
             NavigationLink {
                 MarketingVisitView()
