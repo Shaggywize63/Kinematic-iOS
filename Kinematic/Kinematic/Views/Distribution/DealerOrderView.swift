@@ -14,6 +14,7 @@ struct DealerOrderView: View {
 
     @State private var dealerId: String?
     @State private var dealerName: String?
+    @State private var dealerQuery: String = ""
     @State private var query: String = ""
     // One Idempotency-Key per confirmation; a refused order spends it (new key below).
     @State private var draftKey = DistributionQueuePolicy.newKey(prefix: DistributionQueuePolicy.orderKeyPrefix)
@@ -26,21 +27,32 @@ struct DealerOrderView: View {
                 dealerPicker
             }
         }
-        .navigationTitle("Dealer order")
+        .navigationTitle(ClientFeatures.labelFor("menu", "dealer_order", default: "Book Order"))
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.loadMyDealers() }
     }
 
     // ── Dealer picker ──────────────────────────────────────────────────────
+    private var shownDealers: [DistributorLite] {
+        let q = dealerQuery.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return vm.dealers }
+        return vm.dealers.filter {
+            ($0.name ?? "").localizedCaseInsensitiveContains(q) ||
+            ($0.code ?? "").localizedCaseInsensitiveContains(q)
+        }
+    }
+
     private var dealerPicker: some View {
         List {
             if vm.loadingDealers && vm.dealers.isEmpty {
                 Text("Loading dealers…").foregroundColor(.secondary)
             } else if vm.dealers.isEmpty {
                 Text("No dealers assigned to you yet.").foregroundColor(.secondary)
+            } else if shownDealers.isEmpty {
+                Text("No dealers match “\(dealerQuery)”.").foregroundColor(.secondary)
             } else {
                 Section(header: Text("Select a dealer")) {
-                    ForEach(vm.dealers) { d in
+                    ForEach(shownDealers) { d in
                         Button {
                             dealerId = d.id
                             dealerName = d.name ?? d.code ?? d.id
@@ -62,6 +74,7 @@ struct DealerOrderView: View {
                 }
             }
         }
+        .searchable(text: $dealerQuery, prompt: "Search dealer by name or code")
     }
 
     // ── Catalogue + cart + preview ─────────────────────────────────────────
@@ -139,30 +152,24 @@ struct DealerOrderView: View {
                 }
             }
             Spacer()
-            stepper(item: item, qty: qty, minQ: minQ, maxQ: maxQ)
+            qtyField(item: item, qty: qty)
         }
     }
 
-    @ViewBuilder
-    private func stepper(item: CatalogueItem, qty: Int, minQ: Int, maxQ: Int) -> some View {
-        HStack(spacing: 10) {
-            Button {
-                let floor = minQ > 0 ? minQ : 1
-                vm.setQty(skuId: item.sku_id, qty: qty - 1 < floor ? 0 : qty - 1)
-            } label: { Image(systemName: "minus.circle") }
-            .buttonStyle(.borderless)
-            .disabled(qty <= 0)
-
-            Text("\(qty)").frame(minWidth: 24).bold()
-
-            Button {
-                let floor = minQ > 0 ? minQ : 1
-                var next = qty < floor ? floor : qty + 1
-                if maxQ > 0 { next = min(next, maxQ) }
-                vm.setQty(skuId: item.sku_id, qty: next)
-            } label: { Image(systemName: "plus.circle.fill") }
-            .buttonStyle(.borderless)
-        }
+    // Editable quantity box (replaces the +/- stepper): the rep types the quantity.
+    // Empty box == 0 (line removed from cart).
+    private func qtyField(item: CatalogueItem, qty: Int) -> some View {
+        TextField("Qty", text: Binding(
+            get: { qty > 0 ? String(qty) : "" },
+            set: { newVal in
+                let digits = String(newVal.filter { $0.isNumber }.prefix(6))
+                vm.setQty(skuId: item.sku_id, qty: Int(digits) ?? 0)
+            }
+        ))
+        .keyboardType(.numberPad)
+        .multilineTextAlignment(.center)
+        .frame(width: 72)
+        .textFieldStyle(.roundedBorder)
     }
 
     // ── Footer: credit + totals + Preview/Place ────────────────────────────
