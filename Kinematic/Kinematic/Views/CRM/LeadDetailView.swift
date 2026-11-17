@@ -411,6 +411,13 @@ struct LeadDetailView: View {
                 badge(fieldOverrides.leadForm.segmentName(isB2C: lead.isB2c == true))
                 ScoreBadge(score: lead.score ?? 0)
             }
+            // Lead serial number (connected-B2B / Spark leads only ever carry one): the unique, human-readable id
+            // (SR/LD/2627-12) that maps the form back to this lead.
+            if let ref = lead.refNo, !ref.isEmpty {
+                Text(ref)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
             // Spark & Ray: the lead type. Built-in field -> deferred until the overrides load, dropped when
             // hidden, label through the overrides. Nothing is shown for a lead without a type.
             if SparkJourney.isActive, fieldOverrides.didLoad,
