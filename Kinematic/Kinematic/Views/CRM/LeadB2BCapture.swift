@@ -13,6 +13,9 @@ enum LeadB2B {
 /// One person captured on a B2B lead, with what they asked for.
 struct LeadContactDraft: Identifiable {
     let id = UUID()
+    /// An existing CRM contact linked via the typeahead — the backend attaches that exact
+    /// record (findOrCreateContact honours `id`) instead of de-duping or duplicating.
+    var contactId: String? = nil
     var firstName = ""
     var lastName = ""
     var title = ""
@@ -21,7 +24,7 @@ struct LeadContactDraft: Identifiable {
     var requirement = ""
 
     var isBlank: Bool {
-        firstName.isEmpty && lastName.isEmpty && title.isEmpty &&
+        contactId == nil && firstName.isEmpty && lastName.isEmpty && title.isEmpty &&
         phone.isEmpty && email.isEmpty && requirement.isEmpty
     }
 
@@ -30,6 +33,7 @@ struct LeadContactDraft: Identifiable {
     var asPayload: [String: Any]? {
         if isBlank { return nil }
         var d: [String: Any] = [:]
+        if let contactId { d["id"] = contactId }
         if !firstName.isEmpty { d["first_name"] = firstName }
         if !lastName.isEmpty { d["last_name"] = lastName }
         if !email.isEmpty { d["email"] = email }
@@ -95,24 +99,15 @@ struct CompanyPickerField: View {
     }
 }
 
-/// Repeatable "Contacts & requirements" section for the B2B lead form.
+/// Repeatable "Contacts & requirements" section for the B2B lead form. Each row links an
+/// EXISTING contact via a typeahead (no duplicate person) — new people are added in Contacts.
 struct LeadContactsSection: View {
     @Binding var contacts: [LeadContactDraft]
 
     var body: some View {
         Section("Contacts & requirements") {
             ForEach($contacts) { $c in
-                VStack(spacing: 6) {
-                    TextField("First name", text: $c.firstName)
-                    TextField("Last name", text: $c.lastName)
-                    TextField("Designation", text: $c.title)
-                    TextField("Phone", text: $c.phone).keyboardType(.phonePad)
-                    TextField("Email", text: $c.email)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                    TextField("Requirement", text: $c.requirement, axis: .vertical).lineLimit(2...4)
-                }
-                .padding(.vertical, 4)
+                LeadContactRow(c: $c)
             }
             .onDelete { idx in
                 contacts.remove(atOffsets: idx)
@@ -124,5 +119,58 @@ struct LeadContactsSection: View {
                 Label("Add another person", systemImage: "plus.circle")
             }
         }
+    }
+}
+
+/// One contact row: a typeahead that links an existing CRM contact (pins its id so the
+/// backend attaches that exact record), plus the requirement for this person.
+private struct LeadContactRow: View {
+    @Binding var c: LeadContactDraft
+    @State private var query = ""
+    @State private var results: [Contact] = []
+
+    private func name(_ ct: Contact) -> String {
+        [ct.firstName, ct.lastName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let cid = c.contactId, !cid.isEmpty {
+                HStack {
+                    let shown = [c.firstName, c.lastName].filter { !$0.isEmpty }.joined(separator: " ")
+                    Label(shown.isEmpty ? "Linked contact" : shown, systemImage: "checkmark.circle.fill")
+                        .foregroundColor(.green).font(.subheadline)
+                    Spacer()
+                    Button("Change") { c.contactId = nil; query = ""; results = [] }.font(.caption)
+                }
+            } else {
+                TextField("Link an existing contact", text: $query)
+                    .onChange(of: query) { _, v in Task { await search(v) } }
+                ForEach(results) { ct in
+                    Button {
+                        c.contactId = ct.id
+                        c.firstName = ct.firstName ?? ""
+                        c.lastName = ct.lastName ?? ""
+                        c.title = ct.title ?? ""
+                        c.phone = ct.phone ?? ""
+                        c.email = ct.email ?? ""
+                        query = name(ct)
+                        results = []
+                    } label: {
+                        Label(name(ct).isEmpty ? "Unnamed contact" : name(ct), systemImage: "person.crop.circle")
+                            .font(.subheadline)
+                    }
+                }
+            }
+            TextField("Requirement", text: $c.requirement, axis: .vertical).lineLimit(2...4)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func search(_ q: String) async {
+        let term = q.trimmingCharacters(in: .whitespaces)
+        guard c.contactId == nil, term.count >= 2 else { results = []; return }
+        let hits = (try? await CRMService.shared.listContacts(search: term)) ?? []
+        results = Array(hits.prefix(6))
     }
 }
