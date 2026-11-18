@@ -250,6 +250,17 @@ struct SparkDealSectionsForm: View {
                 }
             }
         }
+        if visible("trial_awb") {
+            TextField(label("trial_awb", "Airway bill / docket no."), text: $draft.trialAwb)
+        }
+        if visible("trial_value") {
+            TextField(label("trial_value", "Sample value (₹)"), text: $draft.trialValueText)
+                .keyboardType(.decimalPad)
+        }
+        if visible("trial_shipment") {
+            TextField(label("trial_shipment", "Shipment details"), text: $draft.trialShipment, axis: .vertical)
+                .lineLimit(2...4)
+        }
         if visible("trial_notes") {
             TextField(label("trial_notes", "Trial notes"), text: $draft.trialNotes, axis: .vertical)
                 .lineLimit(2...5)
@@ -325,6 +336,9 @@ struct SparkDealSectionsDetail: View {
                     add("trial_end", "Trial end", SparkDealDate.normalized(deal.trialEnd))
                     let result = SparkTrialResult(rawValue: (deal.trialResult ?? "").lowercased())?.label
                     add("trial_result", "Result", result)
+                    add("trial_awb", "Airway bill / docket no.", deal.trialAwb)
+                    add("trial_value", "Sample value", deal.trialValue.map { CurrencyFormatter.formatINR($0) })
+                    add("trial_shipment", "Shipment details", deal.trialShipment)
                     add("trial_notes", "Trial notes", deal.trialNotes)
                 }
             }

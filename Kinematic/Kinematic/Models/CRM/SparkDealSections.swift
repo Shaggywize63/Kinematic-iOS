@@ -214,6 +214,10 @@ struct SparkDealSectionsDraft: Equatable {
     /// "", or a `SparkTrialResult` raw value.
     var trialResult = ""
     var trialNotes = ""
+    /// Sample-dispatch logistics for the trial.
+    var trialAwb = ""
+    var trialShipment = ""
+    var trialValueText = ""
     // People (user ids; "" = nobody)
     var technicalApprovalBy = ""
     var preparedBy = ""
@@ -233,6 +237,9 @@ struct SparkDealSectionsDraft: Equatable {
         trialEnd = SparkDealDate.normalized(deal.trialEnd)
         trialResult = (deal.trialResult ?? "").lowercased()
         trialNotes = deal.trialNotes ?? ""
+        trialAwb = deal.trialAwb ?? ""
+        trialShipment = deal.trialShipment ?? ""
+        trialValueText = deal.trialValue.map { SparkJourney.priceText($0) } ?? ""
         technicalApprovalBy = deal.technicalApprovalBy ?? ""
         preparedBy = deal.preparedBy ?? ""
         checkedBy = deal.checkedBy ?? ""
@@ -260,7 +267,7 @@ struct SparkDealSectionsDraft: Equatable {
 
     static let quotationKey = "quotation_no"
     static let pricingKeys = ["pricing_quoted", "pricing_discount_pct", "pricing_final", "pricing_valid_till"]
-    static let trialKeys = ["trial_required", "trial_start", "trial_end", "trial_result", "trial_notes"]
+    static let trialKeys = ["trial_required", "trial_start", "trial_end", "trial_result", "trial_notes", "trial_awb", "trial_shipment", "trial_value"]
     static let peopleKeys = ["technical_approval_by", "prepared_by", "checked_by", "supervisor_id"]
 
     /// Every built-in deal key these sections own.
@@ -371,6 +378,15 @@ struct SparkDealSectionsDraft: Equatable {
                 }
                 if visible("trial_notes") {
                     Self.put(&body, "trial_notes", new: Self.text(trialNotes), old: Self.text(old.trialNotes), create: create)
+                }
+                if visible("trial_awb") {
+                    Self.put(&body, "trial_awb", new: Self.text(trialAwb), old: Self.text(old.trialAwb), create: create)
+                }
+                if visible("trial_shipment") {
+                    Self.put(&body, "trial_shipment", new: Self.text(trialShipment), old: Self.text(old.trialShipment), create: create)
+                }
+                if visible("trial_value") {
+                    Self.put(&body, "trial_value", new: Self.number(trialValueText), old: Self.number(old.trialValueText), create: create)
                 }
             }
         }

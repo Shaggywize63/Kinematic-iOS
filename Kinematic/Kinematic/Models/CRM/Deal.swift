@@ -51,6 +51,11 @@ struct Deal: Codable, Identifiable, Hashable {
     /// "pending" | "successful" | "failed".
     let trialResult: String?
     let trialNotes: String?
+    /// Sample-dispatch logistics for the trial: airway bill / docket no., free-text shipment details and the
+    /// value of the sample shipped (INR).
+    let trialAwb: String?
+    let trialShipment: String?
+    let trialValue: Double?
     /// People: user ids, plus the names the backend stamps on reads (read-only; never sent back).
     let technicalApprovalBy: String?
     let preparedBy: String?
@@ -116,6 +121,9 @@ struct Deal: Codable, Identifiable, Hashable {
         case trialEnd = "trial_end"
         case trialResult = "trial_result"
         case trialNotes = "trial_notes"
+        case trialAwb = "trial_awb"
+        case trialShipment = "trial_shipment"
+        case trialValue = "trial_value"
         case technicalApprovalBy = "technical_approval_by"
         case preparedBy = "prepared_by"
         case checkedBy = "checked_by"

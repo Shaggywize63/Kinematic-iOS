@@ -598,6 +598,26 @@ struct ExpenseRollupClaim: Codable, Identifiable, Equatable {
     let deal_name: String?
 }
 
+/// Spend on one expense type (travel / food / lodging …) across the record's claims.
+struct ExpenseCategoryBreakdown: Codable, Identifiable, Equatable {
+    let category: String
+    let amount: Double
+    let count: Int
+
+    var id: String { category }
+
+    init(category: String, amount: Double, count: Int) {
+        self.category = category; self.amount = amount; self.count = count
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        category = (try? c.decodeIfPresent(String.self, forKey: .category)) ?? ""
+        amount = (try? c.decodeIfPresent(Double.self, forKey: .amount)) ?? 0
+        count = (try? c.decodeIfPresent(Int.self, forKey: .count)) ?? 0
+    }
+}
+
 /// `GET /crm/leads/:id/expenses` and `GET /crm/deals/:id/expenses`: what was spent on one lead or deal.
 /// `opportunity_value` and `spent_pct_of_value` are nil when the record has no value to compare against.
 struct ExpenseRollup: Codable, Equatable {
@@ -607,15 +627,19 @@ struct ExpenseRollup: Codable, Equatable {
     let opportunity_value: Double?
     let spent_pct_of_value: Double?
     let claims: [ExpenseRollupClaim]
+    /// Spend split by expense type, worst first (empty on older servers that omit `by_category`).
+    let by_category: [ExpenseCategoryBreakdown]
 
     enum CodingKeys: String, CodingKey {
-        case currency, totals, visit_count, opportunity_value, spent_pct_of_value, claims
+        case currency, totals, visit_count, opportunity_value, spent_pct_of_value, claims, by_category
     }
 
     init(currency: String? = "INR", totals: ExpenseRollupTotals = ExpenseRollupTotals(), visit_count: Int = 0,
-         opportunity_value: Double? = nil, spent_pct_of_value: Double? = nil, claims: [ExpenseRollupClaim] = []) {
+         opportunity_value: Double? = nil, spent_pct_of_value: Double? = nil, claims: [ExpenseRollupClaim] = [],
+         by_category: [ExpenseCategoryBreakdown] = []) {
         self.currency = currency; self.totals = totals; self.visit_count = visit_count
         self.opportunity_value = opportunity_value; self.spent_pct_of_value = spent_pct_of_value; self.claims = claims
+        self.by_category = by_category
     }
 
     init(from decoder: Decoder) throws {
@@ -626,5 +650,6 @@ struct ExpenseRollup: Codable, Equatable {
         opportunity_value = (try? c.decodeIfPresent(Double.self, forKey: .opportunity_value)) ?? nil
         spent_pct_of_value = (try? c.decodeIfPresent(Double.self, forKey: .spent_pct_of_value)) ?? nil
         claims = (try? c.decodeIfPresent([ExpenseRollupClaim].self, forKey: .claims)) ?? []
+        by_category = (try? c.decodeIfPresent([ExpenseCategoryBreakdown].self, forKey: .by_category)) ?? []
     }
 }

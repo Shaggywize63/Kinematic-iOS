@@ -63,7 +63,20 @@ struct RecordExpensesCard: View {
             if let split = ExpenseRollupText.breakdown(r) {
                 Text(split).font(.caption).foregroundColor(.secondary)
             }
+            // Spend split by expense type (travel / food / lodging …).
+            let byType = ExpenseRollupText.categoryLines(r)
+            if !byType.isEmpty {
+                Text("BY TYPE").font(.caption2.weight(.semibold)).foregroundColor(.secondary).padding(.top, 4)
+                ForEach(Array(byType.enumerated()), id: \.offset) { _, row in
+                    HStack {
+                        Text(row.label).font(.caption).foregroundColor(.secondary)
+                        Spacer()
+                        Text(row.amount).font(.caption.weight(.semibold))
+                    }
+                }
+            }
             if !r.claims.isEmpty {
+                Text("BY TRIP").font(.caption2.weight(.semibold)).foregroundColor(.secondary).padding(.top, 4)
                 VStack(spacing: 8) {
                     ForEach(r.claims) { c in
                         HStack(alignment: .top) {
