@@ -175,6 +175,7 @@ struct LeadDetailView: View {
                     // visible without entering edit mode.
                     LeadProductsCard(lead: lead)
                     if !vm.contacts.isEmpty { contactsCard() }
+                    if SparkJourney.isActive && !vm.people.isEmpty { peopleCard() }
                     CustomFieldsDetailCard(entity: "lead", customFields: lead.customFields)
                     nbaContainer
                     // Lead-score breakdown + Boost-score suggestions are
@@ -203,6 +204,10 @@ struct LeadDetailView: View {
                     }
                     // Connected-B2B (Spark & Ray): what was spent on this lead — expense claims linked to it.
                     if SparkJourney.isActive { RecordExpensesCard(kind: .lead, recordId: lead.id) }
+                    // Owners: the primary owner + co-owners (withheld when owner_id is hidden).
+                    CoOwnersCard(entity: "leads", overrideEntity: "lead", recordId: lead.id,
+                                 primaryOwnerId: lead.ownerId, primaryOwnerName: lead.ownerName,
+                                 fieldOverrides: fieldOverrides)
                     // Spark & Ray: the lead's sample-invoice numbers (custom_fields.sample_invoices).
                     if SparkJourney.isActive { sampleInvoicesCard }
                     recentUpdatesSection
@@ -1119,6 +1124,43 @@ struct LeadDetailView: View {
                         }
                         if let r = c.requirement, !r.isEmpty {
                             profileRow(fieldOverrides.labelFor(entity: "contact", "requirement", "Requirement"), value: r)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The customer people linked to this lead (crm_lead_contacts), primary (nodal) first. Each non-primary
+    /// person gets a "Make primary" action so the nodal point can move as the deal progresses.
+    private func peopleCard() -> some View {
+        Card(title: "PEOPLE ON THIS LEAD") {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(vm.people.enumerated()), id: \.element.id) { idx, p in
+                    if idx > 0 { Divider() }
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.name ?? "Contact").font(.system(size: 14, weight: .semibold))
+                            let sub = [p.title, p.role].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+                            if !sub.isEmpty { Text(sub).font(.caption).foregroundColor(.secondary) }
+                        }
+                        Spacer()
+                        if p.isPrimary {
+                            Text("Primary")
+                                .font(.caption2.weight(.bold))
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.red.opacity(0.15))
+                                .foregroundColor(.red)
+                                .clipShape(Capsule())
+                        } else if vm.people.count > 1 {
+                            Button {
+                                Task { await vm.makePrimary(linkId: p.id) }
+                            } label: {
+                                Text(vm.settingPrimaryLinkId == p.id ? "Setting…" : "Make primary")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(vm.settingPrimaryLinkId != nil)
                         }
                     }
                 }

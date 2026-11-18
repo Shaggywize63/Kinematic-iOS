@@ -61,6 +61,10 @@ struct AccountDetailView: View {
                 }
 
                 valueSection
+                // Owners: the primary owner + co-owners (withheld when owner_id is hidden).
+                CoOwnersCard(entity: "accounts", overrideEntity: "account", recordId: account.id,
+                             primaryOwnerId: account.ownerId, primaryOwnerName: account.ownerName,
+                             fieldOverrides: fieldOverrides)
                 contactsSection
                 leadsSection
                 if isSpark {

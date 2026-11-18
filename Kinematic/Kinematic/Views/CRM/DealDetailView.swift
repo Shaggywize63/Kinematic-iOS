@@ -125,6 +125,10 @@ struct DealDetailView: View {
                     }
                     // Connected-B2B (Spark & Ray): what was spent to win this deal — expense claims linked to it.
                     if isSpark { RecordExpensesCard(kind: .deal, recordId: dealId) }
+                    // Owners: the primary owner + co-owners (withheld when owner_id is hidden).
+                    CoOwnersCard(entity: "deals", overrideEntity: "deal", recordId: dealId,
+                                 primaryOwnerId: d.ownerId, primaryOwnerName: d.ownerName,
+                                 fieldOverrides: fieldOverrides)
                     UpsellsSectionView(dealId: dealId)
                     DealHistorySection(dealId: dealId, refreshTick: historyRefreshTick)
                 } else {

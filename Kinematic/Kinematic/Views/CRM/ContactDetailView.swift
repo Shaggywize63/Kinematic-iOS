@@ -25,6 +25,8 @@ struct ContactDetailView: View {
     @State private var confirmingDelete = false
     @State private var deleting = false
     @State private var deleteError: String?
+    /// Field overrides, used only to gate the Owners card (owner_id is a built-in field).
+    @StateObject private var fieldOverrides = LeadFieldOverridesModel()
 
     private let api = CRMService.shared
 
@@ -44,6 +46,12 @@ struct ContactDetailView: View {
                     detailRow("Department", value: dept, icon: "building.2.fill", color: Brand.red)
                 }
                 linkedAccountSection
+                // Owners: the primary owner + co-owners (withheld when owner_id is hidden). B2B only.
+                if contact.isB2c != true {
+                    CoOwnersCard(entity: "contacts", overrideEntity: "contact", recordId: contact.id,
+                                 primaryOwnerId: contact.ownerId, primaryOwnerName: nil,
+                                 fieldOverrides: fieldOverrides)
+                }
                 dealsSection
                 activitiesSection
             }
@@ -101,6 +109,7 @@ struct ContactDetailView: View {
             }
         }
         .task { await loadRelations() }
+        .task { await fieldOverrides.load() }
         .refreshable { await loadRelations() }
         .activityCompletionAlert($completionError)
         // Tell KINI which record is on screen so the chat answers in context.
