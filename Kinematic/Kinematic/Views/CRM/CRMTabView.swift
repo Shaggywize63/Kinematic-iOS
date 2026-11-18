@@ -54,46 +54,30 @@ struct CRMTabView: View {
         widgetLink.pendingRoute = nil
     }
 
+    /// The CRM bottom-bar tabs in order: Home and More are essential; Dashboard
+    /// / Leads / Deals are each module-gated. Built so AdaptiveTabView renders
+    /// them with the iOS 18 Tab API where available and the iOS 17 fallback.
+    private var crmTabSpecs: [AdaptiveTabSpec] {
+        var specs: [AdaptiveTabSpec] = [
+            AdaptiveTabSpec(title: "Home", systemImage: "house.fill", value: 0) { NavigationStack { CrmHomeMissionView() } },
+        ]
+        if ClientFeatures.showsCrmDashboardTab {
+            specs.append(AdaptiveTabSpec(title: "Dashboard", systemImage: "chart.bar.fill", value: 1) { NavigationStack { CRMDashboardView() } })
+        }
+        if ClientFeatures.showsCrmLeadsTab {
+            specs.append(AdaptiveTabSpec(title: "Leads", systemImage: "person.crop.circle.badge.plus", value: 2) { NavigationStack { LeadsListView() } })
+        }
+        if ClientFeatures.showsCrmDealsTab {
+            specs.append(AdaptiveTabSpec(title: "Deals", systemImage: "indianrupeesign.circle.fill", value: 3) { NavigationStack { DealsListView() } })
+        }
+        specs.append(AdaptiveTabSpec(title: "More", systemImage: "ellipsis.circle", value: 4) { NavigationStack { CRMMoreMenu(onExit: onExit) } })
+        return specs
+    }
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            TabView(selection: $selectedTab) {
-                // Home — the lead-management mission-control landing
-                // (target ring, next-best-actions, closest-to-closing,
-                // today's activity, playbook). Restored to the first tab
-                // at the user's request so reps land on their day, not the
-                // KPI dashboard.
-                Tab("Home", systemImage: "house.fill", value: 0) {
-                    NavigationStack { CrmHomeMissionView() }
-                }
-                // Dashboard / Leads / Deals are not in app_ui_config, so each is gated by its module here: under
-                // `entitlements_strict` an un-ticked module's tab is not shown (always shown otherwise). Home and More are essential.
-                if ClientFeatures.showsCrmDashboardTab {
-                    Tab("Dashboard", systemImage: "chart.bar.fill", value: 1) {
-                        NavigationStack { CRMDashboardView() }
-                    }
-                }
-                if ClientFeatures.showsCrmLeadsTab {
-                    Tab("Leads", systemImage: "person.crop.circle.badge.plus", value: 2) {
-                        NavigationStack { LeadsListView() }
-                    }
-                }
-                // Deals is the higher-frequency surface (list view, search,
-                // close actions) so it gets the bottom slot. Pipeline (the
-                // kanban view) moved into the More menu — same kanban,
-                // just one tap deeper.
-                if ClientFeatures.showsCrmDealsTab {
-                    Tab("Deals", systemImage: "indianrupeesign.circle.fill", value: 3) {
-                        NavigationStack { DealsListView() }
-                    }
-                }
-                // Activities moved into More at the user's request — it's a
-                // lower-frequency surface than Home/Leads/Deals for most reps.
-                Tab("More", systemImage: "ellipsis.circle", value: 4) {
-                    NavigationStack { CRMMoreMenu(onExit: onExit) }
-                }
-            }
-            .tint(Brand.red)
-            .tabBarMinimizeOnScrollIfAvailable()
+            AdaptiveTabView(selection: $selectedTab, tabs: crmTabSpecs)
+                .tint(Brand.red)
 
             if canShowKiniFab {
                 KiniFAB(usage: kiniUsage) { showKini = true }
