@@ -19,24 +19,25 @@ struct TelecallerTabView: View {
     @State private var selectedTab: Int = 0
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            Tab("My Calls", systemImage: "phone.arrow.up.right.fill", value: 0) {
+        // AdaptiveTabView mirrors CRMTabView's tab bar and renders the native
+        // iOS 18 Tab API where available, classic tabs on iOS 17.
+        AdaptiveTabView(selection: $selectedTab, tabs: [
+            AdaptiveTabSpec(title: "My Calls", systemImage: "phone.arrow.up.right.fill", value: 0) {
                 NavigationStack { TelecallerCallsView() }
-            }
+            },
             // Follow-ups reuses the scheduled-activities surface, focused on
             // calls — the follow-ups a Log Call saves are open "call" activities.
-            Tab("Follow-ups", systemImage: "bell.badge.fill", value: 1) {
+            AdaptiveTabSpec(title: "Follow-ups", systemImage: "bell.badge.fill", value: 1) {
                 NavigationStack { ActivitiesView(initialFilter: "call") }
-            }
-            Tab("Targets", systemImage: "indianrupeesign.circle.fill", value: 2) {
+            },
+            AdaptiveTabSpec(title: "Targets", systemImage: "indianrupeesign.circle.fill", value: 2) {
                 NavigationStack { TelecallerTargetsView() }
-            }
-            Tab("More", systemImage: "ellipsis.circle", value: 3) {
+            },
+            AdaptiveTabSpec(title: "More", systemImage: "ellipsis.circle", value: 3) {
                 NavigationStack { TelecallerMoreView() }
-            }
-        }
+            },
+        ])
         .tint(Brand.red)
-        .tabBarMinimizeOnScrollIfAvailable()
         // Re-assert the chosen theme at the shell root (as CRMTabView does), in
         // case this shell is presented where it doesn't inherit the root scheme.
         .preferredColorScheme(appState.theme == .system ? nil : (appState.theme == .dark ? .dark : .light))

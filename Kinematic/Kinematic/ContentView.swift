@@ -237,99 +237,67 @@ struct MainTabView: View {
         }
     }
 
-    private var mainTabBody: some View {
-        // iOS 26 native TabView. The system gives us:
-        //   - Liquid Glass tab bar background for free
-        //   - Lazy tab loading (only the active tab renders, the previous
-        //     LazyHStack pagination eagerly built all three screens at once,
-        //     which was the main reason Home felt like it was hanging)
-        //   - .tabBarMinimizeBehavior(.onScrollDown) auto-hides the bar
-        //     when the user scrolls down, the native iOS 26 gesture
-        //
-        // Attendance + Route are Field Force features; clients without that
-        // SKU only see the Home tab.
-        TabView(selection: $appState.selectedTab) {
-            Tab("Home", systemImage: "house", value: 0) {
-                HomeView()
+    /// The bottom-bar tabs in order: Home first, then the admin's App-layout
+    /// bar, or the ByteBack / field-force shells, each slot gated exactly as
+    /// before. Built independently of how the tab bar renders them, so the same
+    /// set works on the iOS 18 `Tab { }` API and the iOS 17 fallback.
+    private var mainTabSpecs: [AdaptiveTabSpec] {
+        var specs: [AdaptiveTabSpec] = [
+            AdaptiveTabSpec(title: "Home", systemImage: "house", value: 0) { HomeView() },
+        ]
+        if let bar = layoutBar {
+            // The admin's bar (Client Management → App layout): Home + up to four more, in their order.
+            // `bar` is already filtered by each screen's gate and hide flag.
+            for item in bar.prefix(4) {
+                specs.append(AdaptiveTabSpec(title: barTitle(item), systemImage: barIcon(item),
+                                             value: BottomBarPlan.tabValue(for: item)) { layoutTabContent(item) })
             }
-            if let bar = layoutBar {
-                // The admin's bar (Client Management → App layout): Home + up to four more, in their order. Written out per
-                // slot because the order is theirs; `bar` is already filtered by each screen's gate and hide flag.
-                if bar.indices.contains(0) {
-                    Tab(barTitle(bar[0]), systemImage: barIcon(bar[0]), value: BottomBarPlan.tabValue(for: bar[0])) {
-                        layoutTabContent(bar[0])
-                    }
-                }
-                if bar.indices.contains(1) {
-                    Tab(barTitle(bar[1]), systemImage: barIcon(bar[1]), value: BottomBarPlan.tabValue(for: bar[1])) {
-                        layoutTabContent(bar[1])
-                    }
-                }
-                if bar.indices.contains(2) {
-                    Tab(barTitle(bar[2]), systemImage: barIcon(bar[2]), value: BottomBarPlan.tabValue(for: bar[2])) {
-                        layoutTabContent(bar[2])
-                    }
-                }
-                if bar.indices.contains(3) {
-                    Tab(barTitle(bar[3]), systemImage: barIcon(bar[3]), value: BottomBarPlan.tabValue(for: bar[3])) {
-                        layoutTabContent(bar[3])
-                    }
-                }
-            } else if ClientFeatures.isByteBack {
-                // Route-less field-force shell: Home · Attendance · Activity · ➕.
-                // No Route tab; the ➕ tab opens the ad-hoc form picker so reps can
-                // fill a form anywhere without an assigned outlet.
-                // Each tab is additionally gated by the per-client App
-                // Customization config (tabVisible) so admins can hide a tab
-                // from Client Management without a code change.
-                if ClientFeatures.tabVisible("attendance") {
-                    Tab(ClientFeatures.labelFor("tabs", "attendance", default: "Attendance"), systemImage: "person.text.rectangle", value: 1) {
-                        AttendanceView()
-                    }
-                }
-                if ClientFeatures.tabVisible("activity") {
-                    Tab(ClientFeatures.labelFor("tabs", "activity", default: "Activity"), systemImage: "square.grid.2x2", value: 2) {
-                        NavigationStack { ActivityFeedView() }
-                    }
-                }
-                if ClientFeatures.tabVisible("new_form") {
-                    Tab(ClientFeatures.labelFor("tabs", "new_form", default: "New"), systemImage: "plus.circle.fill", value: 3) {
-                        AdHocFormsView()
-                    }
-                }
-            } else if hasFieldForce {
-                if ClientFeatures.tabVisible("attendance") {
-                    Tab(ClientFeatures.labelFor("tabs", "attendance", default: "Attendance"), systemImage: "person.text.rectangle", value: 1) {
-                        AttendanceView()
-                    }
-                }
-                if ClientFeatures.tabVisible("route_plan") {
-                    Tab(ClientFeatures.labelFor("tabs", "route_plan", default: "Route"), systemImage: "map", value: 2) {
-                        RoutePlansView()
-                    }
-                }
-                // Ad-hoc forms: any field-force client with the Form Builder
-                // module gets a "New" tab that opens the ad-hoc form picker (fill
-                // a published form with no assigned outlet) — the same entry point
-                // ByteBack uses, now generalised beyond that one tenant. Gated by
-                // tabVisible so an admin can still hide it per client.
-                if ClientFeatures.hasFormBuilder && ClientFeatures.tabVisible("new_form") {
-                    Tab(ClientFeatures.labelFor("tabs", "new_form", default: "New"), systemImage: "plus.circle.fill", value: 3) {
-                        AdHocFormsView()
-                    }
-                }
-                // Expenses: opt-in per client (Expenses module AND app_ui_config tabs.expenses == true). It sits in
-                // the last slot — where "New" is, and takes its place when the client hides "New"
-                // (tabs.new_form == false) — so the bar keeps its tab count. Value 4 never collides with the
-                // fixed values above (nothing selects a tab by number beyond 0...2).
-                if ClientFeatures.showsExpensesTab {
-                    Tab(ClientFeatures.labelFor("tabs", "expenses", default: "Expenses"), systemImage: "receipt", value: 4) {
-                        NavigationStack { ExpenseClaimsView() }
-                    }
-                }
+        } else if ClientFeatures.isByteBack {
+            // Route-less field-force shell: Home · Attendance · Activity · ➕ (the ➕ tab opens the
+            // ad-hoc form picker). Each tab is gated by the per-client App Customization config (tabVisible).
+            if ClientFeatures.tabVisible("attendance") {
+                specs.append(AdaptiveTabSpec(title: ClientFeatures.labelFor("tabs", "attendance", default: "Attendance"),
+                                             systemImage: "person.text.rectangle", value: 1) { AttendanceView() })
+            }
+            if ClientFeatures.tabVisible("activity") {
+                specs.append(AdaptiveTabSpec(title: ClientFeatures.labelFor("tabs", "activity", default: "Activity"),
+                                             systemImage: "square.grid.2x2", value: 2) { NavigationStack { ActivityFeedView() } })
+            }
+            if ClientFeatures.tabVisible("new_form") {
+                specs.append(AdaptiveTabSpec(title: ClientFeatures.labelFor("tabs", "new_form", default: "New"),
+                                             systemImage: "plus.circle.fill", value: 3) { AdHocFormsView() })
+            }
+        } else if hasFieldForce {
+            if ClientFeatures.tabVisible("attendance") {
+                specs.append(AdaptiveTabSpec(title: ClientFeatures.labelFor("tabs", "attendance", default: "Attendance"),
+                                             systemImage: "person.text.rectangle", value: 1) { AttendanceView() })
+            }
+            if ClientFeatures.tabVisible("route_plan") {
+                specs.append(AdaptiveTabSpec(title: ClientFeatures.labelFor("tabs", "route_plan", default: "Route"),
+                                             systemImage: "map", value: 2) { RoutePlansView() })
+            }
+            // Ad-hoc forms: any field-force client with the Form Builder module gets a "New" tab (the same
+            // entry point ByteBack uses, generalised). Gated by tabVisible so an admin can hide it per client.
+            if ClientFeatures.hasFormBuilder && ClientFeatures.tabVisible("new_form") {
+                specs.append(AdaptiveTabSpec(title: ClientFeatures.labelFor("tabs", "new_form", default: "New"),
+                                             systemImage: "plus.circle.fill", value: 3) { AdHocFormsView() })
+            }
+            // Expenses: opt-in per client; sits in the last slot (value 4 never collides with the fixed values above).
+            if ClientFeatures.showsExpensesTab {
+                specs.append(AdaptiveTabSpec(title: ClientFeatures.labelFor("tabs", "expenses", default: "Expenses"),
+                                             systemImage: "receipt", value: 4) { NavigationStack { ExpenseClaimsView() } })
             }
         }
-        .tabBarMinimizeOnScrollIfAvailable()
+        return specs
+    }
+
+    private var mainTabBody: some View {
+        // The bottom tab bar. AdaptiveTabView uses the native iOS 18 `Tab { }`
+        // API where available (iOS 26 keeps Liquid Glass + minimize-on-scroll)
+        // and the classic tab API on iOS 17, so the app can run on iOS 17.
+        // Attendance + Route are Field Force features; clients without that
+        // SKU only see the Home tab.
+        AdaptiveTabView(selection: $appState.selectedTab, tabs: mainTabSpecs)
         .tint(Brand.red)
         .onChange(of: appState.selectedTab) { old, new in
             handleBarSelection(from: old, to: new)
@@ -1887,6 +1855,54 @@ extension View {
             self.tabBarMinimizeBehavior(.onScrollDown)
         } else {
             self
+        }
+    }
+}
+
+/// One tab for `AdaptiveTabView`. The content is captured once so both the
+/// iOS 18 `Tab { }` API and the iOS 17 `.tabItem`/`.tag` fallback render the
+/// same screen. `value` is the Int selection tag.
+struct AdaptiveTabSpec: Identifiable {
+    let title: String
+    let systemImage: String
+    let value: Int
+    let content: AnyView
+    var id: Int { value }
+
+    init<Content: View>(title: String, systemImage: String, value: Int, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.systemImage = systemImage
+        self.value = value
+        self.content = AnyView(content())
+    }
+}
+
+/// A `TabView` that uses the native iOS 18 `Tab { }` API where available — so
+/// iOS 26 still gets the Liquid Glass tab bar and minimize-on-scroll — and the
+/// classic `.tabItem`/`.tag` API on iOS 17. This lets the app's deployment
+/// target be iOS 17 while newer devices keep the newer tab bar. Int selection.
+struct AdaptiveTabView: View {
+    @Binding var selection: Int
+    let tabs: [AdaptiveTabSpec]
+
+    var body: some View {
+        if #available(iOS 18.0, *) {
+            TabView(selection: $selection) {
+                ForEach(tabs) { tab in
+                    Tab(tab.title, systemImage: tab.systemImage, value: tab.value) {
+                        tab.content
+                    }
+                }
+            }
+            .tabBarMinimizeOnScrollIfAvailable()
+        } else {
+            TabView(selection: $selection) {
+                ForEach(tabs) { tab in
+                    tab.content
+                        .tabItem { Label(tab.title, systemImage: tab.systemImage) }
+                        .tag(tab.value)
+                }
+            }
         }
     }
 }
