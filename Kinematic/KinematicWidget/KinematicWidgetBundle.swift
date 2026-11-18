@@ -22,5 +22,6 @@ struct KinematicWidgetBundle: WidgetBundle {
         KinematicWidget()          // CRM summary (leads/deals/pipeline)
         KinematicLeadWidget()      // Lead management
         KinematicFieldForceWidget() // Field-force / my day / team
+        KinematicWidgetControl()   // Control Center: check-in status
     }
 }
