@@ -203,6 +203,9 @@ final class SparkDealSectionsTests: XCTestCase {
         d.trialEnd = "2026-11-15"
         d.trialResult = "successful"
         d.trialNotes = " ran fine "
+        d.trialAwb = " AWB-998877 "
+        d.trialShipment = " Blue Dart, 2 samples "
+        d.trialValueText = "4500"
         d.technicalApprovalBy = "u1"
         d.preparedBy = "u2"
         d.checkedBy = "u3"
@@ -222,6 +225,9 @@ final class SparkDealSectionsTests: XCTestCase {
         XCTAssertEqual(b["trial_end"] as? String, "2026-11-15")
         XCTAssertEqual(b["trial_result"] as? String, "successful")
         XCTAssertEqual(b["trial_notes"] as? String, "ran fine")
+        XCTAssertEqual(b["trial_awb"] as? String, "AWB-998877")
+        XCTAssertEqual(b["trial_shipment"] as? String, "Blue Dart, 2 samples")
+        XCTAssertEqual(b["trial_value"] as? Double, 4500)
         XCTAssertEqual(b["technical_approval_by"] as? String, "u1")
         XCTAssertEqual(b["prepared_by"] as? String, "u2")
         XCTAssertEqual(b["checked_by"] as? String, "u3")
@@ -250,7 +256,7 @@ final class SparkDealSectionsTests: XCTestCase {
         d.trialRequired = false
         let b = body(d)
         XCTAssertEqual(b["trial_required"] as? Bool, false)
-        for k in ["trial_start", "trial_end", "trial_result", "trial_notes"] { XCTAssertNil(b[k], k) }
+        for k in ["trial_start", "trial_end", "trial_result", "trial_notes", "trial_awb", "trial_shipment", "trial_value"] { XCTAssertNil(b[k], k) }
     }
 
     func testTrialNeededWithoutAResultSendsPending() {

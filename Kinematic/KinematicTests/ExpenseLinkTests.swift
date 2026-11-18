@@ -302,6 +302,15 @@ final class ExpenseLinkTests: XCTestCase {
         XCTAssertEqual(ExpenseRollupText.breakdown(all), "Pending \(rupee)1 · Draft \(rupee)2 · Rejected \(rupee)3")
     }
 
+    func testByTypeSplitLabelsFormatsAndDropsZeros() throws {
+        let r = try rollup(#"{"currency":"INR","by_category":[{"category":"travel","amount":2000,"count":3},{"category":"food","amount":1000,"count":2},{"category":"fuel","amount":0,"count":0},{"category":"widgets","amount":500,"count":1}]}"#)
+        let lines = ExpenseRollupText.categoryLines(r)
+        XCTAssertEqual(lines.map { $0.label }, ["Travel", "Food", "Widgets"])
+        XCTAssertEqual(lines.first?.amount, "\(rupee)2,000")
+        // Older server with no split.
+        XCTAssertTrue(ExpenseRollupText.categoryLines(try rollup("{}")).isEmpty)
+    }
+
     func testEmptyMeansNoClaimsAndNoVisits() throws {
         XCTAssertTrue(ExpenseRollupText.isEmpty(try rollup(#"{"totals":{"claim_count":0},"visit_count":0,"claims":[]}"#)))
         XCTAssertTrue(ExpenseRollupText.isEmpty(try rollup("{}")))

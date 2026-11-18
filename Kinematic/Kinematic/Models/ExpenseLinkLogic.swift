@@ -206,6 +206,23 @@ enum ExpenseRollupText {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// Friendly labels for the expense types; an unknown key is title-cased.
+    private static let categoryLabels: [String: String] = [
+        "mileage": "Mileage", "travel": "Travel", "food": "Food",
+        "lodging": "Lodging", "fuel": "Fuel", "toll": "Toll", "misc": "Other",
+    ]
+
+    static func categoryLabel(_ key: String) -> String {
+        categoryLabels[key] ?? (key.isEmpty ? "Other" : key.prefix(1).uppercased() + key.dropFirst())
+    }
+
+    /// Spend split by type, worst first (amounts above zero), as (label, amount) pairs.
+    static func categoryLines(_ r: ExpenseRollup) -> [(label: String, amount: String)] {
+        r.by_category
+            .filter { $0.amount > 0 }
+            .map { (categoryLabel($0.category), money($0.amount, r)) }
+    }
+
     /// A claim row's title: its title, else its number, else "Expense claim".
     static func claimTitle(_ c: ExpenseRollupClaim) -> String {
         clean(c.title) ?? clean(c.claim_no) ?? "Expense claim"

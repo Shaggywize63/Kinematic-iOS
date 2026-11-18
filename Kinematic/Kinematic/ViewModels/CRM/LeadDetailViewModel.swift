@@ -17,6 +17,11 @@ final class LeadDetailViewModel: ObservableObject {
     /// one's `requirement`). The revisit surface — opening an already-visited
     /// lead shows everyone logged on it, by any rep. Empty for non-B2B leads.
     @Published var contacts: [Contact] = []
+    /// The customer people linked to this lead (crm_lead_contacts), primary (nodal) first — Spark & Ray.
+    /// A rep can re-point the primary flag as the deal's point person changes. `settingPrimaryLinkId`
+    /// marks the row whose "Make primary" tap is in flight.
+    @Published var people: [LeadContactLink] = []
+    @Published var settingPrimaryLinkId: String?
     /// Next Best Action for the lead's converted deal. Lead-scoped NBA
     /// doesn't exist server-side (the backend endpoint is per-deal), so
     /// we surface the converted deal's NBA on the lead detail when one
@@ -83,6 +88,8 @@ final class LeadDetailViewModel: ObservableObject {
             // Lead-scoped contacts-with-requirements. Non-blocking — a lead with
             // no captured contacts (or a backend without the route yet) yields [].
             async let contactsTask: [Contact] = (try? await api.leadContacts(id: leadId)) ?? []
+            // Linked customer people (primary first). Non-blocking — empty for non-B2B leads.
+            async let peopleTask: [LeadContactLink] = (try? await api.leadPeople(id: leadId)) ?? []
             let lead = try await leadTask
             self.lead = lead
             self.sampleInvoices = SampleInvoices.read(from: lead)
@@ -91,6 +98,7 @@ final class LeadDetailViewModel: ObservableObject {
             self.relatedDeals = (try? await dealsTask) ?? []
             self.assignableUsers = await assignableTask
             self.contacts = await contactsTask
+            self.people = await peopleTask
             // Auxiliary fetches that depend on lead fields (converted IDs)
             // fan out in parallel too.
             await loadAuxiliary(lead: lead)
@@ -212,6 +220,21 @@ final class LeadDetailViewModel: ObservableObject {
             let updated = try await api.updateLead(id: leadId, body: ["owner_id": user.id])
             self.lead = updated
             successMessage = "Assigned to \(user.displayName)"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Re-point the lead's primary (nodal) contact to a different linked person, then re-render from the
+    /// server's refreshed list (primary first).
+    func makePrimary(linkId: String) async {
+        guard settingPrimaryLinkId == nil else { return }
+        settingPrimaryLinkId = linkId
+        defer { settingPrimaryLinkId = nil }
+        do {
+            let refreshed = try await api.setLeadPrimaryContact(leadId: leadId, linkId: linkId)
+            if !refreshed.isEmpty { self.people = refreshed }
+            successMessage = "Primary contact updated"
         } catch {
             errorMessage = error.localizedDescription
         }

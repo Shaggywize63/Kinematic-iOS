@@ -80,6 +80,26 @@ final class CRMService {
         try await get("/api/v1/crm/leads/\(id)/contacts")
     }
 
+    /// The customer people linked to a lead (crm_lead_contacts), primary (nodal) first — connected-B2B.
+    func leadPeople(id: String) async throws -> [LeadContactLink] {
+        try await get("/api/v1/crm/leads/\(id)/people")
+    }
+
+    /// Re-point the primary (nodal) flag to a different linked person; returns the refreshed list.
+    func setLeadPrimaryContact(leadId: String, linkId: String) async throws -> [LeadContactLink] {
+        try await postJSON("/api/v1/crm/leads/\(leadId)/people/\(linkId)/primary", body: [:])
+    }
+
+    /// Co-owners (additional owners) of a record. `entity` ∈ leads|accounts|contacts|deals.
+    func coOwners(entity: String, id: String) async throws -> [CoOwner] {
+        try await get("/api/v1/crm/\(entity)/\(id)/co-owners")
+    }
+
+    /// Replace a record's co-owner set (the server drops the primary owner and validates org membership).
+    func setCoOwners(entity: String, id: String, userIds: [String]) async throws -> [CoOwner] {
+        try await sendJSON("/api/v1/crm/\(entity)/\(id)/co-owners", method: "PUT", body: ["user_ids": userIds])
+    }
+
     // MARK: Proposals
     /// Generate an AI-tailored, branded proposal PDF from the products a lead is
     /// interested in. `items` are [{ product_id, name, sku, unit, unit_price,
