@@ -57,7 +57,10 @@ struct TargetsLeaderboardView: View {
                     } else {
                         VStack(spacing: 0) {
                             ForEach(Array(b.entries.enumerated()), id: \.element.id) { idx, e in
-                                rankRow(rank: idx + 1, entry: e)
+                                NavigationLink(destination: SalespersonDetailView(userId: e.userId)) {
+                                    rankRow(rank: idx + 1, entry: e)
+                                }
+                                .buttonStyle(.plain)
                                 if idx < b.entries.count - 1 { Divider() }
                             }
                         }

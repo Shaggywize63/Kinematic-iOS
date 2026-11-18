@@ -284,6 +284,19 @@ struct CRMMoreMenu: View {
                     }
                 }
             }
+            // Managers get the per-salesperson sales & target drill-down: pick a
+            // rep, then see their target vs achieved, contributing customers,
+            // daily/weekly progress, 6-month history and assigned leads (mirrors
+            // the web dashboard). Backend is manager-gated; frontline reps don't
+            // see this row. Hard-coded (not an app_ui_config row) so it's always
+            // reachable on every CRM-only tenant.
+            if isManager {
+                Section("Management") {
+                    NavigationLink {
+                        SalespersonListView()
+                    } label: { MoreRow(icon: "chart.bar.xaxis", title: "Salesperson Sales", tint: Brand.red) }
+                }
+            }
             // Targets removed from mobile entirely — the manager-tier
             // hierarchy admin lives on the web console; reps see their
             // own target as a dashboard ticker without needing the
