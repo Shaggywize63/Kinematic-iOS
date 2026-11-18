@@ -731,6 +731,15 @@ final class CRMService {
     func leaderboard(period: String) async -> CRMLeaderboard? {
         try? await get("/api/v1/crm/targets/leaderboard", query: ["period": period])
     }
+    /// Manager: one salesperson's SALES-target drill-down for an IST month
+    /// (default: current). Target / achieved / pending, contributing customers,
+    /// daily & weekly progress, and 6-month target-vs-achieved history.
+    /// Manager-gated server-side — a non-manager gets 403 (thrown).
+    func salespersonTarget(userId: String, month: String? = nil) async throws -> SalespersonTargetDetail {
+        var q: [String: String] = [:]
+        if let month, !month.isEmpty { q["month"] = month }
+        return try await get("/api/v1/crm/targets/salesperson/\(userId)", query: q)
+    }
     /// Manager: the hierarchy role the leaderboard is scoped to (nil = all).
     func getLeaderboardRole() async -> String? {
         struct R: Codable { let roleId: String?; enum CodingKeys: String, CodingKey { case roleId = "role_id" } }
@@ -1035,8 +1044,11 @@ final class CRMService {
             || path.hasPrefix("/api/v1/crm/lead-analytics")
             || path.hasPrefix("/api/v1/crm/reports")
             || path == "/api/v1/crm/leaderboard"
-            // The lead-count targets narrow by city; the rupee targets are the caller's own figures and do not.
-            || (path.hasPrefix("/api/v1/crm/targets") && !RupeeTargets.isRupeeTargetsPath(path))
+            // The lead-count targets narrow by city; the rupee targets and one
+            // salesperson's month-scoped drill-down are per-person figures and do not.
+            || (path.hasPrefix("/api/v1/crm/targets")
+                && !RupeeTargets.isRupeeTargetsPath(path)
+                && !path.hasPrefix("/api/v1/crm/targets/salesperson"))
     }
 
     // MARK: - Lead Updates (Recent Updates timeline)
