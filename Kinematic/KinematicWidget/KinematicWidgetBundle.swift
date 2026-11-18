@@ -22,6 +22,11 @@ struct KinematicWidgetBundle: WidgetBundle {
         KinematicWidget()          // CRM summary (leads/deals/pipeline)
         KinematicLeadWidget()      // Lead management
         KinematicFieldForceWidget() // Field-force / my day / team
-        KinematicWidgetControl()   // Control Center: check-in status
+        // KinematicWidgetControl itself is @available(iOS 18.0, *) (Control widgets are an
+        // iOS-18-only API) — gate its inclusion here too, so a build whose effective target
+        // for this file resolves below 18 (see that file's header) simply omits it.
+        if #available(iOS 18.0, *) {
+            KinematicWidgetControl() // Control Center: check-in status
+        }
     }
 }

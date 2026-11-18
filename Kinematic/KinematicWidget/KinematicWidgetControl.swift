@@ -3,8 +3,12 @@
 //  KinematicWidget
 //
 //  Control Center toggle: "Check In". Lives in the KinematicWidgetExtension
-//  target (already iOS 18.0 — see KinematicWidgetBundle.swift) alongside the
-//  home-screen widgets.
+//  target alongside the home-screen widgets (already iOS 18.0 in every one
+//  of its own build configs — see KinematicWidgetBundle.swift — but CI's
+//  `xcodebuild -target Kinematic` smoke build still resolves the Swift
+//  frontend for this file to -target ...-ios17.0-simulator, so every
+//  Control-only symbol below is explicitly @available-gated rather than
+//  relying on the target's own deployment target).
 //
 //  A real check-in needs a fresh GPS fix and, for most roles, a selfie
 //  (AttendancePunch.selfieDemanded) — neither of which a Control can gather
@@ -24,6 +28,7 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
+@available(iOS 18.0, *)
 struct KinematicWidgetControl: ControlWidget {
     static let kind: String = "com.shaggywize63.kinematic.checkin"
 
@@ -57,6 +62,7 @@ struct KinematicWidgetControl: ControlWidget {
 
 /// Opens the app so the rep can complete a real check-in / check-out (GPS + selfie, where required).
 /// Never performs the punch itself — see the file header.
+@available(iOS 18.0, *)
 struct ToggleCheckInControlIntent: SetValueIntent {
     static var title: LocalizedStringResource = "Toggle Check-In"
     static var openAppWhenRun: Bool = true
