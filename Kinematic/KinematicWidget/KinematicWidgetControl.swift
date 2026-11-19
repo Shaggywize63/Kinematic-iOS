@@ -33,7 +33,7 @@ struct KinematicWidgetControl: ControlWidget {
     static let kind: String = "com.shaggywize63.kinematic.checkin"
 
     var body: some ControlWidgetConfiguration {
-        AppIntentControlConfiguration(
+        StaticControlConfiguration(
             kind: Self.kind,
             provider: Provider()
         ) { isCheckedIn in
