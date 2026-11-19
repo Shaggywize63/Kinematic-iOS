@@ -107,6 +107,13 @@ struct ExpensesAPI {
     func cancel(id: String) async throws {
         _ = try await request("/expenses/claims/\(id)/cancel", method: "PATCH", body: EmptyBody())
     }
+    /// Attach an EXISTING claim to a CRM lead / deal (connected-B2B). Allowed even after the claim is
+    /// approved / reimbursed — it writes only the CRM link columns, never the money, lines or status — so an
+    /// "old" expense can be filed against a lead after the fact. A nil id is omitted; the server derives the
+    /// lead from a deal and the account from a lead. A no-op for non-B2B tenants.
+    func linkClaim(id: String, leadId: String? = nil, dealId: String? = nil) async throws -> ExpenseClaim {
+        try decode(try await request("/expenses/claims/\(id)/link", method: "PATCH", body: ExpenseLinkInput(lead_id: leadId, deal_id: dealId)))
+    }
     /// Filled form entries (each with a unique reference) an expense can be linked to — the options for the
     /// expense form-entry picker (connected-B2B), newest first, at most 50. `accountId` narrows them to one
     /// company; nil lists every entry. Empty for non-B2B clients.
@@ -204,6 +211,10 @@ struct ExpensesAPI {
 }
 
 private struct EmptyBody: Encodable {}
+
+/// Body for `PATCH /expenses/claims/:id/link`. Optionals encode with `encodeIfPresent`, so a nil id is
+/// omitted (the card only ever sets one of the two).
+private struct ExpenseLinkInput: Encodable { let lead_id: String?; let deal_id: String? }
 
 /// Erases the static type so request() can encode any Encodable.
 private struct ExpenseAnyEncodable: Encodable {
