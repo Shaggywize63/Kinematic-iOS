@@ -74,6 +74,11 @@ struct Lead: Codable, Identifiable, Hashable {
     let leadType: String?
     /// The lead's own free-text requirement (Spark & Ray). Shown on the detail screen.
     let requirement: String?
+    /// Server-computed display name (B2B: "Account · Plant · Department — Requirement").
+    /// Preferred for the title so the lead name matches the web exactly.
+    let serverDisplayName: String?
+    /// Server `full_name` — used as a fallback before first/last, mirroring the web.
+    let fullName: String?
 
     // B2C / consumer fields
     let isB2c: Bool?
@@ -103,6 +108,10 @@ struct Lead: Codable, Identifiable, Hashable {
     let disqualifiedAt: String?
 
     var displayName: String {
+        // Match the web precedence exactly: the server display_name (B2B only),
+        // then full_name, then first + last, then email, then a placeholder.
+        if isB2c != true, let n = serverDisplayName?.trimmingCharacters(in: .whitespaces), !n.isEmpty { return n }
+        if let fn = fullName?.trimmingCharacters(in: .whitespaces), !fn.isEmpty { return fn }
         let f = firstName ?? ""
         let l = lastName ?? ""
         let combined = "\(f) \(l)".trimmingCharacters(in: .whitespaces)
@@ -147,6 +156,8 @@ struct Lead: Codable, Identifiable, Hashable {
         case refNo = "ref_no"
         case leadType = "lead_type"
         case requirement
+        case serverDisplayName = "display_name"
+        case fullName = "full_name"
         case isB2c = "is_b2c"
         case dateOfBirth = "date_of_birth"
         case gender

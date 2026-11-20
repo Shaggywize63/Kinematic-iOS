@@ -49,6 +49,23 @@ final class LeadNumberAndTypeTests: XCTestCase {
         XCTAssertNil(l.requirement)
     }
 
+    // MARK: Display name — must match the web precedence exactly
+
+    func testDisplayNamePrefersServerDisplayNameForB2B() throws {
+        let l = try lead(#","is_b2c":false,"display_name":"Tata Steel · Meramandali · Procurement — Pulse valves","first_name":"Ignored""#)
+        XCTAssertEqual(l.displayName, "Tata Steel · Meramandali · Procurement — Pulse valves")
+    }
+
+    func testDisplayNameFallsBackToFullName() throws {
+        let l = try lead(#","full_name":"Priya Nair""#)
+        XCTAssertEqual(l.displayName, "Priya Nair")
+    }
+
+    func testDisplayNameIgnoresServerDisplayNameForB2C() throws {
+        let l = try lead(#","is_b2c":true,"display_name":"Should Not Show","first_name":"Asha","last_name":"Rao""#)
+        XCTAssertEqual(l.displayName, "Asha Rao")
+    }
+
     func testLeadTypeNullDecodesToNil() throws {
         let l = try lead(#","ref_no":null,"lead_type":null"#)
         XCTAssertNil(l.refNo)
