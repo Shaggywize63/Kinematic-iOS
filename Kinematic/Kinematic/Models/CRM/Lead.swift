@@ -72,6 +72,8 @@ struct Lead: Codable, Identifiable, Hashable {
     let refNo: String?
     /// "requirement" | "discussion" | nil. A built-in field (gated by the field overrides).
     let leadType: String?
+    /// The lead's own free-text requirement (Spark & Ray). Shown on the detail screen.
+    let requirement: String?
 
     // B2C / consumer fields
     let isB2c: Bool?
@@ -144,6 +146,7 @@ struct Lead: Codable, Identifiable, Hashable {
         case updatedAt = "updated_at"
         case refNo = "ref_no"
         case leadType = "lead_type"
+        case requirement
         case isB2c = "is_b2c"
         case dateOfBirth = "date_of_birth"
         case gender

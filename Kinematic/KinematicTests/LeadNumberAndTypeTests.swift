@@ -36,6 +36,17 @@ final class LeadNumberAndTypeTests: XCTestCase {
         let l = try lead()
         XCTAssertNil(l.refNo)
         XCTAssertNil(l.leadType)
+        XCTAssertNil(l.requirement)
+    }
+
+    func testLeadDecodesRequirement() throws {
+        let l = try lead(#","lead_type":"discussion","requirement":"Replace ASCO pulse valves with MAC pulse valves.""#)
+        XCTAssertEqual(l.requirement, "Replace ASCO pulse valves with MAC pulse valves.")
+    }
+
+    func testRequirementNullDecodesToNil() throws {
+        let l = try lead(#","requirement":null"#)
+        XCTAssertNil(l.requirement)
     }
 
     func testLeadTypeNullDecodesToNil() throws {

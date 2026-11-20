@@ -170,6 +170,9 @@ struct LeadDetailView: View {
                     headerCard(lead: lead)
                     lifecycleSection(lead: lead)
                     actionsBar(lead: lead)
+                    // The lead's own requirement (Spark & Ray), shown above the
+                    // products basket so it is visible on any lead type.
+                    requirementCard(lead: lead)
                     // Products the rep captured on the lead form — read-only
                     // mirror of the multi-row picker so the basket is
                     // visible without entering edit mode.
@@ -1100,6 +1103,23 @@ struct LeadDetailView: View {
     /// the `contact`-entity field-overrides per the contract and deferred until
     /// the overrides have loaded; `requirement` is a non-built-in column so it
     /// always shows. Only rendered when `vm.contacts` is non-empty.
+    /// The lead's own free-text requirement (Spark & Ray). Shown as a section so the
+    /// requirement captured on the company lead is visible on the detail screen, the
+    /// same as the web. Renders nothing for other tenants or a lead with no requirement.
+    @ViewBuilder private func requirementCard(lead: Lead) -> some View {
+        let isB2C = lead.isB2c == true
+        if SparkJourney.isActive,
+           let r = lead.requirement?.trimmingCharacters(in: .whitespacesAndNewlines), !r.isEmpty {
+            Card(title: fieldOverrides.labelFor("requirement", defaultLabel: "Requirement", isB2C: isB2C).uppercased()) {
+                Text(r)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
     private func contactsCard() -> some View {
         let loaded = fieldOverrides.didLoad
         let showTitle = loaded && !fieldOverrides.isHidden(entity: "contact", "title")
