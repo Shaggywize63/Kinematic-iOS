@@ -1359,13 +1359,18 @@ final class CRMService {
             }
             throw CRMServiceError.badResponse(http.statusCode)
         }
+        // DELETE endpoints (and any other 2xx with no body) answer 204 with
+        // zero bytes. Handing JSONDecoder empty Data always throws
+        // dataCorrupted("Unexpected end of file") — decode "{}" instead so
+        // EmptyAck (and any all-optional T) comes back clean.
+        let decodable = data.isEmpty ? Data("{}".utf8) : data
         // Try envelope first.
-        if let env = try? decoder.decode(APIEnvelope<T>.self, from: data), let payload = env.data {
+        if let env = try? decoder.decode(APIEnvelope<T>.self, from: decodable), let payload = env.data {
             return payload
         }
         // Try raw decode.
         do {
-            return try decoder.decode(T.self, from: data)
+            return try decoder.decode(T.self, from: decodable)
         } catch {
             throw CRMServiceError.decodeFailed(String(describing: error))
         }
