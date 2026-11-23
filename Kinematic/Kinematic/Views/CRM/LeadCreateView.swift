@@ -292,10 +292,19 @@ struct LeadCreateView: View {
                     // Not a Button — a plain row carrying the press-and-hold
                     // gesture, so the DragGesture's press-down / release drive
                     // recording directly without fighting a Button's tap.
+                    //
+                    // Deliberately NOT gated on `voice.isAvailable` here: that reads
+                    // SFSpeechRecognizer.isAvailable directly, which is not @Published
+                    // and commonly reports `false` for a moment right after the
+                    // recognizer is created, with nothing in KiniVoiceRecognizer to
+                    // refresh it — so `.disabled(!voice.isAvailable)` could silently
+                    // eat every press for the whole session (no overlay, no error,
+                    // the gesture simply never fires). `beginVoiceHold()` → `start()`
+                    // already checks availability live and shows a friendly error via
+                    // the overlay, so gating here is both redundant and unsafe.
                     .contentShape(Rectangle())
                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: voicePhase)
                     .gesture(micHoldGesture)
-                    .disabled(!voice.isAvailable)
                     .accessibilityLabel("Fill with voice")
                     .accessibilityHint("Hold to speak, release to fill the form")
                 } footer: {
