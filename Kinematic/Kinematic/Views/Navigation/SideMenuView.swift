@@ -20,7 +20,7 @@ struct SideMenuView: View {
     /// `ClientFeatures.menuEntryAllowed`, which the bottom bar's action tabs share.
     private static let defaultMenuOrder: [String] = [
         "crm", "plant_visit", "planogram", "book_order", "dealer_order", "collect_payment", "my_orders", "van_load", "distributor_stock", "log_damage",
-        "stock_batches", "profile", "leave", "expenses", "timeline", "broadcast", "notifications",
+        "stock_batches", "incentives", "profile", "leave", "expenses", "timeline", "broadcast", "notifications",
         "leaderboard", "activity_feed", "log_visit", "stock", "grievance", "learning_hub", "emergency_sos",
     ]
 
@@ -97,6 +97,12 @@ struct SideMenuView: View {
         // this, so enabled_modules is read directly. Off by default.
         case "stock_batches":
             routeRow("stock_batches", icon: "calendar.badge.exclamationmark", title: "Stock & Batches", color: .purple, route: .stockBatches)
+
+        // My Incentives (module distribution_incentives) — the rep's own earnings
+        // for the window. STRICT entitlement gate (ClientFeatures.hasDistributionIncentives),
+        // so an empty legacy-session module list never surfaces it. Off by default.
+        case "incentives":
+            routeRow("incentives", icon: "indianrupeesign.circle.fill", title: "My Incentives", color: Brand.success, route: .incentives)
 
         case "profile":
             routeRow("profile", icon: "person.fill", title: "My Profile", color: .orange, route: .profile)

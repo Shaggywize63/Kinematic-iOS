@@ -104,6 +104,8 @@ struct SecondaryScreenHost: View {
                             DamageLogView()
                         case .stockBatches:
                             StockBatchesView()
+                        case .incentives:
+                            MyIncentivesView()
                         case .secondarySales:
                             // Secondary-sales lightweight UI ships in a follow-up patch.
                             ComingSoonView()

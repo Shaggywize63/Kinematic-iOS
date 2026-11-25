@@ -555,3 +555,57 @@ enum OutletCreateResult {
     case offline
     case failed(String)
 }
+
+// MARK: - Incentives (rep-facing "My Incentives")
+
+/// The signed-in salesman's own earnings for a window, from
+/// GET /distribution/incentives/me. The backend force-scopes it to the caller,
+/// so these are always the rep's own figures. snake_case matches the JSON keys
+/// directly (the decoder sets no key strategy). The summary amounts are summed
+/// server-side (JSON numbers); the per-row amounts come straight from Postgres
+/// `numeric`, which Supabase may quote, so IncentiveEntry decodes those leniently.
+struct MyIncentives: Codable {
+    let period: String
+    let earned_amount: Double
+    let paid_amount: Double
+    let reversed_amount: Double
+    let payable_amount: Double
+    let order_count: Int
+    let entries: [IncentiveEntry]
+}
+
+struct IncentiveEntry: Codable, Identifiable {
+    let id: String
+    let order_id: String?
+    let basis: String
+    let basis_amount: Double
+    let rate_pct: Double
+    let amount: Double
+    let status: String
+    let earned_at: String
+    let reversal_reason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, order_id, basis, basis_amount, rate_pct, amount, status, earned_at, reversal_reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        order_id = try? c.decodeIfPresent(String.self, forKey: .order_id)
+        basis = (try? c.decode(String.self, forKey: .basis)) ?? "taxable_value"
+        status = (try? c.decode(String.self, forKey: .status)) ?? "earned"
+        earned_at = (try? c.decode(String.self, forKey: .earned_at)) ?? ""
+        reversal_reason = try? c.decodeIfPresent(String.self, forKey: .reversal_reason)
+        basis_amount = IncentiveEntry.flexDouble(c, .basis_amount)
+        rate_pct = IncentiveEntry.flexDouble(c, .rate_pct)
+        amount = IncentiveEntry.flexDouble(c, .amount)
+    }
+
+    /// Postgres `numeric` may arrive as a JSON number or a quoted string; read either.
+    private static func flexDouble(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Double {
+        if let d = try? c.decode(Double.self, forKey: key) { return d }
+        if let s = try? c.decode(String.self, forKey: key), let d = Double(s) { return d }
+        return 0
+    }
+}
