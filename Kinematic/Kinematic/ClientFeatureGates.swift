@@ -217,6 +217,17 @@ enum ClientFeatures {
         Session.currentUser?.enabledModules.contains("distribution_receiving") == true
     }
 
+    /// Incentives module (distribution_incentives, off by default). STRICT check
+    /// (same rationale as `hasDistributionBatches`): an empty legacy-session
+    /// module list must NOT surface the rep's "My Incentives" screen, so we read
+    /// `enabled_modules` directly rather than the lenient `User.hasModule`, whose
+    /// legacy fallback reads an empty list as full access. No
+    /// `distribution_incentives` module ⇒ the nav row and screen never render.
+    /// Mirrors Android's `Entitlements.hasDistributionIncentives`.
+    static var hasDistributionIncentives: Bool {
+        Session.currentUser?.enabledModules.contains("distribution_incentives") == true
+    }
+
     // MARK: - SRS TATA Steel slimmed build
 
     /// True when the signed-in user belongs to SRS TATA Steel. This is the
@@ -389,6 +400,7 @@ enum ClientFeatures {
         case "distributor_stock": gate = hasModule("distribution_stock")
         case "log_damage":        gate = hasModule("distribution_damage")
         case "stock_batches":     gate = hasDistributionBatches
+        case "incentives":        gate = hasDistributionIncentives
         case "leave":             gate = showsLeave
         case "expenses":          gate = showsExpenses
         case "timeline":          gate = hasTimeline

@@ -139,6 +139,16 @@ struct DistributionAPI {
         guard let data = try? await request("/companies/mine") else { return nil }
         return try? decode(data)
     }
+
+    /// The signed-in rep's own incentive earnings for a window (today | week |
+    /// month | all), from GET /distribution/incentives/me. Nil on any failure
+    /// (network, or a tenant whose database lacks the incentives tables → 503),
+    /// so the screen shows its "couldn't load" state rather than crashing. The
+    /// backend force-scopes the rows to the caller, so this is always own data.
+    func myIncentives(period: String = "month") async -> MyIncentives? {
+        guard let data = try? await request("/distribution/incentives/me?period=\(period)") else { return nil }
+        return try? decode(data)
+    }
     func routeToday() async throws -> RouteToday {
         let data = try await request("/salesman/route/today")
         return try decode(data)

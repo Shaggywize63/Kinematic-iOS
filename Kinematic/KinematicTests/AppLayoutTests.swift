@@ -522,6 +522,7 @@ final class AppLayoutTests: XCTestCase {
             XCTAssertFalse(ClientFeatures.menuEntryAllowed("timeline"))
             XCTAssertFalse(ClientFeatures.menuEntryAllowed("expenses"))
             XCTAssertFalse(ClientFeatures.menuEntryAllowed("stock_batches"))
+            XCTAssertFalse(ClientFeatures.menuEntryAllowed("incentives"))   // strict: empty module list hides it
             XCTAssertFalse(ClientFeatures.menuEntryAllowed("planogram"))
         }
         try signedIn(#","app_ui_config":{"menu":{"notifications":false,"profile":false}}"#) {
@@ -547,6 +548,24 @@ final class AppLayoutTests: XCTestCase {
             // the essentials and the hide-flag-only entries are still there; the server's flags take the rest
             XCTAssertTrue(ClientFeatures.menuEntryAllowed("profile"))
             XCTAssertTrue(ClientFeatures.menuEntryAllowed("notifications"))
+        }
+    }
+
+    func testIncentivesMenuEntryNeedsTheModuleGrant() throws {
+        // Off by default: a distribution client without the module never sees it.
+        try signedIn(#","enabled_modules":["distribution_orders"],"enabled_packages":["distribution"]"#) {
+            XCTAssertFalse(ClientFeatures.menuEntryAllowed("incentives"))
+            XCTAssertFalse(ClientFeatures.hasDistributionIncentives)
+        }
+        // Granted: the row shows, and the route is reachable for the session.
+        try signedIn(#","enabled_modules":["distribution_orders","distribution_incentives"],"enabled_packages":["distribution"]"#) {
+            XCTAssertTrue(ClientFeatures.menuEntryAllowed("incentives"))
+            XCTAssertTrue(ClientFeatures.hasDistributionIncentives)
+            XCTAssertTrue(SecondaryRoute.incentives.isAvailable(for: Session.currentUser))
+        }
+        // An admin hide flag still wins over the grant.
+        try signedIn(#","enabled_modules":["distribution_incentives"],"app_ui_config":{"menu":{"incentives":false}}"#) {
+            XCTAssertFalse(ClientFeatures.menuEntryAllowed("incentives"))
         }
     }
 

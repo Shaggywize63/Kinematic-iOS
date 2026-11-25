@@ -243,6 +243,9 @@ enum SecondaryRoute: String, Identifiable {
     // Supply Chain — batch & expiry (+ receiving/GRN). STRICT-gated (see
     // `strictModule`): only clients explicitly granted `distribution_batches`.
     case stockBatches
+    // Rep-facing "My Incentives" — own earnings for the window. STRICT-gated on
+    // `distribution_incentives` (off by default), same rationale as stockBatches.
+    case incentives
     var id: String { rawValue }
 
     /// Module ids that ship OFF by default AND must be gated STRICTLY — an empty
@@ -254,6 +257,7 @@ enum SecondaryRoute: String, Identifiable {
     var strictModule: String? {
         switch self {
         case .stockBatches: return "distribution_batches"
+        case .incentives:   return "distribution_incentives"
         case .expenses:     return "field_expenses"
         case .timeline:     return "timeline"
         default:            return nil
@@ -291,7 +295,7 @@ enum SecondaryRoute: String, Identifiable {
             return "distribution"
         // Module-gated distribution routes — no package fallback; the module
         // gate above (`requiredModule` / `strictModule`) is the sole check.
-        case .vanLoad, .distributorStock, .damageLog, .stockBatches, .dealerOrder:
+        case .vanLoad, .distributorStock, .damageLog, .stockBatches, .dealerOrder, .incentives:
             return nil
         }
     }
