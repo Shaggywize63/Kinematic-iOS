@@ -24,6 +24,7 @@
 
 import SwiftUI
 import Combine
+import CoreLocation
 
 // MARK: - ViewModel
 
