@@ -27,6 +27,9 @@ struct LeadDetailView: View {
 
     @State private var editing = false
     @State private var updateText = ""
+    /// Brief "Posted ✓" confirmation shown after a Recent Updates note is sent,
+    /// so it's obvious the note left the composer and landed in the timeline.
+    @State private var justPosted = false
     /// Voice dictation for the Recent Updates composer. Reuses the same
     /// on-device SFSpeechRecognizer wrapper KINI chat uses — partial
     /// transcripts stream straight into `updateText`, so a rep can log a
@@ -1343,9 +1346,35 @@ struct LeadDetailView: View {
         Card(title: "RECENT UPDATES") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    TextField("Add an update…", text: $updateText, axis: .vertical)
-                        .lineLimit(1...4)
-                        .textFieldStyle(.roundedBorder)
+                    if voiceRecognizer.isListening {
+                        // Dictation is its OWN state, not a draft: a live
+                        // amplitude meter + "Listening…", so the streaming
+                        // transcript never looks like a finished, submittable note.
+                        HStack(spacing: 8) {
+                            HStack(spacing: 3) {
+                                ForEach(0..<5) { i in
+                                    Capsule().fill(Brand.red)
+                                        .frame(width: 3, height: CGFloat(6) + voiceRecognizer.level * CGFloat([10, 18, 26, 16, 11][i]))
+                                }
+                            }
+                            .frame(height: 26, alignment: .center)
+                            .animation(.easeOut(duration: 0.12), value: voiceRecognizer.level)
+                            Text("Listening…").font(.system(size: 13, weight: .semibold)).foregroundColor(Brand.red)
+                            if !updateText.isEmpty {
+                                Text(updateText).font(.system(size: 13)).foregroundColor(.secondary).lineLimit(1).truncationMode(.head)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(Brand.red.opacity(0.08))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Brand.red.opacity(0.40), lineWidth: 1.5))
+                        .cornerRadius(8)
+                    } else {
+                        TextField("Add an update…", text: $updateText, axis: .vertical)
+                            .lineLimit(1...4)
+                            .textFieldStyle(.roundedBorder)
+                    }
                     // 🎤 Dictate — tap to talk, tap again to stop. Partial
                     // transcripts stream straight into the draft so the rep
                     // can log a field note without typing. No language picker:
@@ -1379,7 +1408,12 @@ struct LeadDetailView: View {
                         // The draft is being posted — KINI's read of it no
                         // longer applies, so drop any stale suggestion.
                         updateSuggestion = nil
-                        Task { await vm.addUpdate(t) }
+                        Task {
+                            await vm.addUpdate(t)
+                            withAnimation { justPosted = true }
+                            try? await Task.sleep(nanoseconds: 1_600_000_000)
+                            withAnimation { justPosted = false }
+                        }
                     } label: {
                         if vm.postingUpdate {
                             ProgressView()
@@ -1388,6 +1422,15 @@ struct LeadDetailView: View {
                         }
                     }
                     .disabled(vm.postingUpdate || updateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                if justPosted {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Posted")
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.green)
+                    .transition(.opacity)
                 }
                 if let voiceErr = voiceRecognizer.permissionError {
                     Text(voiceErr).font(.caption2).foregroundColor(.secondary)
