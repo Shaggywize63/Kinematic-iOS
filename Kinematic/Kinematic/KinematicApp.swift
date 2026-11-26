@@ -3360,7 +3360,22 @@ class KinematicRepository {
             return false
         }
     }
-    
+
+    /// Fire an emergency SOS. POSTs the rep's location to /api/v1/sos/trigger,
+    /// which notifies their supervisor + city managers + admins. Mirrors the
+    /// Android `triggerSOS`. Returns true when the alert was accepted.
+    func triggerSOS(latitude: Double, longitude: Double) async -> Bool {
+        struct Body: Codable { let latitude: Double; let longitude: Double }
+        struct SOSResult: Codable { let id: String?; let status: String? }
+        do {
+            let body = try? JSONEncoder().encode(Body(latitude: latitude, longitude: longitude))
+            let res: ApiResponse<SOSResult>? = try await performRequest("/sos/trigger", method: "POST", body: body)
+            return res?.success ?? false
+        } catch {
+            return false
+        }
+    }
+
     // --- LEARNING HUB ---
     func getLearningMaterials() async -> [LearningMaterial] {
         do {

@@ -55,6 +55,10 @@ struct CrmHomeMissionView: View {
     /// This month's sales / collection targets (opt-in per client — the card draws nothing without them).
     @StateObject private var targets = MyTargetsViewModel()
     @State private var selectedLeadId: String?
+    // Emergency SOS popup (shown in place, not a separate screen).
+    @State private var showSosConfirm = false
+    @State private var sosSending = false
+    @State private var sosSent = false
 
     var body: some View {
         ScrollView {
@@ -152,10 +156,52 @@ struct CrmHomeMissionView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 PendingSyncChip()
             }
+            // Emergency SOS — a compact top-bar button (replaces the old global
+            // SOS strip). Tapping shows a confirm popup in place rather than
+            // opening a separate screen. Gated on the emergency_sos module.
+            if ClientFeatures.hasEmergencySOS {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .destructive) {
+                        showSosConfirm = true
+                    } label: {
+                        Text("SOS")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.red))
+                    }
+                    .accessibilityLabel("Emergency SOS")
+                }
+            }
+        }
+        .alert("Send SOS alert?", isPresented: $showSosConfirm) {
+            Button("Send SOS", role: .destructive) { Task { await triggerSos() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your manager and admins will be alerted immediately with your current location.")
+        }
+        .alert("SOS sent", isPresented: $sosSent) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your manager and admins have been alerted with your location.")
         }
         .navigationDestination(item: $selectedLeadId) { id in
             LeadDetailView(leadId: id)
         }
+    }
+
+    /// Fire the SOS: posts the rep's last known location to the backend, which
+    /// notifies supervisors + admins. Reuses LocationTrackingService's fix.
+    private func triggerSos() async {
+        sosSending = true
+        let loc = LocationTrackingService.shared.lastLocation
+        let ok = await KinematicRepository.shared.triggerSOS(
+            latitude: loc?.coordinate.latitude ?? 0,
+            longitude: loc?.coordinate.longitude ?? 0
+        )
+        sosSending = false
+        if ok { sosSent = true }
     }
 
     // MARK: Hero
@@ -190,24 +236,6 @@ struct CrmHomeMissionView: View {
                 ProgressRing(progressPct: pct, achieved: achieved, target: total)
             }
             .padding(20)
-
-            // Refresh affordance pinned to the top-right of the hero.
-            // Doubles as the spinner during pull-to-refresh fetches.
-            Button {
-                Task { await vm.load(silent: true) }
-            } label: {
-                if vm.refreshing {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .tint(.white)
-                        .frame(width: 18, height: 18)
-                } else {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-            }
-            .padding(14)
         }
         .background(
             LinearGradient(
