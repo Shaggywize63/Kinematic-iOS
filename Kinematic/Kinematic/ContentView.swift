@@ -83,39 +83,10 @@ struct ContentView: View {
         }
         // Master-admin read-only "View as User" banner across every shell.
         .safeAreaInset(edge: .top) {
-            VStack(spacing: 0) {
-                if let active = impersonation.active {
-                    ImpersonationBanner(active: active) { _ = ImpersonationManager.shared.stop() }
-                }
-                // Always-visible emergency SOS: a field rep can trigger it from
-                // any screen, not only by digging into the side menu. It lives in
-                // the top safe-area inset, which RESERVES its strip, so it never
-                // overlaps a screen's own header. Gated on the `emergency_sos`
-                // module. Tapping opens the existing SOS flow (SecondaryRoute.sos),
-                // which captures location and notifies supervisors + admins.
-                if appState.isAuthenticated && ClientFeatures.hasEmergencySOS {
-                    HStack {
-                        Spacer()
-                        Button {
-                            appState.activeSecondaryRoute = ModalRoute(route: .sos)
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "exclamationmark.octagon.fill")
-                                Text("SOS").fontWeight(.heavy)
-                            }
-                            .font(.system(size: 13, weight: .heavy))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(Color.red))
-                            .shadow(color: Color.red.opacity(0.4), radius: 4, y: 1)
-                        }
-                        .accessibilityLabel("Emergency SOS")
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 5)
-                    .background(.ultraThinMaterial)
-                }
+            // Master-admin read-only "View as User" banner. (Emergency SOS now
+            // lives as a compact button in the Home toolbar, not a global strip.)
+            if let active = impersonation.active {
+                ImpersonationBanner(active: active) { _ = ImpersonationManager.shared.stop() }
             }
         }
         .background(VibrantBackgroundView().ignoresSafeArea())
@@ -460,6 +431,23 @@ struct HomeView: View {
     /// End tied to a lead) as a full-screen cover. Gated on
     /// `ClientFeatures.isRajkamal` so no other tenant sees the card.
     @State private var showMarketingVisit = false
+    // Emergency SOS popup (shown in place, gated on the emergency_sos module).
+    @State private var showSosConfirm = false
+    @State private var sosSending = false
+    @State private var sosSent = false
+
+    /// Fire the SOS: posts the rep's last known location to the backend, which
+    /// notifies supervisors + admins. Shown as a popup, not a separate screen.
+    private func triggerSos() async {
+        sosSending = true
+        let loc = LocationTrackingService.shared.lastLocation
+        let ok = await KinematicRepository.shared.triggerSOS(
+            latitude: loc?.coordinate.latitude ?? 0,
+            longitude: loc?.coordinate.longitude ?? 0
+        )
+        sosSending = false
+        if ok { sosSent = true }
+    }
 
     @ViewBuilder
     private func homeBlockView(_ block: HomeBlock) -> some View {
@@ -596,6 +584,20 @@ struct HomeView: View {
                             Text("Field Operations Hub").font(.caption).fontWeight(.semibold).foregroundColor(.secondary).tracking(0.5)
                         }
                         Spacer()
+                        // Emergency SOS — compact top button; taps show a confirm
+                        // popup in place (not a separate screen). Gated on the
+                        // emergency_sos module.
+                        if ClientFeatures.hasEmergencySOS {
+                            Button { showSosConfirm = true } label: {
+                                Text("SOS")
+                                    .font(.system(size: 13, weight: .heavy))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 40)
+                                    .background(Capsule().fill(Color.red))
+                            }
+                            .accessibilityLabel("Emergency SOS")
+                        }
                         Button(action: { withAnimation { appState.showSideMenu = true } }) {
                             Image(systemName: "line.3.horizontal")
                                 .font(.system(size: 16, weight: .semibold))
@@ -694,6 +696,17 @@ struct HomeView: View {
         // Opt-in prompts hosted by Home (nothing for a client that did not turn them on): "Add today's travel to
         // expenses?" after the final check-out, and the rate-the-app prompt.
         .homePrompts()
+        .alert("Send SOS alert?", isPresented: $showSosConfirm) {
+            Button("Send SOS", role: .destructive) { Task { await triggerSos() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your manager and admins will be alerted immediately with your current location.")
+        }
+        .alert("SOS sent", isPresented: $sosSent) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your manager and admins have been alerted with your location.")
+        }
     }
 }
 
