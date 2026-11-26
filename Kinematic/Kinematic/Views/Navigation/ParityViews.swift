@@ -107,8 +107,21 @@ struct LearningHubView: View {
     @StateObject var vm = LearningHubViewModel()
     @State private var selectedCategory = "All"
     @State private var selectedType = "all"
-    
+    @State private var openedMaterial: LearningMaterial?
+    @Environment(\.openURL) private var openURL
+
     let types = ["all", "video", "pdf", "image", "link"]
+
+    // PDF / image / video open in an in-app viewer; everything else (link,
+    // slides, document) opens externally as before.
+    private func openMaterial(_ m: LearningMaterial) {
+        switch (m.type ?? "").lowercased() {
+        case "pdf", "image", "video":
+            openedMaterial = m
+        default:
+            if let s = m.fileUrl, let url = URL(string: s) { openURL(url) }
+        }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -203,6 +216,8 @@ struct LearningHubView: View {
                     } else {
                         ForEach(filtered) { m in
                             LearningMaterialRow(material: m)
+                                .contentShape(Rectangle())
+                                .onTapGesture { openMaterial(m) }
                         }
                     }
                 }
@@ -214,6 +229,9 @@ struct LearningHubView: View {
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .onAppear {
             Task { await vm.refresh() }
+        }
+        .fullScreenCover(item: $openedMaterial) { material in
+            LearningMaterialViewer(material: material)
         }
     }
 }
