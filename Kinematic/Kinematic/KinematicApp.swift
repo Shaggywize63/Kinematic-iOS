@@ -2463,13 +2463,60 @@ class KinematicRepository {
             let success = res?.success ?? false
             if success {
                 print("✅ [Tracking] Status update successful.")
+                // Connectivity is proven — drain any fixes parked while offline so a no-signal stretch
+                // backfills into the trail instead of leaving a gap.
+                await OfflinePingCache.shared.flush()
             } else {
+                // A server answer (4xx / success:false), not an outage — never queued.
                 print("⚠️ [Tracking] Ping rejected: \(res?.error ?? res?.message ?? "Unknown error")")
             }
             return success
         } catch {
             print("❌ TRACKING_PING_FAILED: \(error)")
+            // A connectivity failure (URLError) means the rep is likely in a no-signal zone: park this
+            // good GPS fix with its real capture time and replay it on reconnect. A decode / read-only /
+            // other error is not an outage, so it is not queued (mirrors Android's transport-only rule).
+            let isTransport = error is URLError
+            let hasFix = lat != 0 || lng != 0
+            if PingQueuePolicy.shouldEnqueue(trackingApplies: !ClientFeatures.isTataTiscon, hasFix: hasFix, retryable: isTransport) {
+                let accuracy: Double? = {
+                    guard let acc = location?.horizontalAccuracy, acc >= 0 else { return nil }
+                    return acc
+                }()
+                await OfflinePingCache.shared.enqueue(
+                    lat: lat, lng: lng, battery: battery,
+                    capturedAt: location?.timestamp ?? Date(),
+                    accuracyM: accuracy,
+                    isMock: location.map { SecurityCheck.isMockLocation($0) } ?? false,
+                    precise: LocationTrackingService.shared.isPreciseAuthorized
+                )
+            }
             return false
+        }
+    }
+
+    /// Replay one queued offline fix as a HEARTBEAT carrying its original `captured_at`, so the server
+    /// backfills the trail. Called by OfflinePingCache's flush. Returns whether to drop the row (`synced`
+    /// / `rejected`) or keep it for later (`held`, a connectivity failure).
+    func sendBackfillPing(lat: Double, lng: Double, battery: Int?, capturedAtIso: String,
+                          accuracyM: Double?, isMock: Bool, precise: Bool?) async -> PingSendResult {
+        // The kill-switch tenant never stores pings, but guard anyway: a refusal drops the row.
+        if ClientFeatures.isTataTiscon { return .rejected }
+        do {
+            let payload = UserStatusUpdate.backfill(
+                lat: lat, lng: lng, battery: battery, capturedAtIso: capturedAtIso,
+                accuracyM: accuracyM, isMock: isMock, precise: precise
+            )
+            let body = try? JSONEncoder().encode(payload)
+            let res: ApiResponse<[String: String]>? = try await performRequest(
+                "/users/status", method: "PATCH", body: body
+            )
+            // 2xx (stored backfill OR the server's ACK-and-drop of a too-old fix) → done; success:false
+            // (a server refusal) → drop, don't loop.
+            return (res?.success ?? false) ? .synced : .rejected
+        } catch {
+            // A connectivity failure keeps the row; anything else (decode / read-only) is final → drop.
+            return (error is URLError) ? .held : .rejected
         }
     }
 
