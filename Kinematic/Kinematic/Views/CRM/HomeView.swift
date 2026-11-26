@@ -61,19 +61,27 @@ struct CrmHomeMissionView: View {
             VStack(spacing: 22) {
                 // Vanrakshak co-brand: the client's own logo greets the rep on
                 // the Home dashboard right after login. Gated on the client id so
-                // it never shows for another tenant. On a white card so the mark
-                // (which has white fills) reads in both light and dark mode.
+                // it never shows for another tenant. The transparent emblem sits
+                // over the theme background; the wordmark is drawn in the theme's
+                // own colour, so it reads in both light and dark with no card.
                 if ClientFeatures.isVanrakshak {
-                    Image("VanrakshakLogo")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxHeight: 108)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .accessibilityLabel("Vanrakshak")
-                        .padding(.top, 4)
+                    VStack(spacing: 4) {
+                        Image("VanrakshakLogo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 88)
+                        Text("VANRAKSHAK")
+                            .font(.system(size: 20, weight: .heavy))
+                            .tracking(1.5)
+                            .foregroundColor(.primary)
+                        Text("Protect and Conserve")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Vanrakshak")
                 }
                 if let p = vm.payload {
                     heroCard(target: p.todayTarget)
