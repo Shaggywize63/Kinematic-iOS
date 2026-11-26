@@ -32,6 +32,10 @@ struct LeadDetailView: View {
     /// transcripts stream straight into `updateText`, so a rep can log a
     /// field note hands-free (works offline; the post itself queues).
     @StateObject private var voiceRecognizer = KiniVoiceRecognizer()
+    /// Dictation language for the Recent Updates mic (BCP-47). Restored from and
+    /// saved to UserDefaults so a rep's choice sticks. Applied to the recogniser
+    /// right before it starts, so switching language needs no extra wiring.
+    @State private var dictationLang = UserDefaults.standard.string(forKey: "kin_voice_lang") ?? "en-IN"
     @State private var showNbaHow = false
     @State private var converting = false
     @State private var showAssignSheet = false
@@ -1339,6 +1343,18 @@ struct LeadDetailView: View {
 
     // MARK: - Recent Updates (web parity: append-only notes timeline)
 
+    /// Languages offered by the Recent Updates dictation picker (BCP-47 + label).
+    /// Mirrors the web dashboard's InlineVoiceDictation list.
+    static let dictationLangs: [(String, String)] = [
+        ("en-IN", "English"), ("hi-IN", "हिन्दी"), ("bn-IN", "বাংলা"),
+        ("ta-IN", "தமிழ்"), ("te-IN", "తెలుగు"), ("mr-IN", "मराठी"),
+        ("gu-IN", "ગુજરાતી"), ("kn-IN", "ಕನ್ನಡ"), ("ml-IN", "മലയാളം"), ("pa-IN", "ਪੰਜਾਬੀ"),
+    ]
+    /// Short chip label for the picker (e.g. "EN", "HI").
+    static func dictationLangShort(_ code: String) -> String {
+        String(code.prefix(2)).uppercased()
+    }
+
     private var recentUpdatesSection: some View {
         Card(title: "RECENT UPDATES") {
             VStack(alignment: .leading, spacing: 10) {
@@ -1346,6 +1362,28 @@ struct LeadDetailView: View {
                     TextField("Add an update…", text: $updateText, axis: .vertical)
                         .lineLimit(1...4)
                         .textFieldStyle(.roundedBorder)
+                    // 🌐 Dictation language — lets a rep speak the update in their
+                    // own language (Hindi, Tamil, …). Disabled while listening so
+                    // the locale can't change mid-recording; the pick is persisted.
+                    Menu {
+                        ForEach(Self.dictationLangs, id: \.0) { code, label in
+                            Button {
+                                dictationLang = code
+                                UserDefaults.standard.set(code, forKey: "kin_voice_lang")
+                            } label: {
+                                if code == dictationLang { Label(label, systemImage: "checkmark") }
+                                else { Text(label) }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "globe").imageScale(.small)
+                            Text(Self.dictationLangShort(dictationLang)).font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(.secondary)
+                    }
+                    .disabled(voiceRecognizer.isListening)
+                    .accessibilityLabel("Dictation language")
                     // 🎤 Dictate — tap to talk, tap again to stop. Partial
                     // transcripts stream straight into the draft so the rep
                     // can log a field note without typing.
@@ -1353,6 +1391,7 @@ struct LeadDetailView: View {
                         if voiceRecognizer.isListening {
                             voiceRecognizer.stop()
                         } else {
+                            voiceRecognizer.setLocale(dictationLang)
                             voiceRecognizer.start { transcript in updateText = transcript }
                         }
                     } label: {

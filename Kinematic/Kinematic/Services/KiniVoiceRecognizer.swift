@@ -21,13 +21,28 @@ final class KiniVoiceRecognizer: ObservableObject {
     /// smoothed so the animation reads as organic rather than jittery.
     @Published private(set) var level: CGFloat = 0
 
-    private let recognizer: SFSpeechRecognizer? = SFSpeechRecognizer(locale: Locale(identifier: "en-IN"))
+    // Locale-bound recogniser. Defaults to en-IN (unchanged for the KINI chat
+    // and Create-Lead "Fill with voice" callers). A consumer that wants another
+    // language — e.g. the Recent Updates composer's language picker — calls
+    // `setLocale(_:)` to rebuild it before starting. A `var` so that rebuild is
+    // possible; never swapped while listening.
+    private var recognizer: SFSpeechRecognizer? = SFSpeechRecognizer(locale: Locale(identifier: "en-IN"))
         ?? SFSpeechRecognizer(locale: Locale.current)
     private let audioEngine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
 
     var isAvailable: Bool { recognizer?.isAvailable == true }
+
+    /// Switch the dictation language (BCP-47, e.g. "hi-IN"). No-op while
+    /// listening. Falls back to en-IN if the device has no recogniser for the
+    /// requested locale, so the mic always works.
+    func setLocale(_ identifier: String) {
+        guard !isListening else { return }
+        recognizer = SFSpeechRecognizer(locale: Locale(identifier: identifier))
+            ?? SFSpeechRecognizer(locale: Locale(identifier: "en-IN"))
+            ?? SFSpeechRecognizer(locale: Locale.current)
+    }
 
     func start(onTranscript: @escaping (String) -> Void) {
         guard let recognizer, recognizer.isAvailable else {
