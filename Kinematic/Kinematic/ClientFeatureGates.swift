@@ -44,6 +44,12 @@ private let RAJKAMAL_CLIENT_ID = "0490f34d-d9a3-4f39-99e2-8f3adba8c583"
 /// off the client id like the other tenant gates. Mirrors Android's
 /// `Entitlements.isBahwancy` (same client id).
 private let BAHWANCY_CLIENT_ID = "c7232547-554a-4ba1-9f14-1dc027f9febd"
+/// Vanrakshak (A&S Creations) — wildlife / conservation field-force + CRM
+/// tenant. Co-brands the app: the client's own logo shows on the Home
+/// dashboard right after login. Keyed off the client id like the other tenant
+/// gates. Mirrors the dashboard's `isVanrakshakActive` and Android's
+/// `Entitlements.isVanrakshak` (same client id).
+private let VANRAKSHAK_CLIENT_ID = "4413a585-cce9-473e-a7b0-793650427ace"
 
 enum ClientFeatures {
     /// True when the signed-in user belongs to a steel-dealer tenant — Tata
@@ -95,6 +101,12 @@ enum ClientFeatures {
     /// True when the signed-in user belongs to Rajkamal. Surfaces the ad-hoc
     /// "Marketing Visit" (GPS Start → End tied to a lead) entry points on the
     /// field-force Home and the CRM More menu. No other tenant sees them.
+    /// True when the signed-in user belongs to Vanrakshak. Gates the client's
+    /// co-brand logo on the Home dashboard. Mirrors Android's `isVanrakshak`.
+    static var isVanrakshak: Bool {
+        Session.currentUser?.clientId == VANRAKSHAK_CLIENT_ID
+    }
+
     static var isRajkamal: Bool {
         Session.currentUser?.clientId == RAJKAMAL_CLIENT_ID
     }
