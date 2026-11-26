@@ -66,6 +66,11 @@ struct UserStatusUpdate: Codable {
     /// (`accuracyAuthorization == .fullAccuracy`). nil when unknown so older
     /// behaviour is unchanged.
     let locationPrecise: Bool?
+    /// Offline ping queue: the original capture time (ISO-8601 UTC, e.g.
+    /// `2026-11-25T04:03:11Z`) of a fix taken in a no-signal zone and replayed on
+    /// reconnect. nil on a live heartbeat (server stamps now); set on a flushed
+    /// fix so the server backfills the trail at the real time. Mirrors Android.
+    let capturedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case latitude, longitude
@@ -77,6 +82,7 @@ struct UserStatusUpdate: Codable {
         case isMock            = "is_mock"
         case locationAccuracyM = "location_accuracy_m"
         case locationPrecise   = "location_precise"
+        case capturedAt        = "captured_at"
     }
 
     /// Convenience builder with the common HEARTBEAT defaults so callers do
@@ -99,7 +105,29 @@ struct UserStatusUpdate: Codable {
             osVersion: device.osVersion,
             isMock: location.map { SecurityCheck.isMockLocation($0) },
             locationAccuracyM: accuracy,
-            locationPrecise: precise
+            locationPrecise: precise,
+            capturedAt: nil
+        )
+    }
+
+    /// A HEARTBEAT replayed from the offline queue: identical to `heartbeat`, but carrying the original
+    /// capture time so the server backfills the trail at the right place. Device fields come from the
+    /// phone now (they are static); the GPS-integrity signals are the ones stored when the fix was taken.
+    static func backfill(lat: Double, lng: Double, battery: Int?, capturedAtIso: String,
+                         accuracyM: Double?, isMock: Bool, precise: Bool?) -> UserStatusUpdate {
+        let device = DeviceInfoSnapshot.capture()
+        return UserStatusUpdate(
+            latitude: lat,
+            longitude: lng,
+            batteryPercentage: battery,
+            activityType: "HEARTBEAT",
+            deviceModel: device.deviceModel,
+            deviceBrand: device.deviceBrand,
+            osVersion: device.osVersion,
+            isMock: isMock,
+            locationAccuracyM: accuracyM,
+            locationPrecise: precise,
+            capturedAt: capturedAtIso
         )
     }
 }
