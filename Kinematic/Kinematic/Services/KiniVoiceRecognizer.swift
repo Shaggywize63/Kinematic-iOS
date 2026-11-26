@@ -26,6 +26,11 @@ final class KiniVoiceRecognizer: ObservableObject {
     private let audioEngine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
+    /// The caller's transcript sink, held so `cancel()` can detach it. The
+    /// recognition closure delivers through THIS (not the captured argument), so
+    /// clearing it stops any further (including the delayed FINAL) transcript
+    /// from reaching the caller after they're done with the dictation.
+    private var transcriptHandler: ((String) -> Void)?
 
     var isAvailable: Bool { recognizer?.isAvailable == true }
 
@@ -55,6 +60,8 @@ final class KiniVoiceRecognizer: ObservableObject {
         }
     }
 
+    /// Stop listening and flush a final transcript to the caller (used when the
+    /// user taps the mic off to review what they dictated).
     func stop() {
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -67,10 +74,21 @@ final class KiniVoiceRecognizer: ObservableObject {
         level = 0
     }
 
+    /// Stop listening and DISCARD any further transcript. Use this once the
+    /// dictated text has already been consumed — e.g. the note was just
+    /// submitted — so SFSpeechRecognizer's delayed final result can't re-populate
+    /// the (now cleared) field. Detaching the handler first makes the stray
+    /// callback a no-op even though it fires asynchronously.
+    func cancel() {
+        transcriptHandler = nil
+        stop()
+    }
+
     private func beginRecording(onTranscript: @escaping (String) -> Void) {
         // Reset any in-flight recognition.
         task?.cancel()
         task = nil
+        transcriptHandler = onTranscript
 
         do {
             let session = AVAudioSession.sharedInstance()
@@ -116,7 +134,9 @@ final class KiniVoiceRecognizer: ObservableObject {
 
         task = recognizer?.recognitionTask(with: req) { [weak self] result, error in
             if let text = result?.bestTranscription.formattedString, !text.isEmpty {
-                DispatchQueue.main.async { onTranscript(text) }
+                // Deliver through the stored handler, not the captured argument,
+                // so cancel() (after a submit) can suppress the delayed final.
+                DispatchQueue.main.async { self?.transcriptHandler?(text) }
             }
             if error != nil || result?.isFinal == true {
                 DispatchQueue.main.async { self?.stop() }

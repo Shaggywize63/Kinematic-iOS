@@ -1362,7 +1362,10 @@ struct LeadDetailView: View {
                     }
                     .disabled(vm.postingUpdate)
                     Button {
-                        voiceRecognizer.stop()
+                        // cancel() (not stop()) so SFSpeechRecognizer's delayed
+                        // FINAL transcript can't re-populate the field we're
+                        // about to clear — the dictated note was just posted.
+                        voiceRecognizer.cancel()
                         let t = updateText
                         updateText = ""
                         // The draft is being posted — KINI's read of it no
