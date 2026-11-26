@@ -1349,12 +1349,18 @@ struct LeadDetailView: View {
                     // 🎤 Dictate — tap to talk, tap again to stop. Partial
                     // transcripts stream straight into the draft so the rep
                     // can log a field note without typing. No language picker:
-                    // the recogniser AUTO-DETECTS using the device's language.
+                    // field reps dictate in Hindi/Hinglish, so this composer's
+                    // recogniser is pinned to hi-IN, which transcribes Hindi and
+                    // code-mixed Hinglish/English (numbers, product terms). iOS
+                    // can't auto-switch locale mid-utterance; setLocale() falls
+                    // back to en-IN/device if hi-IN is unavailable, so the mic
+                    // always works. Scoped to this composer only — the KINI chat
+                    // and Create-Lead voice callers keep their own en-IN default.
                     Button {
                         if voiceRecognizer.isListening {
                             voiceRecognizer.stop()
                         } else {
-                            voiceRecognizer.setLocale(Locale.current.identifier)
+                            voiceRecognizer.setLocale("hi-IN")
                             voiceRecognizer.start { transcript in updateText = transcript }
                         }
                     } label: {
