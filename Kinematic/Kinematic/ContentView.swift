@@ -83,8 +83,39 @@ struct ContentView: View {
         }
         // Master-admin read-only "View as User" banner across every shell.
         .safeAreaInset(edge: .top) {
-            if let active = impersonation.active {
-                ImpersonationBanner(active: active) { _ = ImpersonationManager.shared.stop() }
+            VStack(spacing: 0) {
+                if let active = impersonation.active {
+                    ImpersonationBanner(active: active) { _ = ImpersonationManager.shared.stop() }
+                }
+                // Always-visible emergency SOS: a field rep can trigger it from
+                // any screen, not only by digging into the side menu. It lives in
+                // the top safe-area inset, which RESERVES its strip, so it never
+                // overlaps a screen's own header. Gated on the `emergency_sos`
+                // module. Tapping opens the existing SOS flow (SecondaryRoute.sos),
+                // which captures location and notifies supervisors + admins.
+                if appState.isAuthenticated && ClientFeatures.hasEmergencySOS {
+                    HStack {
+                        Spacer()
+                        Button {
+                            appState.activeSecondaryRoute = ModalRoute(route: .sos)
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "exclamationmark.octagon.fill")
+                                Text("SOS").fontWeight(.heavy)
+                            }
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Color.red))
+                            .shadow(color: Color.red.opacity(0.4), radius: 4, y: 1)
+                        }
+                        .accessibilityLabel("Emergency SOS")
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial)
+                }
             }
         }
         .background(VibrantBackgroundView().ignoresSafeArea())

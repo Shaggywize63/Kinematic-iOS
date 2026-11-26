@@ -228,6 +228,16 @@ enum ClientFeatures {
         Session.currentUser?.enabledModules.contains("distribution_incentives") == true
     }
 
+    /// Emergency SOS module (`emergency_sos`, off by default). STRICT check: an
+    /// empty legacy-session module list must NOT surface the always-on SOS
+    /// button, so read `enabledModules` directly rather than the lenient
+    /// `hasModule`. When on, a field rep gets a one-tap SOS at the top of every
+    /// authenticated screen (ContentView's safe-area inset) that triggers the
+    /// existing SOS flow — captures location and notifies supervisors/admins.
+    static var hasEmergencySOS: Bool {
+        Session.currentUser?.enabledModules.contains("emergency_sos") == true
+    }
+
     // MARK: - SRS TATA Steel slimmed build
 
     /// True when the signed-in user belongs to SRS TATA Steel. This is the
