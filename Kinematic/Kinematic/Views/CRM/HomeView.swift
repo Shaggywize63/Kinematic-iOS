@@ -59,6 +59,22 @@ struct CrmHomeMissionView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
+                // Vanrakshak co-brand: the client's own logo greets the rep on
+                // the Home dashboard right after login. Gated on the client id so
+                // it never shows for another tenant. On a white card so the mark
+                // (which has white fills) reads in both light and dark mode.
+                if ClientFeatures.isVanrakshak {
+                    Image("VanrakshakLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 108)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .accessibilityLabel("Vanrakshak")
+                        .padding(.top, 4)
+                }
                 if let p = vm.payload {
                     heroCard(target: p.todayTarget)
                     MyTargetsCard(model: targets, title: ClientFeatures.labelFor("home", "my_targets", default: "My targets"))
